@@ -187,7 +187,7 @@ Having basic automation increases trust when distributing on Switchbrew:
 
 ## License
 
-MIT License
+MIT License © 2026 Ode1l Contributors. See `LICENSE` for full terms.
 
 ---
 

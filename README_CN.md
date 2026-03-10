@@ -189,7 +189,7 @@ nxcast
 
 ## License
 
-MIT License
+MIT License © 2026 Ode1l Contributors。完整条款见 `LICENSE`。
 
 ---
 
