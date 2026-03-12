@@ -55,6 +55,25 @@ How to verify Milestone 0 locally:
 
 ---
 
+## Milestone 1 Device Discovery
+
+Milestone 1 introduces SSDP-based device discovery to detect DLNA/UPnP senders on the local network.
+
+Highlights:
+
+- Minimal SSDP `M-SEARCH` client that sends discovery probes to `239.255.255.250:1900`.
+- Logs sender IP/port and raw response headers to the console so you can verify compatible devices.
+- Introduced a dedicated `network/discovery` module that caches basic device metadata (USN/ST) and will host future mDNS/AirPlay discovery code.
+- Added a placeholder DLNA control module that consumes cached results and logs which devices will get control sessions next.
+
+How to verify Milestone 1 locally:
+
+1. Build and deploy the latest `.nro` as in Milestone 0.
+2. Ensure your Switch and the DLNA/UPnP sender are on the same Wi-Fi network.
+3. Launch NX-Cast and watch for `[ssdp]` logs showing responses; press `+` after confirming discovery output.
+
+---
+
 ## Planned Features
 
 ### Phase 1

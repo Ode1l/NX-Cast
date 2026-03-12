@@ -2,7 +2,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-static bool initialize_network()
+#include "network/discovery.h"
+#include "protocol/dlna_control.h"
+
+static bool initialize_network(void)
 {
     Result rc = socketInitializeDefault();
     if (R_FAILED(rc))
@@ -22,6 +25,18 @@ int main(int argc, char* argv[])
     consoleInit(NULL);
 
     bool networkReady = initialize_network();
+
+    if (networkReady)
+    {
+        DiscoveryResults results;
+        if (discovery_run_ssdp(&results))
+        {
+            printf("[ssdp] Cached %d device(s).\n", results.count);
+            dlna_update_from_discovery(&results);
+        }
+
+        discovery_run_mdns();
+    }
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
 
