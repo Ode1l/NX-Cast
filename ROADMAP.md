@@ -1,4 +1,4 @@
-# NXCast Roadmap
+# NX-Cast Roadmap
 
 ## Milestone 0
 Project bootstrap

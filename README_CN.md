@@ -1,18 +1,18 @@
-# NXCast
+# NX-Cast
 
-NXCast 是一个运行在 Atmosphère 环境下的 Nintendo Switch 开源无线投屏接收程序。
+NX-Cast 是一个运行在 Atmosphère 环境下的 Nintendo Switch 开源无线投屏接收程序。
 
 该项目的目标是在 **不安装 Linux 的情况下**，通过 Switch 原生 Homebrew 环境实现无线媒体接收功能，例如 **DLNA 和 AirPlay 类似协议的视频接收**。
 
-NXCast 基于 **devkitPro + libnx** 开发，并运行在 Horizon OS 上。
+NX-Cast 基于 **devkitPro + libnx** 开发，并运行在 Atmosphère 的 homebrew 上。
 
 ---
 
 ## 项目目标
 
-NXCast 的目标是：
+NX-Cast 的目标是：
 
-- 原生 Horizon OS 实现
+- Atmosphère 实现
 - 支持无线媒体接收
 - 模块化协议架构
 - 利用 Switch 硬件解码能力
@@ -37,7 +37,7 @@ NXCast 的目标是：
 
 ## 里程碑 0 启动
 
-本阶段的目标是让 NXCast 能在 Atmosphère 中稳定启动，并完成后续协议开发需要的基础网络准备。
+本阶段的目标是让 NX-Cast 能在 Atmosphère 中稳定启动，并完成后续协议开发需要的基础网络准备。
 
 已完成内容：
 
@@ -49,8 +49,8 @@ NXCast 的目标是：
 本地验证步骤：
 
 1. 安装 devkitPro（含 devkitA64 与 libnx），执行 `make`。
-2. 将生成的 `NXCast.nro` 拷贝到 SD 卡的 `/switch/nxcast/`。
-3. 保证 Switch 已连接 Wi-Fi，从 Homebrew Menu 启动 NXCast，查看控制台中的 `[net]` 初始化日志。
+2. 将生成的 `NX-Cast.nro` 拷贝到 SD 卡的 `/switch/nx-cast/`。
+3. 保证 Switch 已连接 Wi-Fi，从 Homebrew Menu 启动 NX-Cast，查看控制台中的 `[net]` 初始化日志。
 4. 看到网络初始化成功提示后，按 `+` 退出。
 
 ---
@@ -79,7 +79,7 @@ NXCast 的目标是：
 
 ## 系统架构
 
-NXCast 采用分层架构：
+NX-Cast 采用分层架构：
 
 ```text
 应用层
@@ -101,7 +101,7 @@ NXCast 采用分层架构：
 ## 项目目录结构
 
 ```text
-nxcast
+nx-cast
 │
 ├── docs
 │
@@ -133,7 +133,8 @@ nxcast
 编译：
 
 ```text
-生成 `.nro` 文件。
+make
+ 生成 `.nro` 文件。
 ```
 
 ---
@@ -143,7 +144,7 @@ nxcast
 将 `.nro` 放入：
 
 ```text
-/switch/nxcast/
+/switch/nx-cast/
 通过 Homebrew Menu 启动。
 ```
 
@@ -167,7 +168,7 @@ nxcast
 
 ## 发布准备
 
-为了将 NXCast 正式发布到 switchbrew，除了核心功能外还需要补齐以下内容：
+为了将 NX-Cast 正式发布到 switchbrew，除了核心功能外还需要补齐以下内容：
 
 - 许可证信息：保持 MIT LICENSE，并在 `README`、发布页面和 `.nro/.nacp` 元数据中注明，同时列出依赖库和素材的授权情况。
 - 文档集合：开发环境搭建、模块/协议设计文档、编码规范、贡献流程、可复现的构建与测试指引。
@@ -195,4 +196,4 @@ MIT License © 2026 Ode1l Contributors。完整条款见 `LICENSE`。
 
 ## 免责声明
 
-NXCast 为独立开源项目，与 Nintendo 无任何官方关系。
+NX-Cast 为独立开源项目，与 Nintendo 无任何官方关系。

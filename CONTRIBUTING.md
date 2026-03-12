@@ -1,4 +1,4 @@
-# Contributing to NXCast
+# Contributing to NX-Cast
 
 Thank you for your interest in contributing.
 
@@ -12,7 +12,9 @@ Install:
 
 Clone the repository:
 
-git clone https://github.com/ode1l/NXCast
+```
+git clone https://github.com/ode1l/NX-Cast
+```
 
 Build:
 
@@ -20,7 +22,7 @@ make
 
 ## Coding Style
 
-- Use modern C++17
+- Use ISO C17 (or the closest supported by devkitPro)
 - Keep modules separated
 - Avoid platform-specific code outside platform layer
 

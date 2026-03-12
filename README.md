@@ -1,18 +1,18 @@
-# NXCast
+# NX-Cast
 
-**NXCast** is an open-source wireless display receiver for the Nintendo Switch running Atmosphère.
+**NX-Cast** is an open-source wireless display receiver for the Nintendo Switch running Atmosphère.
 
 The project aims to turn the Nintendo Switch into a wireless media receiver capable of accepting streams via protocols such as **DLNA** and **AirPlay-style media streaming**, without requiring Linux on Switch.
 
-NXCast runs natively on Horizon OS using the homebrew development stack based on **devkitPro** and **libnx**.
+NX-Cast runs  on Atmosphère using the homebrew development stack based on **devkitPro** and **libnx**.
 
 ---
 
 ## Project Goals
 
-NXCast aims to provide:
+NX-Cast aims to provide:
 
-- Native Horizon OS implementation
+- Atmosphère implementation
 - Wireless media receiving capability
 - Modular architecture for protocol extensions
 - Hardware-accelerated decoding where possible
@@ -49,8 +49,8 @@ Completed items:
 How to verify Milestone 0 locally:
 
 1. Install the devkitPro toolchain (devkitA64 + libnx), then run `make`.
-2. Copy the generated `NXCast.nro` to `/switch/nxcast/` on your SD card.
-3. Connect the Switch to Wi-Fi, launch NXCast from the Homebrew Menu, and check the console log for the `[net]` initialization messages.
+2. Copy the generated `NX-Cast.nro` to `/switch/nx-cast/` on your SD card.
+3. Connect the Switch to Wi-Fi, launch NX-Cast from the Homebrew Menu, and check the console log for the `[net]` initialization messages.
 4. Press `+` to exit once you see the successful network message.
 
 ---
@@ -79,7 +79,7 @@ How to verify Milestone 0 locally:
 
 ## Architecture Overview
 
-NXCast uses a layered architecture:
+NX-Cast uses a layered architecture:
 
 ```text
 Application Layer
@@ -101,7 +101,7 @@ Platform Layer (libnx)
 ## Repository Structure
 
 ```text
-nxcast
+nx-cast
 │
 ├── docs
 │
@@ -132,7 +132,8 @@ Install the Switch homebrew toolchain:
 
 Build using:
 ```text
-make This produces a `.nro` executable for the Nintendo Switch.
+make
+ This produces a `.nro` executable for the Nintendo Switch.
 ```
 
 ---
@@ -141,7 +142,7 @@ make This produces a `.nro` executable for the Nintendo Switch.
 
 Place the `.nro` in:
 ```text
-/switch/nxcast/
+/switch/nx-cast/
 Launch using the Homebrew Menu.
 ```
 
@@ -165,7 +166,7 @@ Areas where help is needed:
 
 ## Release Readiness
 
-To publish NXCast as a Switchbrew project, we still need the following project-wide assets in addition to the core implementation:
+To publish NX-Cast as a Switchbrew project, we still need the following project-wide assets in addition to the core implementation:
 
 - Clear licensing info: keep the MIT license file, mention it in `README`, and document third-party licenses referenced by the code and any shipped assets (icons, fonts, etc.).
 - Documentation set: developer environment setup, module-level design notes, coding standards, contribution guide, and reproducible build/test instructions.
@@ -193,6 +194,6 @@ MIT License © 2026 Ode1l Contributors. See `LICENSE` for full terms.
 
 ## Disclaimer
 
-NXCast is an independent open-source project and is not affiliated with Nintendo.
+NX-Cast is an independent open-source project and is not affiliated with Nintendo.
 
 Use at your own risk.
