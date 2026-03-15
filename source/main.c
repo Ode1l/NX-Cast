@@ -2,8 +2,9 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "network/discovery.h"
+#include "protocol/dlna/discovery/ssdp.h"
 #include "protocol/dlna_control.h"
+#include "protocol/airplay/discovery/mdns.h"
 
 static bool initialize_network(void)
 {
@@ -28,14 +29,14 @@ int main(int argc, char* argv[])
 
     if (networkReady)
     {
-        DiscoveryResults results;
-        if (discovery_run_ssdp(&results))
+        DlnaDiscoveryResults dlnaResults;
+        if (ssdp_discover(&dlnaResults))
         {
-            printf("[ssdp] Cached %d device(s).\n", results.count);
-            dlna_update_from_discovery(&results);
+            printf("[ssdp] Cached %d device(s).\n", dlnaResults.count);
+            dlna_update_from_discovery(&dlnaResults);
         }
 
-        discovery_run_mdns();
+        mdns_discover_airplay();
     }
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);

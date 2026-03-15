@@ -42,7 +42,12 @@ APP_TITLE	:=	NX-Cast
 APP_AUTHOR	:=	Ode1l Contributors
 APP_VERSION	:=	0.1.0
 BUILD		:=	build
-SOURCES		:=	source source/network source/protocol
+SOURCES		:=	source \
+			source/protocol \
+			source/protocol/dlna \
+			source/protocol/dlna/discovery \
+			source/protocol/airplay \
+			source/protocol/airplay/discovery
 DATA		:=	data
 INCLUDES	:=	include source
 #ROMFS	:=	romfs

@@ -1,4 +1,4 @@
-#include "discovery.h"
+#include "ssdp.h"
 
 #include <switch.h>
 #include <stdio.h>
@@ -11,19 +11,19 @@
 #include <errno.h>
 #include <sys/time.h>
 
-static void store_device(DiscoveryResults *results, const struct sockaddr_in *endpoint,
+static void store_device(DlnaDiscoveryResults *results, const struct sockaddr_in *endpoint,
                          const char *usn, const char *st)
 {
-    if (!results || results->count >= DISCOVERY_MAX_DEVICES)
+    if (!results || results->count >= DLNA_MAX_DEVICES)
         return;
 
-    DiscoveryDevice *device = &results->devices[results->count++];
+    DlnaDevice *device = &results->devices[results->count++];
     device->endpoint = *endpoint;
     snprintf(device->usn, sizeof(device->usn), "%s", usn ? usn : "");
     snprintf(device->st, sizeof(device->st), "%s", st ? st : "");
 }
 
-static void parse_headers(char *buffer, DiscoveryResults *results, const struct sockaddr_in *from)
+static void parse_headers(char *buffer, DlnaDiscoveryResults *results, const struct sockaddr_in *from)
 {
     char *line = strtok(buffer, "\r\n");
     char usn[256] = {0};
@@ -38,7 +38,6 @@ static void parse_headers(char *buffer, DiscoveryResults *results, const struct 
         line = strtok(NULL, "\r\n");
     }
 
-    // Trim leading spaces
     char *usn_trim = usn;
     while (*usn_trim == ' ')
         ++usn_trim;
@@ -50,7 +49,7 @@ static void parse_headers(char *buffer, DiscoveryResults *results, const struct 
     store_device(results, from, usn_trim, st_trim);
 }
 
-bool discovery_run_ssdp(DiscoveryResults *results)
+bool ssdp_discover(DlnaDiscoveryResults *results)
 {
     static const char request[] =
         "M-SEARCH * HTTP/1.1\r\n"
@@ -118,10 +117,4 @@ bool discovery_run_ssdp(DiscoveryResults *results)
 
     close(sock);
     return receivedAny;
-}
-
-bool discovery_run_mdns(void)
-{
-    printf("[mdns] Placeholder: mDNS probing not yet implemented.\n");
-    return false;
 }

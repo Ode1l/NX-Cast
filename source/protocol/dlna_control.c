@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 
-void dlna_update_from_discovery(const DiscoveryResults *results)
+void dlna_update_from_discovery(const DlnaDiscoveryResults *results)
 {
     if (!results)
     {
@@ -22,7 +22,7 @@ void dlna_update_from_discovery(const DiscoveryResults *results)
 
     for (int i = 0; i < results->count; ++i)
     {
-        const DiscoveryDevice *device = &results->devices[i];
+        const DlnaDevice *device = &results->devices[i];
         printf("[dlna] #%d -> %s:%d\n", i + 1,
                inet_ntoa(device->endpoint.sin_addr),
                ntohs(device->endpoint.sin_port));
