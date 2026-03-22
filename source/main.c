@@ -2,7 +2,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "protocol/dlna/discovery/ssdp.h"
 #include "protocol/dlna_control.h"
 #include "protocol/airplay/discovery/mdns.h"
 
@@ -26,16 +25,11 @@ int main(int argc, char* argv[])
     consoleInit(NULL);
 
     bool networkReady = initialize_network();
+    bool dlnaRunning = false;
 
     if (networkReady)
     {
-        DlnaDiscoveryResults dlnaResults;
-        if (ssdp_discover(&dlnaResults))
-        {
-            printf("[ssdp] Cached %d device(s).\n", dlnaResults.count);
-            dlna_update_from_discovery(&dlnaResults);
-        }
-
+        dlnaRunning = dlna_control_start();
         mdns_discover_airplay();
     }
 
@@ -60,7 +54,11 @@ int main(int argc, char* argv[])
     }
 
     if (networkReady)
+    {
+        if (dlnaRunning)
+            dlna_control_stop();
         socketExit();
+    }
 
     consoleExit(NULL);
     return 0;

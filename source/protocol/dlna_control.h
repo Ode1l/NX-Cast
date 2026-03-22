@@ -1,6 +1,6 @@
 #pragma once
 
-#include "protocol/dlna/discovery/ssdp.h"
+#include <stdbool.h>
 
-// Update DLNA control state using the latest discovery results.
-void dlna_update_from_discovery(const DlnaDiscoveryResults *results);
+bool dlna_control_start(void);
+void dlna_control_stop(void);

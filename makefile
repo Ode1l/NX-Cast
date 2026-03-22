@@ -39,10 +39,11 @@ include $(DEVKITPRO)/libnx/switch_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	NX-Cast
 APP_TITLE	:=	NX-Cast
-APP_AUTHOR	:=	Ode1l Contributors
+APP_AUTHOR	:=	Ode1l
 APP_VERSION	:=	0.1.0
 BUILD		:=	build
 SOURCES		:=	source \
+			source/log \
 			source/protocol \
 			source/protocol/dlna \
 			source/protocol/dlna/discovery \

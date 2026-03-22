@@ -1,22 +1,18 @@
 #pragma once
 
 #include <stdbool.h>
-#include <netinet/in.h>
-
-#define DLNA_MAX_DEVICES 16
+#include <stdint.h>
 
 typedef struct
 {
-    struct sockaddr_in endpoint;
-    char usn[256];
-    char st[128];
-} DlnaDevice;
+    const char *device_type;
+    const char *friendly_name;
+    const char *manufacturer;
+    const char *model_name;
+    const char *uuid;
+    const char *location_path;
+    uint16_t http_port;
+} SsdpConfig;
 
-typedef struct
-{
-    DlnaDevice devices[DLNA_MAX_DEVICES];
-    int count;
-} DlnaDiscoveryResults;
-
-// Broadcast SSDP M-SEARCH and cache matching DLNA devices.
-bool ssdp_discover(DlnaDiscoveryResults *results);
+bool ssdp_start(const SsdpConfig *config);
+void ssdp_stop(void);

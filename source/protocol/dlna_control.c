@@ -1,36 +1,42 @@
 #include "dlna_control.h"
 
-#include <switch.h>
-#include <stdio.h>
-#include <arpa/inet.h>
+#include "log/log.h"
+#include "protocol/dlna/discovery/ssdp.h"
 
-void dlna_update_from_discovery(const DlnaDiscoveryResults *results)
+static bool g_dlnaRunning = false;
+
+bool dlna_control_start(void)
 {
-    if (!results)
+    if (g_dlnaRunning)
+        return true;
+
+    static const SsdpConfig config = {
+        .device_type = "urn:schemas-upnp-org:device:MediaRenderer:1",
+        .friendly_name = "NX-Cast",
+        .manufacturer = "Ode1l",
+        .model_name = "NX-Cast Virtual Renderer",
+        .uuid = "uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001",
+        .location_path = "/device.xml",
+        .http_port = 49152
+    };
+
+    if (!ssdp_start(&config))
     {
-        printf("[dlna] No discovery results provided.\n");
+        log_error("[dlna] SSDP responder failed to start.\n");
+        return false;
+    }
+
+    g_dlnaRunning = true;
+    log_info("[dlna] Control layer initialized.\n");
+    return true;
+}
+
+void dlna_control_stop(void)
+{
+    if (!g_dlnaRunning)
         return;
-    }
 
-    if (results->count == 0)
-    {
-        printf("[dlna] No SSDP devices detected yet.\n");
-        return;
-    }
-
-    printf("[dlna] Preparing control sessions for %d device(s).\n", results->count);
-
-    for (int i = 0; i < results->count; ++i)
-    {
-        const DlnaDevice *device = &results->devices[i];
-        printf("[dlna] #%d -> %s:%d\n", i + 1,
-               inet_ntoa(device->endpoint.sin_addr),
-               ntohs(device->endpoint.sin_port));
-        if (device->usn[0] != '\0')
-            printf("         USN:%s\n", device->usn);
-        if (device->st[0] != '\0')
-            printf("         ST:%s\n", device->st);
-    }
-
-    printf("[dlna] (Placeholder) Control channel not implemented yet.\n");
+    ssdp_stop();
+    g_dlnaRunning = false;
+    log_info("[dlna] Control layer stopped.\n");
 }
