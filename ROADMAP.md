@@ -13,6 +13,7 @@ Device discovery
 
 - mDNS support
 - SSDP support
+- Respond to incoming M-SEARCH requests (NOTIFY broadcast to be implemented later)
 
 ## Milestone 2
 DLNA receiver
@@ -20,6 +21,7 @@ DLNA receiver
 - HTTP streaming
 - H264 playback
 - Basic controls
+- DLNA DMR role (tie the SSDP responder into the control path)
 
 ## Milestone 3
 AirPlay receiver

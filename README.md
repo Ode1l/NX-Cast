@@ -63,6 +63,7 @@ Highlights:
 
 - Minimal SSDP `M-SEARCH` client that sends discovery probes to `239.255.255.250:1900`.
 - Logs sender IP/port and raw response headers to the console so you can verify compatible devices.
+- Added an initial SSDP responder so NX-Cast can answer incoming `M-SEARCH` requests; periodic `NOTIFY` broadcasts are not implemented yet.
 - Introduced a dedicated `network/discovery` module that caches basic device metadata (USN/ST) and will host future mDNS/AirPlay discovery code.
 - Added a real mDNS probe that multicasts `_airplay._tcp.local` queries and prints PTR answers.
 - Clarifies that NX-Cast’s DLNA target is the Digital Media Renderer (DMR) role, relying on third-party DMC/DMS apps for control and content.
@@ -84,7 +85,7 @@ How to verify Milestone 1 locally:
 - Device discovery
 
 ### Phase 2
-- DLNA Digital Media Renderer (DMR) implementation
+- DLNA Digital Media Renderer (DMR) implementation (control path already wired through SSDP discovery)
 - Basic playback pipeline
 
 ### Phase 3

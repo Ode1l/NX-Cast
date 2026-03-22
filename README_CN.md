@@ -63,6 +63,7 @@ NX-Cast 的目标是：
 
 - 通过向 `239.255.255.250:1900` 发送 `M-SEARCH` 探测请求获取同局域网中的服务。
 - 在控制台打印响应设备的 IP/端口以及原始响应头，并缓存 USN/ST 等元数据，方便确认兼容设备。
+- 新增基础 SSDP 响应端，使 NX-Cast 可以回复来自手机/电脑的 `M-SEARCH` 请求（周期性 `NOTIFY` 广播暂未实现）。
 - 引入 `network/discovery` 模块，为后续的 mDNS/AirPlay 发现逻辑提供统一入口。
 - 实现基于 `_airplay._tcp.local` 的 mDNS 查询，多播请求并输出 PTR 应答结果。
 - 明确目标是实现 DLNA 的 DMR 角色，播放控制与内容由第三方 DMC/DMS 提供。
@@ -84,7 +85,7 @@ NX-Cast 的目标是：
 - 设备发现
 
 ### Phase 2
-- DLNA Digital Media Renderer（DMR）实现
+- DLNA Digital Media Renderer（DMR）实现（控制流程已与 SSDP 发现逻辑串联）
 - 基础播放管线
 
 ### Phase 3
