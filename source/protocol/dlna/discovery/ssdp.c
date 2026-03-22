@@ -20,17 +20,18 @@
 
 typedef struct
 {
-    SsdpConfig config;
-    int socket_fd;
-    Thread thread;
+    SsdpConfig config;                   // metadata advertised via SSDP
+    int socket_fd;                       // multicast socket
+    Thread thread;                       // background responder thread
     bool running;
     bool thread_started;
-    char local_ip[INET_ADDRSTRLEN];
-    char location[128];
+    char local_ip[INET_ADDRSTRLEN];      // cached local IPv4
+    char location[128];                  // http://<ip>:<port>/device.xml
 } SsdpState;
 
 static SsdpState g_ssdp;
 
+// Determine the outbound IPv4 address by connecting a dummy UDP socket.
 static bool determine_local_ip(char *out, size_t len)
 {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -113,6 +114,7 @@ static bool create_socket(SsdpState *state)
     return true;
 }
 
+// Find a header line (case-insensitive) and copy its value.
 static bool get_header_value(const char *packet, const char *header, char *out, size_t out_len)
 {
     size_t header_len = strlen(header);
@@ -141,6 +143,7 @@ static bool get_header_value(const char *packet, const char *header, char *out, 
     return false;
 }
 
+// Build and send a 200 OK response for an incoming M-SEARCH.
 static void respond_to_msearch(const char *st_value, const struct sockaddr_in *from)
 {
     if (g_ssdp.socket_fd < 0)
@@ -187,6 +190,7 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
              inet_ntoa(from->sin_addr), ntohs(from->sin_port), st);
 }
 
+// Basic parser that filters for SSDP discovery packets.
 static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in *from)
 {
     if (length <= 0)
@@ -209,6 +213,7 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
     respond_to_msearch(st, from);
 }
 
+// Background thread: wait on the socket and process any packets.
 static void ssdp_thread(void *arg)
 {
     (void)arg;

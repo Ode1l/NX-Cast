@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+    <friendlyName>NX-Cast</friendlyName>
+    <manufacturer>Ode1l</manufacturer>
+    <modelName>NX-Cast Virtual Renderer</modelName>
+    <UDN>uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001</UDN>
+  </device>
+</root>
