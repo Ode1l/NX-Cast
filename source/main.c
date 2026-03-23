@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "protocol/dlna_control.h"
-#include "protocol/airplay/discovery/mdns.h"
+// #include "protocol/airplay/discovery/mdns.h"
 
 static bool initialize_network(void)
 {
@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
     if (networkReady)
     {
         dlnaRunning = dlna_control_start();
-        mdns_discover_airplay();
+        // mdns_discover_airplay();
     }
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);

@@ -2,21 +2,25 @@
 
 #include <switch.h>
 
-#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
-#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 
 #include "log/log.h"
 
 #define SSDP_PORT 1900
 #define SSDP_MULTICAST "239.255.255.250"
+
+#ifndef INET_ADDRSTRLEN
+#define INET_ADDRSTRLEN 16
+#endif
 
 typedef struct
 {
