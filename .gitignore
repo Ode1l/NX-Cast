@@ -3,3 +3,8 @@ build
 NX-Cast.elf
 NX-Cast.nacp
 NX-Cast.nro
+
+.Ds_Store
+source/.DS_Store
+
+.vscode
