@@ -1,0 +1,10 @@
+{
+  "C_Cpp.default.configuration": "Switch-devkitPro",
+  "C_Cpp.default.compilerPath": "/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc",
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-arm64",
+  "terminal.integrated.env.osx": {
+    "DEVKITPRO": "/opt/devkitpro",
+    "DEVKITA64": "/opt/devkitpro/devkitA64"
+  },
+  "makefile.configureOnOpen": false
+}

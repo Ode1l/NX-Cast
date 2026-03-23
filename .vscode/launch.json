@@ -1,0 +1,46 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "NX-Cast: Upload (nxlink)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "nxlink -a ${input:switchIp} ${workspaceFolder}/NX-Cast.nro",
+      "preLaunchTask": "Build NX-Cast"
+    },
+    {
+      "name": "NX-Cast: Upload + nxlink server (requires nxlinkStdio)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "nxlink -a ${input:switchIp} -s ${workspaceFolder}/NX-Cast.nro",
+      "preLaunchTask": "Build NX-Cast"
+    },
+    {
+      "name": "NX-Cast: Attach Remote GDB (optional)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/NX-Cast.elf",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${env:DEVKITPRO}/devkitA64/bin/aarch64-none-elf-gdb",
+      "miDebuggerServerAddress": "${input:gdbServer}",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "preLaunchTask": "Build NX-Cast"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "switchIp",
+      "type": "promptString",
+      "description": "Nintendo Switch IP address",
+      "default": "192.168.1.100"
+    },
+    {
+      "id": "gdbServer",
+      "type": "promptString",
+      "description": "Remote gdbstub host:port",
+      "default": "192.168.1.100:4003"
+    }
+  ]
+}

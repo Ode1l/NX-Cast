@@ -47,6 +47,7 @@ SOURCES		:=	source \
 			source/protocol \
 			source/protocol/dlna \
 			source/protocol/dlna/discovery \
+			source/protocol/dlna/description \
 			source/protocol/airplay \
 			source/protocol/airplay/discovery
 DATA		:=	data
