@@ -1,4 +1,4 @@
-#include "scdp.h"
+#include "scpd.h"
 
 #include <switch.h>
 
@@ -21,7 +21,9 @@ typedef struct
     size_t body_len;
 } XmlResource;
 
-static const char g_deviceXml[] =
+#define DEVICE_XML_BUFFER_SIZE 4096
+
+static const char g_deviceXmlTemplate[] =
     "<?xml version=\"1.0\"?>\n"
     "<root xmlns=\"urn:schemas-upnp-org:device-1-0\">\n"
     "  <specVersion>\n"
@@ -30,10 +32,10 @@ static const char g_deviceXml[] =
     "  </specVersion>\n"
     "  <device>\n"
     "    <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>\n"
-    "    <friendlyName>NX-Cast</friendlyName>\n"
-    "    <manufacturer>Ode1l</manufacturer>\n"
-    "    <modelName>NX-Cast Virtual Renderer</modelName>\n"
-    "    <UDN>uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001</UDN>\n"
+    "    <friendlyName>%s</friendlyName>\n"
+    "    <manufacturer>%s</manufacturer>\n"
+    "    <modelName>%s</modelName>\n"
+    "    <UDN>%s</UDN>\n"
     "    <serviceList>\n"
     "      <service>\n"
     "        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>\n"
@@ -59,6 +61,12 @@ static const char g_deviceXml[] =
     "    </serviceList>\n"
     "  </device>\n"
     "</root>\n";
+
+static const char g_defaultFriendlyName[] = "NX-Cast";
+static const char g_defaultManufacturer[] = "Ode1l";
+static const char g_defaultModelName[] = "NX-Cast Virtual Renderer";
+static const char g_defaultUuid[] = "uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001";
+static char g_deviceXmlBuffer[DEVICE_XML_BUFFER_SIZE];
 
 static const char g_avTransportScpd[] =
     "<?xml version=\"1.0\"?>\n"
@@ -159,8 +167,8 @@ static const char g_connectionManagerScpd[] =
     "  </serviceStateTable>\n"
     "</scpd>\n";
 
-static const XmlResource g_resources[] = {
-    {"/device.xml", g_deviceXml, sizeof(g_deviceXml) - 1},
+static XmlResource g_resources[] = {
+    {"/device.xml", NULL, 0},
     {"/scpd/AVTransport.xml", g_avTransportScpd, sizeof(g_avTransportScpd) - 1},
     {"/scpd/RenderingControl.xml", g_renderingControlScpd, sizeof(g_renderingControlScpd) - 1},
     {"/scpd/ConnectionManager.xml", g_connectionManagerScpd, sizeof(g_connectionManagerScpd) - 1},
@@ -170,6 +178,41 @@ static int g_listenSock = -1;
 static Thread g_httpThread;
 static bool g_running = false;
 static bool g_threadStarted = false;
+
+static const char *coalesce_string(const char *value, const char *fallback)
+{
+    if (!value || value[0] == '\0')
+        return fallback;
+    return value;
+}
+
+static bool build_device_xml(const ScpdConfig *config)
+{
+    const char *friendly_name = g_defaultFriendlyName;
+    const char *manufacturer = g_defaultManufacturer;
+    const char *model_name = g_defaultModelName;
+    const char *uuid = g_defaultUuid;
+
+    if (config)
+    {
+        friendly_name = coalesce_string(config->friendly_name, g_defaultFriendlyName);
+        manufacturer = coalesce_string(config->manufacturer, g_defaultManufacturer);
+        model_name = coalesce_string(config->model_name, g_defaultModelName);
+        uuid = coalesce_string(config->uuid, g_defaultUuid);
+    }
+
+    int written = snprintf(g_deviceXmlBuffer, sizeof(g_deviceXmlBuffer), g_deviceXmlTemplate,
+                           friendly_name, manufacturer, model_name, uuid);
+    if (written < 0 || (size_t)written >= sizeof(g_deviceXmlBuffer))
+    {
+        log_error("[dlna-desc] device.xml generation failed, buffer too small.\n");
+        return false;
+    }
+
+    g_resources[0].body = g_deviceXmlBuffer;
+    g_resources[0].body_len = (size_t)written;
+    return true;
+}
 
 static const XmlResource *find_resource(const char *path)
 {
@@ -242,7 +285,7 @@ static void handle_client(int clientSock)
     path[path_len] = '\0';
 
     const XmlResource *resource = find_resource(path);
-    if (!resource)
+    if (!resource || !resource->body)
     {
         log_warn("[dlna-desc] Unknown request path: %s\n", path);
         send_not_found(clientSock);
@@ -253,7 +296,7 @@ static void handle_client(int clientSock)
     log_info("[dlna-desc] Served %s\n", path);
 }
 
-static void scdp_thread(void *arg)
+static void scpd_thread(void *arg)
 {
     (void)arg;
     while (g_running)
@@ -291,10 +334,13 @@ static void scdp_thread(void *arg)
     }
 }
 
-bool scdp_start(uint16_t port)
+bool scpd_start(uint16_t port, const ScpdConfig *config)
 {
     if (g_running)
         return true;
+
+    if (!build_device_xml(config))
+        return false;
 
     g_listenSock = socket(AF_INET, SOCK_STREAM, 0);
     if (g_listenSock < 0)
@@ -329,7 +375,7 @@ bool scdp_start(uint16_t port)
     }
 
     g_running = true;
-    Result rc = threadCreate(&g_httpThread, scdp_thread, NULL, NULL, 0x4000, 0x2B, -2);
+    Result rc = threadCreate(&g_httpThread, scpd_thread, NULL, NULL, 0x4000, 0x2B, -2);
     if (R_FAILED(rc))
     {
         log_error("[dlna-desc] threadCreate failed: 0x%08X\n", rc);
@@ -351,11 +397,11 @@ bool scdp_start(uint16_t port)
     }
 
     g_threadStarted = true;
-    log_info("[dlna-desc] SCDP server listening on :%u\n", port);
+    log_info("[dlna-desc] SCPD server listening on :%u\n", port);
     return true;
 }
 
-void scdp_stop(void)
+void scpd_stop(void)
 {
     if (!g_running)
         return;
@@ -375,5 +421,5 @@ void scdp_stop(void)
         g_listenSock = -1;
     }
 
-    log_info("[dlna-desc] SCDP server stopped.\n");
+    log_info("[dlna-desc] SCPD server stopped.\n");
 }
