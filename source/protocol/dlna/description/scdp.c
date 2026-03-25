@@ -1,4 +1,4 @@
-#include "description.h"
+#include "scdp.h"
 
 #include <switch.h>
 
@@ -253,7 +253,7 @@ static void handle_client(int clientSock)
     log_info("[dlna-desc] Served %s\n", path);
 }
 
-static void description_thread(void *arg)
+static void scdp_thread(void *arg)
 {
     (void)arg;
     while (g_running)
@@ -291,7 +291,7 @@ static void description_thread(void *arg)
     }
 }
 
-bool dlna_description_start(uint16_t port)
+bool scdp_start(uint16_t port)
 {
     if (g_running)
         return true;
@@ -329,7 +329,7 @@ bool dlna_description_start(uint16_t port)
     }
 
     g_running = true;
-    Result rc = threadCreate(&g_httpThread, description_thread, NULL, NULL, 0x4000, 0x2B, -2);
+    Result rc = threadCreate(&g_httpThread, scdp_thread, NULL, NULL, 0x4000, 0x2B, -2);
     if (R_FAILED(rc))
     {
         log_error("[dlna-desc] threadCreate failed: 0x%08X\n", rc);
@@ -351,11 +351,11 @@ bool dlna_description_start(uint16_t port)
     }
 
     g_threadStarted = true;
-    log_info("[dlna-desc] Description server listening on :%u\n", port);
+    log_info("[dlna-desc] SCDP server listening on :%u\n", port);
     return true;
 }
 
-void dlna_description_stop(void)
+void scdp_stop(void)
 {
     if (!g_running)
         return;
@@ -375,5 +375,5 @@ void dlna_description_stop(void)
         g_listenSock = -1;
     }
 
-    log_info("[dlna-desc] Description server stopped.\n");
+    log_info("[dlna-desc] SCDP server stopped.\n");
 }
