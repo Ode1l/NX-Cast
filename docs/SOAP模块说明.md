@@ -26,8 +26,13 @@ SOAP 模块负责“控制层”请求处理，不负责发现层和描述层：
 - 把 `service + action` 映射到 handler
 - 不做业务逻辑
 
-3. `action/handler.h / action/handler.c`
+3. `handler.h / handler.c / handler_internal.h`
+- 控制层公共能力（上下文结构、共享状态、取参与回包工具）
+- 为各服务 action 实现提供统一底座
+
+4. `action/*.c`
 - 具体动作处理（状态读写、参数校验）
+- 当前按服务拆分：`avtransport.c`、`renderingcontrol.c`、`connectionmanager.c`
 - 返回动作结果或错误码
 
 ## 3. 请求处理链路
@@ -37,8 +42,8 @@ SOAP 模块负责“控制层”请求处理，不负责发现层和描述层：
 - 控制 URL 中的 service（如 `AVTransport`）
 - `SOAPACTION` 中的 action（如 `Play`）
 - SOAP body 参数
-3. `soap_router.c` 按 `service + action` 分发到 `handler.c`。
-4. `handler.c` 执行动作，返回业务结果。
+3. `soap_router.c` 按 `service + action` 分发到 `action/*.c`。
+4. `action/*.c` 执行动作，公共状态与工具由 `handler.*` 提供。
 5. `soap_server.c` 组装：
 - 成功响应（`200 OK + SOAP Envelope`）
 - 或错误响应（SOAP Fault）
@@ -122,7 +127,7 @@ SOAP 模块负责“控制层”请求处理，不负责发现层和描述层：
 | 表驱动 Action 路由（`service + action -> handler`） | 现在实现 | 直接降低 `if/else` 分支复杂度，并且最容易保证和 SCPD 一致 | `source/protocol/dlna/control/soap_router.c` |
 | SOAP 通用工具函数（取参/回包/Fault） | 现在实现 | 先把错误处理和响应格式统一，后续加 action 不会重复写样板代码 | `source/protocol/dlna/control/soap_server.c` |
 | 统一控制入口（`soap_server_start/soap_server_stop`） | 现在实现 | 能快速接入 `dlna_control` 生命周期，形成完整启动/停止链路 | `source/protocol/dlna/control/soap_server.h` + `soap_server.c` |
-| 服务实现与框架解耦（router/handler 分层） | 现在实现 | 你已经建好 `action/` 目录，继续按职责拆分最合适 | `action/router.*` + `action/handler.*` |
+| 服务实现与框架解耦（router/handler 分层） | 现在实现 | 公共层与服务层职责清晰，后续扩 action 时不会互相污染 | `soap_router.*` + `handler.*` + `action/*.c` |
 | 状态容器（集中管理变量） | 后续补充 | MVP 先打通控制链路更重要，状态容器可在 action 变多后再引入 | 新建 `source/protocol/dlna/control/state.*`（建议） |
 | LastChange 事件聚合与事务提交 | 后续补充 | 需要配合事件订阅（GENA）与变量体系，复杂度较高，不应阻塞 SOAP MVP | 依赖未来事件模块 |
 | 从元数据自动生成 SCPD + 路由一致性校验 | 后续补充 | 这是长期收益项，先手写稳定后再做自动化更稳妥 | 描述层与控制层共享元数据模块 |
@@ -131,7 +136,7 @@ SOAP 模块负责“控制层”请求处理，不负责发现层和描述层：
 
 1. 在 `soap_server.c` 完成 HTTP POST 接入、`SOAPACTION` 解析、SOAP/Fault 模板输出。
 2. 在 `soap_router.c` 建立表驱动路由（先覆盖 `AVTransport:SetAVTransportURI/Play`）。
-3. 在 `handler.c` 实现两个最小 action，并返回标准成功响应。
+3. 在 `action/*.c` 实现最小 action，并复用 `handler.*` 公共工具返回标准响应。
 4. 在 `dlna_control.c` 接入 `soap_server_start/soap_server_stop`，形成 `SCPD -> SOAP -> SSDP` 启动链。
 5. 通过控制端做冒烟验证，再扩展 `Pause/Stop/GetTransportInfo`。
 
@@ -180,3 +185,39 @@ SOAP 模块负责“控制层”请求处理，不负责发现层和描述层：
 2. 参数缺失/参数非法：`402 Invalid Args`
 3. 无媒体时执行 `Play`：`701 Transition not available`（或先用通用 Action Failed）
 4. 内部错误：`501 Action Failed`
+
+## 13. SOAP 下一阶段待办（2026-03-25）
+
+### P0（建议先做）
+
+1. 补齐高频 Action：
+- `AVTransport:GetPositionInfo`
+- `AVTransport:GetMediaInfo`
+- `AVTransport:Seek`
+- `RenderingControl:GetMute/SetMute`
+- `ConnectionManager:GetCurrentConnectionInfo`
+
+2. 接入真实播放内核：
+- `Play/Pause/Stop/Seek/SetVolume/SetMute` 不只改内存状态，要调用播放器接口
+- 播放器状态反向同步到 `g_soap_runtime_state`
+
+### P1（稳定性）
+
+1. 提升 HTTP/SOAP 解析健壮性：
+- 按 `Content-Length` 读取完整 Body（避免单次 `recv` 截断）
+- 处理 header 大小写与异常包边界
+- XML 参数解析增强（命名空间/空值场景）
+
+2. 统一错误码策略：
+- 细化 `401/402/701/501` 使用条件
+- 每个 action 明确参数校验失败和状态机失败的返回码
+
+### P2（兼容性与完整性）
+
+1. 实现 GENA 事件链路：
+- `SUBSCRIBE/UNSUBSCRIBE/NOTIFY`
+- 与状态变化联动，支持控制端状态刷新
+
+2. 增加 SOAP 冒烟测试清单：
+- 成功路径：`SetAVTransportURI -> Play -> GetTransportInfo`
+- 错误路径：缺参、未知 action、无媒体 `Play`
