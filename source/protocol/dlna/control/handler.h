@@ -29,9 +29,15 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutput *out);
+bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *out);
+bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutput *out);
+bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out);
 
 bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput *out);
 bool renderingcontrol_set_volume(const SoapActionContext *ctx, SoapActionOutput *out);
+bool renderingcontrol_get_mute(const SoapActionContext *ctx, SoapActionOutput *out);
+bool renderingcontrol_set_mute(const SoapActionContext *ctx, SoapActionOutput *out);
 
 bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActionOutput *out);
 bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, SoapActionOutput *out);
+bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx, SoapActionOutput *out);

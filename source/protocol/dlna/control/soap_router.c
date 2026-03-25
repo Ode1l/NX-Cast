@@ -20,12 +20,18 @@ static const SoapRouteEntry g_routes[] = {
     {"AVTransport", g_serviceTypeAvTransport, "Pause", avtransport_pause},
     {"AVTransport", g_serviceTypeAvTransport, "Stop", avtransport_stop},
     {"AVTransport", g_serviceTypeAvTransport, "GetTransportInfo", avtransport_get_transport_info},
+    {"AVTransport", g_serviceTypeAvTransport, "GetMediaInfo", avtransport_get_media_info},
+    {"AVTransport", g_serviceTypeAvTransport, "GetPositionInfo", avtransport_get_position_info},
+    {"AVTransport", g_serviceTypeAvTransport, "Seek", avtransport_seek},
 
     {"RenderingControl", g_serviceTypeRenderingControl, "GetVolume", renderingcontrol_get_volume},
     {"RenderingControl", g_serviceTypeRenderingControl, "SetVolume", renderingcontrol_set_volume},
+    {"RenderingControl", g_serviceTypeRenderingControl, "GetMute", renderingcontrol_get_mute},
+    {"RenderingControl", g_serviceTypeRenderingControl, "SetMute", renderingcontrol_set_mute},
 
     {"ConnectionManager", g_serviceTypeConnectionManager, "GetProtocolInfo", connectionmanager_get_protocol_info},
-    {"ConnectionManager", g_serviceTypeConnectionManager, "GetCurrentConnectionIDs", connectionmanager_get_current_connection_ids}
+    {"ConnectionManager", g_serviceTypeConnectionManager, "GetCurrentConnectionIDs", connectionmanager_get_current_connection_ids},
+    {"ConnectionManager", g_serviceTypeConnectionManager, "GetCurrentConnectionInfo", connectionmanager_get_current_connection_info}
 };
 
 const char *soap_router_service_type_from_name(const char *service_name)

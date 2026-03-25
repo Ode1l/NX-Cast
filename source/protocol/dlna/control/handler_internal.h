@@ -12,7 +12,11 @@ typedef struct
     char transport_state[32];
     char transport_status[16];
     char transport_speed[16];
+    char transport_duration[16];
+    char transport_rel_time[16];
+    char transport_abs_time[16];
     int volume;
+    bool mute;
     char source_protocol_info[256];
     char sink_protocol_info[512];
     char connection_ids[16];
