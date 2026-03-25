@@ -1,6 +1,7 @@
 #include "dlna_control.h"
 
 #include "log/log.h"
+#include "protocol/dlna/control/soap_server.h"
 #include "protocol/dlna/description/scpd.h"
 #include "protocol/dlna/discovery/ssdp.h"
 
@@ -41,9 +42,17 @@ bool dlna_control_start(void)
         return false;
     }
 
+    if (!soap_server_start())
+    {
+        log_error("[dlna] SOAP control module failed to start.\n");
+        scpd_stop();
+        return false;
+    }
+
     if (!ssdp_start(&ssdpConfig))
     {
         log_error("[dlna] SSDP responder failed to start.\n");
+        soap_server_stop();
         scpd_stop();
         return false;
     }
@@ -59,6 +68,7 @@ void dlna_control_stop(void)
         return;
 
     ssdp_stop();
+    soap_server_stop();
     scpd_stop();
     g_dlnaRunning = false;
     log_info("[dlna] Control layer stopped.\n");

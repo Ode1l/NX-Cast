@@ -1,4 +1,5 @@
 <?xml version="1.0"?>
+<!-- NOTE: 该文件当前仅作参考模板，运行时不会读取；实际 /scpd/*.xml 由 source/protocol/dlna/description/scpd.c 内嵌字符串返回。 -->
 <scpd xmlns="urn:schemas-upnp-org:service-1-0">
   <specVersion><major>1</major><minor>0</minor></specVersion>
   <actionList>

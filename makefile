@@ -46,6 +46,8 @@ SOURCES		:=	source \
 			source/log \
 			source/protocol \
 			source/protocol/dlna \
+			source/protocol/dlna/control \
+			source/protocol/dlna/control/action \
 			source/protocol/dlna/discovery \
 			source/protocol/dlna/description \
 			source/protocol/airplay \

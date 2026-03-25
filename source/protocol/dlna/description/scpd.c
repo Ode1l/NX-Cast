@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "log/log.h"
+#include "protocol/dlna/control/soap_server.h"
 
 typedef struct
 {
@@ -254,35 +255,42 @@ static void send_xml(int clientSock, const XmlResource *resource)
 
 static void handle_client(int clientSock)
 {
-    char buffer[1024];
+    char buffer[16384];
     ssize_t n = recv(clientSock, buffer, sizeof(buffer) - 1, 0);
     if (n <= 0)
         return;
     buffer[n] = '\0';
 
-    if (strncmp(buffer, "GET ", 4) != 0)
-    {
-        send_not_found(clientSock);
-        return;
-    }
-
-    const char *path_start = buffer + 4;
-    const char *path_end = strchr(path_start, ' ');
-    if (!path_end)
+    char method[8];
+    char raw_path[256];
+    if (sscanf(buffer, "%7s %255s", method, raw_path) != 2)
     {
         send_not_found(clientSock);
         return;
     }
 
     char path[256];
-    size_t path_len = (size_t)(path_end - path_start);
-    if (path_len == 0 || path_len >= sizeof(path))
+    snprintf(path, sizeof(path), "%s", raw_path);
+    char *query = strchr(path, '?');
+    if (query)
+        *query = '\0';
+
+    char soap_response[8192];
+    size_t soap_response_len = 0;
+    if (soap_server_try_handle_http(method, path, buffer, (size_t)n,
+                             soap_response, sizeof(soap_response), &soap_response_len))
+    {
+        if (soap_response_len > 0)
+            send(clientSock, soap_response, soap_response_len, 0);
+        log_info("[dlna-desc] SOAP handled %s %s\n", method, path);
+        return;
+    }
+
+    if (strcmp(method, "GET") != 0)
     {
         send_not_found(clientSock);
         return;
     }
-    memcpy(path, path_start, path_len);
-    path[path_len] = '\0';
 
     const XmlResource *resource = find_resource(path);
     if (!resource || !resource->body)

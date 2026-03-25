@@ -74,13 +74,18 @@
 
 ## 6. XML 文件放置说明
 
-目录 `source/protocol/dlna/description/scpd/` 下保留了：
+目录 `xml/` 下保留了：
 
 1. `AVTransport.xml`
 2. `RenderingControl.xml`
 3. `ConnectionManager.xml`
+4. `device.xml`
 
-这些文件当前作为参考/备份；运行时由 `scpd.c` 内嵌字符串对外提供 XML。
+这些文件当前作为参考/备份模板；运行时不会从文件系统读取 XML。  
+实际由 `source/protocol/dlna/description/scpd.c` 内嵌字符串与动态模板对外提供：
+
+1. `GET /device.xml`：动态生成
+2. `GET /scpd/*.xml`：内嵌字符串
 
 ## 7. 后续建议
 
