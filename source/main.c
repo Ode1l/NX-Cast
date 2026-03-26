@@ -25,7 +25,8 @@ int main(int argc, char* argv[])
 {
     consoleInit(NULL);
     log_set_level(LOG_LEVEL_DEBUG);
-    log_info("[log] level=DEBUG\n");
+    log_set_verbose_payload(true);
+    log_info("[log] level=DEBUG verbose_payload=ON\n");
 
     bool networkReady = initialize_network();
     bool dlnaRunning = false;

@@ -20,6 +20,8 @@
 // We keep SSDP thread stack at 0x8000 to avoid worker-thread stack crashes.
 #define SSDP_THREAD_STACK_SIZE 0x8000
 #define SSDP_PACKET_BUFFER_SIZE 1536
+#define SSDP_LOG_PREVIEW_MAX 512
+#define SSDP_LOG_CHUNK_MAX 700
 
 #ifndef INET_ADDRSTRLEN
 #define INET_ADDRSTRLEN 16
@@ -37,6 +39,66 @@ typedef struct
 } SsdpState;
 
 static SsdpState g_ssdp;
+
+static void log_payload_preview(const char *label, const char *payload)
+{
+    if (!label)
+        return;
+    if (!payload)
+    {
+        log_debug("[ssdp] %s: (null)\n", label);
+        return;
+    }
+
+    size_t len = strlen(payload);
+    if (log_get_level() == LOG_LEVEL_DEBUG && log_get_verbose_payload())
+    {
+        // Print full payload in chunks so each log entry stays under LOG_MESSAGE_MAX.
+        log_debug("[ssdp] %s len=%zu (full)\n", label, len);
+        size_t offset = 0;
+        while (offset < len)
+        {
+            size_t chunk_len = len - offset;
+            if (chunk_len > SSDP_LOG_CHUNK_MAX)
+                chunk_len = SSDP_LOG_CHUNK_MAX;
+
+            char chunk[SSDP_LOG_CHUNK_MAX + 1];
+            memcpy(chunk, payload + offset, chunk_len);
+            chunk[chunk_len] = '\0';
+
+            log_debug("[ssdp] %s chunk[%zu:%zu]: %s\n",
+                      label,
+                      offset,
+                      offset + chunk_len,
+                      chunk);
+            offset += chunk_len;
+        }
+        return;
+    }
+
+    size_t preview_len = len;
+    bool truncated = false;
+    if (preview_len > SSDP_LOG_PREVIEW_MAX)
+    {
+        preview_len = SSDP_LOG_PREVIEW_MAX;
+        truncated = true;
+    }
+
+    char preview[SSDP_LOG_PREVIEW_MAX + 1];
+    memcpy(preview, payload, preview_len);
+    preview[preview_len] = '\0';
+    for (size_t i = 0; i < preview_len; ++i)
+    {
+        if (preview[i] == '\r' || preview[i] == '\n' || preview[i] == '\t')
+            preview[i] = ' ';
+    }
+
+    log_debug("[ssdp] %s len=%zu%s: %s\n",
+              label,
+              len,
+              truncated ? " (truncated)" : "",
+              preview);
+}
 
 // Determine the outbound IPv4 address by connecting a dummy UDP socket.
 static bool determine_local_ip(char *out, size_t len)
@@ -209,6 +271,7 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
 
     log_info("[ssdp] Responded to M-SEARCH from %s:%d (%s)\n",
              inet_ntoa(from->sin_addr), ntohs(from->sin_port), st);
+    log_payload_preview("response packet", response);
 }
 
 // Basic parser that filters for SSDP discovery packets.
@@ -219,6 +282,7 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
     packet[length] = '\0';
     log_debug("[ssdp] recv %zd bytes from %s:%d\n",
               length, inet_ntoa(from->sin_addr), ntohs(from->sin_port));
+    log_payload_preview("request packet", packet);
 
     if (strncasecmp(packet, "M-SEARCH", 8) != 0)
         return;

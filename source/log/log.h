@@ -24,5 +24,7 @@ void log_flush(void);
 void log_set_enabled(bool enabled);
 void log_set_level(LogLevel level);
 LogLevel log_get_level(void);
+void log_set_verbose_payload(bool enabled);
+bool log_get_verbose_payload(void);
 
 void vlog_write(LogLevel level, const char *fmt, va_list args);

@@ -10,6 +10,8 @@
 #include "log/log.h"
 
 static bool g_running = false;
+#define SOAP_LOG_PREVIEW_MAX 512
+#define SOAP_LOG_CHUNK_MAX 700
 
 static bool starts_with(const char *value, const char *prefix)
 {
@@ -132,6 +134,67 @@ static bool parse_service_name_from_path(const char *path, char *service_name, s
     memcpy(service_name, name, len);
     service_name[len] = '\0';
     return true;
+}
+
+static void log_payload_preview(const char *label, const char *payload)
+{
+    if (!label)
+        return;
+    if (!payload)
+    {
+        log_debug("[soap] %s: (null)\n", label);
+        return;
+    }
+
+    size_t len = strlen(payload);
+    if (log_get_level() == LOG_LEVEL_DEBUG && log_get_verbose_payload())
+    {
+        // Print full payload in chunks so each log entry stays under LOG_MESSAGE_MAX.
+        log_debug("[soap] %s len=%zu (full)\n", label, len);
+        size_t offset = 0;
+        while (offset < len)
+        {
+            size_t chunk_len = len - offset;
+            if (chunk_len > SOAP_LOG_CHUNK_MAX)
+                chunk_len = SOAP_LOG_CHUNK_MAX;
+
+            char chunk[SOAP_LOG_CHUNK_MAX + 1];
+            memcpy(chunk, payload + offset, chunk_len);
+            chunk[chunk_len] = '\0';
+
+            log_debug("[soap] %s chunk[%zu:%zu]: %s\n",
+                      label,
+                      offset,
+                      offset + chunk_len,
+                      chunk);
+            offset += chunk_len;
+        }
+        return;
+    }
+
+    size_t preview_len = len;
+    bool truncated = false;
+    if (preview_len > SOAP_LOG_PREVIEW_MAX)
+    {
+        preview_len = SOAP_LOG_PREVIEW_MAX;
+        truncated = true;
+    }
+
+    char preview[SOAP_LOG_PREVIEW_MAX + 1];
+    memcpy(preview, payload, preview_len);
+    preview[preview_len] = '\0';
+
+    for (size_t i = 0; i < preview_len; ++i)
+    {
+        if (preview[i] == '\r' || preview[i] == '\n' || preview[i] == '\t')
+            preview[i] = ' ';
+    }
+
+    log_debug("[soap] %s len=%zu%s: %s\n",
+              label,
+              len,
+              truncated ? " (truncated)" : "",
+              preview);
 }
 
 static bool build_http_response(int status,
@@ -344,8 +407,19 @@ bool soap_server_try_handle_http(const char *method,
     const char *body = find_body(request);
     if (!body)
         body = "";
-    log_debug("[soap] request method=%s path=%s service=%s action=%s bytes=%zu\n",
-              method ? method : "(null)", path, service_name, action_name, request_len);
+
+    char host_header[128];
+    host_header[0] = '\0';
+    get_header_value(request, "Host", host_header, sizeof(host_header));
+
+    log_debug("[soap] HTTP %s http://%s%s bytes=%zu\n",
+              method ? method : "(null)",
+              host_header[0] ? host_header : "(no-host)",
+              path,
+              request_len);
+    log_debug("[soap] route service=%s action=%s soapAction=%s\n",
+              service_name, action_name, soap_action_header);
+    log_payload_preview("request body xml", body);
 
     SoapActionContext ctx = {
         .service_name = service_name,
@@ -357,19 +431,43 @@ bool soap_server_try_handle_http(const char *method,
     bool handled_ok = soap_router_route_action(&ctx, &result);
     if (handled_ok && result.output.success)
     {
-        return build_soap_success(result.service_type,
-                                  result.action_name,
-                                  result.output.output_xml,
-                                  response,
-                                  response_size,
-                                  response_len);
+        log_payload_preview("response args xml", result.output.output_xml);
+
+        bool built = build_soap_success(result.service_type,
+                                        result.action_name,
+                                        result.output.output_xml,
+                                        response,
+                                        response_size,
+                                        response_len);
+        if (!built)
+        {
+            log_error("[soap] failed to build success response for %s#%s\n",
+                      service_name, action_name);
+            return false;
+        }
+
+        const char *response_body = find_body(response);
+        log_payload_preview("response body xml", response_body ? response_body : "");
+        return true;
     }
 
     int fault_code = result.output.fault_code > 0 ? result.output.fault_code : 501;
     const char *fault_description = result.output.fault_description ? result.output.fault_description : "Action Failed";
-    return build_soap_fault(fault_code,
-                            fault_description,
-                            response,
-                            response_size,
-                            response_len);
+    log_warn("[soap] action fault service=%s action=%s code=%d desc=%s\n",
+             service_name, action_name, fault_code, fault_description);
+    bool built = build_soap_fault(fault_code,
+                                  fault_description,
+                                  response,
+                                  response_size,
+                                  response_len);
+    if (!built)
+    {
+        log_error("[soap] failed to build fault response for %s#%s\n",
+                  service_name, action_name);
+        return false;
+    }
+
+    const char *fault_body = find_body(response);
+    log_payload_preview("fault body xml", fault_body ? fault_body : "");
+    return true;
 }

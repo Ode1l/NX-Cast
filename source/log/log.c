@@ -10,9 +10,10 @@
 static Mutex g_logMutex;
 static bool g_logEnabled = true;
 static LogLevel g_logMinLevel = LOG_LEVEL_INFO;
+static bool g_logVerbosePayload = false;
 
 #define LOG_QUEUE_CAPACITY 512
-#define LOG_MESSAGE_MAX 256
+#define LOG_MESSAGE_MAX 1024
 
 typedef struct
 {
@@ -148,6 +149,21 @@ LogLevel log_get_level(void)
     LogLevel level = g_logMinLevel;
     mutexUnlock(&g_logMutex);
     return level;
+}
+
+void log_set_verbose_payload(bool enabled)
+{
+    mutexLock(&g_logMutex);
+    g_logVerbosePayload = enabled;
+    mutexUnlock(&g_logMutex);
+}
+
+bool log_get_verbose_payload(void)
+{
+    mutexLock(&g_logMutex);
+    bool enabled = g_logVerbosePayload;
+    mutexUnlock(&g_logMutex);
+    return enabled;
 }
 
 void log_debug(const char *fmt, ...)

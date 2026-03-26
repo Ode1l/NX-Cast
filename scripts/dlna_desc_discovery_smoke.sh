@@ -10,6 +10,7 @@ SSDP_PORT="${SSDP_PORT:-1900}"
 SSDP_TARGET_IP="${SSDP_TARGET_IP:-239.255.255.250}"
 SSDP_HOST_HEADER="${SSDP_HOST_HEADER:-239.255.255.250:1900}"
 SSDP_TIMEOUT_SEC="${SSDP_TIMEOUT_SEC:-3}"
+SSDP_FALLBACK_UNICAST="${SSDP_FALLBACK_UNICAST:-1}"
 VERBOSE="${VERBOSE:-0}"
 
 LAST_BODY=""
@@ -61,24 +62,71 @@ ssdp_probe() {
   local expected_uuid="$3"
   local request
   local response
+  local response_norm
+  local target
+  local tried_targets
+  local candidate
+  local candidate_norm
+  local has_any_response
+  local targets=()
 
   request="$(printf 'M-SEARCH * HTTP/1.1\r\nHOST: %s\r\nMAN: "ssdp:discover"\r\nMX: 1\r\nST: %s\r\n\r\n' \
     "${SSDP_HOST_HEADER}" "${st}")"
 
-  response="$(printf '%s' "$request" | nc -u -w "${SSDP_TIMEOUT_SEC}" "${SSDP_TARGET_IP}" "${SSDP_PORT}" || true)"
-  [[ -n "$response" ]] || fail "no SSDP response for ST=${st} (target=${SSDP_TARGET_IP}:${SSDP_PORT})"
+  targets+=("${SSDP_TARGET_IP}")
+  if [[ "$SSDP_FALLBACK_UNICAST" == "1" && "$HOST" != "$SSDP_TARGET_IP" ]]; then
+    targets+=("${HOST}")
+  fi
+
+  tried_targets=""
+  response=""
+  response_norm=""
+  has_any_response="0"
+
+  for target in "${targets[@]}"; do
+    if [[ -n "$tried_targets" ]]; then
+      tried_targets+=","
+    fi
+    tried_targets+="${target}:${SSDP_PORT}"
+
+    candidate="$({ printf '%s' "$request"; sleep "${SSDP_TIMEOUT_SEC}"; } | nc -4 -u -w "${SSDP_TIMEOUT_SEC}" "${target}" "${SSDP_PORT}" 2>/dev/null || true)"
+    [[ -z "$candidate" ]] && continue
+
+    has_any_response="1"
+    candidate_norm="$(printf '%s' "$candidate" | tr -d '\r')"
+
+    if [[ "$VERBOSE" == "1" ]]; then
+      log "SSDP raw response from ${target}:${SSDP_PORT} for ST=${st}:"
+      printf '%s\n' "$candidate"
+    fi
+
+    # In multicast environments we may receive responses from other devices.
+    # Select the response block that belongs to this NX-Cast instance by UUID.
+    if printf '%s' "$candidate_norm" | grep -Eiq '^USN:[[:space:]]*'"${expected_uuid}"; then
+      response="$candidate"
+      response_norm="$candidate_norm"
+      break
+    fi
+  done
+
+  if [[ -z "$response" ]]; then
+    if [[ "$has_any_response" == "1" ]]; then
+      fail "received SSDP responses but none matched UUID=${expected_uuid} (targets=${tried_targets})"
+    fi
+    fail "no SSDP response for ST=${st} (targets=${tried_targets})"
+  fi
 
   if [[ "$VERBOSE" == "1" ]]; then
-    log "SSDP response for ST=${st}:"
+    log "SSDP selected response for ST=${st}:"
     printf '%s\n' "$response"
   fi
 
-  printf '%s' "$response" | grep -Eiq '^HTTP/1\.1 200 OK' || fail "SSDP response is not HTTP 200 for ST=${st}"
-  printf '%s' "$response" | grep -Eiq '^LOCATION:[[:space:]]*http://[^[:space:]]+:'"${PORT}"'/device\.xml' \
+  printf '%s' "$response_norm" | grep -Eiq '^HTTP/1\.1 200 OK' || fail "SSDP response is not HTTP 200 for ST=${st}"
+  printf '%s' "$response_norm" | grep -Eiq '^LOCATION:[[:space:]]*http://[^[:space:]]+:'"${PORT}"'/device\.xml[[:space:]]*$' \
     || fail "SSDP response missing valid LOCATION for ST=${st}"
-  printf '%s' "$response" | grep -Eiq '^ST:[[:space:]]*'"${expected_st}"'$' \
+  printf '%s' "$response_norm" | grep -Eiq '^ST:[[:space:]]*'"${expected_st}"'[[:space:]]*$' \
     || fail "SSDP response ST mismatch for ST=${st}, expected ${expected_st}"
-  printf '%s' "$response" | grep -Eiq '^USN:[[:space:]]*'"${expected_uuid}" \
+  printf '%s' "$response_norm" | grep -Eiq '^USN:[[:space:]]*'"${expected_uuid}" \
     || fail "SSDP response USN does not include UUID for ST=${st}"
 }
 
