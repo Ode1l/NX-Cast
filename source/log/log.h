@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdarg.h>
+#include <stdbool.h>
 
 typedef enum
 {
@@ -14,5 +15,14 @@ void log_debug(const char *fmt, ...);
 void log_info(const char *fmt, ...);
 void log_warn(const char *fmt, ...);
 void log_error(const char *fmt, ...);
+
+// Flush queued log messages to the console.
+// Call this from the main thread (e.g. once per frame).
+void log_flush(void);
+
+// Optional helper for future lifecycle usage.
+void log_set_enabled(bool enabled);
+void log_set_level(LogLevel level);
+LogLevel log_get_level(void);
 
 void vlog_write(LogLevel level, const char *fmt, va_list args);

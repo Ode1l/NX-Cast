@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "log/log.h"
+
 static const char g_serviceTypeAvTransport[] = "urn:schemas-upnp-org:service:AVTransport:1";
 static const char g_serviceTypeRenderingControl[] = "urn:schemas-upnp-org:service:RenderingControl:1";
 static const char g_serviceTypeConnectionManager[] = "urn:schemas-upnp-org:service:ConnectionManager:1";
@@ -64,9 +66,13 @@ bool soap_router_route_action(const SoapActionContext *ctx, SoapRouteResult *res
 
         result->service_type = g_routes[i].service_type;
         result->action_name = g_routes[i].action_name;
+        log_debug("[soap-router] matched %s#%s\n", ctx->service_name, ctx->action_name);
         return g_routes[i].handler(ctx, &result->output);
     }
 
+    log_debug("[soap-router] no route for %s#%s\n",
+              ctx->service_name ? ctx->service_name : "(null)",
+              ctx->action_name ? ctx->action_name : "(null)");
     result->service_type = soap_router_service_type_from_name(ctx->service_name);
     result->action_name = ctx->action_name;
     result->output.success = false;

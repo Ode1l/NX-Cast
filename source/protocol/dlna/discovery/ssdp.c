@@ -17,6 +17,7 @@
 
 #define SSDP_PORT 1900
 #define SSDP_MULTICAST "239.255.255.250"
+// We keep SSDP thread stack at 0x8000 to avoid worker-thread stack crashes.
 #define SSDP_THREAD_STACK_SIZE 0x8000
 #define SSDP_PACKET_BUFFER_SIZE 1536
 
@@ -158,6 +159,8 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
     if (!st_value || st_value[0] == '\0')
         return;
 
+    // Reply only to known/expected ST values.
+    // This avoids echoing arbitrary payload back to network and keeps parser behavior bounded.
     const char *st = NULL;
     if (strcasecmp(st_value, "ssdp:all") == 0)
         st = g_ssdp.config.device_type;
@@ -199,7 +202,13 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
     ssize_t sent = sendto(g_ssdp.socket_fd, response, (size_t)len, 0,
                           (const struct sockaddr *)from, sizeof(*from));
     if (sent < 0)
+    {
+        log_warn("[ssdp] sendto failed: %s (%d)\n", strerror(errno), errno);
         return;
+    }
+
+    log_info("[ssdp] Responded to M-SEARCH from %s:%d (%s)\n",
+             inet_ntoa(from->sin_addr), ntohs(from->sin_port), st);
 }
 
 // Basic parser that filters for SSDP discovery packets.
@@ -208,6 +217,8 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
     if (length <= 0)
         return;
     packet[length] = '\0';
+    log_debug("[ssdp] recv %zd bytes from %s:%d\n",
+              length, inet_ntoa(from->sin_addr), ntohs(from->sin_port));
 
     if (strncasecmp(packet, "M-SEARCH", 8) != 0)
         return;
@@ -221,6 +232,7 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
     char st[128];
     if (!get_header_value(packet, "ST", st, sizeof(st)))
         return;
+    log_debug("[ssdp] M-SEARCH ST=%s\n", st);
 
     respond_to_msearch(st, from);
 }

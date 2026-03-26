@@ -272,8 +272,6 @@ bool soap_server_try_handle_http(const char *method,
                           size_t response_size,
                           size_t *response_len)
 {
-    (void)request_len;
-
     if (!path || !response || !response_len)
         return false;
 
@@ -346,6 +344,8 @@ bool soap_server_try_handle_http(const char *method,
     const char *body = find_body(request);
     if (!body)
         body = "";
+    log_debug("[soap] request method=%s path=%s service=%s action=%s bytes=%zu\n",
+              method ? method : "(null)", path, service_name, action_name, request_len);
 
     SoapActionContext ctx = {
         .service_name = service_name,

@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "log/log.h"
 #include "protocol/dlna_control.h"
 // #include "protocol/airplay/discovery/mdns.h"
 
@@ -23,6 +24,8 @@ static bool initialize_network(void)
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
+    log_set_level(LOG_LEVEL_DEBUG);
+    log_info("[log] level=DEBUG\n");
 
     bool networkReady = initialize_network();
     bool dlnaRunning = false;
@@ -50,6 +53,8 @@ int main(int argc, char* argv[])
         if (kDown & HidNpadButton_Plus)
             break;
 
+        // Logs are queued from worker threads; flush here on main thread.
+        log_flush();
         consoleUpdate(NULL);
     }
 
@@ -60,6 +65,7 @@ int main(int argc, char* argv[])
         socketExit();
     }
 
+    log_flush();
     consoleExit(NULL);
     return 0;
 }
