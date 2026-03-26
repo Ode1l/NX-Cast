@@ -4,8 +4,97 @@
 #include <string.h>
 
 #include "handler_internal.h"
+#include "log/log.h"
+#include "player/player.h"
 
 SoapRuntimeState g_soap_runtime_state;
+
+static const char *transport_state_from_player_state(PlayerState state)
+{
+    switch (state)
+    {
+    case PLAYER_STATE_PLAYING:
+        return "PLAYING";
+    case PLAYER_STATE_PAUSED:
+        return "PAUSED_PLAYBACK";
+    case PLAYER_STATE_STOPPED:
+    case PLAYER_STATE_IDLE:
+        return "STOPPED";
+    case PLAYER_STATE_ERROR:
+    default:
+        return "STOPPED";
+    }
+}
+
+static void format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
+{
+    if (!out || out_size == 0)
+        return;
+
+    if (value_ms < 0)
+        value_ms = 0;
+
+    int total_seconds = value_ms / 1000;
+    int hour = total_seconds / 3600;
+    int minute = (total_seconds % 3600) / 60;
+    int second = total_seconds % 60;
+    snprintf(out, out_size, "%02d:%02d:%02d", hour, minute, second);
+}
+
+static void soap_handler_on_player_event(const PlayerEvent *event, void *user)
+{
+    (void)user;
+
+    if (!event)
+        return;
+
+    switch (event->type)
+    {
+    case PLAYER_EVENT_STATE_CHANGED:
+        snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "%s",
+                 transport_state_from_player_state(event->state));
+        break;
+    case PLAYER_EVENT_POSITION_CHANGED:
+        format_hhmmss_from_ms(event->position_ms, g_soap_runtime_state.transport_rel_time,
+                              sizeof(g_soap_runtime_state.transport_rel_time));
+        format_hhmmss_from_ms(event->position_ms, g_soap_runtime_state.transport_abs_time,
+                              sizeof(g_soap_runtime_state.transport_abs_time));
+        break;
+    case PLAYER_EVENT_DURATION_CHANGED:
+        format_hhmmss_from_ms(event->duration_ms, g_soap_runtime_state.transport_duration,
+                              sizeof(g_soap_runtime_state.transport_duration));
+        break;
+    case PLAYER_EVENT_VOLUME_CHANGED:
+        g_soap_runtime_state.volume = event->volume;
+        break;
+    case PLAYER_EVENT_MUTE_CHANGED:
+        g_soap_runtime_state.mute = event->mute;
+        break;
+    case PLAYER_EVENT_URI_CHANGED:
+        if (event->uri)
+            snprintf(g_soap_runtime_state.transport_uri, sizeof(g_soap_runtime_state.transport_uri), "%s", event->uri);
+        break;
+    case PLAYER_EVENT_ERROR:
+        snprintf(g_soap_runtime_state.transport_status, sizeof(g_soap_runtime_state.transport_status), "ERROR");
+        break;
+    default:
+        break;
+    }
+}
+
+static void sync_runtime_state_from_player_snapshot(void)
+{
+    snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "%s",
+             transport_state_from_player_state(player_get_state()));
+    format_hhmmss_from_ms(player_get_duration_ms(), g_soap_runtime_state.transport_duration,
+                          sizeof(g_soap_runtime_state.transport_duration));
+    format_hhmmss_from_ms(player_get_position_ms(), g_soap_runtime_state.transport_rel_time,
+                          sizeof(g_soap_runtime_state.transport_rel_time));
+    format_hhmmss_from_ms(player_get_position_ms(), g_soap_runtime_state.transport_abs_time,
+                          sizeof(g_soap_runtime_state.transport_abs_time));
+    g_soap_runtime_state.volume = player_get_volume();
+    g_soap_runtime_state.mute = player_get_mute();
+}
 
 void soap_handler_set_fault(SoapActionOutput *out, int code, const char *description)
 {
@@ -96,9 +185,19 @@ void soap_handler_init(void)
              "http-get:*:audio/mpeg:*,http-get:*:audio/mp4:*,http-get:*:video/mp4:*");
     snprintf(g_soap_runtime_state.connection_ids, sizeof(g_soap_runtime_state.connection_ids), "0");
     g_soap_runtime_state.initialized = true;
+
+    player_set_event_callback(soap_handler_on_player_event, NULL);
+    if (!player_init())
+    {
+        log_warn("[soap-handler] player init failed, actions may not work.\n");
+        return;
+    }
+    sync_runtime_state_from_player_snapshot();
 }
 
 void soap_handler_shutdown(void)
 {
+    player_set_event_callback(NULL, NULL);
+    player_deinit();
     memset(&g_soap_runtime_state, 0, sizeof(g_soap_runtime_state));
 }

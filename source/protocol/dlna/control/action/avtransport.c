@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "../handler_internal.h"
+#include "player/player.h"
 
 static bool is_hhmmss(const char *value)
 {
@@ -22,6 +23,26 @@ static bool is_hhmmss(const char *value)
         if (!isdigit((unsigned char)value[i]))
             return false;
     }
+    return true;
+}
+
+static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
+{
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+
+    if (!value || !out_ms)
+        return false;
+    if (!is_hhmmss(value))
+        return false;
+
+    if (sscanf(value, "%d:%d:%d", &hour, &minute, &second) != 3)
+        return false;
+    if (hour < 0 || minute < 0 || minute > 59 || second < 0 || second > 59)
+        return false;
+
+    *out_ms = (hour * 3600 + minute * 60 + second) * 1000;
     return true;
 }
 
@@ -43,11 +64,14 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     metadata[0] = '\0';
     soap_handler_extract_xml_value(ctx->body, "CurrentURIMetaData", metadata, sizeof(metadata));
 
+    if (!player_set_uri(uri, metadata))
+    {
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
     snprintf(g_soap_runtime_state.transport_uri, sizeof(g_soap_runtime_state.transport_uri), "%s", uri);
     snprintf(g_soap_runtime_state.transport_uri_metadata, sizeof(g_soap_runtime_state.transport_uri_metadata), "%s", metadata);
-    snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "STOPPED");
-    snprintf(g_soap_runtime_state.transport_rel_time, sizeof(g_soap_runtime_state.transport_rel_time), "00:00:00");
-    snprintf(g_soap_runtime_state.transport_abs_time, sizeof(g_soap_runtime_state.transport_abs_time), "00:00:00");
 
     soap_handler_set_success(out, "");
     return true;
@@ -73,7 +97,12 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
-    snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "PLAYING");
+    if (!player_play())
+    {
+        soap_handler_set_fault(out, 704, "Playing failed");
+        return false;
+    }
+
     snprintf(g_soap_runtime_state.transport_speed, sizeof(g_soap_runtime_state.transport_speed), "%s", speed);
     soap_handler_set_success(out, "");
     return true;
@@ -95,7 +124,12 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
-    snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "PAUSED_PLAYBACK");
+    if (!player_pause())
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
     soap_handler_set_success(out, "");
     return true;
 }
@@ -116,7 +150,12 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
-    snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "STOPPED");
+    if (!player_stop())
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
     soap_handler_set_success(out, "");
     return true;
 }
@@ -246,8 +285,19 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
-    snprintf(g_soap_runtime_state.transport_rel_time, sizeof(g_soap_runtime_state.transport_rel_time), "%s", target);
-    snprintf(g_soap_runtime_state.transport_abs_time, sizeof(g_soap_runtime_state.transport_abs_time), "%s", target);
+    int target_ms = 0;
+    if (!parse_hhmmss_to_ms(target, &target_ms))
+    {
+        soap_handler_set_fault(out, 402, "Invalid Args");
+        return false;
+    }
+
+    if (!player_seek_ms(target_ms))
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
     soap_handler_set_success(out, "");
     return true;
 }

@@ -44,6 +44,7 @@ APP_VERSION	:=	0.1.0
 BUILD		:=	build
 SOURCES		:=	source \
 			source/log \
+			source/player \
 			source/protocol \
 			source/protocol/dlna \
 			source/protocol/dlna/control \

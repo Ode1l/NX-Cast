@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "../handler_internal.h"
+#include "player/player.h"
 
 bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput *out)
 {
@@ -58,7 +59,12 @@ bool renderingcontrol_set_volume(const SoapActionContext *ctx, SoapActionOutput 
     if (vol > 100)
         vol = 100;
 
-    g_soap_runtime_state.volume = (int)vol;
+    if (!player_set_volume((int)vol))
+    {
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
     soap_handler_set_success(out, "");
     return true;
 }
@@ -109,7 +115,12 @@ bool renderingcontrol_set_mute(const SoapActionContext *ctx, SoapActionOutput *o
     if (!soap_handler_require_arg(ctx, out, "DesiredMute", desired, sizeof(desired)))
         return false;
 
-    g_soap_runtime_state.mute = (strcmp(desired, "0") != 0);
+    if (!player_set_mute(strcmp(desired, "0") != 0))
+    {
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
     soap_handler_set_success(out, "");
     return true;
 }

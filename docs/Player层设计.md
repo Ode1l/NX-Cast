@@ -119,3 +119,36 @@ PlayerState player_get_state(void);
 3. 修改 `avtransport.c/renderingcontrol.c`，改为调用 player API
 4. 增加最小冒烟用例：`SetURI -> Play -> GetPositionInfo -> Seek -> Pause -> Stop`
 5. 再引入真实后端（FFmpeg 或平台原生）
+
+---
+
+## 9. 手机控制与电视本地控制同步（含 optional）
+
+结论：`DLNA` 不是“二选一”，手机控制和电视本地控制可以同时存在。
+
+### 9.1 基础能力（MVP）
+
+1. 手机（DMC）可通过 SOAP 控制电视（DMR）
+2. 电视本地按键/遥控可直接调用 `player` 接口
+3. 两边都作用于同一份播放状态（`player` 作为单一真实状态源）
+
+### 9.2 同步显示能力（optional）
+
+要让“电视本地操作后手机 UI 也及时更新”，建议实现：
+
+1. `GENA` 订阅与 `NOTIFY`（`LastChange` 事件）
+2. 事件源来自 `player` 状态回调（状态、进度、音量、静音）
+
+如果控制端不支持订阅，可退化为轮询：
+
+1. `GetTransportInfo`
+2. `GetPositionInfo`
+3. `GetVolume` / `GetMute`
+
+### 9.3 现实兼容性说明（optional）
+
+出现“有时能控、有时不同步”通常来自：
+
+1. 控制端 App 对订阅/轮询支持不一致
+2. 设备端 action 覆盖不完整（如未实现 `Seek`/`Mute`）
+3. 系统音量与渲染器音量逻辑分离
