@@ -152,3 +152,35 @@ PlayerState player_get_state(void);
 1. 控制端 App 对订阅/轮询支持不一致
 2. 设备端 action 覆盖不完整（如未实现 `Seek`/`Mute`）
 3. 系统音量与渲染器音量逻辑分离
+
+---
+
+## 10. Switch 平台下 FFmpeg 与 deko3d 的关系
+
+### 10.1 是否必须接图形 API
+
+结论：分情况。
+
+1. 只做接收/控制或纯音频播放：不一定需要图形 API
+2. 做视频播放：需要显示输出层（图形 API 或等价方案）
+
+`FFmpeg` 负责拉流、解封装、解码，不负责“最终上屏”和“最终出声”。
+
+### 10.2 可以用 deko3d 吗
+
+可以。`deko3d` 可作为 Switch 上的视频渲染后端。
+
+建议职责划分：
+
+1. `FFmpeg`：`libavformat/libavcodec/libavutil`（按需 `swscale/swresample`）
+2. 音频输出：`audren`（libnx）
+3. 视频输出：`deko3d`（纹理上传与渲染）
+
+说明：`deko3d` 负责渲染，不负责视频解码。
+
+### 10.3 先跑通功能的实现顺序（推荐）
+
+1. 继续使用 `player_backend_mock` 跑通控制链路
+2. 接入最小真实后端：先音频或低分辨率视频软件解码
+3. 再接 `deko3d` 渲染与缓冲优化
+4. 最后做性能优化与兼容性收敛

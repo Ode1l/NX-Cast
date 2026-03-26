@@ -26,6 +26,38 @@ static bool is_hhmmss(const char *value)
     return true;
 }
 
+static const char *transport_state_from_player_state(PlayerState state)
+{
+    switch (state)
+    {
+    case PLAYER_STATE_PLAYING:
+        return "PLAYING";
+    case PLAYER_STATE_PAUSED:
+        return "PAUSED_PLAYBACK";
+    case PLAYER_STATE_STOPPED:
+    case PLAYER_STATE_IDLE:
+        return "STOPPED";
+    case PLAYER_STATE_ERROR:
+    default:
+        return "STOPPED";
+    }
+}
+
+static void format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
+{
+    if (!out || out_size == 0)
+        return;
+
+    if (value_ms < 0)
+        value_ms = 0;
+
+    int total_seconds = value_ms / 1000;
+    int hour = total_seconds / 3600;
+    int minute = (total_seconds % 3600) / 60;
+    int second = total_seconds % 60;
+    snprintf(out, out_size, "%02d:%02d:%02d", hour, minute, second);
+}
+
 static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
 {
     int hour = 0;
@@ -170,12 +202,16 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
     if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
         return false;
 
+    PlayerState player_state = player_get_state();
+    const char *transport_state = transport_state_from_player_state(player_state);
+    snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "%s", transport_state);
+
     char response[SOAP_HANDLER_OUTPUT_MAX];
     int len = snprintf(response, sizeof(response),
                        "<CurrentTransportState>%s</CurrentTransportState>"
                        "<CurrentTransportStatus>%s</CurrentTransportStatus>"
                        "<CurrentSpeed>%s</CurrentSpeed>",
-                       g_soap_runtime_state.transport_state,
+                       transport_state,
                        g_soap_runtime_state.transport_status,
                        g_soap_runtime_state.transport_speed);
     if (len < 0 || (size_t)len >= sizeof(response))
@@ -198,6 +234,11 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
     if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
         return false;
 
+    int duration_ms = player_get_duration_ms();
+    char duration_str[16];
+    format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
+    snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "%s", duration_str);
+
     char response[SOAP_HANDLER_OUTPUT_MAX];
     int len = snprintf(response, sizeof(response),
                        "<NrTracks>1</NrTracks>"
@@ -209,7 +250,7 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
                        "<PlayMedium>NETWORK</PlayMedium>"
                        "<RecordMedium>NOT_IMPLEMENTED</RecordMedium>"
                        "<WriteStatus>NOT_IMPLEMENTED</WriteStatus>",
-                       g_soap_runtime_state.transport_duration,
+                       duration_str,
                        g_soap_runtime_state.transport_uri);
     if (len < 0 || (size_t)len >= sizeof(response))
     {
@@ -231,6 +272,20 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
     if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
         return false;
 
+    int position_ms = player_get_position_ms();
+    int duration_ms = player_get_duration_ms();
+    char duration_str[16];
+    char rel_time_str[16];
+    char abs_time_str[16];
+
+    format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
+    format_hhmmss_from_ms(position_ms, rel_time_str, sizeof(rel_time_str));
+    format_hhmmss_from_ms(position_ms, abs_time_str, sizeof(abs_time_str));
+
+    snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "%s", duration_str);
+    snprintf(g_soap_runtime_state.transport_rel_time, sizeof(g_soap_runtime_state.transport_rel_time), "%s", rel_time_str);
+    snprintf(g_soap_runtime_state.transport_abs_time, sizeof(g_soap_runtime_state.transport_abs_time), "%s", abs_time_str);
+
     char response[SOAP_HANDLER_OUTPUT_MAX];
     int len = snprintf(response, sizeof(response),
                        "<Track>1</Track>"
@@ -241,10 +296,10 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
                        "<AbsTime>%s</AbsTime>"
                        "<RelCount>0</RelCount>"
                        "<AbsCount>0</AbsCount>",
-                       g_soap_runtime_state.transport_duration,
+                       duration_str,
                        g_soap_runtime_state.transport_uri,
-                       g_soap_runtime_state.transport_rel_time,
-                       g_soap_runtime_state.transport_abs_time);
+                       rel_time_str,
+                       abs_time_str);
     if (len < 0 || (size_t)len >= sizeof(response))
     {
         soap_handler_set_fault(out, 501, "Action Failed");

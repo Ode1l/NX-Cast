@@ -1,7 +1,9 @@
 #include "player_backend.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "log/log.h"
 
@@ -14,6 +16,15 @@ static int g_volume = 20;
 static bool g_mute = false;
 static char g_uri[1024];
 static char g_metadata[2048];
+static int g_play_anchor_ms = 0;
+static int64_t g_play_anchor_monotonic_ms = 0;
+
+static int64_t monotonic_time_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000LL + (int64_t)(ts.tv_nsec / 1000000LL);
+}
 
 static void emit_event(PlayerEventType type)
 {
@@ -33,6 +44,44 @@ static void emit_event(PlayerEventType type)
     g_event_sink(&event);
 }
 
+static void refresh_position(bool emit_events)
+{
+    if (g_state != PLAYER_STATE_PLAYING)
+        return;
+
+    int64_t now_ms = monotonic_time_ms();
+    if (g_play_anchor_monotonic_ms <= 0)
+        g_play_anchor_monotonic_ms = now_ms;
+
+    int64_t elapsed_ms = now_ms - g_play_anchor_monotonic_ms;
+    if (elapsed_ms < 0)
+        elapsed_ms = 0;
+
+    int new_position = g_play_anchor_ms + (int)elapsed_ms;
+    bool finished = false;
+    if (g_duration_ms > 0 && new_position >= g_duration_ms)
+    {
+        new_position = g_duration_ms;
+        finished = true;
+    }
+
+    if (new_position != g_position_ms)
+    {
+        g_position_ms = new_position;
+        if (emit_events)
+            emit_event(PLAYER_EVENT_POSITION_CHANGED);
+    }
+
+    if (finished)
+    {
+        g_state = PLAYER_STATE_STOPPED;
+        g_play_anchor_ms = g_position_ms;
+        g_play_anchor_monotonic_ms = now_ms;
+        if (emit_events)
+            emit_event(PLAYER_EVENT_STATE_CHANGED);
+    }
+}
+
 static bool mock_init(void)
 {
     memset(g_uri, 0, sizeof(g_uri));
@@ -42,6 +91,8 @@ static bool mock_init(void)
     g_duration_ms = 0;
     g_volume = 20;
     g_mute = false;
+    g_play_anchor_ms = 0;
+    g_play_anchor_monotonic_ms = monotonic_time_ms();
     log_info("[player-mock] init\n");
     emit_event(PLAYER_EVENT_STATE_CHANGED);
     emit_event(PLAYER_EVENT_VOLUME_CHANGED);
@@ -74,6 +125,8 @@ static bool mock_set_uri(const char *uri, const char *metadata)
     g_position_ms = 0;
     if (g_duration_ms <= 0)
         g_duration_ms = 5 * 60 * 1000;
+    g_play_anchor_ms = 0;
+    g_play_anchor_monotonic_ms = monotonic_time_ms();
 
     log_info("[player-mock] set_uri uri=%s metadata_len=%zu\n", g_uri, strlen(g_metadata));
     emit_event(PLAYER_EVENT_URI_CHANGED);
@@ -88,7 +141,10 @@ static bool mock_play(void)
     if (g_uri[0] == '\0')
         return false;
 
+    refresh_position(false);
     g_state = PLAYER_STATE_PLAYING;
+    g_play_anchor_ms = g_position_ms;
+    g_play_anchor_monotonic_ms = monotonic_time_ms();
     log_info("[player-mock] play\n");
     emit_event(PLAYER_EVENT_STATE_CHANGED);
     return true;
@@ -99,7 +155,10 @@ static bool mock_pause(void)
     if (g_state != PLAYER_STATE_PLAYING)
         return false;
 
+    refresh_position(true);
     g_state = PLAYER_STATE_PAUSED;
+    g_play_anchor_ms = g_position_ms;
+    g_play_anchor_monotonic_ms = monotonic_time_ms();
     log_info("[player-mock] pause\n");
     emit_event(PLAYER_EVENT_STATE_CHANGED);
     return true;
@@ -110,8 +169,11 @@ static bool mock_stop(void)
     if (g_uri[0] == '\0')
         return false;
 
+    refresh_position(false);
     g_state = PLAYER_STATE_STOPPED;
     g_position_ms = 0;
+    g_play_anchor_ms = 0;
+    g_play_anchor_monotonic_ms = monotonic_time_ms();
     log_info("[player-mock] stop\n");
     emit_event(PLAYER_EVENT_POSITION_CHANGED);
     emit_event(PLAYER_EVENT_STATE_CHANGED);
@@ -123,10 +185,13 @@ static bool mock_seek_ms(int position_ms)
     if (g_uri[0] == '\0' || position_ms < 0)
         return false;
 
+    refresh_position(false);
     if (g_duration_ms > 0 && position_ms > g_duration_ms)
         position_ms = g_duration_ms;
 
     g_position_ms = position_ms;
+    g_play_anchor_ms = g_position_ms;
+    g_play_anchor_monotonic_ms = monotonic_time_ms();
     log_info("[player-mock] seek_ms=%d\n", g_position_ms);
     emit_event(PLAYER_EVENT_POSITION_CHANGED);
     return true;
@@ -155,11 +220,13 @@ static bool mock_set_mute(bool mute)
 
 static int mock_get_position_ms(void)
 {
+    refresh_position(false);
     return g_position_ms;
 }
 
 static int mock_get_duration_ms(void)
 {
+    refresh_position(false);
     return g_duration_ms;
 }
 
@@ -175,6 +242,7 @@ static bool mock_get_mute(void)
 
 static PlayerState mock_get_state(void)
 {
+    refresh_position(false);
     return g_state;
 }
 
