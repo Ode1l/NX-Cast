@@ -96,6 +96,7 @@ How to verify Milestone 1 locally:
 
 ### Phase 5
 - UI and configuration
+- Home menu desktop shortcut entry (add-to-desktop style launch)
 
 ---
 
