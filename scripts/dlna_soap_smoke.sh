@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-192.168.1.7}"
 PORT="${PORT:-49152}"
 BASE_URL="http://${HOST}:${PORT}"
 

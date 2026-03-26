@@ -17,6 +17,8 @@
 
 #define SSDP_PORT 1900
 #define SSDP_MULTICAST "239.255.255.250"
+#define SSDP_THREAD_STACK_SIZE 0x8000
+#define SSDP_PACKET_BUFFER_SIZE 1536
 
 #ifndef INET_ADDRSTRLEN
 #define INET_ADDRSTRLEN 16
@@ -153,22 +155,28 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
     if (g_ssdp.socket_fd < 0)
         return;
 
-    const char *st = g_ssdp.config.device_type;
-    if (st_value && strnlen(st_value, 128) > 0)
-    {
-        if (strcasecmp(st_value, "ssdp:all") == 0)
-            st = g_ssdp.config.device_type;
-        else if (strcasecmp(st_value, "upnp:rootdevice") == 0)
-            st = "upnp:rootdevice";
-        else
-            st = st_value;
-    }
+    if (!st_value || st_value[0] == '\0')
+        return;
+
+    const char *st = NULL;
+    if (strcasecmp(st_value, "ssdp:all") == 0)
+        st = g_ssdp.config.device_type;
+    else if (strcasecmp(st_value, "upnp:rootdevice") == 0)
+        st = "upnp:rootdevice";
+    else if (strcasecmp(st_value, g_ssdp.config.device_type) == 0)
+        st = g_ssdp.config.device_type;
+    else if (strcasecmp(st_value, g_ssdp.config.uuid) == 0)
+        st = g_ssdp.config.uuid;
+    else
+        return;
 
     char usn[256];
     if (strcasecmp(st, "upnp:rootdevice") == 0)
         snprintf(usn, sizeof(usn), "%s::upnp:rootdevice", g_ssdp.config.uuid);
-    else if (strcasecmp(st, g_ssdp.config.device_type) == 0)
+    else if (strcasecmp(st, g_ssdp.config.device_type) == 0 || strcasecmp(st, "ssdp:all") == 0)
         snprintf(usn, sizeof(usn), "%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
+    else if (strcasecmp(st, g_ssdp.config.uuid) == 0)
+        snprintf(usn, sizeof(usn), "%s", g_ssdp.config.uuid);
     else
         snprintf(usn, sizeof(usn), "%s::%s", g_ssdp.config.uuid, st);
 
@@ -185,13 +193,13 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
                        "\r\n",
                        g_ssdp.location, st, usn);
 
-    if (len <= 0)
+    if (len <= 0 || (size_t)len >= sizeof(response))
         return;
 
-    sendto(g_ssdp.socket_fd, response, (size_t)len, 0,
-           (const struct sockaddr *)from, sizeof(*from));
-    log_info("[ssdp] Responded to M-SEARCH from %s:%d (%s)\n",
-             inet_ntoa(from->sin_addr), ntohs(from->sin_port), st);
+    ssize_t sent = sendto(g_ssdp.socket_fd, response, (size_t)len, 0,
+                          (const struct sockaddr *)from, sizeof(*from));
+    if (sent < 0)
+        return;
 }
 
 // Basic parser that filters for SSDP discovery packets.
@@ -245,7 +253,7 @@ static void ssdp_thread(void *arg)
 
         if (FD_ISSET(g_ssdp.socket_fd, &readfds))
         {
-            char buffer[1024];
+            char buffer[SSDP_PACKET_BUFFER_SIZE];
             struct sockaddr_in from;
             socklen_t from_len = sizeof(from);
             ssize_t len = recvfrom(g_ssdp.socket_fd, buffer, sizeof(buffer) - 1, 0,
@@ -282,7 +290,7 @@ bool ssdp_start(const SsdpConfig *config)
         return false;
 
     g_ssdp.running = true;
-    Result rc = threadCreate(&g_ssdp.thread, ssdp_thread, NULL, NULL, 0x4000, 0x2B, -2);
+    Result rc = threadCreate(&g_ssdp.thread, ssdp_thread, NULL, NULL, SSDP_THREAD_STACK_SIZE, 0x2B, -2);
     if (R_FAILED(rc))
     {
         log_error("[ssdp] threadCreate failed: 0x%08X\n", rc);
