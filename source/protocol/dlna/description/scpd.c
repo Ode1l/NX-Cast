@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -23,6 +24,9 @@ typedef struct
 } XmlResource;
 
 #define DEVICE_XML_BUFFER_SIZE 4096
+#define SCPD_REQUEST_BUFFER_SIZE 16384
+#define SCPD_SOAP_RESPONSE_BUFFER_SIZE 8192
+#define SCPD_THREAD_STACK_SIZE 0x8000
 
 static const char g_deviceXmlTemplate[] =
     "<?xml version=\"1.0\"?>\n"
@@ -346,10 +350,24 @@ static void send_xml(int clientSock, const XmlResource *resource)
 
 static void handle_client(int clientSock)
 {
-    char buffer[16384];
-    ssize_t n = recv(clientSock, buffer, sizeof(buffer) - 1, 0);
-    if (n <= 0)
+    char *buffer = malloc(SCPD_REQUEST_BUFFER_SIZE);
+    char *soap_response = malloc(SCPD_SOAP_RESPONSE_BUFFER_SIZE);
+    if (!buffer || !soap_response)
+    {
+        log_error("[dlna-desc] OOM while handling HTTP request.\n");
+        free(buffer);
+        free(soap_response);
+        send_not_found(clientSock);
         return;
+    }
+
+    ssize_t n = recv(clientSock, buffer, SCPD_REQUEST_BUFFER_SIZE - 1, 0);
+    if (n <= 0)
+    {
+        free(buffer);
+        free(soap_response);
+        return;
+    }
     buffer[n] = '\0';
 
     char method[8];
@@ -357,6 +375,8 @@ static void handle_client(int clientSock)
     if (sscanf(buffer, "%7s %255s", method, raw_path) != 2)
     {
         send_not_found(clientSock);
+        free(buffer);
+        free(soap_response);
         return;
     }
 
@@ -366,33 +386,37 @@ static void handle_client(int clientSock)
     if (query)
         *query = '\0';
 
-    char soap_response[8192];
     size_t soap_response_len = 0;
     if (soap_server_try_handle_http(method, path, buffer, (size_t)n,
-                             soap_response, sizeof(soap_response), &soap_response_len))
+                             soap_response, SCPD_SOAP_RESPONSE_BUFFER_SIZE, &soap_response_len))
     {
         if (soap_response_len > 0)
             send(clientSock, soap_response, soap_response_len, 0);
-        log_info("[dlna-desc] SOAP handled %s %s\n", method, path);
+        free(buffer);
+        free(soap_response);
         return;
     }
 
     if (strcmp(method, "GET") != 0)
     {
         send_not_found(clientSock);
+        free(buffer);
+        free(soap_response);
         return;
     }
 
     const XmlResource *resource = find_resource(path);
     if (!resource || !resource->body)
     {
-        log_warn("[dlna-desc] Unknown request path: %s\n", path);
         send_not_found(clientSock);
+        free(buffer);
+        free(soap_response);
         return;
     }
 
     send_xml(clientSock, resource);
-    log_info("[dlna-desc] Served %s\n", path);
+    free(buffer);
+    free(soap_response);
 }
 
 static void scpd_thread(void *arg)
@@ -474,7 +498,7 @@ bool scpd_start(uint16_t port, const ScpdConfig *config)
     }
 
     g_running = true;
-    Result rc = threadCreate(&g_httpThread, scpd_thread, NULL, NULL, 0x4000, 0x2B, -2);
+    Result rc = threadCreate(&g_httpThread, scpd_thread, NULL, NULL, SCPD_THREAD_STACK_SIZE, 0x2B, -2);
     if (R_FAILED(rc))
     {
         log_error("[dlna-desc] threadCreate failed: 0x%08X\n", rc);
