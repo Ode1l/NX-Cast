@@ -11,6 +11,37 @@
 
 SoapRuntimeState g_soap_runtime_state;
 
+static void clip_for_log(const char *input, char *output, size_t output_size)
+{
+    if (!output || output_size == 0)
+        return;
+    if (!input)
+    {
+        output[0] = '\0';
+        return;
+    }
+
+    size_t len = strlen(input);
+    if (len + 1 <= output_size)
+    {
+        snprintf(output, output_size, "%s", input);
+        return;
+    }
+
+    if (output_size <= 4)
+    {
+        output[0] = '\0';
+        return;
+    }
+
+    size_t copy_len = output_size - 4;
+    memcpy(output, input, copy_len);
+    output[copy_len] = '.';
+    output[copy_len + 1] = '.';
+    output[copy_len + 2] = '.';
+    output[copy_len + 3] = '\0';
+}
+
 static const char *transport_state_from_player_state(PlayerState state)
 {
     switch (state)
@@ -244,9 +275,51 @@ bool soap_handler_require_arg(const SoapActionContext *ctx, SoapActionOutput *ou
 
     if (!soap_handler_extract_xml_value(ctx->body, arg_name, buf, buf_size))
     {
+        char body_short[192];
+        size_t body_len = ctx->body ? strlen(ctx->body) : 0;
+        clip_for_log(ctx->body ? ctx->body : "", body_short, sizeof(body_short));
+        log_warn("[soap-arg] missing required arg service=%s action=%s arg=%s\n",
+                 ctx->service_name ? ctx->service_name : "(null)",
+                 ctx->action_name ? ctx->action_name : "(null)",
+                 arg_name);
+        log_warn("[soap-arg] request body_bytes=%zu body=%s\n", body_len,
+                 body_len > 0 ? body_short : "<empty>");
         soap_handler_set_fault(out, 402, "Invalid Args");
         return false;
     }
+
+    char clipped[96];
+    clip_for_log(buf, clipped, sizeof(clipped));
+    log_debug("[soap-arg] required arg service=%s action=%s arg=%s value=%s\n",
+              ctx->service_name ? ctx->service_name : "(null)",
+              ctx->action_name ? ctx->action_name : "(null)",
+              arg_name,
+              clipped);
+    return true;
+}
+
+bool soap_handler_try_arg(const SoapActionContext *ctx, const char *arg_name, char *buf, size_t buf_size)
+{
+    if (!ctx || !arg_name || !buf || buf_size == 0)
+        return false;
+
+    bool ok = soap_handler_extract_xml_value(ctx->body, arg_name, buf, buf_size);
+    if (!ok)
+    {
+        log_debug("[soap-arg] optional arg missing service=%s action=%s arg=%s\n",
+                  ctx->service_name ? ctx->service_name : "(null)",
+                  ctx->action_name ? ctx->action_name : "(null)",
+                  arg_name);
+        return false;
+    }
+
+    char clipped[96];
+    clip_for_log(buf, clipped, sizeof(clipped));
+    log_debug("[soap-arg] optional arg service=%s action=%s arg=%s value=%s\n",
+              ctx->service_name ? ctx->service_name : "(null)",
+              ctx->action_name ? ctx->action_name : "(null)",
+              arg_name,
+              clipped);
     return true;
 }
 

@@ -197,6 +197,60 @@ static void clip_for_log(const char *input, char *output, size_t output_size)
     output[copy_len + 3] = '\0';
 }
 
+static void log_fault_request_detail(const char *reason,
+                                     const char *method,
+                                     const char *path,
+                                     const char *soap_action,
+                                     const char *request,
+                                     size_t request_len,
+                                     const char *body,
+                                     size_t body_len)
+{
+    char request_line[192];
+    char host_header[128];
+    char content_length[64];
+    char user_agent[128];
+    char body_short[384];
+
+    request_line[0] = '\0';
+    host_header[0] = '\0';
+    content_length[0] = '\0';
+    user_agent[0] = '\0';
+    body_short[0] = '\0';
+
+    if (request && request[0] != '\0')
+    {
+        const char *line_end = strstr(request, "\r\n");
+        size_t line_len = line_end ? (size_t)(line_end - request) : strlen(request);
+        if (line_len >= sizeof(request_line))
+            line_len = sizeof(request_line) - 1;
+        memcpy(request_line, request, line_len);
+        request_line[line_len] = '\0';
+
+        get_header_value(request, "Host", host_header, sizeof(host_header));
+        get_header_value(request, "Content-Length", content_length, sizeof(content_length));
+        get_header_value(request, "User-Agent", user_agent, sizeof(user_agent));
+    }
+
+    clip_for_log(body ? body : "", body_short, sizeof(body_short));
+
+    log_warn("[soap] fault detail reason=%s method=%s endpoint=%s soapAction=%s request_line=%s request_bytes=%zu body_bytes=%zu host=%s content-length=%s user-agent=%s\n",
+             reason ? reason : "(none)",
+             method ? method : "(null)",
+             path ? path : "(null)",
+             soap_action ? soap_action : "(none)",
+             request_line[0] ? request_line : "(none)",
+             request_len,
+             body_len,
+             host_header[0] ? host_header : "(none)",
+             content_length[0] ? content_length : "(none)",
+             user_agent[0] ? user_agent : "(none)");
+    if (body_len > 0)
+        log_warn("[soap] fault body=%s\n", body_short);
+    else
+        log_warn("[soap] fault body=<empty>\n");
+}
+
 static void log_soap_call_summary(const char *service_name, const char *action_name, const char *body, size_t body_len)
 {
     char instance_id[32];
@@ -483,6 +537,14 @@ bool soap_server_try_handle_http(const char *method,
 
     if (!request)
     {
+        log_fault_request_detail("request_null",
+                                 method,
+                                 path,
+                                 NULL,
+                                 request,
+                                 request_len,
+                                 NULL,
+                                 0);
         return build_soap_fault(402,
                                 "Invalid Args",
                                 response,
@@ -493,6 +555,14 @@ bool soap_server_try_handle_http(const char *method,
     char service_name[64];
     if (!parse_service_name_from_path(path, service_name, sizeof(service_name)))
     {
+        log_fault_request_detail("invalid_service_path",
+                                 method,
+                                 path,
+                                 NULL,
+                                 request,
+                                 request_len,
+                                 NULL,
+                                 0);
         return build_soap_fault(402,
                                 "Invalid Args",
                                 response,
@@ -503,6 +573,16 @@ bool soap_server_try_handle_http(const char *method,
     char soap_action_header[256];
     if (!get_header_value(request, "SOAPACTION", soap_action_header, sizeof(soap_action_header)))
     {
+        const char *body = find_body(request);
+        size_t body_len = body ? strlen(body) : 0;
+        log_fault_request_detail("missing_SOAPACTION",
+                                 method,
+                                 path,
+                                 NULL,
+                                 request,
+                                 request_len,
+                                 body,
+                                 body_len);
         return build_soap_fault(402,
                                 "Invalid Args",
                                 response,
@@ -513,6 +593,16 @@ bool soap_server_try_handle_http(const char *method,
     char action_name[64];
     if (!parse_action_name(soap_action_header, action_name, sizeof(action_name)))
     {
+        const char *body = find_body(request);
+        size_t body_len = body ? strlen(body) : 0;
+        log_fault_request_detail("invalid_SOAPACTION",
+                                 method,
+                                 path,
+                                 soap_action_header,
+                                 request,
+                                 request_len,
+                                 body,
+                                 body_len);
         return build_soap_fault(402,
                                 "Invalid Args",
                                 response,
@@ -576,6 +666,14 @@ bool soap_server_try_handle_http(const char *method,
              service_name, action_name,
              result.handler_name ? result.handler_name : "(none)",
              fault_code, fault_description);
+    log_fault_request_detail("handler_fault",
+                             method,
+                             path,
+                             soap_action_header,
+                             request,
+                             request_len,
+                             body,
+                             body_len);
     bool built = build_soap_fault(fault_code,
                                   fault_description,
                                   response,

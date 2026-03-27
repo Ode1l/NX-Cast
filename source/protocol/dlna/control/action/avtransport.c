@@ -3,28 +3,11 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "../handler_internal.h"
+#include "log/log.h"
 #include "player/player.h"
-
-static bool is_hhmmss(const char *value)
-{
-    if (!value || strlen(value) != 8)
-        return false;
-
-    for (size_t i = 0; i < 8; ++i)
-    {
-        if (i == 2 || i == 5)
-        {
-            if (value[i] != ':')
-                return false;
-            continue;
-        }
-        if (!isdigit((unsigned char)value[i]))
-            return false;
-    }
-    return true;
-}
 
 static const char *transport_state_from_player_state(PlayerState state)
 {
@@ -63,18 +46,57 @@ static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
     int hour = 0;
     int minute = 0;
     int second = 0;
+    int millis = 0;
+    int parsed_chars = 0;
+    const char *cursor = value;
 
     if (!value || !out_ms)
         return false;
-    if (!is_hhmmss(value))
+
+    while (*cursor && isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor == '\0')
         return false;
 
-    if (sscanf(value, "%d:%d:%d", &hour, &minute, &second) != 3)
+    if (sscanf(cursor, "%d:%d:%d%n", &hour, &minute, &second, &parsed_chars) != 3)
         return false;
     if (hour < 0 || minute < 0 || minute > 59 || second < 0 || second > 59)
         return false;
 
-    *out_ms = (hour * 3600 + minute * 60 + second) * 1000;
+    if (cursor[parsed_chars] == '.')
+    {
+        const char *fraction = cursor + parsed_chars + 1;
+        size_t frac_len = strlen(fraction);
+        if (frac_len == 0 || frac_len > 3)
+            return false;
+
+        for (size_t i = 0; i < frac_len; ++i)
+        {
+            if (!isdigit((unsigned char)fraction[i]))
+                return false;
+            millis = millis * 10 + (fraction[i] - '0');
+        }
+
+        size_t pad_len = frac_len;
+        while (pad_len < 3)
+        {
+            millis *= 10;
+            ++pad_len;
+        }
+    }
+    else if (cursor[parsed_chars] != '\0')
+    {
+        while (cursor[parsed_chars] && isspace((unsigned char)cursor[parsed_chars]))
+            ++parsed_chars;
+        if (cursor[parsed_chars] == '\0')
+        {
+            *out_ms = (hour * 3600 + minute * 60 + second) * 1000;
+            return true;
+        }
+        return false;
+    }
+
+    *out_ms = (hour * 3600 + minute * 60 + second) * 1000 + millis;
     return true;
 }
 
@@ -199,8 +221,13 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
-        return false;
+    // Some mobile control points omit InstanceID for read-only queries.
+    // Treat missing value as "0" for compatibility.
+    if (!soap_handler_try_arg(ctx, "InstanceID", instance_id, sizeof(instance_id)))
+    {
+        snprintf(instance_id, sizeof(instance_id), "0");
+        log_debug("[avtransport] default InstanceID=0 for GetTransportInfo\n");
+    }
 
     PlayerState player_state = player_get_state();
     const char *transport_state = transport_state_from_player_state(player_state);
@@ -319,24 +346,27 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
-        return false;
-
-    if (!soap_handler_require_arg(ctx, out, "Unit", unit, sizeof(unit)))
-        return false;
-
-    if (!soap_handler_require_arg(ctx, out, "Target", target, sizeof(target)))
-        return false;
-
-    if (strcmp(unit, "REL_TIME") != 0)
+    if (!soap_handler_try_arg(ctx, "InstanceID", instance_id, sizeof(instance_id)))
     {
-        soap_handler_set_fault(out, 710, "Seek mode not supported");
-        return false;
+        snprintf(instance_id, sizeof(instance_id), "0");
+        log_debug("[avtransport] default InstanceID=0 for Seek\n");
     }
 
-    if (!is_hhmmss(target))
+    if (!soap_handler_try_arg(ctx, "Unit", unit, sizeof(unit)))
     {
-        soap_handler_set_fault(out, 402, "Invalid Args");
+        snprintf(unit, sizeof(unit), "REL_TIME");
+        log_debug("[avtransport] default Unit=REL_TIME for Seek\n");
+    }
+
+    if (!soap_handler_try_arg(ctx, "Target", target, sizeof(target)))
+    {
+        snprintf(target, sizeof(target), "00:00:00");
+        log_debug("[avtransport] default Target=00:00:00 for Seek\n");
+    }
+
+    if (strcasecmp(unit, "REL_TIME") != 0 && strcasecmp(unit, "ABS_TIME") != 0)
+    {
+        soap_handler_set_fault(out, 710, "Seek mode not supported");
         return false;
     }
 

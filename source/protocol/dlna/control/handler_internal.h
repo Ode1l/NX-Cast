@@ -31,3 +31,4 @@ void soap_handler_set_success(SoapActionOutput *out, const char *xml);
 bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out, size_t out_size);
 bool soap_handler_require_arg(const SoapActionContext *ctx, SoapActionOutput *out, const char *arg_name,
                               char *buf, size_t buf_size);
+bool soap_handler_try_arg(const SoapActionContext *ctx, const char *arg_name, char *buf, size_t buf_size);

@@ -4,7 +4,7 @@
     {
       "label": "Build NX-Cast",
       "type": "shell",
-      "command": "make",
+      "command": "make clean all",
       "options": {
         "cwd": "${workspaceFolder}"
       },

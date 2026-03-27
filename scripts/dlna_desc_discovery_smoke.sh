@@ -2,6 +2,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LOG_DIR="${PROJECT_ROOT}/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/$(basename "${BASH_SOURCE[0]}" .sh)-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 HOST="${HOST:-192.168.1.7}"
 PORT="${PORT:-49152}"
 BASE_URL="http://${HOST}:${PORT}"
@@ -20,6 +27,8 @@ LAST_CODE=""
 log() {
   printf '[desc-discovery-smoke] %s\n' "$*"
 }
+
+trap 'printf "[desc-discovery-smoke] log saved: %s\n" "$LOG_FILE"' EXIT
 
 fail() {
   printf '[desc-discovery-smoke] ERROR: %s\n' "$*" >&2
@@ -133,6 +142,7 @@ ssdp_probe() {
 }
 
 main() {
+  log "log file: ${LOG_FILE}"
   require_cmd curl
   require_cmd grep
   require_cmd sed

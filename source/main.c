@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "log/log.h"
 #include "protocol/dlna_control.h"
@@ -20,6 +21,9 @@ typedef struct
 #define ANSI_WARN  "\x1b[33;1m"
 #define ANSI_ERROR "\x1b[31;1m"
 #define ANSI_TEXT  "\x1b[37;1m"
+
+static int g_nxlinkSock = -1;
+static bool g_nxlinkDebugEnabled = false;
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -164,6 +168,25 @@ static bool initialize_network(void)
     return true;
 }
 
+static void enable_nxlink_stdio(bool network_ready)
+{
+    if (!network_ready)
+        return;
+
+    // Redirect only stderr to nxlink so on-device console UI (stdout) keeps working.
+    g_nxlinkSock = nxlinkStdioForDebug();
+    if (g_nxlinkSock >= 0)
+    {
+        g_nxlinkDebugEnabled = true;
+        log_set_stdio_mirror(true);
+        log_info("[log] nxlink debug stderr enabled.\n");
+    }
+    else
+    {
+        log_warn("[log] nxlink debug stderr not connected, using local console only.\n");
+    }
+}
+
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
@@ -171,6 +194,7 @@ int main(int argc, char* argv[])
     log_info("[log] level=DEBUG\n");
 
     bool networkReady = initialize_network();
+    enable_nxlink_stdio(networkReady);
     bool dlnaRunning = false;
 
     if (networkReady)
@@ -276,16 +300,24 @@ int main(int argc, char* argv[])
         consoleUpdate(NULL);
     }
 
+    bool had_nxlink_debug = g_nxlinkDebugEnabled;
+
     if (networkReady)
     {
         if (dlnaRunning)
             dlna_control_stop();
+        log_set_stdio_mirror(false);
+        g_nxlinkSock = -1;
+        g_nxlinkDebugEnabled = false;
         socketExit();
     }
 
     log_flush();
-    render_log_view(0);
-    consoleUpdate(NULL);
+    if (!had_nxlink_debug)
+    {
+        render_log_view(0);
+        consoleUpdate(NULL);
+    }
     consoleExit(NULL);
     return 0;
 }

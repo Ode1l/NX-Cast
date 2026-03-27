@@ -326,7 +326,7 @@ bool ssdp_start(const SsdpConfig *config)
     }
 
     g_ssdp.thread_started = true;
-    log_info("[ssdp] Responder ready on %s (Location %s)\n", g_ssdp.local_ip, g_ssdp.location);
+    log_info("[ssdp] Responder ready on %s\n", g_ssdp.location);
     return true;
 }
 

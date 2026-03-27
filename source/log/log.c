@@ -10,6 +10,7 @@
 static Mutex g_logMutex;
 static bool g_logEnabled = true;
 static LogLevel g_logMinLevel = LOG_LEVEL_INFO;
+static bool g_logMirrorToStdio = false;
 
 #define LOG_QUEUE_CAPACITY 512
 #define LOG_MESSAGE_MAX 1024
@@ -169,7 +170,14 @@ void log_flush(void)
 
             mutexLock(&g_logMutex);
             append_history_line_locked(line);
+            bool mirror_to_stdio = g_logMirrorToStdio;
             mutexUnlock(&g_logMutex);
+
+            if (mirror_to_stdio)
+            {
+                fprintf(stderr, "%s\n", line);
+                fflush(stderr);
+            }
             continue;
         }
 
@@ -180,7 +188,14 @@ void log_flush(void)
 
             mutexLock(&g_logMutex);
             append_history_line_locked(line);
+            bool mirror_to_stdio = g_logMirrorToStdio;
             mutexUnlock(&g_logMutex);
+
+            if (mirror_to_stdio)
+            {
+                fprintf(stderr, "%s\n", line);
+                fflush(stderr);
+            }
             continue;
         }
 
@@ -241,6 +256,13 @@ LogLevel log_get_level(void)
     LogLevel level = g_logMinLevel;
     mutexUnlock(&g_logMutex);
     return level;
+}
+
+void log_set_stdio_mirror(bool enabled)
+{
+    mutexLock(&g_logMutex);
+    g_logMirrorToStdio = enabled;
+    mutexUnlock(&g_logMutex);
 }
 
 void log_debug(const char *fmt, ...)

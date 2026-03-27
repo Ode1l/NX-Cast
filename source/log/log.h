@@ -25,6 +25,7 @@ void log_flush(void);
 void log_set_enabled(bool enabled);
 void log_set_level(LogLevel level);
 LogLevel log_get_level(void);
+void log_set_stdio_mirror(bool enabled);
 
 size_t log_history_count(void);
 bool log_history_get_line(size_t index, char *out, size_t out_size);
