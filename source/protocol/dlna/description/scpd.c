@@ -1,21 +1,10 @@
 #include "scpd.h"
 
-#include <switch.h>
-
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include "log/log.h"
-#include "protocol/dlna/control/soap_server.h"
 
 typedef struct
 {
@@ -25,12 +14,6 @@ typedef struct
 } XmlResource;
 
 #define DEVICE_XML_BUFFER_SIZE 4096
-// Request/response buffers are intentionally not placed on thread stack.
-// We previously hit crashes due to stack pressure in the SCPD worker thread.
-#define SCPD_REQUEST_BUFFER_SIZE 16384
-#define SCPD_SOAP_RESPONSE_BUFFER_SIZE 8192
-// Keep this above the old 0x4000 default to avoid stack overflow on libnx threads.
-#define SCPD_THREAD_STACK_SIZE 0x8000
 
 static const char g_deviceXmlTemplate[] =
     "<?xml version=\"1.0\"?>\n"
@@ -274,11 +257,7 @@ static XmlResource g_resources[] = {
     {"/scpd/ConnectionManager.xml", g_connectionManagerScpd, sizeof(g_connectionManagerScpd) - 1},
 };
 
-static int g_listenSock = -1;
-static uint16_t g_httpPort = 0;
-static Thread g_httpThread;
 static bool g_running = false;
-static bool g_threadStarted = false;
 
 static const char *coalesce_string(const char *value, const char *fallback)
 {
@@ -326,201 +305,57 @@ static const XmlResource *find_resource(const char *path)
     return NULL;
 }
 
-static bool get_header_value(const char *request, const char *header, char *out, size_t out_size)
+static bool build_http_response(int status,
+                                const char *status_text,
+                                const char *content_type,
+                                const char *body,
+                                size_t body_len,
+                                char *response,
+                                size_t response_size,
+                                size_t *response_len)
 {
-    if (!request || !header || !out || out_size == 0)
+    if (!status_text || !content_type || !body || !response || response_size == 0 || !response_len)
         return false;
 
-    size_t header_len = strlen(header);
-    const char *cursor = request;
-    while (*cursor)
-    {
-        if (strncasecmp(cursor, header, header_len) == 0 && cursor[header_len] == ':')
-        {
-            cursor += header_len + 1;
-            while (*cursor == ' ' || *cursor == '\t')
-                ++cursor;
+    int written = snprintf(response, response_size,
+                           "HTTP/1.1 %d %s\r\n"
+                           "Content-Type: %s\r\n"
+                           "Content-Length: %zu\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "%.*s",
+                           status,
+                           status_text,
+                           content_type,
+                           body_len,
+                           (int)body_len,
+                           body);
 
-            size_t i = 0;
-            while (*cursor && *cursor != '\r' && *cursor != '\n' && i + 1 < out_size)
-                out[i++] = *cursor++;
-            out[i] = '\0';
-            return true;
-        }
+    if (written < 0 || (size_t)written >= response_size)
+        return false;
 
-        const char *newline = strchr(cursor, '\n');
-        if (!newline)
-            break;
-        cursor = newline + 1;
-    }
-    return false;
+    *response_len = (size_t)written;
+    return true;
 }
 
-static void send_not_found(int clientSock)
+static bool build_text_response(int status,
+                                const char *status_text,
+                                const char *body,
+                                char *response,
+                                size_t response_size,
+                                size_t *response_len)
 {
-    const char *response =
-        "HTTP/1.1 404 Not Found\r\n"
-        "Content-Type: text/plain\r\n"
-        "Content-Length: 9\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "Not Found";
-    send(clientSock, response, strlen(response), 0);
+    return build_http_response(status,
+                               status_text,
+                               "text/plain; charset=\"utf-8\"",
+                               body,
+                               strlen(body),
+                               response,
+                               response_size,
+                               response_len);
 }
 
-static void send_xml(int clientSock, const XmlResource *resource)
-{
-    char header[256];
-    int header_len = snprintf(header, sizeof(header),
-                              "HTTP/1.1 200 OK\r\n"
-                              "Content-Type: application/xml; charset=\"utf-8\"\r\n"
-                              "Content-Length: %zu\r\n"
-                              "Connection: close\r\n"
-                              "\r\n",
-                              resource->body_len);
-    if (header_len > 0)
-        send(clientSock, header, (size_t)header_len, 0);
-    send(clientSock, resource->body, resource->body_len, 0);
-}
-
-static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
-{
-    // Allocate large I/O buffers on heap to keep worker-thread stack small/stable.
-    char *buffer = malloc(SCPD_REQUEST_BUFFER_SIZE);
-    char *soap_response = malloc(SCPD_SOAP_RESPONSE_BUFFER_SIZE);
-    if (!buffer || !soap_response)
-    {
-        log_error("[scpd] OOM while handling HTTP request.\n");
-        free(buffer);
-        free(soap_response);
-        send_not_found(clientSock);
-        return;
-    }
-
-    ssize_t n = recv(clientSock, buffer, SCPD_REQUEST_BUFFER_SIZE - 1, 0);
-    if (n <= 0)
-    {
-        free(buffer);
-        free(soap_response);
-        return;
-    }
-    buffer[n] = '\0';
-    log_debug("[http] recv bytes=%zd\n", n);
-
-    char method[8];
-    char raw_path[256];
-    if (sscanf(buffer, "%7s %255s", method, raw_path) != 2)
-    {
-        log_warn("[http] parse failed (request line).\n");
-        send_not_found(clientSock);
-        free(buffer);
-        free(soap_response);
-        return;
-    }
-
-    char host_header[128];
-    host_header[0] = '\0';
-    if (!get_header_value(buffer, "Host", host_header, sizeof(host_header)))
-        snprintf(host_header, sizeof(host_header), "localhost:%u", g_httpPort);
-
-    char client_ip[32];
-    client_ip[0] = '\0';
-    uint16_t client_port = 0;
-    if (clientAddr)
-    {
-        inet_ntop(AF_INET, &clientAddr->sin_addr, client_ip, sizeof(client_ip));
-        client_port = ntohs(clientAddr->sin_port);
-    }
-    if (client_ip[0] == '\0')
-        snprintf(client_ip, sizeof(client_ip), "unknown");
-
-    log_debug("[http] from %s:%u -> %s http://%s%s\n",
-              client_ip, client_port, method, host_header, raw_path);
-
-    char path[256];
-    snprintf(path, sizeof(path), "%s", raw_path);
-    char *query = strchr(path, '?');
-    if (query)
-        *query = '\0';
-    log_debug("[http] normalized path=%s\n", path);
-
-    size_t soap_response_len = 0;
-    if (soap_server_try_handle_http(method, path, buffer, (size_t)n,
-                             soap_response, SCPD_SOAP_RESPONSE_BUFFER_SIZE, &soap_response_len))
-    {
-        if (soap_response_len > 0)
-            send(clientSock, soap_response, soap_response_len, 0);
-        log_info("[http] soap endpoint=%s send_bytes=%zu\n", path, soap_response_len);
-        free(buffer);
-        free(soap_response);
-        return;
-    }
-
-    if (strcmp(method, "GET") != 0)
-    {
-        send_not_found(clientSock);
-        free(buffer);
-        free(soap_response);
-        return;
-    }
-
-    const XmlResource *resource = find_resource(path);
-    if (!resource || !resource->body)
-    {
-        log_warn("[http] unknown path=%s\n", path);
-        send_not_found(clientSock);
-        free(buffer);
-        free(soap_response);
-        return;
-    }
-
-    send_xml(clientSock, resource);
-    log_info("[http] served path=%s send_bytes=%zu\n", path, resource->body_len);
-    free(buffer);
-    free(soap_response);
-}
-
-static void scpd_thread(void *arg)
-{
-    (void)arg;
-    while (g_running)
-    {
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        FD_SET(g_listenSock, &readfds);
-
-        struct timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 100000;
-
-        int ret = select(g_listenSock + 1, &readfds, NULL, NULL, &timeout);
-        if (ret < 0)
-        {
-            if (errno == EINTR)
-                continue;
-            if (!g_running)
-                break;
-            log_error("[scpd] select failed: %s (%d)\n", strerror(errno), errno);
-            break;
-        }
-        if (ret == 0)
-            continue;
-
-        if (FD_ISSET(g_listenSock, &readfds))
-        {
-            struct sockaddr_in clientAddr;
-            socklen_t clientLen = sizeof(clientAddr);
-            int clientSock = accept(g_listenSock, (struct sockaddr *)&clientAddr, &clientLen);
-            if (clientSock < 0)
-                continue;
-
-            handle_client(clientSock, &clientAddr);
-            close(clientSock);
-        }
-    }
-}
-
-bool scpd_start(uint16_t port, const ScpdConfig *config)
+bool scpd_start(const ScpdConfig *config)
 {
     if (g_running)
         return true;
@@ -528,63 +363,8 @@ bool scpd_start(uint16_t port, const ScpdConfig *config)
     if (!build_device_xml(config))
         return false;
 
-    g_listenSock = socket(AF_INET, SOCK_STREAM, 0);
-    if (g_listenSock < 0)
-    {
-        log_error("[scpd] socket failed: %s (%d)\n", strerror(errno), errno);
-        return false;
-    }
-
-    int reuse = 1;
-    setsockopt(g_listenSock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if (bind(g_listenSock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-    {
-        log_error("[scpd] bind failed on port %u: %s (%d)\n", port, strerror(errno), errno);
-        close(g_listenSock);
-        g_listenSock = -1;
-        return false;
-    }
-
-    if (listen(g_listenSock, 8) < 0)
-    {
-        log_error("[scpd] listen failed: %s (%d)\n", strerror(errno), errno);
-        close(g_listenSock);
-        g_listenSock = -1;
-        return false;
-    }
-
-    g_httpPort = port;
     g_running = true;
-    Result rc = threadCreate(&g_httpThread, scpd_thread, NULL, NULL, SCPD_THREAD_STACK_SIZE, 0x2B, -2);
-    if (R_FAILED(rc))
-    {
-        log_error("[scpd] threadCreate failed: 0x%08X\n", rc);
-        g_running = false;
-        close(g_listenSock);
-        g_listenSock = -1;
-        return false;
-    }
-
-    rc = threadStart(&g_httpThread);
-    if (R_FAILED(rc))
-    {
-        log_error("[scpd] threadStart failed: 0x%08X\n", rc);
-        threadClose(&g_httpThread);
-        g_running = false;
-        close(g_listenSock);
-        g_listenSock = -1;
-        return false;
-    }
-
-    g_threadStarted = true;
-    log_info("[scpd] HTTP server listening on :%u\n", port);
+    log_info("[scpd] description resources ready.\n");
     return true;
 }
 
@@ -594,22 +374,71 @@ void scpd_stop(void)
         return;
 
     g_running = false;
+    log_info("[scpd] description resources stopped.\n");
+}
 
-    if (g_listenSock >= 0)
+bool scpd_try_handle_http(const char *method,
+                          const char *path,
+                          char *response,
+                          size_t response_size,
+                          size_t *response_len)
+{
+    if (!path || !response || !response_len)
+        return false;
+
+    *response_len = 0;
+
+    bool is_device_desc = strcmp(path, "/device.xml") == 0;
+    bool is_service_desc = strncmp(path, "/scpd/", strlen("/scpd/")) == 0;
+    if (!is_device_desc && !is_service_desc)
+        return false;
+
+    if (!g_running)
     {
-        int sock = g_listenSock;
-        g_listenSock = -1;
-        shutdown(sock, SHUT_RDWR);
-        close(sock);
+        return build_text_response(503,
+                                   "Service Unavailable",
+                                   "SCPD module is not running",
+                                   response,
+                                   response_size,
+                                   response_len);
     }
 
-    if (g_threadStarted)
+    if (!method || strcmp(method, "GET") != 0)
     {
-        threadWaitForExit(&g_httpThread);
-        threadClose(&g_httpThread);
-        g_threadStarted = false;
+        return build_text_response(405,
+                                   "Method Not Allowed",
+                                   "SCPD endpoint requires GET",
+                                   response,
+                                   response_size,
+                                   response_len);
     }
 
-    g_httpPort = 0;
-    log_info("[scpd] HTTP server stopped.\n");
+    const XmlResource *resource = find_resource(path);
+    if (!resource || !resource->body)
+    {
+        log_warn("[scpd] unknown path=%s\n", path);
+        return build_text_response(404,
+                                   "Not Found",
+                                   "Not Found",
+                                   response,
+                                   response_size,
+                                   response_len);
+    }
+
+    bool built = build_http_response(200,
+                                     "OK",
+                                     "application/xml; charset=\"utf-8\"",
+                                     resource->body,
+                                     resource->body_len,
+                                     response,
+                                     response_size,
+                                     response_len);
+    if (!built)
+    {
+        log_error("[scpd] failed to build response for path=%s\n", path);
+        return false;
+    }
+
+    log_info("[scpd] served path=%s send_bytes=%zu\n", path, *response_len);
+    return true;
 }

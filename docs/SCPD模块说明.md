@@ -6,21 +6,22 @@
 
 ## 1. 模块职责
 
-`scpd` 模块负责一个轻量 HTTP 服务，向控制端提供描述层资源：
+`scpd` 模块负责描述层资源本身（不负责 socket 监听），向控制端提供：
 
 1. `/device.xml`（设备描述）
 2. `/scpd/AVTransport.xml`
 3. `/scpd/RenderingControl.xml`
 4. `/scpd/ConnectionManager.xml`
 
-该模块仅负责描述层输出，不处理 SOAP 行为控制。
+该模块仅负责描述层输出，不处理 SOAP 行为控制，也不负责 HTTP 线程。
 
 ## 2. 对外接口
 
 头文件：`source/protocol/dlna/description/scpd.h`
 
-1. `bool scpd_start(uint16_t port, const ScpdConfig *config);`
+1. `bool scpd_start(const ScpdConfig *config);`
 2. `void scpd_stop(void);`
+3. `bool scpd_try_handle_http(const char *method, const char *path, char *response, size_t response_size, size_t *response_len);`
 
 `ScpdConfig` 字段：
 
@@ -31,8 +32,9 @@
 
 行为：
 
-1. `scpd_start()` 在指定端口监听，并根据 `ScpdConfig` 动态生成 `device.xml`。
-2. `scpd_stop()` 停止线程并关闭监听 socket。
+1. `scpd_start()` 初始化描述资源，并根据 `ScpdConfig` 动态生成 `device.xml`。
+2. `scpd_try_handle_http()` 只处理 `/device.xml` 与 `/scpd/*.xml` 请求并构造 HTTP 响应。
+3. `scpd_stop()` 释放描述模块运行态。
 
 ## 3. 动态与静态边界
 
@@ -49,28 +51,31 @@
 
 ## 4. 运行模型
 
-实现为单线程 HTTP 循环：
+当前采用“公共 HTTP 层 + SCPD 处理器”：
 
-1. 一个监听 socket。
-2. 一个后台线程（`select` + `accept`）。
-3. 每次连接读取一次请求并回包后关闭。
-4. 仅处理 `GET`，其它方法返回 `404 Not Found`。
+1. `http_server` 模块维护监听 socket 和后台线程（`select` + `accept`）。
+2. `scpd` 不起线程，只作为 HTTP 分发中的一个 handler。
+3. `scpd` 仅处理 `GET` 的描述请求，其他方法返回 `405 Method Not Allowed`。
 
 ## 5. 与 DLNA Control 联动
 
 `source/protocol/dlna_control.c` 已启用 SCPD，启动流程为：
 
 1. 构建统一设备元数据（friendly/manufacturer/model/uuid）。
-2. 先调用 `scpd_start(http_port, &scpdConfig)` 启动描述 HTTP。
-3. 再调用 `ssdp_start(&ssdpConfig)` 对外发布发现信息。
-4. 若 SSDP 启动失败，立即回滚执行 `scpd_stop()`。
+2. 先调用 `scpd_start(&scpdConfig)` 初始化描述资源。
+3. 再调用 `soap_server_start()` 初始化 SOAP 控制。
+4. 再启动 `http_server_start()`，HTTP 分发顺序是 `SOAP -> SCPD`。
+5. 最后调用 `ssdp_start(&ssdpConfig)` 对外发布发现信息。
+6. 任一步失败都按逆序回滚。
 
 停止流程：
 
 1. `ssdp_stop()`
-2. `scpd_stop()`
+2. `http_server_stop()`
+3. `soap_server_stop()`
+4. `scpd_stop()`
 
-这样可保证 SSDP `LOCATION` 指向的 `device.xml` 已经可访问。
+这样可保证 SSDP `LOCATION` 指向的 `device.xml` 始终由同一 HTTP 层对外提供。
 
 ## 6. XML 文件放置说明
 

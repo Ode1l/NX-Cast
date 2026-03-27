@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct
@@ -11,8 +12,16 @@ typedef struct
     const char *uuid;
 } ScpdConfig;
 
-// Start SCPD HTTP server for device.xml + SCPD files.
-bool scpd_start(uint16_t port, const ScpdConfig *config);
+// Initialize SCPD resources (device.xml + service SCPD files).
+bool scpd_start(const ScpdConfig *config);
 
-// Stop SCPD HTTP server.
+// Shutdown SCPD resources.
 void scpd_stop(void);
+
+// Try handling a description request.
+// Returns true if the request belongs to SCPD/device description and a response was built.
+bool scpd_try_handle_http(const char *method,
+                          const char *path,
+                          char *response,
+                          size_t response_size,
+                          size_t *response_len);
