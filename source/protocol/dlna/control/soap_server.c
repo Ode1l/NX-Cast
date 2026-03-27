@@ -564,15 +564,18 @@ bool soap_server_try_handle_http(const char *method,
 
         log_debug("[soap] send packet endpoint=%s status=200 bytes=%zu\n",
                   path, *response_len);
-        log_info("[soap] assert_http_200 service=%s action=%s\n",
-                 service_name, action_name);
+        log_info("[soap] assert_http_200 service=%s action=%s handler=%s\n",
+                 service_name, action_name,
+                 result.handler_name ? result.handler_name : "(none)");
         return true;
     }
 
     int fault_code = result.output.fault_code > 0 ? result.output.fault_code : 501;
     const char *fault_description = result.output.fault_description ? result.output.fault_description : "Action Failed";
-    log_warn("[soap] action fault service=%s action=%s code=%d desc=%s\n",
-             service_name, action_name, fault_code, fault_description);
+    log_warn("[soap] action fault service=%s action=%s handler=%s code=%d desc=%s\n",
+             service_name, action_name,
+             result.handler_name ? result.handler_name : "(none)",
+             fault_code, fault_description);
     bool built = build_soap_fault(fault_code,
                                   fault_description,
                                   response,
@@ -587,7 +590,9 @@ bool soap_server_try_handle_http(const char *method,
 
     log_debug("[soap] send packet endpoint=%s status=500 bytes=%zu\n",
               path, *response_len);
-    log_warn("[soap] assert_http_500 service=%s action=%s code=%d\n",
-             service_name, action_name, fault_code);
+    log_warn("[soap] assert_http_500 service=%s action=%s handler=%s code=%d\n",
+             service_name, action_name,
+             result.handler_name ? result.handler_name : "(none)",
+             fault_code);
     return true;
 }

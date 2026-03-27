@@ -2,7 +2,7 @@
 
 #include <stdbool.h>
 
-#define SOAP_HANDLER_OUTPUT_MAX 1024
+#define SOAP_HANDLER_OUTPUT_MAX 4096
 
 typedef struct
 {

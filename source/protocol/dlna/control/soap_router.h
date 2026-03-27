@@ -8,6 +8,7 @@ typedef struct
 {
     const char *service_type;
     const char *action_name;
+    const char *handler_name;
     SoapActionOutput output;
 } SoapRouteResult;
 

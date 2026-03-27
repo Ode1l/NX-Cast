@@ -1,7 +1,9 @@
 #include "handler.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "handler_internal.h"
 #include "log/log.h"
@@ -130,29 +132,108 @@ bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out,
     if (!xml || !tag || !out || out_size == 0)
         return false;
 
-    char open_tag[64];
-    char close_tag[64];
-    int open_len = snprintf(open_tag, sizeof(open_tag), "<%s>", tag);
-    int close_len = snprintf(close_tag, sizeof(close_tag), "</%s>", tag);
-    if (open_len <= 0 || close_len <= 0)
-        return false;
+    size_t tag_len = strlen(tag);
+    const char *cursor = xml;
 
-    const char *start = strstr(xml, open_tag);
-    if (!start)
-        return false;
+    while (*cursor)
+    {
+        const char *open = strchr(cursor, '<');
+        if (!open)
+            break;
 
-    start += (size_t)open_len;
-    const char *end = strstr(start, close_tag);
-    if (!end)
-        return false;
+        if (open[1] == '/' || open[1] == '?' || open[1] == '!')
+        {
+            cursor = open + 1;
+            continue;
+        }
 
-    size_t value_len = (size_t)(end - start);
-    if (value_len >= out_size)
-        value_len = out_size - 1;
+        const char *name_start = open + 1;
+        while (*name_start && isspace((unsigned char)*name_start))
+            ++name_start;
 
-    memcpy(out, start, value_len);
-    out[value_len] = '\0';
-    return true;
+        const char *name_end = name_start;
+        while (*name_end && !isspace((unsigned char)*name_end) && *name_end != '>' && *name_end != '/')
+            ++name_end;
+        if (name_end == name_start)
+        {
+            cursor = open + 1;
+            continue;
+        }
+
+        const char *local_start = memchr(name_start, ':', (size_t)(name_end - name_start));
+        if (local_start)
+            ++local_start;
+        else
+            local_start = name_start;
+        size_t local_len = (size_t)(name_end - local_start);
+        if (local_len != tag_len || strncasecmp(local_start, tag, tag_len) != 0)
+        {
+            cursor = name_end;
+            continue;
+        }
+
+        const char *open_end = strchr(name_end, '>');
+        if (!open_end)
+            return false;
+        if (open_end > open && open_end[-1] == '/')
+        {
+            cursor = open_end + 1;
+            continue;
+        }
+
+        const char *value_start = open_end + 1;
+        const char *scan = value_start;
+        while (true)
+        {
+            const char *close = strstr(scan, "</");
+            if (!close)
+                break;
+
+            const char *close_name_start = close + 2;
+            while (*close_name_start && isspace((unsigned char)*close_name_start))
+                ++close_name_start;
+            const char *close_name_end = close_name_start;
+            while (*close_name_end && !isspace((unsigned char)*close_name_end) && *close_name_end != '>')
+                ++close_name_end;
+            if (close_name_end == close_name_start)
+            {
+                scan = close + 2;
+                continue;
+            }
+
+            const char *close_local_start = memchr(close_name_start, ':', (size_t)(close_name_end - close_name_start));
+            if (close_local_start)
+                ++close_local_start;
+            else
+                close_local_start = close_name_start;
+            size_t close_local_len = (size_t)(close_name_end - close_local_start);
+            if (close_local_len == tag_len && strncasecmp(close_local_start, tag, tag_len) == 0)
+            {
+                size_t value_len = (size_t)(close - value_start);
+                if (value_len >= out_size)
+                    value_len = out_size - 1;
+                memcpy(out, value_start, value_len);
+                out[value_len] = '\0';
+
+                size_t begin = 0;
+                while (out[begin] && isspace((unsigned char)out[begin]))
+                    ++begin;
+                if (begin > 0)
+                    memmove(out, out + begin, strlen(out + begin) + 1);
+
+                size_t end = strlen(out);
+                while (end > 0 && isspace((unsigned char)out[end - 1]))
+                    out[--end] = '\0';
+                return true;
+            }
+
+            scan = close + 2;
+        }
+
+        cursor = open_end + 1;
+    }
+
+    return false;
 }
 
 bool soap_handler_require_arg(const SoapActionContext *ctx, SoapActionOutput *out, const char *arg_name,

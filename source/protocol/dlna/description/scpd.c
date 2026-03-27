@@ -405,13 +405,13 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
         return;
     }
     buffer[n] = '\0';
-    log_debug("[scpd] HTTP recv bytes=%zd\n", n);
+    log_debug("[http] recv bytes=%zd\n", n);
 
     char method[8];
     char raw_path[256];
     if (sscanf(buffer, "%7s %255s", method, raw_path) != 2)
     {
-        log_debug("[scpd] HTTP parse failed (request line).\n");
+        log_warn("[http] parse failed (request line).\n");
         send_not_found(clientSock);
         free(buffer);
         free(soap_response);
@@ -434,7 +434,7 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
     if (client_ip[0] == '\0')
         snprintf(client_ip, sizeof(client_ip), "unknown");
 
-    log_debug("[scpd] HTTP from %s:%u -> %s http://%s%s\n",
+    log_debug("[http] from %s:%u -> %s http://%s%s\n",
               client_ip, client_port, method, host_header, raw_path);
 
     char path[256];
@@ -442,7 +442,7 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
     char *query = strchr(path, '?');
     if (query)
         *query = '\0';
-    log_debug("[scpd] HTTP normalized path=%s\n", path);
+    log_debug("[http] normalized path=%s\n", path);
 
     size_t soap_response_len = 0;
     if (soap_server_try_handle_http(method, path, buffer, (size_t)n,
@@ -450,7 +450,7 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
     {
         if (soap_response_len > 0)
             send(clientSock, soap_response, soap_response_len, 0);
-        log_info("[scpd] SOAP handled endpoint=%s send_bytes=%zu\n", path, soap_response_len);
+        log_info("[http] soap endpoint=%s send_bytes=%zu\n", path, soap_response_len);
         free(buffer);
         free(soap_response);
         return;
@@ -467,7 +467,7 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
     const XmlResource *resource = find_resource(path);
     if (!resource || !resource->body)
     {
-        log_warn("[scpd] Unknown request path: %s\n", path);
+        log_warn("[http] unknown path=%s\n", path);
         send_not_found(clientSock);
         free(buffer);
         free(soap_response);
@@ -475,7 +475,7 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
     }
 
     send_xml(clientSock, resource);
-    log_info("[scpd] Served %s send_bytes=%zu\n", path, resource->body_len);
+    log_info("[http] served path=%s send_bytes=%zu\n", path, resource->body_len);
     free(buffer);
     free(soap_response);
 }
