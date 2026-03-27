@@ -10,10 +10,11 @@
 static Mutex g_logMutex;
 static bool g_logEnabled = true;
 static LogLevel g_logMinLevel = LOG_LEVEL_INFO;
-static bool g_logVerbosePayload = false;
 
 #define LOG_QUEUE_CAPACITY 512
 #define LOG_MESSAGE_MAX 1024
+#define LOG_HISTORY_CAPACITY 2048
+#define LOG_HISTORY_MESSAGE_MAX 512
 
 typedef struct
 {
@@ -21,11 +22,20 @@ typedef struct
     char text[LOG_MESSAGE_MAX];
 } LogEntry;
 
+typedef struct
+{
+    char text[LOG_HISTORY_MESSAGE_MAX];
+} LogHistoryEntry;
+
 static LogEntry g_logQueue[LOG_QUEUE_CAPACITY];
 static size_t g_logHead = 0;
 static size_t g_logTail = 0;
 static size_t g_logCount = 0;
 static unsigned int g_logDroppedCount = 0;
+
+static LogHistoryEntry g_logHistory[LOG_HISTORY_CAPACITY];
+static size_t g_logHistoryHead = 0;
+static size_t g_logHistoryCount = 0;
 
 __attribute__((constructor)) static void log_mutex_init(void)
 {
@@ -46,6 +56,50 @@ static const char *level_label(LogLevel level)
         default:
             return "DEBUG";
     }
+}
+
+static void normalize_log_text(const char *src, char *dst, size_t dst_size)
+{
+    if (!dst || dst_size == 0)
+        return;
+
+    if (!src)
+    {
+        dst[0] = '\0';
+        return;
+    }
+
+    size_t i = 0;
+    for (; src[i] && i + 1 < dst_size; ++i)
+    {
+        char c = src[i];
+        if (c == '\r' || c == '\n' || c == '\t')
+            c = ' ';
+        dst[i] = c;
+    }
+    dst[i] = '\0';
+
+    while (i > 0 && dst[i - 1] == ' ')
+        dst[--i] = '\0';
+}
+
+static void append_history_line_locked(const char *text)
+{
+    if (!text)
+        return;
+
+    size_t slot = (g_logHistoryHead + g_logHistoryCount) % LOG_HISTORY_CAPACITY;
+    if (g_logHistoryCount >= LOG_HISTORY_CAPACITY)
+    {
+        slot = g_logHistoryHead;
+        g_logHistoryHead = (g_logHistoryHead + 1) % LOG_HISTORY_CAPACITY;
+    }
+    else
+    {
+        g_logHistoryCount++;
+    }
+
+    normalize_log_text(text, g_logHistory[slot].text, sizeof(g_logHistory[slot].text));
 }
 
 void vlog_write(LogLevel level, const char *fmt, va_list args)
@@ -107,21 +161,59 @@ void log_flush(void)
 
         if (has_entry)
         {
-            printf("[%s] %s", level_label(entry.level), entry.text);
-            size_t len = strlen(entry.text);
-            if (len == 0 || entry.text[len - 1] != '\n')
-                printf("\n");
+            char line[LOG_HISTORY_MESSAGE_MAX];
+            line[0] = '\0';
+            snprintf(line, sizeof(line), "[%s] ", level_label(entry.level));
+            size_t prefix_len = strlen(line);
+            normalize_log_text(entry.text, line + prefix_len, sizeof(line) - prefix_len);
+
+            mutexLock(&g_logMutex);
+            append_history_line_locked(line);
+            mutexUnlock(&g_logMutex);
             continue;
         }
 
         if (dropped > 0)
         {
-            printf("[WARN] log queue full, dropped %u messages\n", dropped);
+            char line[LOG_HISTORY_MESSAGE_MAX];
+            snprintf(line, sizeof(line), "[WARN] log queue full, dropped %u messages", dropped);
+
+            mutexLock(&g_logMutex);
+            append_history_line_locked(line);
+            mutexUnlock(&g_logMutex);
             continue;
         }
 
         break;
     }
+}
+
+size_t log_history_count(void)
+{
+    mutexLock(&g_logMutex);
+    size_t count = g_logHistoryCount;
+    mutexUnlock(&g_logMutex);
+    return count;
+}
+
+bool log_history_get_line(size_t index, char *out, size_t out_size)
+{
+    if (!out || out_size == 0)
+        return false;
+
+    out[0] = '\0';
+
+    mutexLock(&g_logMutex);
+    if (index >= g_logHistoryCount)
+    {
+        mutexUnlock(&g_logMutex);
+        return false;
+    }
+
+    size_t slot = (g_logHistoryHead + index) % LOG_HISTORY_CAPACITY;
+    snprintf(out, out_size, "%s", g_logHistory[slot].text);
+    mutexUnlock(&g_logMutex);
+    return true;
 }
 
 void log_set_enabled(bool enabled)
@@ -149,21 +241,6 @@ LogLevel log_get_level(void)
     LogLevel level = g_logMinLevel;
     mutexUnlock(&g_logMutex);
     return level;
-}
-
-void log_set_verbose_payload(bool enabled)
-{
-    mutexLock(&g_logMutex);
-    g_logVerbosePayload = enabled;
-    mutexUnlock(&g_logMutex);
-}
-
-bool log_get_verbose_payload(void)
-{
-    mutexLock(&g_logMutex);
-    bool enabled = g_logVerbosePayload;
-    mutexUnlock(&g_logMutex);
-    return enabled;
 }
 
 void log_debug(const char *fmt, ...)

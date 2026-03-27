@@ -31,8 +31,6 @@ typedef struct
 #define SCPD_SOAP_RESPONSE_BUFFER_SIZE 8192
 // Keep this above the old 0x4000 default to avoid stack overflow on libnx threads.
 #define SCPD_THREAD_STACK_SIZE 0x8000
-#define SCPD_LOG_PREVIEW_MAX 512
-#define SCPD_LOG_CHUNK_MAX 700
 
 static const char g_deviceXmlTemplate[] =
     "<?xml version=\"1.0\"?>\n"
@@ -358,66 +356,6 @@ static bool get_header_value(const char *request, const char *header, char *out,
     return false;
 }
 
-static void log_payload_preview(const char *label, const char *payload)
-{
-    if (!label)
-        return;
-    if (!payload)
-    {
-        log_debug("[scpd] %s: (null)\n", label);
-        return;
-    }
-
-    size_t len = strlen(payload);
-    if (log_get_level() == LOG_LEVEL_DEBUG && log_get_verbose_payload())
-    {
-        // Print full payload in chunks so each log entry stays under LOG_MESSAGE_MAX.
-        log_debug("[scpd] %s len=%zu (full)\n", label, len);
-        size_t offset = 0;
-        while (offset < len)
-        {
-            size_t chunk_len = len - offset;
-            if (chunk_len > SCPD_LOG_CHUNK_MAX)
-                chunk_len = SCPD_LOG_CHUNK_MAX;
-
-            char chunk[SCPD_LOG_CHUNK_MAX + 1];
-            memcpy(chunk, payload + offset, chunk_len);
-            chunk[chunk_len] = '\0';
-
-            log_debug("[scpd] %s chunk[%zu:%zu]: %s\n",
-                      label,
-                      offset,
-                      offset + chunk_len,
-                      chunk);
-            offset += chunk_len;
-        }
-        return;
-    }
-
-    size_t preview_len = len;
-    bool truncated = false;
-    if (preview_len > SCPD_LOG_PREVIEW_MAX)
-    {
-        preview_len = SCPD_LOG_PREVIEW_MAX;
-        truncated = true;
-    }
-
-    char preview[SCPD_LOG_PREVIEW_MAX + 1];
-    memcpy(preview, payload, preview_len);
-    preview[preview_len] = '\0';
-    for (size_t i = 0; i < preview_len; ++i)
-    {
-        if (preview[i] == '\r' || preview[i] == '\n' || preview[i] == '\t')
-            preview[i] = ' ';
-    }
-
-    log_debug("[scpd] %s len=%zu%s: %s\n",
-              label,
-              len,
-              truncated ? " (truncated)" : "",
-              preview);
-}
-
 static void send_not_found(int clientSock)
 {
     const char *response =
@@ -512,13 +450,7 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
     {
         if (soap_response_len > 0)
             send(clientSock, soap_response, soap_response_len, 0);
-        log_info("[scpd] SOAP handled endpoint=%s\n", path);
-        if (soap_response_len > 0)
-        {
-            const char *soap_body = strstr(soap_response, "\r\n\r\n");
-            soap_body = soap_body ? (soap_body + 4) : soap_response;
-            log_payload_preview("soap response body xml", soap_body);
-        }
+        log_info("[scpd] SOAP handled endpoint=%s send_bytes=%zu\n", path, soap_response_len);
         free(buffer);
         free(soap_response);
         return;
@@ -543,8 +475,7 @@ static void handle_client(int clientSock, const struct sockaddr_in *clientAddr)
     }
 
     send_xml(clientSock, resource);
-    log_info("[scpd] Served %s (len=%zu)\n", path, resource->body_len);
-    log_payload_preview("xml body", resource->body);
+    log_info("[scpd] Served %s send_bytes=%zu\n", path, resource->body_len);
     free(buffer);
     free(soap_response);
 }
@@ -559,14 +490,16 @@ static void scpd_thread(void *arg)
         FD_SET(g_listenSock, &readfds);
 
         struct timeval timeout;
-        timeout.tv_sec = 1;
-        timeout.tv_usec = 0;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 100000;
 
         int ret = select(g_listenSock + 1, &readfds, NULL, NULL, &timeout);
         if (ret < 0)
         {
             if (errno == EINTR)
                 continue;
+            if (!g_running)
+                break;
             log_error("[scpd] select failed: %s (%d)\n", strerror(errno), errno);
             break;
         }
@@ -662,17 +595,19 @@ void scpd_stop(void)
 
     g_running = false;
 
+    if (g_listenSock >= 0)
+    {
+        int sock = g_listenSock;
+        g_listenSock = -1;
+        shutdown(sock, SHUT_RDWR);
+        close(sock);
+    }
+
     if (g_threadStarted)
     {
         threadWaitForExit(&g_httpThread);
         threadClose(&g_httpThread);
         g_threadStarted = false;
-    }
-
-    if (g_listenSock >= 0)
-    {
-        close(g_listenSock);
-        g_listenSock = -1;
     }
 
     g_httpPort = 0;

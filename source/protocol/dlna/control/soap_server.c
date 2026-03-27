@@ -10,8 +10,6 @@
 #include "log/log.h"
 
 static bool g_running = false;
-#define SOAP_LOG_PREVIEW_MAX 512
-#define SOAP_LOG_CHUNK_MAX 700
 
 static bool starts_with(const char *value, const char *prefix)
 {
@@ -136,65 +134,183 @@ static bool parse_service_name_from_path(const char *path, char *service_name, s
     return true;
 }
 
-static void log_payload_preview(const char *label, const char *payload)
+static bool extract_xml_tag_value(const char *xml, const char *tag, char *out, size_t out_size)
 {
-    if (!label)
+    if (!xml || !tag || !out || out_size == 0)
+        return false;
+
+    char open_tag[64];
+    char close_tag[64];
+    int open_len = snprintf(open_tag, sizeof(open_tag), "<%s>", tag);
+    int close_len = snprintf(close_tag, sizeof(close_tag), "</%s>", tag);
+    if (open_len <= 0 || close_len <= 0 ||
+        (size_t)open_len >= sizeof(open_tag) || (size_t)close_len >= sizeof(close_tag))
+        return false;
+
+    const char *start = strstr(xml, open_tag);
+    if (!start)
+        return false;
+    start += (size_t)open_len;
+
+    const char *end = strstr(start, close_tag);
+    if (!end || end < start)
+        return false;
+
+    size_t value_len = (size_t)(end - start);
+    if (value_len >= out_size)
+        value_len = out_size - 1;
+
+    memcpy(out, start, value_len);
+    out[value_len] = '\0';
+    trim_whitespace(out);
+    return true;
+}
+
+static void clip_for_log(const char *input, char *output, size_t output_size)
+{
+    if (!output || output_size == 0)
         return;
-    if (!payload)
+    if (!input)
     {
-        log_debug("[soap] %s: (null)\n", label);
+        output[0] = '\0';
         return;
     }
 
-    size_t len = strlen(payload);
-    if (log_get_level() == LOG_LEVEL_DEBUG && log_get_verbose_payload())
+    size_t len = strlen(input);
+    if (len + 1 <= output_size)
     {
-        // Print full payload in chunks so each log entry stays under LOG_MESSAGE_MAX.
-        log_debug("[soap] %s len=%zu (full)\n", label, len);
-        size_t offset = 0;
-        while (offset < len)
+        snprintf(output, output_size, "%s", input);
+        return;
+    }
+
+    if (output_size <= 4)
+    {
+        output[0] = '\0';
+        return;
+    }
+
+    size_t copy_len = output_size - 4;
+    memcpy(output, input, copy_len);
+    output[copy_len] = '.';
+    output[copy_len + 1] = '.';
+    output[copy_len + 2] = '.';
+    output[copy_len + 3] = '\0';
+}
+
+static void log_soap_call_summary(const char *service_name, const char *action_name, const char *body, size_t body_len)
+{
+    char instance_id[32];
+    char current_uri[256];
+    char current_uri_short[96];
+    char target[64];
+    char unit[32];
+    char speed[32];
+    char channel[32];
+    char desired_volume[32];
+    char desired_mute[16];
+
+    bool has_instance_id = extract_xml_tag_value(body, "InstanceID", instance_id, sizeof(instance_id));
+    bool has_current_uri = extract_xml_tag_value(body, "CurrentURI", current_uri, sizeof(current_uri));
+    bool has_target = extract_xml_tag_value(body, "Target", target, sizeof(target));
+    bool has_unit = extract_xml_tag_value(body, "Unit", unit, sizeof(unit));
+    bool has_speed = extract_xml_tag_value(body, "Speed", speed, sizeof(speed));
+    bool has_channel = extract_xml_tag_value(body, "Channel", channel, sizeof(channel));
+    bool has_desired_volume = extract_xml_tag_value(body, "DesiredVolume", desired_volume, sizeof(desired_volume));
+    bool has_desired_mute = extract_xml_tag_value(body, "DesiredMute", desired_mute, sizeof(desired_mute));
+
+    if (has_current_uri && has_instance_id)
+    {
+        clip_for_log(current_uri, current_uri_short, sizeof(current_uri_short));
+        log_info("[soap] soap_call \"%s\" \"%s\" <InstanceID>%s</InstanceID> <CurrentURI>%s</CurrentURI>\n",
+                 service_name, action_name, instance_id, current_uri_short);
+        return;
+    }
+
+    if (has_unit && has_target && has_instance_id)
+    {
+        log_info("[soap] soap_call \"%s\" \"%s\" <InstanceID>%s</InstanceID> <Unit>%s</Unit> <Target>%s</Target>\n",
+                 service_name, action_name, instance_id, unit, target);
+        return;
+    }
+
+    if (has_speed && has_instance_id)
+    {
+        log_info("[soap] soap_call \"%s\" \"%s\" <InstanceID>%s</InstanceID> <Speed>%s</Speed>\n",
+                 service_name, action_name, instance_id, speed);
+        return;
+    }
+
+    if (has_desired_volume && has_channel && has_instance_id)
+    {
+        log_info("[soap] soap_call \"%s\" \"%s\" <InstanceID>%s</InstanceID> <Channel>%s</Channel> <DesiredVolume>%s</DesiredVolume>\n",
+                 service_name, action_name, instance_id, channel, desired_volume);
+        return;
+    }
+
+    if (has_desired_mute && has_channel && has_instance_id)
+    {
+        log_info("[soap] soap_call \"%s\" \"%s\" <InstanceID>%s</InstanceID> <Channel>%s</Channel> <DesiredMute>%s</DesiredMute>\n",
+                 service_name, action_name, instance_id, channel, desired_mute);
+        return;
+    }
+
+    if (has_instance_id)
+    {
+        log_info("[soap] soap_call \"%s\" \"%s\" <InstanceID>%s</InstanceID>\n",
+                 service_name, action_name, instance_id);
+        return;
+    }
+
+    if (has_current_uri)
+    {
+        clip_for_log(current_uri, current_uri_short, sizeof(current_uri_short));
+        log_info("[soap] soap_call \"%s\" \"%s\" <CurrentURI>%s</CurrentURI>\n",
+                 service_name, action_name, current_uri_short);
+        return;
+    }
+
+    if (has_target && has_unit)
+    {
+        log_info("[soap] soap_call \"%s\" \"%s\" <Unit>%s</Unit> <Target>%s</Target>\n",
+                 service_name, action_name, unit, target);
+        return;
+    }
+
+    if (has_speed)
+    {
+        log_info("[soap] soap_call \"%s\" \"%s\" <Speed>%s</Speed>\n",
+                 service_name, action_name, speed);
+        return;
+    }
+
+    if (has_desired_volume)
+    {
+        if (has_channel)
         {
-            size_t chunk_len = len - offset;
-            if (chunk_len > SOAP_LOG_CHUNK_MAX)
-                chunk_len = SOAP_LOG_CHUNK_MAX;
-
-            char chunk[SOAP_LOG_CHUNK_MAX + 1];
-            memcpy(chunk, payload + offset, chunk_len);
-            chunk[chunk_len] = '\0';
-
-            log_debug("[soap] %s chunk[%zu:%zu]: %s\n",
-                      label,
-                      offset,
-                      offset + chunk_len,
-                      chunk);
-            offset += chunk_len;
+            log_info("[soap] soap_call \"%s\" \"%s\" <Channel>%s</Channel> <DesiredVolume>%s</DesiredVolume>\n",
+                     service_name, action_name, channel, desired_volume);
+            return;
         }
+        log_info("[soap] soap_call \"%s\" \"%s\" <DesiredVolume>%s</DesiredVolume>\n",
+                 service_name, action_name, desired_volume);
         return;
     }
 
-    size_t preview_len = len;
-    bool truncated = false;
-    if (preview_len > SOAP_LOG_PREVIEW_MAX)
+    if (has_desired_mute)
     {
-        preview_len = SOAP_LOG_PREVIEW_MAX;
-        truncated = true;
+        if (has_channel)
+        {
+            log_info("[soap] soap_call \"%s\" \"%s\" <Channel>%s</Channel> <DesiredMute>%s</DesiredMute>\n",
+                     service_name, action_name, channel, desired_mute);
+            return;
+        }
+        log_info("[soap] soap_call \"%s\" \"%s\" <DesiredMute>%s</DesiredMute>\n",
+                 service_name, action_name, desired_mute);
+        return;
     }
 
-    char preview[SOAP_LOG_PREVIEW_MAX + 1];
-    memcpy(preview, payload, preview_len);
-    preview[preview_len] = '\0';
-
-    for (size_t i = 0; i < preview_len; ++i)
-    {
-        if (preview[i] == '\r' || preview[i] == '\n' || preview[i] == '\t')
-            preview[i] = ' ';
-    }
-
-    log_debug("[soap] %s len=%zu%s: %s\n",
-              label,
-              len,
-              truncated ? " (truncated)" : "",
-              preview);
+    log_info("[soap] soap_call \"%s\" \"%s\" body_bytes=%zu\n",
+             service_name, action_name, body_len);
 }
 
 static bool build_http_response(int status,
@@ -407,6 +523,7 @@ bool soap_server_try_handle_http(const char *method,
     const char *body = find_body(request);
     if (!body)
         body = "";
+    size_t body_len = strlen(body);
 
     char host_header[128];
     host_header[0] = '\0';
@@ -419,7 +536,8 @@ bool soap_server_try_handle_http(const char *method,
               request_len);
     log_debug("[soap] route service=%s action=%s soapAction=%s\n",
               service_name, action_name, soap_action_header);
-    log_payload_preview("request body xml", body);
+    log_debug("[soap] recv packet endpoint=%s body_bytes=%zu\n", path, body_len);
+    log_soap_call_summary(service_name, action_name, body, body_len);
 
     SoapActionContext ctx = {
         .service_name = service_name,
@@ -431,8 +549,6 @@ bool soap_server_try_handle_http(const char *method,
     bool handled_ok = soap_router_route_action(&ctx, &result);
     if (handled_ok && result.output.success)
     {
-        log_payload_preview("response args xml", result.output.output_xml);
-
         bool built = build_soap_success(result.service_type,
                                         result.action_name,
                                         result.output.output_xml,
@@ -446,8 +562,10 @@ bool soap_server_try_handle_http(const char *method,
             return false;
         }
 
-        const char *response_body = find_body(response);
-        log_payload_preview("response body xml", response_body ? response_body : "");
+        log_debug("[soap] send packet endpoint=%s status=200 bytes=%zu\n",
+                  path, *response_len);
+        log_info("[soap] assert_http_200 service=%s action=%s\n",
+                 service_name, action_name);
         return true;
     }
 
@@ -467,7 +585,9 @@ bool soap_server_try_handle_http(const char *method,
         return false;
     }
 
-    const char *fault_body = find_body(response);
-    log_payload_preview("fault body xml", fault_body ? fault_body : "");
+    log_debug("[soap] send packet endpoint=%s status=500 bytes=%zu\n",
+              path, *response_len);
+    log_warn("[soap] assert_http_500 service=%s action=%s code=%d\n",
+             service_name, action_name, fault_code);
     return true;
 }

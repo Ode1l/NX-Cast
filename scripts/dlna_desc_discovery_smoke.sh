@@ -9,7 +9,8 @@ BASE_URL="http://${HOST}:${PORT}"
 SSDP_PORT="${SSDP_PORT:-1900}"
 SSDP_TARGET_IP="${SSDP_TARGET_IP:-239.255.255.250}"
 SSDP_HOST_HEADER="${SSDP_HOST_HEADER:-239.255.255.250:1900}"
-SSDP_TIMEOUT_SEC="${SSDP_TIMEOUT_SEC:-3}"
+SSDP_TIMEOUT_SEC="${SSDP_TIMEOUT_SEC:-1}"
+SSDP_SEND_HOLD_SEC="${SSDP_SEND_HOLD_SEC:-0.1}"
 SSDP_FALLBACK_UNICAST="${SSDP_FALLBACK_UNICAST:-1}"
 VERBOSE="${VERBOSE:-0}"
 
@@ -89,7 +90,8 @@ ssdp_probe() {
     fi
     tried_targets+="${target}:${SSDP_PORT}"
 
-    candidate="$({ printf '%s' "$request"; sleep "${SSDP_TIMEOUT_SEC}"; } | nc -4 -u -w "${SSDP_TIMEOUT_SEC}" "${target}" "${SSDP_PORT}" 2>/dev/null || true)"
+    # Keep stdin open briefly so nc can receive asynchronous UDP reply.
+    candidate="$({ printf '%s' "$request"; sleep "${SSDP_SEND_HOLD_SEC}"; } | nc -4 -u -w "${SSDP_TIMEOUT_SEC}" "${target}" "${SSDP_PORT}" 2>/dev/null || true)"
     [[ -z "$candidate" ]] && continue
 
     has_any_response="1"
@@ -140,6 +142,7 @@ main() {
 
   log "HTTP target: ${BASE_URL}"
   log "SSDP target: ${SSDP_TARGET_IP}:${SSDP_PORT}"
+  log "SSDP timeout=${SSDP_TIMEOUT_SEC}s send-hold=${SSDP_SEND_HOLD_SEC}s"
 
   log "1/6 GET /device.xml"
   http_get "/device.xml"
