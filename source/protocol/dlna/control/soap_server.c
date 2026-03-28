@@ -33,6 +33,20 @@ static void trim_whitespace(char *value)
         memmove(value, value + start, strlen(value + start) + 1);
 }
 
+static bool is_blank_text(const char *value)
+{
+    if (!value)
+        return true;
+
+    while (*value)
+    {
+        if (!isspace((unsigned char)*value))
+            return false;
+        ++value;
+    }
+    return true;
+}
+
 static void unquote(char *value)
 {
     trim_whitespace(value);
@@ -614,6 +628,23 @@ bool soap_server_try_handle_http(const char *method,
     if (!body)
         body = "";
     size_t body_len = strlen(body);
+
+    if (is_blank_text(body))
+    {
+        log_fault_request_detail("empty_SOAP_body",
+                                 method,
+                                 path,
+                                 soap_action_header,
+                                 request,
+                                 request_len,
+                                 body,
+                                 body_len);
+        return build_soap_fault(402,
+                                "Invalid Args",
+                                response,
+                                response_size,
+                                response_len);
+    }
 
     char host_header[128];
     host_header[0] = '\0';
