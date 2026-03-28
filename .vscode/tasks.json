@@ -1,0 +1,57 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build NX-Cast",
+      "type": "shell",
+      "command": "make clean all",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "Clean NX-Cast",
+      "type": "shell",
+      "command": "make clean",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "Upload (nxlink)",
+      "type": "shell",
+      "command": "nxlink -a ${input:switchIp} ${workspaceFolder}/NX-Cast.nro",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Upload + nxlink server (requires nxlinkStdio)",
+      "type": "shell",
+      "command": "nxlink -a ${input:switchIp} -s ${workspaceFolder}/NX-Cast.nro",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "switchIp",
+      "type": "promptString",
+      "description": "Nintendo Switch IP address",
+      "default": "192.168.1.100"
+    }
+  ]
+}

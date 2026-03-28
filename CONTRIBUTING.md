@@ -18,7 +18,9 @@ git clone https://github.com/ode1l/NX-Cast
 
 Build:
 
+```
 make
+```
 
 ## Coding Style
 

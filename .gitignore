@@ -3,3 +3,9 @@ build
 NX-Cast.elf
 NX-Cast.nacp
 NX-Cast.nro
+NX-Cast.lst
+
+.Ds_Store
+source/.DS_Store
+
+# .vscode VSCode settings folder. you can use my settings.

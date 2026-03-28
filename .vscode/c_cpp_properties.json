@@ -1,0 +1,44 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "Switch-devkitPro",
+      "compilerPath": "/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc",
+      "intelliSenseMode": "linux-gcc-arm64",
+      "cStandard": "gnu17",
+      "cppStandard": "c++17",
+      "compilerArgs": [
+        "-D__SWITCH__",
+        "-I/opt/devkitpro/libnx/include"
+      ],
+      "defines": [
+        "__SWITCH__"
+      ],
+      "includePath": [
+        "${workspaceFolder}/source",
+        "${workspaceFolder}/build",
+        "${env:DEVKITPRO}/libnx/include",
+        "${env:DEVKITPRO}/devkitA64/aarch64-none-elf/include",
+        "${env:DEVKITPRO}/devkitA64/lib/gcc/aarch64-none-elf/*/include",
+        "${env:DEVKITPRO}/devkitA64/lib/gcc/aarch64-none-elf/*/include-fixed",
+        "/opt/devkitpro/libnx/include",
+        "/opt/devkitpro/devkitA64/aarch64-none-elf/include",
+        "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/*/include",
+        "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/*/include-fixed"
+      ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}/source",
+          "${workspaceFolder}/build",
+          "${env:DEVKITPRO}/libnx/include",
+          "${env:DEVKITPRO}/devkitA64/aarch64-none-elf/include",
+          "${env:DEVKITPRO}/devkitA64/lib/gcc/aarch64-none-elf/*/include",
+          "${env:DEVKITPRO}/devkitA64/lib/gcc/aarch64-none-elf/*/include-fixed",
+          "/opt/devkitpro/libnx/include",
+          "/opt/devkitpro/devkitA64/aarch64-none-elf/include"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      }
+    }
+  ]
+}
