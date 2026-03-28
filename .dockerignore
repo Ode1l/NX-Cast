@@ -1,0 +1,9 @@
+.git
+.gitignore
+.vscode
+build
+logs
+NX-Cast.elf
+NX-Cast.nro
+NX-Cast.nacp
+NX-Cast.lst

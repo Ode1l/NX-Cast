@@ -160,6 +160,26 @@ make
  生成 `.nro` 文件。
 ```
 
+### Docker 构建（可选）
+
+如果你不想在本机安装 devkitPro，可用 Docker 进行可复现构建：
+
+```text
+./scripts/docker_build.sh
+```
+
+等价的 docker compose 命令：
+
+```text
+docker compose build nx-cast-build
+docker compose run --rm nx-cast-build
+```
+
+说明：
+
+- 设置 `NO_CLEAN=1` 可跳过 clean（`NO_CLEAN=1 ./scripts/docker_build.sh`）。
+- Docker 仅负责编译；运行与投屏联调仍需要真实 Switch 设备。
+
 ---
 
 ## 运行
@@ -193,7 +213,7 @@ make
 
 为了将 NX-Cast 正式发布到 switchbrew，除了核心功能外还需要补齐以下内容：
 
-- 许可证信息：保持 MIT LICENSE，并在 `README`、发布页面和 `.nro/.nacp` 元数据中注明，同时列出依赖库和素材的授权情况。
+- 许可证信息：保持 GPLv3 LICENSE，并在 `README`、发布页面和 `.nro/.nacp` 元数据中注明，同时列出依赖库和素材的授权情况。
 - 文档集合：开发环境搭建、模块/协议设计文档、编码规范、贡献流程、可复现的构建与测试指引。
 - 发布元数据：语义化版本号、更新日志、Release Note、`.nro/.nacp` 的应用名称/作者/描述，以及可选的截图或演示视频。
 - 合规说明：声明不包含受版权保护的固件/密钥，列出运行时依赖与安全注意事项。
@@ -209,11 +229,24 @@ make
 - 可选的许可证扫描与安全检查，避免引入不符合要求的依赖。
 - 发布流程自动化：在 CI 中打包产物并生成 release note，减少人工步骤。
 
+当前工作流：
+
+- `CI`：`.github/workflows/ci.yml`（push/PR 自动构建并上传产物）。
+- `Release`：`.github/workflows/release.yml`（推送 `v*` 标签时自动创建 GitHub Release，并上传 `NX-Cast.nro`）。
+
+标签发布示例：
+
+```text
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ---
 
 ## License
 
-MIT License © 2026 Ode1l Contributors。完整条款见 `LICENSE`。
+NX-Cast 采用 GNU GPLv3 许可证。完整条款见 `LICENSE`。
+Copyright (c) 2026 Ode1l。
 
 ---
 

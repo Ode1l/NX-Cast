@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build NX-Cast in devkitPro container
+        run: |
+          docker run --rm \
+            -e DEVKITPRO=/opt/devkitpro \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            devkitpro/devkita64:latest \
+            bash -lc 'make clean && make -j$(nproc)'
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nx-cast-${{ github.sha }}
+          path: |
+            NX-Cast.nro
+          if-no-files-found: error

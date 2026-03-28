@@ -1,0 +1,11 @@
+services:
+  nx-cast-build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    environment:
+      DEVKITPRO: /opt/devkitpro
+    volumes:
+      - ./:/workspace
+    command: bash -lc "make clean && make -j$(nproc)"
