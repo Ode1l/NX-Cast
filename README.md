@@ -191,7 +191,7 @@ Areas where help is needed:
 
 To publish NX-Cast as a Switchbrew project, we still need the following project-wide assets in addition to the core implementation:
 
-- Clear licensing info: keep the MIT license file, mention it in `README`, and document third-party licenses referenced by the code and any shipped assets (icons, fonts, etc.).
+- Clear licensing info: keep the GPLv3 license file, mention it in `README`, and document third-party licenses referenced by the code and any shipped assets (icons, fonts, etc.).
 - Documentation set: developer environment setup, module-level design notes, coding standards, contribution guide, and reproducible build/test instructions.
 - Release metadata: semantic versions, changelog, release notes, `.nro/.nacp` metadata (title, author, version, description), plus optional screenshots or videos for the project page.
 - Compliance statements: note that no copyrighted firmware/keys are included and list runtime dependencies and security considerations.
@@ -211,7 +211,8 @@ Having basic automation increases trust when distributing on Switchbrew:
 
 ## License
 
-MIT License © 2026 Ode1l Contributors. See `LICENSE` for full terms.
+NX-Cast is licensed under GNU GPLv3. See `LICENSE` for full terms.
+Copyright (c) 2026 Ode1l.
 
 ---
 

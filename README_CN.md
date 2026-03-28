@@ -193,7 +193,7 @@ make
 
 为了将 NX-Cast 正式发布到 switchbrew，除了核心功能外还需要补齐以下内容：
 
-- 许可证信息：保持 MIT LICENSE，并在 `README`、发布页面和 `.nro/.nacp` 元数据中注明，同时列出依赖库和素材的授权情况。
+- 许可证信息：保持 GPLv3 LICENSE，并在 `README`、发布页面和 `.nro/.nacp` 元数据中注明，同时列出依赖库和素材的授权情况。
 - 文档集合：开发环境搭建、模块/协议设计文档、编码规范、贡献流程、可复现的构建与测试指引。
 - 发布元数据：语义化版本号、更新日志、Release Note、`.nro/.nacp` 的应用名称/作者/描述，以及可选的截图或演示视频。
 - 合规说明：声明不包含受版权保护的固件/密钥，列出运行时依赖与安全注意事项。
@@ -213,7 +213,8 @@ make
 
 ## License
 
-MIT License © 2026 Ode1l Contributors。完整条款见 `LICENSE`。
+NX-Cast 采用 GNU GPLv3 许可证。完整条款见 `LICENSE`。
+Copyright (c) 2026 Ode1l。
 
 ---
 
