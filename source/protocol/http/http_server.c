@@ -19,6 +19,7 @@
 #define HTTP_SERVER_REQUEST_BUFFER_SIZE 16384
 #define HTTP_SERVER_RESPONSE_BUFFER_SIZE 12288
 #define HTTP_SERVER_THREAD_STACK_SIZE 0x8000
+#define HTTP_SERVER_RECV_IDLE_TIMEOUT_SEC 1
 
 typedef struct
 {
@@ -120,6 +121,124 @@ static bool parse_request_line(const char *request,
     return sscanf(request, "%7s %255s", method, raw_path) == 2;
 }
 
+static const char *find_header_end(const char *request, size_t request_len)
+{
+    if (!request || request_len < 4)
+        return NULL;
+
+    for (size_t i = 0; i + 3 < request_len; ++i)
+    {
+        if (request[i] == '\r' && request[i + 1] == '\n' &&
+            request[i + 2] == '\r' && request[i + 3] == '\n')
+        {
+            return request + i + 4;
+        }
+    }
+    return NULL;
+}
+
+static bool parse_content_length(const char *request, size_t *content_length)
+{
+    if (!request || !content_length)
+        return false;
+
+    char content_length_str[32];
+    if (!get_header_value(request, "Content-Length", content_length_str, sizeof(content_length_str)))
+        return false;
+
+    char *end_ptr = NULL;
+    unsigned long parsed = strtoul(content_length_str, &end_ptr, 10);
+    if (!end_ptr || *end_ptr != '\0')
+        return false;
+
+    *content_length = (size_t)parsed;
+    return true;
+}
+
+static ssize_t recv_full_http_request(int client_sock, char *request_buffer, size_t request_capacity)
+{
+    if (client_sock < 0 || !request_buffer || request_capacity == 0)
+        return -1;
+
+    size_t request_len = 0;
+    bool expected_total_known = false;
+    size_t expected_total = 0;
+
+    // Avoid parsing partial SOAP bodies by waiting for the declared payload.
+    struct timeval recv_timeout;
+    recv_timeout.tv_sec = HTTP_SERVER_RECV_IDLE_TIMEOUT_SEC;
+    recv_timeout.tv_usec = 0;
+    setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, &recv_timeout, sizeof(recv_timeout));
+
+    while (request_len < request_capacity - 1)
+    {
+        ssize_t chunk = recv(client_sock,
+                             request_buffer + request_len,
+                             request_capacity - 1 - request_len,
+                             0);
+        if (chunk > 0)
+        {
+            request_len += (size_t)chunk;
+            request_buffer[request_len] = '\0';
+
+            if (!expected_total_known)
+            {
+                const char *header_end = find_header_end(request_buffer, request_len);
+                if (header_end)
+                {
+                    size_t header_len = (size_t)(header_end - request_buffer);
+                    size_t content_length = 0;
+                    if (!parse_content_length(request_buffer, &content_length))
+                        content_length = 0;
+
+                    expected_total = header_len + content_length;
+                    expected_total_known = true;
+
+                    if (expected_total >= request_capacity)
+                    {
+                        log_warn("[http-server] request too large header=%zu body=%zu capacity=%zu\n",
+                                 header_len, content_length, request_capacity - 1);
+                        return -1;
+                    }
+                }
+            }
+
+            if (expected_total_known && request_len >= expected_total)
+                break;
+            continue;
+        }
+
+        if (chunk == 0)
+            break;
+
+        if (errno == EINTR)
+            continue;
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            break;
+
+        return -1;
+    }
+
+    if (request_len == 0)
+        return -1;
+
+    if (!expected_total_known)
+    {
+        log_warn("[http-server] incomplete headers bytes=%zu\n", request_len);
+        return -1;
+    }
+
+    if (expected_total_known && request_len < expected_total)
+    {
+        log_warn("[http-server] incomplete request bytes=%zu expected=%zu\n", request_len, expected_total);
+        return -1;
+    }
+
+    request_buffer[request_len] = '\0';
+    return (ssize_t)request_len;
+}
+
 static void normalize_path(const char *raw_path, char *path, size_t path_size)
 {
     if (!path || path_size == 0)
@@ -149,7 +268,9 @@ static void handle_client(int client_sock, const struct sockaddr_in *client_addr
         return;
     }
 
-    ssize_t request_size = recv(client_sock, request_buffer, HTTP_SERVER_REQUEST_BUFFER_SIZE - 1, 0);
+    ssize_t request_size = recv_full_http_request(client_sock,
+                                                  request_buffer,
+                                                  HTTP_SERVER_REQUEST_BUFFER_SIZE);
     if (request_size <= 0)
     {
         free(request_buffer);
