@@ -160,6 +160,26 @@ make
  生成 `.nro` 文件。
 ```
 
+### Docker 构建（可选）
+
+如果你不想在本机安装 devkitPro，可用 Docker 进行可复现构建：
+
+```text
+./scripts/docker_build.sh
+```
+
+等价的 docker compose 命令：
+
+```text
+docker compose build nx-cast-build
+docker compose run --rm nx-cast-build
+```
+
+说明：
+
+- 设置 `NO_CLEAN=1` 可跳过 clean（`NO_CLEAN=1 ./scripts/docker_build.sh`）。
+- Docker 仅负责编译；运行与投屏联调仍需要真实 Switch 设备。
+
 ---
 
 ## 运行
@@ -208,6 +228,18 @@ make
 - 持续集成：在每个 PR 上运行格式检查、静态分析、`make` 构建 `.nro` 和现有测试。
 - 可选的许可证扫描与安全检查，避免引入不符合要求的依赖。
 - 发布流程自动化：在 CI 中打包产物并生成 release note，减少人工步骤。
+
+当前工作流：
+
+- `CI`：`.github/workflows/ci.yml`（push/PR 自动构建并上传产物）。
+- `Release`：`.github/workflows/release.yml`（推送 `v*` 标签时自动创建 GitHub Release，并上传 `NX-Cast.nro`）。
+
+标签发布示例：
+
+```text
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ---
 

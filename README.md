@@ -159,6 +159,26 @@ make
  This produces a `.nro` executable for the Nintendo Switch.
 ```
 
+### Build in Docker (optional)
+
+If you want a reproducible build environment without installing devkitPro locally:
+
+```text
+./scripts/docker_build.sh
+```
+
+Equivalent docker compose command:
+
+```text
+docker compose build nx-cast-build
+docker compose run --rm nx-cast-build
+```
+
+Notes:
+
+- Set `NO_CLEAN=1` to skip clean (`NO_CLEAN=1 ./scripts/docker_build.sh`).
+- Docker build covers compilation only; runtime verification still needs real Switch hardware.
+
 ---
 
 ## Running
@@ -206,6 +226,18 @@ Having basic automation increases trust when distributing on Switchbrew:
 - Continuous integration that runs formatting/lints, builds the `.nro`, and executes available tests on each pull request.
 - Optional static analysis (clang-tidy, scan-build) and license checks to prevent regressions.
 - Release workflows that package artifacts and populate release notes automatically to reduce manual steps when publishing.
+
+Current workflows:
+
+- `CI`: `.github/workflows/ci.yml` (runs on push/PR, builds and uploads artifacts).
+- `Release`: `.github/workflows/release.yml` (runs on `v*` tags, publishes GitHub Release with `NX-Cast.nro`).
+
+Tag example:
+
+```text
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ---
 
