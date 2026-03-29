@@ -1,13 +1,49 @@
 #include "player.h"
 
 #include <stddef.h>
+#include <string.h>
 
+#include "log/log.h"
 #include "player_backend.h"
 
-static const PlayerBackendOps *g_backend = &g_player_backend_mock;
+static const PlayerBackendOps *g_backend = NULL;
+static PlayerBackendType g_backend_type = PLAYER_BACKEND_AUTO;
 static bool g_initialized = false;
 static PlayerEventCallback g_event_callback = NULL;
 static void *g_event_user = NULL;
+
+static bool backend_available(const PlayerBackendOps *backend)
+{
+    if (!backend)
+        return false;
+    if (!backend->available)
+        return true;
+    return backend->available();
+}
+
+static const PlayerBackendOps *backend_ops_from_type(PlayerBackendType backend_type)
+{
+    switch (backend_type)
+    {
+    case PLAYER_BACKEND_MOCK:
+        return &g_player_backend_mock;
+    case PLAYER_BACKEND_LIBMPV:
+        return &g_player_backend_libmpv;
+    case PLAYER_BACKEND_AUTO:
+    default:
+        if (backend_available(&g_player_backend_libmpv))
+            return &g_player_backend_libmpv;
+        return &g_player_backend_mock;
+    }
+}
+
+static const char *backend_name_from_type(PlayerBackendType backend_type)
+{
+    const PlayerBackendOps *backend = backend_ops_from_type(backend_type);
+    if (!backend || !backend->name)
+        return "unknown";
+    return backend->name;
+}
 
 static void player_emit_from_backend(const PlayerEvent *event)
 {
@@ -15,6 +51,34 @@ static void player_emit_from_backend(const PlayerEvent *event)
         return;
     if (g_event_callback)
         g_event_callback(event, g_event_user);
+}
+
+bool player_set_backend(PlayerBackendType backend)
+{
+    if (g_initialized)
+    {
+        log_warn("[player] backend change rejected while initialized current=%s requested=%s\n",
+                 player_get_backend_name(),
+                 backend_name_from_type(backend));
+        return false;
+    }
+
+    g_backend_type = backend;
+    g_backend = NULL;
+    log_info("[player] backend configured=%s\n", backend_name_from_type(backend));
+    return true;
+}
+
+PlayerBackendType player_get_backend(void)
+{
+    return g_backend_type;
+}
+
+const char *player_get_backend_name(void)
+{
+    if (g_backend && g_backend->name)
+        return g_backend->name;
+    return backend_name_from_type(g_backend_type);
 }
 
 void player_set_event_callback(PlayerEventCallback callback, void *user)
@@ -27,16 +91,40 @@ bool player_init(void)
 {
     if (g_initialized)
         return true;
+
+    g_backend = backend_ops_from_type(g_backend_type);
     if (!g_backend)
+    {
+        log_error("[player] no backend selected\n");
         return false;
+    }
+
+    if (g_backend_type != PLAYER_BACKEND_AUTO && !backend_available(g_backend))
+    {
+        log_error("[player] backend unavailable name=%s\n", player_get_backend_name());
+        g_backend = NULL;
+        return false;
+    }
+
+    if (!backend_available(g_backend))
+    {
+        log_error("[player] auto backend resolution failed\n");
+        g_backend = NULL;
+        return false;
+    }
 
     if (g_backend->set_event_sink)
         g_backend->set_event_sink(player_emit_from_backend);
 
     if (g_backend->init && !g_backend->init())
+    {
+        log_error("[player] backend init failed name=%s\n", player_get_backend_name());
+        g_backend = NULL;
         return false;
+    }
 
     g_initialized = true;
+    log_info("[player] init backend=%s\n", player_get_backend_name());
     return true;
 }
 
@@ -47,6 +135,9 @@ void player_deinit(void)
 
     if (g_backend && g_backend->deinit)
         g_backend->deinit();
+
+    log_info("[player] deinit backend=%s\n", player_get_backend_name());
+    g_backend = NULL;
     g_initialized = false;
 }
 

@@ -247,6 +247,8 @@ static PlayerState mock_get_state(void)
 }
 
 const PlayerBackendOps g_player_backend_mock = {
+    .name = "mock",
+    .available = NULL,
     .init = mock_init,
     .deinit = mock_deinit,
     .set_event_sink = mock_set_event_sink,

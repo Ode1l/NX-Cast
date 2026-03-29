@@ -22,6 +22,13 @@ typedef enum
     PLAYER_EVENT_ERROR
 } PlayerEventType;
 
+typedef enum
+{
+    PLAYER_BACKEND_AUTO = 0,
+    PLAYER_BACKEND_MOCK,
+    PLAYER_BACKEND_LIBMPV
+} PlayerBackendType;
+
 typedef struct
 {
     PlayerEventType type;
@@ -35,6 +42,10 @@ typedef struct
 } PlayerEvent;
 
 typedef void (*PlayerEventCallback)(const PlayerEvent *event, void *user);
+
+bool player_set_backend(PlayerBackendType backend);
+PlayerBackendType player_get_backend(void);
+const char *player_get_backend_name(void);
 
 bool player_init(void);
 void player_deinit(void);

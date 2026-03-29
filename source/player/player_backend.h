@@ -6,6 +6,8 @@
 
 typedef struct
 {
+    const char *name;
+    bool (*available)(void);
     bool (*init)(void);
     void (*deinit)(void);
     void (*set_event_sink)(void (*sink)(const PlayerEvent *event));
@@ -26,3 +28,4 @@ typedef struct
 } PlayerBackendOps;
 
 extern const PlayerBackendOps g_player_backend_mock;
+extern const PlayerBackendOps g_player_backend_libmpv;
