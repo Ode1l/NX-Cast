@@ -28,14 +28,17 @@
 
 ### 1.2 `libmpv` 路线到底要装什么
 
-这条路线需要三层依赖：
+这条路线应分成两档：
 
-1. `devkitPro + switch-dev`
-2. 一组 Switch portlibs 基础依赖
-3. Switch 目标平台的：
-   1. `FFmpeg`
-   2. `libuam`
-   3. `mpv/libmpv`
+1. 最小安装档：直接安装 devkitPro 已提供的二进制包
+   1. `switch-dev`
+   2. `switch-pkg-config`
+   3. `switch-ffmpeg`
+   4. `switch-libmpv`
+2. 高级手工构建档：只有在二进制包不可用或功能不足时，才手工编：
+   1. `averne/FFmpeg`
+   2. `averne/libuam`
+   3. `averne/mpv`
 
 ### 1.3 如果改走纯 `FFmpeg` 路线会怎样
 
@@ -67,6 +70,11 @@
 5. `PORTLIBS_PREFIX/include/libavformat` 存在
 6. `PORTLIBS_PREFIX/lib/libavformat.a`、`libavcodec.a` 等存在
 7. `NX-Cast` 后续可以在 `makefile` 中直接链接 `libmpv`
+
+注意：
+
+1. 如果 `switch-libmpv` 和 `switch-ffmpeg` 可以直接安装，就不需要先手工编 `averne/FFmpeg` 和 `averne/mpv`
+2. pacman 会自动处理已声明的依赖，因此不需要你手动把所有传递依赖一个个装全
 
 ---
 
@@ -138,63 +146,104 @@ test -d "$DEVKITPRO/examples/switch" && echo OK || echo MISSING
 
 ---
 
-## 4. 第二步：安装 Switch 基础依赖包
+## 4. 第二步：先安装最小二进制包
 
 ### 4.1 目的
 
-`FFmpeg` 和 `mpv` 在 Switch 上不是裸编译，它们还依赖一组基础库。
+先用 devkitPro 已提供的二进制包把最小可用环境装起来，而不是一开始就走 `nxmp` 那条完整手工构建线。
 
-### 4.2 建议安装的包
+### 4.2 为什么我修正了之前的建议
 
-根据 `nxmp` 的 Switch 构建线，先安装这些包：
+之前那一长串包清单来自 `nxmp` 的完整应用构建需求，它覆盖了：
+
+1. 字幕
+2. 图片格式
+3. 远程文件系统
+4. Samba / NFS / SSH / FTP
+5. 更多媒体容器与扩展功能
+
+对 `NX-Cast` 当前目标来说，这不是最小集。
+
+我们当前只是要：
+
+1. 能在 Switch 上链接 `libmpv`
+2. 能让 `libmpv` 背后的 FFmpeg 可用
+3. 为后续真实 `player backend` 做准备
+
+因此，第一步不应该手工装一大串库，而应该先试最小包。
+
+### 4.3 最小建议安装包
+
+先执行：
 
 ```bash
-sudo dkp-pacman -S \
-  switch-curl \
-  switch-libass \
-  switch-libvpx \
-  switch-glm \
-  switch-libpng \
-  switch-ntfs-3g \
-  switch-libfribidi \
-  switch-bzip2 \
-  switch-libarchive \
-  switch-mbedtls \
-  switch-pkg-config \
-  switch-harfbuzz \
-  switch-libjpeg-turbo \
-  switch-dav1d \
-  switch-freetype \
-  switch-libwebp \
-  switch-libssh2 \
-  switch-lwext4
+sudo dkp-pacman -S switch-dev switch-pkg-config switch-ffmpeg switch-libmpv
 ```
 
-如果你的命令是 `pacman`，同样替换掉 `dkp-pacman`。
+如果你的环境命令名是 `pacman`，则替换 `dkp-pacman`。
 
-### 4.3 这一阶段如何验证
+### 4.4 为什么这里已经包含了 `ffmpeg` 和 `mpv`
+
+因为：
+
+1. `switch-ffmpeg` 就是 Switch 目标平台的 FFmpeg 包
+2. `switch-libmpv` 就是 Switch 目标平台的 libmpv 包
+
+所以你刚才的质疑是对的：
+
+1. 之前那一串包里没有直接写 `switch-ffmpeg`
+2. 也没有直接写 `switch-libmpv`
+3. 对我们当前目标来说，这样的安装顺序不够直接
+
+现在应优先安装：
+
+1. `switch-ffmpeg`
+2. `switch-libmpv`
+
+### 4.5 这一阶段如何验证
 
 执行：
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-test -d "$PORTLIBS_PREFIX/include" && echo OK || echo MISSING
-test -d "$PORTLIBS_PREFIX/lib" && echo OK || echo MISSING
 
-ls "$PORTLIBS_PREFIX/lib" | rg 'libass|libcurl|libpng|libvpx|libfreetype|libdav1d'
+test -f "$PORTLIBS_PREFIX/include/mpv/client.h" && echo OK || echo MISSING
+test -f "$PORTLIBS_PREFIX/lib/libmpv.a" && echo OK || echo MISSING
+
+test -d "$PORTLIBS_PREFIX/include/libavformat" && echo OK || echo MISSING
+test -f "$PORTLIBS_PREFIX/lib/libavformat.a" && echo OK || echo MISSING
+test -f "$PORTLIBS_PREFIX/lib/libavcodec.a" && echo OK || echo MISSING
 ```
 
 期望结果：
 
-1. `PORTLIBS_PREFIX/include` 存在
-2. `PORTLIBS_PREFIX/lib` 存在
-3. 能看到若干 `switch-*` 对应静态库
+1. `mpv/client.h` 存在
+2. `libmpv.a` 存在
+3. `libavformat` 头文件存在
+4. `libavformat.a` / `libavcodec.a` 存在
 
-如果这一步不过，先不要编 `FFmpeg`。
+如果这一步通过，先不要进入手工构建阶段。
 
----
+### 4.6 如果找不到包怎么办
 
-## 5. 第三步：编译 Switch 版 FFmpeg
+先查询：
+
+```bash
+dkp-pacman -Ss switch-libmpv
+dkp-pacman -Ss switch-ffmpeg
+dkp-pacman -Si switch-libmpv
+dkp-pacman -Si switch-ffmpeg
+```
+
+如果这两个包能查到且能安装，就优先走二进制包路线。
+
+只有出现以下情况，才进入后面的手工构建阶段：
+
+1. 包不存在
+2. 安装后缺少关键头文件或静态库
+3. 功能不足，无法满足后续 Switch 特性需求
+
+## 5. 第三步（仅在必要时）：手工编译 Switch 版 FFmpeg
 
 ### 5.1 目的
 
@@ -280,7 +329,7 @@ test -d "$PORTLIBS_PREFIX/include/libavcodec" && echo OK || echo MISSING
 
 ---
 
-## 6. 第四步：编译 libuam
+## 6. 第四步（仅在必要时）：编译 libuam
 
 ### 6.1 目的
 
@@ -329,7 +378,7 @@ find "$PORTLIBS_PREFIX" -iname 'uam*' | head
 
 ---
 
-## 7. 第五步：编译 Switch 版 mpv/libmpv
+## 7. 第五步（仅在必要时）：编译 Switch 版 mpv/libmpv
 
 ### 7.1 目的
 
@@ -476,14 +525,13 @@ make -j4
 推荐你严格按这个顺序来，不要跳步：
 
 1. 修好 `devkitPro pacman` 基础环境
-2. 安装 `switch-dev`
-3. 安装 `switch-*` 基础依赖包
-4. 编 `averne/FFmpeg`
-5. 验证 `libavformat.a / libavcodec.a`
-6. 编 `averne/libuam`
-7. 编 `averne/mpv`
-8. 验证 `mpv/client.h` 和 `libmpv.a`
-9. 再回到 `NX-Cast` 集成 `player_backend_libmpv`
+2. 安装 `switch-dev switch-pkg-config switch-ffmpeg switch-libmpv`
+3. 先验证 `mpv/client.h`、`libmpv.a`、`libavformat.a` 是否已存在
+4. 如果最小二进制包路线通过，就直接进入 `NX-Cast` 集成
+5. 只有最小路线失败或功能不足时，再进入：
+   1. `averne/FFmpeg`
+   2. `averne/libuam`
+   3. `averne/mpv`
 
 ---
 
@@ -494,6 +542,7 @@ make -j4
 1. `player` 外层保持 C
 2. `player` 已经支持 backend 选择
 3. 已有 `player_backend_libmpv.c` 占位
+4. 当前更适合先验证二进制包路线，而不是立即手工重建整条媒体栈
 
 当前还没完成：
 
