@@ -252,6 +252,19 @@ git push origin v0.1.0
 
 ---
 
+## Acknowledgements
+
+NX-Cast is independently implemented. Parts of the protocol architecture, player layering, and Switch media backend direction were informed by the following open-source projects:
+
+- [gmrender-resurrect](https://github.com/hzeller/gmrender-resurrect): DLNA/UPnP DMR service modeling, SCPD/SOAP/service separation, and renderer-side control flow references.
+- [pPlay](https://github.com/Cpasjuste/pplay): player facade design and `libmpv` backend separation ideas.
+- [NXMP](https://github.com/proconsule/nxmp): Switch media backend direction, including `libmpv`, `hos` audio, `deko3d`, and hardware-decoding integration strategy.
+- [PlayerNX](https://github.com/XorTroll/PlayerNX): minimal FFmpeg decode-path reference used for software-decoding study and validation.
+
+Thanks to the maintainers and contributors of these projects.
+
+---
+
 ## License
 
 NX-Cast is licensed under GNU GPLv3. See `LICENSE` for full terms.

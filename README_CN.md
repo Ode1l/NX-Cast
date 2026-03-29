@@ -254,6 +254,19 @@ git push origin v0.1.0
 
 ---
 
+## 致谢
+
+NX-Cast 由本项目独立实现，但在协议架构、播放器分层以及 Switch 媒体后端方向上参考了以下开源项目的公开设计与源码思路：
+
+- [gmrender-resurrect](https://github.com/hzeller/gmrender-resurrect)：提供了 DLNA/UPnP DMR 服务建模、SCPD/SOAP/服务拆分以及渲染端控制流程方面的参考。
+- [pPlay](https://github.com/Cpasjuste/pplay)：提供了 `player` facade 设计与 `libmpv` 后端分层思路的参考。
+- [NXMP](https://github.com/proconsule/nxmp)：提供了 Switch 平台媒体后端方向的参考，包括 `libmpv`、`hos` 音频、`deko3d` 与硬解码接入思路。
+- [PlayerNX](https://github.com/XorTroll/PlayerNX)：提供了最小 FFmpeg 解码链路的参考，用于软件解码验证与研究。
+
+感谢这些项目的维护者与贡献者。
+
+---
+
 ## License
 
 NX-Cast 采用 GNU GPLv3 许可证。完整条款见 `LICENSE`。
