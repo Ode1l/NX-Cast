@@ -551,35 +551,130 @@ PlayerState player_get_state(void);
 
 ## 15. 实施顺序
 
-### 阶段 1：稳定现有骨架
+### Step 1：真实播放控制后端
 
-1. 保留 `player.c / player.h / player_backend.h`
-2. 继续使用 `player_backend_mock.c`
-3. 确认 SOAP 和 player 状态同步完全稳定
+目标：
 
-### 阶段 2：引入真实后端
+1. 先把 `player` 从 `mock` 接成真实 `libmpv backend`
+2. 先解决“真的能播、真的能控制、真的能返回状态”
+3. 暂时不把“视频如何显示得漂亮”与“播放控制后端”绑死在一起
 
-1. 新增 `player_backend_mpv.c`
-2. 先实现：
-   1. `set_uri`
-   2. `play`
+这一阶段必须补充并明确的设计：
+
+1. 必须：backend 选择策略
+   1. 默认后端是否为 `AUTO -> libmpv`
+   2. 失败时是否回退到 `mock`
+2. 必须：`libmpv` 命令映射
+   1. `player_set_uri` -> `loadfile` 或等价逻辑
+   2. `player_play`
+   3. `player_pause`
+   4. `player_stop`
+   5. `player_seek_ms`
+3. 必须：状态读取映射
+   1. `position`
+   2. `duration`
    3. `pause`
-   4. `stop`
-   5. `seek`
-   6. `position / duration`
-3. 先完成“真实 URL 可播放”
+   4. `volume`
+   5. `mute`
+4. 必须：错误处理策略
+   1. `loadfile` 失败怎么映射
+   2. 无 URI 时 `play` 如何返回
+   3. backend 初始化失败时如何处理
+5. 必须：事件同步策略
+   1. 哪些状态变化立即发 `PlayerEvent`
+   2. 哪些查询使用快照读取
 
-### 阶段 3：接入平台输出
+这一阶段 optional：
 
-1. 补音频输出
-2. 补视频渲染
-3. 为 `deko3d` 和硬解码预留结构
+1. optional：播放速率
+2. optional：多音轨/字幕轨切换
+3. optional：更细粒度错误码
 
-### 阶段 4：增强状态与事件
+Step 1 的通过标准：
 
-1. 引入 `BUFFERING / SEEKING / ENDED`
-2. 增加更多事件
-3. 对接 `LastChange`
+1. `SetURI / Play / Pause / Stop / Seek` 已接入真实 `libmpv`
+2. `GetPositionInfo / GetTransportInfo / GetVolume / GetMute` 返回真实值
+3. SOAP 层不再只依赖 `mock`
+
+### Step 2：渲染与前台显示设计
+
+目标：
+
+1. 解决“视频如何真正显示到屏幕上”
+2. 明确播放时 UI 与日志界面的切换方式
+
+这一阶段必须补充并明确的设计：
+
+1. 必须：前台显示权归属
+   1. 播放视频时是否继续保留当前 `console` 日志界面
+   2. 停止播放后是否切回日志界面
+2. 必须：渲染生命周期
+   1. 谁创建 render context
+   2. 谁驱动每帧 render
+   3. render 资源何时初始化和释放
+3. 必须：`libmpv render API` 的接入边界
+   1. `player backend` 是否直接持有 render context
+   2. 还是由平台显示层持有
+4. 必须：日志 UI 切换策略
+   1. 播放时隐藏日志
+   2. 播放时叠加日志
+   3. 播放时完全切换到视频画面
+5. 必须：最小显示目标
+   1. Step 2 是否必须显示视频
+   2. 还是先只保证音频与播放状态
+
+这一阶段 optional：
+
+1. optional：视频显示时叠加调试信息
+2. optional：播放中快速切换日志/视频界面
+3. optional：OSD 样式
+
+Step 2 的通过标准：
+
+1. 播放视频时屏幕行为已定义清楚
+2. 至少有一条可运行的视频显示路径
+3. 日志 UI 与视频显示不会互相抢占导致异常
+
+### Step 3：线程、事件与平台增强
+
+目标：
+
+1. 解决 backend 线程模型
+2. 解决 `mpv` 事件驱动模式
+3. 为 `deko3d`、硬解码和更完整状态机预留结构
+
+这一阶段必须补充并明确的设计：
+
+1. 必须：backend 线程模型
+   1. 是否单独后台线程
+   2. 是否命令队列串行处理
+2. 必须：`mpv` 事件处理方式
+   1. `mpv_wait_event`
+   2. 或 `wakeup callback`
+3. 必须：事件线程安全
+   1. `PlayerEvent` 从哪个线程发出
+   2. `SOAP` 读状态时如何避免竞争
+4. 必须：更完整状态机
+   1. `OPENING`
+   2. `BUFFERING`
+   3. `SEEKING`
+   4. `ENDED`
+5. 必须：播放与渲染的协作边界
+   1. backend 负责什么
+   2. platform render 负责什么
+
+这一阶段 optional：
+
+1. optional：`deko3d` 路径
+2. optional：硬解码路径
+3. optional：更高级事件通知
+4. optional：`LastChange / GENA`
+
+Step 3 的通过标准：
+
+1. 后端线程模型明确且可运行
+2. `mpv` 状态变化能稳定同步到 `player`
+3. 后续 `deko3d / hwdec / LastChange` 有明确接入点
 
 ---
 
@@ -601,3 +696,149 @@ PlayerState player_get_state(void);
 3. 先打通真实网络 URL 播放
 
 外部项目致谢放在 `README`，本设计文档只描述 `NX-Cast` 自身采用的技术方案。
+
+---
+
+## 附录：关于当前设计边界的问答
+
+### 问题
+
+“你的意思是不是 现在md的内容足够用mpv播放了，但是不支持setURL play 等基础操作，更不支持真实显示并渲染，需要设计渲染周期，也需要设计log ui切换 还要设计libmpv render API和deko3d 路径的问题。还有backend 线程与 mpv 事件切换问题”
+
+### 回答
+
+对，基本就是这个意思，但边界要更精确地区分。
+
+#### 1. 现在已经足够的部分
+
+当前文档和代码，已经足够支持“第一版真实播放控制后端”的设计与实现，也就是：
+
+1. `SetURI`
+2. `Play`
+3. `Pause`
+4. `Stop`
+5. `Seek`
+6. `GetPositionInfo`
+7. `GetTransportInfo`
+8. `GetVolume / SetVolume`
+9. `GetMute / SetMute`
+
+这里的意思是：
+
+1. 架构已经足够承载这些功能
+2. 不是说这些功能已经用 `libmpv` 实现好了
+3. 而是现在可以开始把这些基础操作接到 `libmpv`
+
+#### 2. 现在还不够的部分
+
+以下内容仍然需要继续设计，不能在实现中含糊处理。
+
+##### 2.1 真实显示与渲染
+
+这部分还没有最终定清。
+
+原因：
+
+1. 当前 [main.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/main.c) 仍然使用控制台日志 UI
+2. 还没有正式的视频渲染接管路径
+
+因此必须补充：
+
+1. 播放时谁接管屏幕
+2. 停止后是否切回日志 UI
+3. `libmpv render API` 由谁持有和驱动
+4. 是否立即接入 `deko3d`
+
+##### 2.2 `libmpv render API` 与 `deko3d` 路径
+
+这部分也没有最终确定。
+
+必须先回答：
+
+1. 第一版是否只追求“真实播放控制”
+2. 还是第一版就要求“真实显示视频”
+3. 如果要求显示视频，是：
+   1. 先走最小显示路径
+   2. 还是直接接 `deko3d`
+
+##### 2.3 backend 线程与 mpv 事件模型
+
+这一部分同样必须补充。
+
+需要明确：
+
+1. 使用 `mpv_wait_event`
+2. 还是使用 `wakeup callback`
+3. `PlayerEvent` 从哪个线程发出
+4. `Seek / Play / Pause` 与状态查询如何保证线程安全
+5. backend 是否采用命令队列
+
+#### 3. 不要混淆的两件事
+
+“真实播放控制”和“真实视频显示”不是同一个完成门槛。
+
+##### 3.1 可以先做的
+
+现在完全可以先实现：
+
+1. `libmpv` 初始化
+2. `loadfile`
+3. `pause / resume / stop`
+4. `seek`
+5. 读取 `duration / playback-time`
+6. 读取 `pause / volume / mute`
+7. 同步回 `SOAP`
+
+即使暂时还没有把视频画面完全集成到前台显示里，这一版也已经属于“真实播放器后端”。
+
+##### 3.2 后续再做的
+
+然后再单独解决：
+
+1. `render context`
+2. `deko3d`
+3. 控制台 UI 与视频 UI 切换
+4. 播放态的屏幕接管
+
+#### 4. 当前最合理的拆分
+
+##### 第一阶段
+
+先实现“真实 `libmpv backend`”：
+
+1. 支持 `SetURI / Play / Pause / Stop / Seek`
+2. 支持进度、时长、音量、静音读取
+3. 支持状态同步到 `SOAP`
+
+##### 第二阶段
+
+再设计并实现“显示与渲染”：
+
+1. `libmpv render API`
+2. 屏幕接管
+3. 日志 UI 切换
+4. `deko3d` 路径
+
+##### 第三阶段
+
+最后增强线程模型和事件模型：
+
+1. backend 线程
+2. mpv 事件循环
+3. 更完整状态机
+4. render 同步
+
+#### 5. 最终结论
+
+结论可以简化为：
+
+1. 当前设计已经足够开始实现基础 `libmpv` 播放控制
+2. 但还不足以无歧义地实现真实视频显示与渲染
+3. 所以下一步应先实现：
+   1. `SetURI / Play / Pause / Stop / Seek / 查询`
+4. 然后再单独设计：
+   1. 渲染周期
+   2. log UI 切换
+   3. `libmpv render API`
+   4. `deko3d`
+   5. backend 线程与 mpv 事件模型
