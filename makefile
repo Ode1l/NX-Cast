@@ -2,6 +2,9 @@
 .SUFFIXES:
 #---------------------------------------------------------------------------------
 
+THIS_MAKEFILE := $(abspath $(firstword $(MAKEFILE_LIST)))
+
+
 ifeq ($(strip $(DEVKITPRO)),)
 $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/devkitpro")
 endif
@@ -176,7 +179,7 @@ all: $(BUILD)
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+@$(MAKE) --no-print-directory -C $(BUILD) -f $(THIS_MAKEFILE)
 
 #---------------------------------------------------------------------------------
 clean:
