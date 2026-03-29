@@ -179,7 +179,7 @@ all: $(BUILD)
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-@$(MAKE) --no-print-directory -C $(BUILD) -f $(THIS_MAKEFILE)
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(THIS_MAKEFILE)
 
 #---------------------------------------------------------------------------------
 clean:
