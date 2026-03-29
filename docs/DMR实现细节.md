@@ -1,414 +1,453 @@
-# DLNA 电视端（DMR）实现里程碑
+# DMR 实现细节（面向 NX-Cast）
 
-这份文档面向“电视作为投屏接收端”的实现路线。
-
-目标角色：**DMR（Digital Media Renderer）**
-
-典型场景：
-- 手机或电脑作为 **DMC（Digital Media Controller）**
-- 手机、电脑、NAS 或其他媒体源作为 **DMS（Digital Media Server）**
-- 电视作为 **DMR**，负责接收控制并播放内容
+本文档定义 `NX-Cast` 作为 `DLNA DMR` 的整体实现方式，按本项目采用的职责边界、数据流和状态流来描述。
 
 ---
 
-## 总体路线
+## 1. 角色定义
 
-标记说明：
-- `[MVP]` 必须完成，属于最小可用链路
-- `[可做]` 可选增强，提升兼容性/体验
+`NX-Cast` 的目标角色是：
 
-建议把实现过程拆成 7 个里程碑：
+1. `DMR`：Digital Media Renderer
 
-1. 底座搭建
-2. SSDP 发现层
-3. `LOCATION -> device.xml`
-4. 服务描述（SCPD）
-5. 控制面（SOAP / AVTransport / RenderingControl / ConnectionManager）
-6. 拉流与播放
-7. 事件与联调
+典型交互方：
 
-可以把整体链路概括为：
+1. `DMC`：Digital Media Controller
+   例如手机、平板、电脑上的投屏控制端
+2. `DMS`：Digital Media Server
+   例如媒体服务器、NAS、HTTP 媒体源
 
-`SSDP发现 -> device.xml -> service description -> SOAP控制 -> 电视拉取媒体URL -> 本地播放`
+`NX-Cast` 本身不做控制端，也不做媒体目录浏览器。  
+它的职责是：
 
----
-
-## 里程碑 0：底座搭建
-
-先把运行框架和基础资源准备好，不要一开始就直接写 SOAP。
-
-### 目标
-- [MVP] 建立一个可运行的单进程框架
-- [MVP] 至少具备：
-  - [MVP] 一个 UDP socket：负责 SSDP
-  - [MVP] 一个 TCP HTTP server：负责 `device.xml`、SCPD、control URL
-- [MVP] 生成并固定设备标识：
-  - `uuid`
-  - 设备名
-  - 端口号
-
-### 建议
-- 第一版用 `select()` 即可
-- 先做成单进程、少线程
-- 先跑通网络，再考虑播放器和复杂状态同步
-
-### 验收标准
-- [MVP] UDP 1900 可以正常收发
-- [MVP] HTTP 端口可以返回普通文本/XML
+1. 被发现
+2. 被控制
+3. 接收媒体 URI
+4. 主动拉取并播放该 URI
 
 ---
 
-## 里程碑 1：SSDP 发现层
+## 2. 总体链路
 
-这是“让控制端找到你”的阶段。
+`DMR` 的完整链路可以概括为：
 
-### 要做的事
+`发现 -> 描述 -> 控制 -> 拉流 -> 播放 -> 事件同步`
 
-#### 1. 接收并解析 `M-SEARCH`
-- [MVP] 监听 SSDP 多播地址和端口
-- [MVP] 识别搜索报文
-- [MVP] 解析关键字段：
-  - `MAN: "ssdp:discover"`
-  - `MX`
-  - `ST`
+展开后是：
 
-#### 2. 响应 `M-SEARCH`
-- [MVP] 用 UDP **单播**回给请求源地址和端口
-- [MVP] 返回 `HTTP/1.1 200 OK`
-- [MVP] 响应中至少包含：
-  - `CACHE-CONTROL`
-  - `LOCATION`
-  - `ST`
-  - `USN`
-- [可做] 额外补上：`DATE` / `EXT` / `SERVER`
-
-#### 2.1 关于“等待”和 `sleep`（Optional）
-- [MVP] 测试脚本侧需要保留一个“接收窗口”（例如 `~1s`），否则 UDP 请求发出后程序可能立即退出，来不及收到回包。
-- [MVP] 这类等待主要发生在测试脚本/控制端，不代表设备端必须延迟响应。
-- [可做][Optional] 设备端可实现“按 `MX` 随机延迟再响应”（例如 `0 ~ MX` 秒内随机）。
-- [可做][Optional] 该策略的效果：
-  - 多设备同网段时，降低所有设备同时回包造成的瞬时冲突；
-  - 代价是发现阶段平均时延会增加。
-- [MVP] 当前阶段建议：设备端先“收到即回”，脚本侧保留小等待窗口，优先保证发现稳定性。
-
-#### 3. 发送 `NOTIFY`
-- [可做] 启动时发 `ssdp:alive`
-- [可做] 运行中周期重发 `alive`
-- [可做] 退出时发 `ssdp:byebye`
-- [可做] 通知中至少包含：`HOST`/`CACHE-CONTROL`/`LOCATION`/`NT`/`NTS`/`USN`
-
-### 最少要支持的 `ST`
-- [MVP] `ssdp:all`
-- [MVP] `upnp:rootdevice`
-- [MVP] `uuid:device-UUID`
-- [可做] 匹配的 device type / service type
-
-### 关键理解
-- `M-SEARCH` 是“别人来问，你回答”
-- `NOTIFY` 是“你自己主动报到”
-- 两种都实现，兼容性更好
-
-### 验收标准
-- [MVP] 控制端设备列表里能看到你
-- [MVP] 抓包能看到 `M-SEARCH -> 200 OK`
-- [可做] 抓包能看到 `NOTIFY alive`
+1. `SSDP` 让控制端发现设备
+2. 控制端通过 `LOCATION` 访问 `device.xml`
+3. 控制端继续读取各服务的 `SCPD`
+4. 控制端对 `controlURL` 发送 `SOAP Action`
+5. `NX-Cast` 通过 `player` 拉取媒体 URI
+6. 本地进行播放、渲染、音频输出
+7. 状态变化再通过查询或事件同步回控制端
 
 ---
 
-## 里程碑 2：`LOCATION -> device.xml`
+## 3. 采用的架构模式
 
-发现成功后，控制端会根据 SSDP 消息里的 `LOCATION` 去取设备描述 XML。
+### 3.1 分层模式
 
-### 要做的事
-- [MVP] 实现 `GET /device.xml`
-- [MVP] 返回合法的设备描述 XML
+整个 DMR 采用严格分层：
 
-### `device.xml` 中至少应包含
-- [MVP] 设备基本信息
-- [MVP] `UDN / uuid`
-- [MVP] `serviceList`
+1. 发现层：`SSDP`
+2. 描述层：`device.xml + SCPD`
+3. 控制层：`SOAP`
+4. 播放层：`player`
+5. 事件层：`GENA / LastChange`（后续）
 
-### 建议声明的服务
-对于电视端 DMR，建议至少挂这三类服务：
-- `ConnectionManager`
-- `AVTransport`
-- `RenderingControl`
+规则：
 
-### 每个 `<service>` 至少给出
-- `serviceType`
-- `serviceId`
-- `SCPDURL`
-- `controlURL`
-- `eventSubURL`
+1. 上层不直接替代下层职责
+2. 每层只暴露必要接口
+3. 每层可单独调试与冒烟测试
 
-### 验收标准
-- 浏览器能访问 `device.xml`
-- 控制端能从中解析出服务列表和对应 URL
+### 3.2 控制面与数据面分离模式
 
----
+DMR 必须明确区分两类流量：
 
-## 里程碑 3：服务描述（SCPD）
+1. 控制面
+   包括 `SSDP / HTTP XML / SOAP`
+2. 数据面
+   媒体 URI 的真实拉流与播放
 
-控制端读完 `device.xml` 后，通常还会继续请求每个服务对应的 SCPD XML。
+这两个面不能混在一起设计。
 
-### 要做的事
-至少准备三个服务描述文件：
-- `/service/AVTransport.xml`
-- `/service/RenderingControl.xml`
-- `/service/ConnectionManager.xml`
+控制面只负责：
 
-### SCPD 的作用
-告诉控制端：
-- 这个服务有哪些动作（actions）
-- 每个动作有哪些参数（arguments）
-- 这些参数关联哪些状态变量（state variables）
+1. 被发现
+2. 告诉别人“我支持什么”
+3. 接收播放命令
 
-### 第一版建议
-- 先保证 XML 合法
-- 先保证 URL 能访问
-- 不必一开始就把所有动作都实现完
+数据面只负责：
 
-### 验收标准
-- 控制端能成功 GET 到所有 SCPD 文件
-- XML 结构合法
+1. 访问媒体 URI
+2. 获取媒体数据
+3. 解码、渲染、输出
 
----
+### 3.3 Pull Model
 
-## 里程碑 4：控制面（SOAP）
+DMR 采用“接收 URI，由设备主动拉流”的模型。
 
-这一步才进入真正的“下命令”阶段。
+这意味着：
 
-控制端会对 `controlURL` 发 HTTP POST，body 中带 SOAP XML。
+1. 手机通常不是直接把媒体数据推给 Switch
+2. 手机通过 `SetAVTransportURI` 告诉设备媒体地址
+3. 设备在 `Play` 后主动对该 URI 发起请求
 
-### 你需要做的基础能力
-- 接收 HTTP POST
-- 读取 `SOAPAction`
-- 解析 XML body
-- 分发到对应 service / action
-- 返回合法 SOAP 响应
+这是整个 `DMR` 的核心实现前提。
 
----
+### 3.4 单一状态源模式
 
-## 里程碑 4.1：先做最小可用的 AVTransport
+整个系统的真实播放状态只能有一份。
 
-这是电视端最重要的控制服务。
+建议状态来源：
 
-### 第一版建议先支持这些动作
-- `SetAVTransportURI`
-- `Play`
-- `Pause`
-- `Stop`
+1. 第一阶段：`SOAP runtime state + player mock`
+2. 后续阶段：`player`
 
-### 后续再补
-- `GetMediaInfo`
-- `GetTransportInfo`
-- `GetPositionInfo`
-- `Seek`
-- `GetTransportSettings`
-- `GetDeviceCapabilities`
+不能接受的设计：
 
-### 语义理解
-- `SetAVTransportURI`：保存当前媒体 URL
-- `Play`：开始播放该 URL
-- `Pause`：暂停
-- `Stop`：停止并结束当前会话
+1. `SOAP` 自己维护一套状态
+2. `player` 再维护一套状态
+3. UI 再维护一套状态
 
-### 验收标准
-- 你可以用 curl / 测试工具发 SOAP
-- 电视端能正确解析动作并返回响应
+正确方式：
+
+1. `player` 是真实状态源
+2. `SOAP` 只是状态映射层
+3. UI 和本地输入也读取同一份状态
+
+### 3.5 增量实现模式
+
+DMR 不应一开始追求全量协议实现。
+
+正确顺序是：
+
+1. 先把链路打通
+2. 再补动作覆盖
+3. 再补事件通知
+4. 最后做兼容性和体验增强
 
 ---
 
-## 里程碑 4.2：实现最小 ConnectionManager
+## 4. 模块职责
 
-### 第一版建议先做
-- `GetProtocolInfo`
+### 4.1 发现层
 
-### 为什么重要
-控制端需要知道：
-- 你能接收哪些协议
-- 你支持哪些媒体格式
+职责：
 
-### 验收标准
-- 控制端能成功调用 `GetProtocolInfo`
-- 返回内容能表达基本的支持能力
+1. 监听 `M-SEARCH`
+2. 响应匹配的 `ST`
+3. 提供 `LOCATION`
+4. 可选发送 `NOTIFY`
 
----
+输出给上层的信息：
 
-## 里程碑 4.3：实现最小 RenderingControl
+1. 当前设备可被发现
+2. 当前 `LOCATION` 地址可用
 
-### 第一版建议先做
-- 获取音量
-- 设置音量
-- 获取静音状态
-- 设置静音状态
+### 4.2 描述层
 
-### 目的
-给控制端提供最基本的渲染控制能力。
+职责：
 
-### 验收标准
-- 调用对应 action 时能改变内部状态
-- 能正确返回 SOAP 响应
+1. 提供 `device.xml`
+2. 提供各服务 `SCPD`
+3. 对外声明支持的服务、动作和 URL
 
----
+描述层不负责：
 
-## 里程碑 5：拉流与播放
+1. 真正执行动作
+2. 维护播放状态
 
-这一步才是“真正开始投屏”。
+### 4.3 控制层
 
-### 核心理解
-手机/电脑通常不是把视频数据直接推给电视，
-而是通过 `SetAVTransportURI` 告诉电视一个媒体 URL，
-然后电视**自己去拉这个 URL**。
+职责：
 
-### 建议实现顺序
+1. 接收 `SOAP Action`
+2. 校验参数
+3. 调用 `player` 或状态接口
+4. 返回标准 SOAP 响应
 
-#### 1. `SetAVTransportURI`
-- 保存当前 URI
-- 保存必要元数据
+### 4.4 播放层
 
-#### 2. `Play`
-- 启动播放器线程或媒体线程
-- 向该 URI 发起 HTTP GET
-- 接收媒体数据
-- 交给本地播放器或解码器
+职责：
 
-### 第一版建议
-如果播放器还没接好，可以先做到：
-- 电视端确实能对媒体 URL 发出 HTTP GET
-- 确实能把数据读下来
+1. 接收 `SetURI / Play / Pause / Stop / Seek`
+2. 管理真实播放状态
+3. 拉流并播放
+4. 向控制层回报状态变化
 
-### 状态机建议
-至少维护这些状态：
-- `NO_MEDIA_PRESENT`
-- `STOPPED`
-- `PLAYING`
-- `PAUSED_PLAYBACK`
-- `TRANSITIONING`
+### 4.5 事件层
 
-### 验收标准
-- 调用 `SetAVTransportURI` 后状态更新正确
-- 调用 `Play` 后电视端确实向目标 URL 发起请求
-- 本地播放器开始播放，或至少能完成下载验证
+职责：
+
+1. 支持订阅
+2. 在状态变化时发送通知
+
+这层不是 MVP 必须项，但架构上要预留。
 
 ---
 
-## 里程碑 6：事件（Eventing）
+## 5. 当前阶段划分
 
-这是更完整实现的一部分，建议放在第二阶段补。
+### 5.1 已基本完成
 
-### 为什么后做
-因为如果前面的：
-- SSDP
-- `device.xml`
-- SOAP 控制
-- 拉流播放
+1. 发现层基础能力
+2. `device.xml`
+3. `SCPD`
+4. `SOAP` 路由与核心动作
+5. `AVTransport / RenderingControl / ConnectionManager` 基础覆盖
+6. 冒烟脚本
 
-都还没跑通，先做 Eventing 收益不高。
+### 5.2 正在推进
 
-### 后续要做的事
-- 提供 `eventSubURL`
-- 支持订阅 / 退订
-- 在状态变化时主动推送事件
+1. `player` 从 mock 走向真实后端
+2. 状态与控制层进一步收紧
 
-### 典型事件来源
-- 播放状态变化
-- 音量变化
-- 当前 URI 变化
+### 5.3 后续能力
 
-### 验收标准
-- 控制端能成功订阅事件
-- 状态变化时能收到通知
+1. `GENA / LastChange`
+2. `NOTIFY alive/byebye`
+3. 更完整兼容性
+4. 更强播放后端
 
 ---
 
-## 里程碑 7：完整联调
+## 6. 最小可用 DMR 链路
 
-最后把整条链路串起来验证。
+当前最小闭环应满足：
 
-### 完整链路
+1. 控制端能看到 `NX-Cast`
+2. 能访问 `device.xml`
+3. 能访问三个 `SCPD`
+4. 能发送 `SetAVTransportURI`
+5. 能发送 `Play / Pause / Stop / Seek`
+6. 能查询：
+   1. `GetTransportInfo`
+   2. `GetPositionInfo`
+   3. `GetVolume / GetMute`
 
-`NOTIFY alive` 或 `M-SEARCH`
--> `200 OK`
--> `GET /device.xml`
--> `GET /service/*.xml`
--> `SOAP SetAVTransportURI`
--> `SOAP Play`
--> 电视对媒体 URL 发 HTTP GET
--> 本地播放器开始播放
-
-### 联调目标
-- 控制端能发现电视
-- 控制端能读取描述文件
-- 控制端能调用控制接口
-- 电视能主动拉流
-- 电视能开始播放
+这条链路打通后，协议层就基本成立。
 
 ---
 
-## 推荐的实际编码顺序
+## 7. 服务职责细化
 
-建议按下面顺序推进：
+### 7.1 AVTransport
 
-1. UDP 1900 + SSDP parser
-2. `M-SEARCH` 响应
-3. `NOTIFY alive/byebye`
-4. `device.xml`
-5. 3 个 SCPD 文件
-6. SOAP handler
-7. `SetAVTransportURI` / `Play` / `Stop`
-8. `GetProtocolInfo`
-9. 媒体 HTTP client
-10. 播放状态机
-11. Eventing
+职责：
 
----
+1. 当前媒体 URI
+2. 播放状态
+3. 播放位置
+4. 播放控制
 
-## 最小可用 MVP
+核心动作：
 
-如果你的目标是“尽快完成一次成功投屏”，建议把 MVP 压缩成这 5 项：
+1. `SetAVTransportURI`
+2. `Play`
+3. `Pause`
+4. `Stop`
+5. `Seek`
+6. `GetTransportInfo`
+7. `GetPositionInfo`
 
-1. SSDP：`M-SEARCH` + `NOTIFY`
-2. Description：`device.xml`
-3. Service description：3 个 SCPD
-4. Control：`SetAVTransportURI` + `Play`
-5. Media：电视真的去 GET 该 URL
+### 7.2 RenderingControl
 
-做到这一步，你的电视端已经具备：
-- 被发现
-- 被识别
-- 被控制
-- 主动拉流
-- 开始播放
+职责：
 
----
+1. 音量
+2. 静音
 
-## 你当前阶段的直接建议
+核心动作：
 
-如果你现在马上开始写 C 代码，建议先只盯住这三件事：
+1. `GetVolume`
+2. `SetVolume`
+3. `GetMute`
+4. `SetMute`
 
-### 第一阶段
-- `M-SEARCH` 响应做通
-- `NOTIFY alive/byebye` 做通
-- `LOCATION -> device.xml` 做通
+### 7.3 ConnectionManager
 
-### 第二阶段
-- `AVTransport` 最小动作做通
-- `ConnectionManager/GetProtocolInfo` 做通
-- `Play` 后电视能主动 GET 媒体 URL
+职责：
 
-### 第三阶段
-- 接上播放器
-- 做事件订阅
-- 做更完整的动作和状态查询
+1. 宣告能力
+2. 提供协议与连接信息
+
+核心动作：
+
+1. `GetProtocolInfo`
+2. `GetCurrentConnectionIDs`
+3. `GetCurrentConnectionInfo`
 
 ---
 
-## 一句话总结
+## 8. 状态设计
 
-先把电视做成一个“能被发现、能暴露描述、能接受播放命令”的 **最小 DMR**，
-再逐步补全媒体播放、状态机和事件系统。
+`DMR` 不是只返回成功与失败，还必须维护一套可查询状态。
 
-你真正应该先做通的主链路是：
+最小状态集合：
 
-**发现你 -> 认识你 -> 命令你 -> 你自己去拉媒体并播放。**
+1. `transport_uri`
+2. `transport_uri_metadata`
+3. `transport_state`
+4. `transport_status`
+5. `transport_speed`
+6. `position`
+7. `duration`
+8. `volume`
+9. `mute`
+
+推荐状态来源：
+
+1. `player`
+
+控制层只是把这些状态映射到：
+
+1. SOAP 响应
+2. 未来事件通知
+
+---
+
+## 9. 事件设计
+
+事件不是 MVP 必需，但架构上必须预留。
+
+原因：
+
+1. 手机控制和本地控制需要共享状态
+2. 控制端 UI 有时依赖事件同步
+3. `LastChange` 需要一个明确事件源
+
+推荐事件源：
+
+1. `player` 状态变化
+2. 音量变化
+3. 静音变化
+4. URI 变化
+
+推荐事件流：
+
+1. `player` 发生变化
+2. 控制层同步内部状态
+3. 事件层决定是否对订阅者发送通知
+
+---
+
+## 10. 并发设计
+
+推荐最小并发模型：
+
+1. `SSDP` 线程
+2. `HTTP/SOAP` 线程
+3. `player backend` 线程
+
+可选扩展：
+
+1. 视频渲染线程
+2. 音频输出线程
+
+并发原则：
+
+1. 发现层与控制层并行
+2. 控制层与播放层并行
+3. 但真实播放命令应在单一 backend 线程串行处理
+
+这样做的原因：
+
+1. 协议收包不阻塞播放
+2. 播放状态不会被多线程同时修改
+3. 更容易实现可预测状态机
+
+---
+
+## 11. 启动与停止顺序
+
+推荐启动顺序：
+
+1. `scpd_start`
+2. `soap_server_start`
+3. `ssdp_start`
+4. `player_init`
+
+如果 `player` 还不需要常驻初始化，也可在 `dlna_control` 中保持：
+
+1. `player_init`
+2. `scpd_start`
+3. `soap_server_start`
+4. `ssdp_start`
+
+核心原则：
+
+1. 对外可见前，描述和控制入口必须可用
+2. 停止时按对外影响反向关闭
+
+推荐停止顺序：
+
+1. `ssdp_stop`
+2. `soap_server_stop`
+3. `scpd_stop`
+4. `player_deinit`
+
+---
+
+## 12. 关于 SSDP 等待与 `MX`
+
+发现阶段常见两个现象：
+
+1. 测试脚本需要保留接收窗口
+2. 设备端是否要按 `MX` 延迟响应
+
+本项目当前建议：
+
+1. 测试脚本保留短接收窗口
+2. 设备端默认收到即回
+3. `MX` 随机延迟响应作为 optional 能力保留
+
+原因：
+
+1. MVP 先保证发现稳定
+2. 多设备冲突优化不是当前第一优先级
+
+---
+
+## 13. 当前实现顺序建议
+
+### 阶段 1：协议层稳定
+
+1. 保持 `SSDP -> device.xml -> SCPD -> SOAP` 全链路稳定
+2. 保证脚本冒烟通过
+3. 保证手机端可发现、可控制
+
+### 阶段 2：真实播放接入
+
+1. `SetAVTransportURI` 接到真实 `player`
+2. `Play / Pause / Stop / Seek` 驱动真实后端
+3. `GetPositionInfo` 读真实进度
+
+### 阶段 3：事件与兼容性
+
+1. 加入 `GENA / LastChange`
+2. 增强不同控制端兼容性
+3. 加入 optional 的 `NOTIFY`
+
+---
+
+## 14. 结论
+
+`NX-Cast` 的 DMR 实现采用的是：
+
+1. 分层架构
+2. 控制面与数据面分离
+3. URI 拉流式播放模型
+4. 单一状态源
+5. 增量实现路线
+
+因此整个项目的核心不是“把所有协议一次性写满”，而是：
+
+1. 先把发现、描述、控制链路稳定打通
+2. 再把 `player` 接成真实后端
+3. 最后补事件通知和兼容性增强
+
+这条路线最适合当前 `NX-Cast` 的开发阶段。
