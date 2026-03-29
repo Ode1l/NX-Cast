@@ -1,0 +1,687 @@
+[run-nxlink] log file: /Users/ode1l/Documents/VSCode/NX-Cast/logs/run_nxlink-20260330-071827.log
+[run-nxlink] build=make clean && make -j4
+clean ...
+main.c
+log.c
+player.c
+player_backend_libmpv.c
+player_backend_mock.c
+dlna_control.c
+handler.c
+soap_router.c
+soap_server.c
+avtransport.c
+connectionmanager.c
+renderingcontrol.c
+http_server.c
+ssdp.c
+scpd.c
+mdns.c
+built ... NX-Cast.nacp
+linking NX-Cast.elf
+built ... NX-Cast.nro
+[run-nxlink] target=192.168.1.7 source=log-cache server=on tcp-log=28772
+[run-nxlink] tcp-log listening on :28772
+[run-nxlink] tcp-log client 192.168.1.7:29460
+[INFO] [net] Network stack initialized.
+[INFO] [net] Ensure Wi-Fi is connected before streaming.
+[INFO] [log] remote TCP log enabled host=192.168.1.35 port=28772
+[INFO] [scpd] description resources ready.
+[INFO] [player] auto resolve libmpv_available=1 mock_available=1
+[INFO] [player-libmpv] init mode=control-only ao=null vo=null
+[INFO] [player] init backend=libmpv
+[INFO] [soap] SOAP control module started.
+[INFO] [http-server] listening on :49152
+[INFO] [ssdp] Responder ready on http://192.168.1.7:49152/device.xml
+[INFO] [dlna] Control layer initialized (HTTP/SCPD on :49152).
+[INFO] [ui] NX-Cast starting. Press + to exit.
+[INFO] [ui] Use Up/Down, sticks, or touch drag to scroll logs.
+[DEBUG] [http-server] recv 192.168.1.11:54332 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=3781
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=3781
+[DEBUG] [soap] route service=AVTransport action=SetAVTransportURI soapAction="urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=3522
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI>http://upos-sz-mirrorbd.bilivideo.com/upgcxcode/96/49/36496804996/36496804996-1-192.mp4?e=ig...</CurrentURI>
+[DEBUG] [soap-router] matched AVTransport#SetAVTransportURI -> avtransport_set_uri
+[DEBUG] [soap-arg] required arg service=AVTransport action=SetAVTransportURI arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=SetAVTransportURI arg=CurrentURI value=http://upos-sz-mirrorbd.bilivideo.com/upgcxcode/96/49/36496804996/36496804996-1-192.mp4?e=ig...
+[INFO] [player-libmpv] set_uri uri=http://upos-sz-mirrorbd.bilivideo.com/upgcxcode/96/49/36496804996/36496804996-1-192.mp4?e=ig8euxZM2rNcNbRjhbdVhwdlhWTghwdVhoNvNC8BqJIzNbfqXBvEuENvNC8aNEVEtE... metadata_len=2047
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=404
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=404 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54333 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[INFO] [player-libmpv] play reloaded=1
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54334 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=545
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=545 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54335 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54336 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=stop error=none
+[DEBUG] [player-libmpv] event START_FILE
+[INFO] [player-libmpv] event END_FILE reason=error error=unrecognized file format
+[WARN] [player-libmpv] mpv[cplayer/error] Failed to recognize file format.
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54337 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54338 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54339 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54340 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54341 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54342 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[INFO] [player-libmpv] play reloaded=1
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54344 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54343 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54345 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] route service=AVTransport action=Pause soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=292
+[INFO] [soap] soap_call "AVTransport" "Pause" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#Pause -> avtransport_pause
+[DEBUG] [soap-arg] required arg service=AVTransport action=Pause arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=error error=unrecognized file format
+[WARN] [player-libmpv] mpv[cplayer/error] Failed to recognize file format.
+[WARN] [soap] action fault service=AVTransport action=Pause handler=avtransport_pause code=701 desc=Transition not available
+[WARN] [soap] fault detail reason=handler_fault method=POST endpoint=/upnp/control/AVTransport soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause" request_line=POST /upnp/control/AVTransport HTTP/1.1 request_bytes=538 body_bytes=292 host=192.168.1.7:49152 content-length=292 user-agent=Linux/3.0.0 UPnP/1.0 Platinum/1.0.5.13
+[WARN] [soap] fault body=<?xml version="1.0" encoding="UTF-8"?>  <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Pause></s:Body></s:Envelope>
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=500 bytes=565
+[WARN] [soap] assert_http_500 service=AVTransport action=Pause handler=avtransport_pause code=701
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=565 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54350 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54351 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54352 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54353 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54354 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[INFO] [player-libmpv] play reloaded=1
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54356 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54355 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [ssdp] recv packet from 192.168.1.11:3074 bytes=172
+[DEBUG] [ssdp] M-SEARCH ST=upnp:rootdevice
+[INFO] [ssdp] send packet to 192.168.1.11:3074 st=upnp:rootdevice bytes=273
+[DEBUG] [ssdp] recv packet from 192.168.1.11:3074 bytes=172
+[DEBUG] [ssdp] M-SEARCH ST=upnp:rootdevice
+[INFO] [ssdp] send packet to 192.168.1.11:3074 st=upnp:rootdevice bytes=273
+[DEBUG] [ssdp] recv packet from 192.168.1.11:3074 bytes=172
+[DEBUG] [ssdp] M-SEARCH ST=upnp:rootdevice
+[INFO] [ssdp] send packet to 192.168.1.11:3074 st=upnp:rootdevice bytes=273
+[DEBUG] [http-server] recv 192.168.1.11:54357 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=error error=unrecognized file format
+[WARN] [player-libmpv] mpv[cplayer/error] Failed to recognize file format.
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54358 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54359 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54360 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54361 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54362 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54363 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54364 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54365 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] route service=AVTransport action=Pause soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=292
+[INFO] [soap] soap_call "AVTransport" "Pause" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#Pause -> avtransport_pause
+[DEBUG] [soap-arg] required arg service=AVTransport action=Pause arg=InstanceID value=0
+[WARN] [soap] action fault service=AVTransport action=Pause handler=avtransport_pause code=701 desc=Transition not available
+[WARN] [soap] fault detail reason=handler_fault method=POST endpoint=/upnp/control/AVTransport soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause" request_line=POST /upnp/control/AVTransport HTTP/1.1 request_bytes=538 body_bytes=292 host=192.168.1.7:49152 content-length=292 user-agent=Linux/3.0.0 UPnP/1.0 Platinum/1.0.5.13
+[WARN] [soap] fault body=<?xml version="1.0" encoding="UTF-8"?>  <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Pause></s:Body></s:Envelope>
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=500 bytes=565
+[WARN] [soap] assert_http_500 service=AVTransport action=Pause handler=avtransport_pause code=701
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=565 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54366 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[INFO] [player-libmpv] play reloaded=1
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54367 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54368 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54383 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54384 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54369 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] route service=AVTransport action=Pause soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=292
+[INFO] [soap] soap_call "AVTransport" "Pause" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#Pause -> avtransport_pause
+[DEBUG] [soap-arg] required arg service=AVTransport action=Pause arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=error error=unrecognized file format
+[WARN] [player-libmpv] mpv[cplayer/error] Failed to recognize file format.
+[WARN] [soap] action fault service=AVTransport action=Pause handler=avtransport_pause code=701 desc=Transition not available
+[WARN] [soap] fault detail reason=handler_fault method=POST endpoint=/upnp/control/AVTransport soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause" request_line=POST /upnp/control/AVTransport HTTP/1.1 request_bytes=538 body_bytes=292 host=192.168.1.7:49152 content-length=292 user-agent=Linux/3.0.0 UPnP/1.0 Platinum/1.0.5.13
+[WARN] [soap] fault body=<?xml version="1.0" encoding="UTF-8"?>  <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Pause></s:Body></s:Envelope>
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=500 bytes=565
+[WARN] [soap] assert_http_500 service=AVTransport action=Pause handler=avtransport_pause code=701
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=565 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54370 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[INFO] [player-libmpv] play reloaded=1
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54385 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54386 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54382 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=error error=unrecognized file format
+[WARN] [player-libmpv] mpv[cplayer/error] Failed to recognize file format.
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54381 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54376 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54375 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54374 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54373 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54372 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54371 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54387 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=3781
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=3781
+[DEBUG] [soap] route service=AVTransport action=SetAVTransportURI soapAction="urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=3522
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI>http://upos-sz-mirrorbd.bilivideo.com/upgcxcode/96/49/36496804996/36496804996-1-192.mp4?e=ig...</CurrentURI>
+[DEBUG] [soap-router] matched AVTransport#SetAVTransportURI -> avtransport_set_uri
+[DEBUG] [soap-arg] required arg service=AVTransport action=SetAVTransportURI arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=SetAVTransportURI arg=CurrentURI value=http://upos-sz-mirrorbd.bilivideo.com/upgcxcode/96/49/36496804996/36496804996-1-192.mp4?e=ig...
+[INFO] [player-libmpv] set_uri uri=http://upos-sz-mirrorbd.bilivideo.com/upgcxcode/96/49/36496804996/36496804996-1-192.mp4?e=ig8euxZM2rNcNbRjhbdVhwdlhWTghwdVhoNvNC8BqJIzNbfqXBvEuENvNC8aNEVEtE... metadata_len=2047
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=404
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=404 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54388 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[INFO] [player-libmpv] play reloaded=1
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54389 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=stop error=none
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54390 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54391 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=error error=unrecognized file format
+[WARN] [player-libmpv] mpv[cplayer/error] Failed to recognize file format.
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54392 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54393 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=538
+[DEBUG] [soap] route service=AVTransport action=Pause soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=292
+[INFO] [soap] soap_call "AVTransport" "Pause" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#Pause -> avtransport_pause
+[DEBUG] [soap-arg] required arg service=AVTransport action=Pause arg=InstanceID value=0
+[WARN] [soap] action fault service=AVTransport action=Pause handler=avtransport_pause code=701 desc=Transition not available
+[WARN] [soap] fault detail reason=handler_fault method=POST endpoint=/upnp/control/AVTransport soapAction="urn:schemas-upnp-org:service:AVTransport:1#Pause" request_line=POST /upnp/control/AVTransport HTTP/1.1 request_bytes=538 body_bytes=292 host=192.168.1.7:49152 content-length=292 user-agent=Linux/3.0.0 UPnP/1.0 Platinum/1.0.5.13
+[WARN] [soap] fault body=<?xml version="1.0" encoding="UTF-8"?>  <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Pause></s:Body></s:Envelope>
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=500 bytes=565
+[WARN] [soap] assert_http_500 service=AVTransport action=Pause handler=avtransport_pause code=701
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=565 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54394 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[INFO] [player-libmpv] play reloaded=1
+[DEBUG] [player-libmpv] event START_FILE
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54395 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=571
+[DEBUG] [soap] route service=AVTransport action=GetTransportInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=314
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetTransportInfo -> avtransport_get_transport_info
+[DEBUG] [soap-arg] optional arg service=AVTransport action=GetTransportInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=537
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=537 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54396 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=568
+[DEBUG] [soap] route service=AVTransport action=GetPositionInfo soapAction="urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=312
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#GetPositionInfo -> avtransport_get_position_info
+[DEBUG] [soap-arg] required arg service=AVTransport action=GetPositionInfo arg=InstanceID value=0
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=1424
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=1424 handled=1
+[DEBUG] [http-server] recv 192.168.1.11:54397 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=535
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=535
+[DEBUG] [soap] route service=AVTransport action=Stop soapAction="urn:schemas-upnp-org:service:AVTransport:1#Stop"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=290
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#Stop -> avtransport_stop
+[DEBUG] [soap-arg] required arg service=AVTransport action=Stop arg=InstanceID value=0
+[INFO] [player-libmpv] event END_FILE reason=error error=unrecognized file format
+[WARN] [player-libmpv] mpv[cplayer/error] Failed to recognize file format.
+[INFO] [player-libmpv] stop already-stopped=1
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=200 bytes=378
+[INFO] [soap] assert_http_200 service=AVTransport action=Stop handler=avtransport_stop
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=378 handled=1
+[INFO] [ssdp] Responder stopped.
+Traceback (most recent call last):
+  File "<stdin>", line 17, in <module>
+ConnectionResetError: [Errno 54] Connection reset by peer

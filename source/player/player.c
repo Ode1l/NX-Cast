@@ -92,6 +92,13 @@ bool player_init(void)
     if (g_initialized)
         return true;
 
+    if (g_backend_type == PLAYER_BACKEND_AUTO)
+    {
+        log_info("[player] auto resolve libmpv_available=%d mock_available=%d\n",
+                 backend_available(&g_player_backend_libmpv) ? 1 : 0,
+                 backend_available(&g_player_backend_mock) ? 1 : 0);
+    }
+
     g_backend = backend_ops_from_type(g_backend_type);
     if (!g_backend)
     {

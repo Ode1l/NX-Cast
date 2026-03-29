@@ -79,12 +79,12 @@ LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*
 LIBS	:= -lnx
 
 PKG_CONFIG	?= pkg-config
-MPV_PKG_CONFIG_PATH := $(PORTLIBS)/switch/lib/pkgconfig
+MPV_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
 MPV_FOUND := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exists mpv >/dev/null 2>&1 && echo 1)
 
 ifeq ($(MPV_FOUND),1)
 CFLAGS	+=	-DHAVE_LIBMPV
-LIBS	+= $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --libs mpv)
+LIBS	+= $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs mpv)
 endif
 
 #---------------------------------------------------------------------------------

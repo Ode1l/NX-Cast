@@ -1,4 +1,5 @@
 #include <switch.h>
+#include <arpa/inet.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,8 +23,9 @@ typedef struct
 #define ANSI_ERROR "\x1b[31;1m"
 #define ANSI_TEXT  "\x1b[37;1m"
 
-static int g_nxlinkSock = -1;
-static bool g_nxlinkDebugEnabled = false;
+#define NXLINK_LOG_TCP_PORT 28772
+
+static bool g_remoteLogEnabled = false;
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -168,33 +170,36 @@ static bool initialize_network(void)
     return true;
 }
 
-static void enable_nxlink_stdio(bool network_ready)
+static void enable_remote_logging(bool network_ready)
 {
     if (!network_ready)
         return;
 
-    // Redirect only stderr to nxlink so on-device console UI (stdout) keeps working.
-    g_nxlinkSock = nxlinkStdioForDebug();
-    if (g_nxlinkSock >= 0)
+    if (__nxlink_host.s_addr != 0 && log_set_remote_host(__nxlink_host.s_addr, NXLINK_LOG_TCP_PORT))
     {
-        g_nxlinkDebugEnabled = true;
-        log_set_stdio_mirror(true);
-        log_info("[log] nxlink debug stderr enabled.\n");
+        g_remoteLogEnabled = true;
+        log_info("[log] remote TCP log enabled host=%s port=%d\n",
+                 inet_ntoa(__nxlink_host),
+                 NXLINK_LOG_TCP_PORT);
     }
     else
     {
-        log_warn("[log] nxlink debug stderr not connected, using local console only.\n");
+        log_warn("[log] remote TCP log unavailable, using local console only.\n");
     }
 }
 
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
+    if (!log_runtime_init())
+    {
+        printf("[ERROR] [log] log_runtime_init failed\n");
+    }
     log_set_level(LOG_LEVEL_DEBUG);
     log_info("[log] level=DEBUG\n");
 
     bool networkReady = initialize_network();
-    enable_nxlink_stdio(networkReady);
+    enable_remote_logging(networkReady);
     bool dlnaRunning = false;
 
     if (networkReady)
@@ -221,7 +226,6 @@ int main(int argc, char* argv[])
     while (appletMainLoop())
     {
         padUpdate(&pad);
-        log_flush();
 
         u64 kDown = padGetButtonsDown(&pad);
         u64 kHeld = padGetButtons(&pad);
@@ -300,20 +304,19 @@ int main(int argc, char* argv[])
         consoleUpdate(NULL);
     }
 
-    bool had_nxlink_debug = g_nxlinkDebugEnabled;
+    bool had_remote_log = g_remoteLogEnabled;
 
     if (networkReady)
     {
         if (dlnaRunning)
             dlna_control_stop();
-        log_set_stdio_mirror(false);
-        g_nxlinkSock = -1;
-        g_nxlinkDebugEnabled = false;
+        log_clear_remote_host();
+        g_remoteLogEnabled = false;
         socketExit();
     }
 
-    log_flush();
-    if (!had_nxlink_debug)
+    log_runtime_shutdown();
+    if (!had_remote_log)
     {
         render_log_view(0);
         consoleUpdate(NULL);

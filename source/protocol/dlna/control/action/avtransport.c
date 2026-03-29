@@ -26,6 +26,17 @@ static const char *transport_state_from_player_state(PlayerState state)
     }
 }
 
+static PlayerState sync_transport_state_from_player(void)
+{
+    PlayerState player_state = player_get_state();
+    const char *transport_state = transport_state_from_player_state(player_state);
+    snprintf(g_soap_runtime_state.transport_state,
+             sizeof(g_soap_runtime_state.transport_state),
+             "%s",
+             transport_state);
+    return player_state;
+}
+
 static void format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
 {
     if (!out || out_size == 0)
@@ -126,6 +137,10 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
 
     snprintf(g_soap_runtime_state.transport_uri, sizeof(g_soap_runtime_state.transport_uri), "%s", uri);
     snprintf(g_soap_runtime_state.transport_uri_metadata, sizeof(g_soap_runtime_state.transport_uri_metadata), "%s", metadata);
+    snprintf(g_soap_runtime_state.transport_state,
+             sizeof(g_soap_runtime_state.transport_state),
+             "%s",
+             transport_state_from_player_state(player_get_state()));
 
     soap_handler_set_success(out, "");
     return true;
@@ -158,6 +173,10 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
     }
 
     snprintf(g_soap_runtime_state.transport_speed, sizeof(g_soap_runtime_state.transport_speed), "%s", speed);
+    snprintf(g_soap_runtime_state.transport_state,
+             sizeof(g_soap_runtime_state.transport_state),
+             "%s",
+             transport_state_from_player_state(player_get_state()));
     soap_handler_set_success(out, "");
     return true;
 }
@@ -172,7 +191,19 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
     if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
         return false;
 
-    if (strcmp(g_soap_runtime_state.transport_state, "PLAYING") != 0)
+    if (g_soap_runtime_state.transport_uri[0] == '\0')
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
+    PlayerState player_state = sync_transport_state_from_player();
+    if (player_state == PLAYER_STATE_PAUSED)
+    {
+        soap_handler_set_success(out, "");
+        return true;
+    }
+    if (player_state != PLAYER_STATE_PLAYING)
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
@@ -184,6 +215,10 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
+    snprintf(g_soap_runtime_state.transport_state,
+             sizeof(g_soap_runtime_state.transport_state),
+             "%s",
+             transport_state_from_player_state(player_get_state()));
     soap_handler_set_success(out, "");
     return true;
 }
@@ -204,12 +239,23 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
+    PlayerState player_state = sync_transport_state_from_player();
+    if (player_state == PLAYER_STATE_STOPPED || player_state == PLAYER_STATE_IDLE)
+    {
+        soap_handler_set_success(out, "");
+        return true;
+    }
+
     if (!player_stop())
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
+    snprintf(g_soap_runtime_state.transport_state,
+             sizeof(g_soap_runtime_state.transport_state),
+             "%s",
+             transport_state_from_player_state(player_get_state()));
     soap_handler_set_success(out, "");
     return true;
 }
@@ -229,9 +275,8 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
         log_debug("[avtransport] default InstanceID=0 for GetTransportInfo\n");
     }
 
-    PlayerState player_state = player_get_state();
+    PlayerState player_state = sync_transport_state_from_player();
     const char *transport_state = transport_state_from_player_state(player_state);
-    snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "%s", transport_state);
 
     char response[SOAP_HANDLER_OUTPUT_MAX];
     int len = snprintf(response, sizeof(response),
@@ -367,6 +412,12 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     if (strcasecmp(unit, "REL_TIME") != 0 && strcasecmp(unit, "ABS_TIME") != 0)
     {
         soap_handler_set_fault(out, 710, "Seek mode not supported");
+        return false;
+    }
+
+    if (g_soap_runtime_state.transport_uri[0] == '\0')
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
