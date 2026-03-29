@@ -24,14 +24,15 @@ NX-Cast 的目标是：
 
 ## 当前状态
 
-项目处于早期开发阶段。
+项目目前处于原型快速推进阶段。
 
-首个里程碑目标：
+当前进度：
 
-- 应用框架
-- 网络初始化
-- 设备发现
-- DLNA 接收原型
+- 应用启动、日志系统与网络初始化已经就位。
+- 发现层已具备 SSDP 响应与 mDNS 探测能力。
+- DLNA DMR 核心链路已基本实现：SCPD、SOAP 路由、AVTransport / RenderingControl / ConnectionManager，以及对应 smoke 测试均已接通。
+- 当前剩余的 DLNA 工作主要是 optional 能力，例如 `NOTIFY ssdp:alive/byebye` 和更完整的事件通知。
+- 下一阶段的重点是协议之后的真实播放与画面渲染。
 
 ---
 
@@ -83,20 +84,30 @@ NX-Cast 的目标是：
 - 应用框架
 - 网络模块
 - 设备发现
+- 状态：基本完成
 
 ### Phase 2
-- DLNA Digital Media Renderer（DMR）实现（控制流程已与 SSDP 发现逻辑串联）
-- 基础播放管线
+- DLNA Digital Media Renderer（DMR）实现
+- SCPD + SOAP 控制链路
+- 状态：核心能力基本完成，剩余 optional 的 `NOTIFY ssdp:alive/byebye` 与更完整事件通知能力
 
 ### Phase 3
-- AirPlay 类视频投屏
+- 基础播放管线
+- 设备端画面渲染
 
 ### Phase 4
 - 硬件解码支持
 
 ### Phase 5
+- AirPlay 类视频投屏
+
+### Phase 6
 - UI 与配置界面
 - 添加到桌面（快捷入口）
+
+### Optional Phase
+- 基于 sysmodule 的后台常驻服务
+- 脱离普通前台 homebrew 生命周期后的挂起/持续发现与监听
 
 ---
 

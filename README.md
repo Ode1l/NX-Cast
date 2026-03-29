@@ -24,14 +24,15 @@ The long-term goal is to provide a reusable infrastructure for media streaming a
 
 ## Current Status
 
-Early development stage.
+Active prototype stage.
 
-Planned first milestone:
+Current progress:
 
-- Basic application framework
-- Network initialization
-- Device discovery
-- DLNA receiver prototype
+- Application bootstrap, logging, and network initialization are in place.
+- Device discovery is working with SSDP responder and mDNS probe support.
+- DLNA DMR core path is largely implemented: SCPD, SOAP routing, AVTransport/RenderingControl/ConnectionManager, and smoke-test coverage are all in place.
+- Remaining DLNA items are mainly optional features such as `NOTIFY ssdp:alive/byebye` and richer eventing.
+- Real playback/rendering is the next major milestone after protocol completion.
 
 ---
 
@@ -83,20 +84,30 @@ How to verify Milestone 1 locally:
 - Application framework
 - Network stack
 - Device discovery
+- Status: largely complete
 
 ### Phase 2
-- DLNA Digital Media Renderer (DMR) implementation (control path already wired through SSDP discovery)
-- Basic playback pipeline
+- DLNA Digital Media Renderer (DMR) implementation
+- SCPD + SOAP control path
+- Status: largely complete, with optional `NOTIFY ssdp:alive/byebye` and richer event/eventing work still pending
 
 ### Phase 3
-- AirPlay-style video streaming
+- Basic playback pipeline
+- On-device rendering path
 
 ### Phase 4
 - Hardware accelerated decode
 
 ### Phase 5
+- AirPlay-style video streaming
+
+### Phase 6
 - UI and configuration
 - Home menu desktop shortcut entry (add-to-desktop style launch)
+
+### Optional Phase
+- Sysmodule-based resident/background service
+- Suspended or persistent discovery/listening beyond normal foreground homebrew lifecycle
 
 ---
 
