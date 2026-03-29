@@ -390,6 +390,19 @@ PlayerState player_get_state(void);
 2. `seek/play/pause/stop` 不会相互打架
 3. 更适合用命令队列串行处理播放命令
 
+当前实现状态补充：
+
+1. Step 1 已给 `libmpv backend` 加入最小互斥保护
+2. 但 `player` 还没有真正独立的 backend 线程
+3. 当前 `player_*` 仍在调用者线程里直接执行 `libmpv` 控制
+4. 当前还没有命令队列、事件队列和专门的 `mpv` 事件循环
+
+因此当前结论应理解为：
+
+1. 现在已经有“基础并发保护”
+2. 但还不能视为“正式并发模型已经完成”
+3. 真正完整的线程模型仍属于 Step 3 范围
+
 推荐命令流：
 
 1. SOAP 收到 `Play`
