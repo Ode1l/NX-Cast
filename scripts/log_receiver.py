@@ -35,10 +35,12 @@ def main() -> int:
             session_path = make_session_path(args.output_dir, addr[0])
             print(f"[log-receiver] connection from {addr[0]}:{addr[1]} -> {session_path}", flush=True)
             with conn, open(session_path, "w", encoding="utf-8") as f:
+                upload_complete = False
                 try:
                     while True:
                         data = conn.recv(4096)
                         if not data:
+                            upload_complete = True
                             break
                         text = data.decode("utf-8", errors="replace")
                         f.write(text)
@@ -47,6 +49,13 @@ def main() -> int:
                             print(text, end="", flush=True)
                 except ConnectionResetError:
                     print(f"[log-receiver] connection reset by peer {addr[0]}:{addr[1]}", flush=True)
+                if upload_complete:
+                    try:
+                        conn.sendall(b"OK\n")
+                    except OSError:
+                        print(f"[log-receiver] ack send failed {addr[0]}:{addr[1]}", flush=True)
+                else:
+                    print(f"[log-receiver] upload incomplete {addr[0]}:{addr[1]}", flush=True)
             print(f"[log-receiver] saved {session_path}", flush=True)
             if args.once:
                 break

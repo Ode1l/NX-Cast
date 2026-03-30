@@ -50,6 +50,10 @@ static const char *transport_state_from_player_state(PlayerState state)
         return "PLAYING";
     case PLAYER_STATE_PAUSED:
         return "PAUSED_PLAYBACK";
+    case PLAYER_STATE_LOADING:
+    case PLAYER_STATE_BUFFERING:
+    case PLAYER_STATE_SEEKING:
+        return "TRANSITIONING";
     case PLAYER_STATE_STOPPED:
     case PLAYER_STATE_IDLE:
         return "STOPPED";

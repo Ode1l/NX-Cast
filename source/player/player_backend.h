@@ -24,6 +24,7 @@ typedef struct
     int (*get_duration_ms)(void);
     int (*get_volume)(void);
     bool (*get_mute)(void);
+    bool (*is_seekable)(void);
     PlayerState (*get_state)(void);
 } PlayerBackendOps;
 

@@ -225,6 +225,13 @@ bool player_get_mute(void)
     return g_backend->get_mute();
 }
 
+bool player_is_seekable(void)
+{
+    if (!g_initialized || !g_backend || !g_backend->is_seekable)
+        return false;
+    return g_backend->is_seekable();
+}
+
 PlayerState player_get_state(void)
 {
     if (!g_initialized || !g_backend || !g_backend->get_state)

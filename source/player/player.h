@@ -6,6 +6,9 @@ typedef enum
 {
     PLAYER_STATE_IDLE = 0,
     PLAYER_STATE_STOPPED,
+    PLAYER_STATE_LOADING,
+    PLAYER_STATE_BUFFERING,
+    PLAYER_STATE_SEEKING,
     PLAYER_STATE_PLAYING,
     PLAYER_STATE_PAUSED,
     PLAYER_STATE_ERROR
@@ -64,4 +67,5 @@ int player_get_position_ms(void);
 int player_get_duration_ms(void);
 int player_get_volume(void);
 bool player_get_mute(void);
+bool player_is_seekable(void);
 PlayerState player_get_state(void);

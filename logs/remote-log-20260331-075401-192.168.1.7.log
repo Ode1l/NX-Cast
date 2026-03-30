@@ -1,0 +1,82 @@
+[INFO] [log] level=DEBUG
+[INFO] [net] Network stack initialized.
+[INFO] [net] Ensure Wi-Fi is connected before streaming.
+[INFO] [log] remote TCP log upload configured host=192.168.1.40 port=28772
+[INFO] [scpd] description resources ready.
+[INFO] [player] auto resolve libmpv_available=1 mock_available=1
+[INFO] [player-libmpv] init mode=control-only ao=null vo=null net_timeout=20s tls_verify=no
+[INFO] [player] init backend=libmpv
+[INFO] [soap] SOAP control module started.
+[INFO] [http-server] listening on :49152
+[INFO] [ssdp] Responder ready on http://192.168.1.7:49152/device.xml
+[INFO] [dlna] Control layer initialized (HTTP/SCPD on :49152).
+[INFO] [ui] NX-Cast starting. Press + to exit.
+[INFO] [ui] Use Up/Down, sticks, or touch drag to scroll logs.
+[DEBUG] [ssdp] recv packet from 192.168.1.39:11440 bytes=172
+[DEBUG] [ssdp] M-SEARCH ST=upnp:rootdevice
+[INFO] [ssdp] send packet to 192.168.1.39:11440 st=upnp:rootdevice bytes=273
+[DEBUG] [ssdp] recv packet from 192.168.1.39:11440 bytes=172
+[DEBUG] [ssdp] M-SEARCH ST=upnp:rootdevice
+[INFO] [ssdp] send packet to 192.168.1.39:11440 st=upnp:rootdevice bytes=273
+[DEBUG] [ssdp] recv packet from 192.168.1.39:11440 bytes=172
+[DEBUG] [ssdp] M-SEARCH ST=upnp:rootdevice
+[INFO] [ssdp] send packet to 192.168.1.39:11440 st=upnp:rootdevice bytes=273
+[DEBUG] [http-server] recv 192.168.1.39:61338 -> GET http://192.168.1.7:49152/device.xml bytes=105
+[INFO] [scpd] served path=/device.xml send_bytes=1669
+[DEBUG] [http-server] send endpoint=/device.xml bytes=1669 handled=1
+[DEBUG] [http-server] recv 192.168.1.39:61339 -> GET http://192.168.1.7:49152/scpd/AVTransport.xml bytes=115
+[INFO] [scpd] served path=/scpd/AVTransport.xml send_bytes=9109
+[DEBUG] [http-server] send endpoint=/scpd/AVTransport.xml bytes=9109 handled=1
+[DEBUG] [http-server] recv 192.168.1.39:61340 -> GET http://192.168.1.7:49152/scpd/RenderingControl.xml bytes=120
+[INFO] [scpd] served path=/scpd/RenderingControl.xml send_bytes=2913
+[DEBUG] [http-server] send endpoint=/scpd/RenderingControl.xml bytes=2913 handled=1
+[DEBUG] [http-server] recv 192.168.1.39:61341 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=3791
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=3791
+[DEBUG] [soap] route service=AVTransport action=SetAVTransportURI soapAction="urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=3532
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI>http://upos-sz-estgoss.bilivideo.com/upgcxcode/87/82/36866098287/36866098287-1-192.mp4?e=ig8...</CurrentURI>
+[DEBUG] [soap-router] matched AVTransport#SetAVTransportURI -> avtransport_set_uri
+[DEBUG] [soap-arg] required arg service=AVTransport action=SetAVTransportURI arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=SetAVTransportURI arg=CurrentURI value=http://upos-sz-estgoss.bilivideo.com/upgcxcode/87/82/36866098287/36866098287-1-192.mp4?e=ig8...
+[WARN] [player-libmpv] command loadfile(pause=yes) failed: invalid parameter
+[WARN] [soap] action fault service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri code=501 desc=Action Failed
+[WARN] [soap] fault detail reason=handler_fault method=POST endpoint=/upnp/control/AVTransport soapAction="urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI" request_line=POST /upnp/control/AVTransport HTTP/1.1 request_bytes=3791 body_bytes=3532 host=192.168.1.7:49152 content-length=3532 user-agent=Linux/3.0.0 UPnP/1.0 Platinum/1.0.5.13
+[WARN] [soap] fault body=<?xml version="1.0" encoding="UTF-8"?>  <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><CurrentURI>http://upos-sz-estgoss.bilivideo.com/upgcxcode/87/82/36866098287/36866098287-1-192.mp4?e=ig8euxZ...
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=500 bytes=554
+[WARN] [soap] assert_http_500 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri code=501
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=554 handled=1
+[DEBUG] [http-server] recv 192.168.1.39:61346 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=551
+[DEBUG] [soap] route service=AVTransport action=Play soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=306
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[DEBUG] [soap-router] matched AVTransport#Play -> avtransport_play
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=InstanceID value=0
+[DEBUG] [soap-arg] required arg service=AVTransport action=Play arg=Speed value=1
+[WARN] [soap] action fault service=AVTransport action=Play handler=avtransport_play code=701 desc=Transition not available
+[WARN] [soap] fault detail reason=handler_fault method=POST endpoint=/upnp/control/AVTransport soapAction="urn:schemas-upnp-org:service:AVTransport:1#Play" request_line=POST /upnp/control/AVTransport HTTP/1.1 request_bytes=551 body_bytes=306 host=192.168.1.7:49152 content-length=306 user-agent=Linux/3.0.0 UPnP/1.0 Platinum/1.0.5.13
+[WARN] [soap] fault body=<?xml version="1.0" encoding="UTF-8"?>  <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID><Speed>1</Speed></u:Play></s:Body></s:Envelope>
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=500 bytes=565
+[WARN] [soap] assert_http_500 service=AVTransport action=Play handler=avtransport_play code=701
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=565 handled=1
+[DEBUG] [http-server] recv 192.168.1.39:61351 -> POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=535
+[DEBUG] [soap] HTTP POST http://192.168.1.7:49152/upnp/control/AVTransport bytes=535
+[DEBUG] [soap] route service=AVTransport action=Stop soapAction="urn:schemas-upnp-org:service:AVTransport:1#Stop"
+[DEBUG] [soap] recv packet endpoint=/upnp/control/AVTransport body_bytes=290
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[DEBUG] [soap-router] matched AVTransport#Stop -> avtransport_stop
+[DEBUG] [soap-arg] required arg service=AVTransport action=Stop arg=InstanceID value=0
+[WARN] [soap] action fault service=AVTransport action=Stop handler=avtransport_stop code=701 desc=Transition not available
+[WARN] [soap] fault detail reason=handler_fault method=POST endpoint=/upnp/control/AVTransport soapAction="urn:schemas-upnp-org:service:AVTransport:1#Stop" request_line=POST /upnp/control/AVTransport HTTP/1.1 request_bytes=535 body_bytes=290 host=192.168.1.7:49152 content-length=290 user-agent=Linux/3.0.0 UPnP/1.0 Platinum/1.0.5.13
+[WARN] [soap] fault body=<?xml version="1.0" encoding="UTF-8"?>  <s:Envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Stop></s:Body></s:Envelope>
+[DEBUG] [soap] send packet endpoint=/upnp/control/AVTransport status=500 bytes=565
+[WARN] [soap] assert_http_500 service=AVTransport action=Stop handler=avtransport_stop code=701
+[DEBUG] [http-server] send endpoint=/upnp/control/AVTransport bytes=565 handled=1
+[INFO] [ssdp] Responder stopped.
+[INFO] [http-server] stopped.
+[INFO] [player-libmpv] deinit
+[INFO] [player] deinit backend=libmpv
+[INFO] [soap] SOAP control module stopped.
+[INFO] [scpd] description resources stopped.
+[INFO] [dlna] Control layer stopped.
+[INFO] [log] uploading history to remote receiver before exit.

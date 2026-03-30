@@ -17,6 +17,10 @@ static const char *transport_state_from_player_state(PlayerState state)
         return "PLAYING";
     case PLAYER_STATE_PAUSED:
         return "PAUSED_PLAYBACK";
+    case PLAYER_STATE_LOADING:
+    case PLAYER_STATE_BUFFERING:
+    case PLAYER_STATE_SEEKING:
+        return "TRANSITIONING";
     case PLAYER_STATE_STOPPED:
     case PLAYER_STATE_IDLE:
         return "STOPPED";
@@ -416,6 +420,14 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     }
 
     if (g_soap_runtime_state.transport_uri[0] == '\0')
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
+    PlayerState player_state = sync_transport_state_from_player();
+    if ((player_state != PLAYER_STATE_PLAYING && player_state != PLAYER_STATE_PAUSED) ||
+        !player_is_seekable())
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;

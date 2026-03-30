@@ -689,6 +689,129 @@ Step 3 的通过标准：
 2. `mpv` 状态变化能稳定同步到 `player`
 3. 后续 `deko3d / hwdec / LastChange` 有明确接入点
 
+### 15.1 下一步要补的标准化设计
+
+当前实现已经回到正确方向，但还不是完整的标准播放器状态机。后续应继续补下面这些设计。
+
+#### 必须补
+
+1. `PlayerState` 增加更细状态
+
+建议至少增加：
+
+1. `LOADING`
+2. `BUFFERING`
+
+原因：
+
+1. 现在只有 `STOPPED / PLAYING / PAUSED / ERROR`
+2. 对本地文件还勉强够用
+3. 对 `https/mp4`、`m3u8`、直播流不够
+
+如果不补这层，后续仍然会出现：
+
+1. 加载中被误看成 `STOPPED`
+2. 缓冲中被误看成 `PLAYING`
+
+#### 必须补
+
+2. 内部状态映射到 SOAP 的 `TRANSITIONING`
+
+当前 SOAP 对外仍主要暴露：
+
+1. `STOPPED`
+2. `PLAYING`
+3. `PAUSED_PLAYBACK`
+
+更标准的做法是：
+
+1. `LOADING / BUFFERING / SEEKING`
+2. 对外优先映射成 `TRANSITIONING`
+
+这样控制端不会过早把媒体当成：
+
+1. 已稳定播放
+2. 已经可以拖动
+
+#### 必须补
+
+3. 观察更多 `mpv` 属性
+
+当前还应逐步纳入：
+
+1. `seekable`
+2. `paused-for-cache`
+3. `core-idle`
+4. `playback-abort`
+5. `eof-reached`
+6. `seeking`
+
+这些属性的作用分别是：
+
+1. 判断是否可 seek
+2. 判断是否在缓存暂停
+3. 判断核心是否空闲
+4. 判断播放是否被中止
+5. 判断是否已经到流尾
+6. 判断是否处于 seek 过程
+
+没有这些属性，网络流状态机仍然不够稳。
+
+#### Optional
+
+4. 为状态机引入 `ready` 与 `seekable` 分离判断
+
+更标准的内部模型应把下面两个概念分开：
+
+1. `media_ready`
+2. `media_seekable`
+
+原因：
+
+1. 一个媒体可能已经打开成功，但暂时不可 seek
+2. 特别是直播流和某些 HLS 流
+
+这样后面：
+
+1. `Play / Pause`
+2. `Seek`
+
+就可以各自按不同前提判断，而不是共用同一条件。
+
+#### Optional
+
+5. 冒烟测试脚本拆成“基础控制”和“seek 能力”两类
+
+当前 `dlna_soap_smoke.sh` 仍然是一个串行脚本。后续更标准的方式是拆成：
+
+1. 基础控制测试
+   只测 `SetURI / Play / Pause / Stop / GetTransportInfo / GetPositionInfo`
+2. Seek 能力测试
+   只在 `seekable=true` 时执行
+
+这样测试结果不会再被混淆成：
+
+1. 播放成功但 seek 失败
+2. 或者加载中尚未 ready 就被拿去测 seek
+
+#### 实现参考
+
+这组状态观测点不是凭空添加的，和现有 Switch 端播放器项目的做法是一致的：
+
+1. `nxmp` 会在 `FILE_LOADED` 后继续观察 `paused-for-cache`、`demuxer-cache-duration`、`demuxer-cache-state`
+2. `wiliwili` 会长期观察 `core-idle`、`paused-for-cache`、`playback-abort`、`seeking`、`cache-speed`
+3. 两者都会把 `START_FILE`、缓存等待、seek 过程视为过渡态，而不是直接视为 `PLAYING`
+4. 对 HLS 场景，额外记录 `current-demuxer`、`stream-open-filename`、`stream-path` 这类“当前到底在打开什么流”的信息是必要的
+
+因此 `NX-Cast` 后续把：
+
+1. `LOADING / BUFFERING / SEEKING`
+2. `TRANSITIONING`
+3. `paused-for-cache / core-idle / playback-abort / seeking`
+
+纳入正式状态机，是对已有成熟实现的收敛，不是额外发明一套新模型。
+
+
 ---
 
 ## 16. 结论

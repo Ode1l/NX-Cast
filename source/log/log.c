@@ -17,6 +17,7 @@
 #define LOG_HISTORY_MESSAGE_MAX 512
 #define LOG_WORKER_STACK_SIZE (32 * 1024)
 #define LOG_REMOTE_IO_TIMEOUT_MS 200
+#define LOG_REMOTE_UPLOAD_ACK_TIMEOUT_MS 2000
 
 typedef struct
 {
@@ -177,6 +178,25 @@ static bool remote_send_all(int sock, const void *data, size_t size)
         remaining -= (size_t)written;
     }
     return true;
+}
+
+static bool remote_wait_for_upload_ack(int sock)
+{
+    struct timeval timeout;
+    timeout.tv_sec = LOG_REMOTE_UPLOAD_ACK_TIMEOUT_MS / 1000;
+    timeout.tv_usec = (LOG_REMOTE_UPLOAD_ACK_TIMEOUT_MS % 1000) * 1000;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    if (shutdown(sock, SHUT_WR) < 0)
+        return false;
+
+    char ack[16];
+    ssize_t received = recv(sock, ack, sizeof(ack) - 1, 0);
+    if (received <= 0)
+        return false;
+
+    ack[received] = '\0';
+    return strncmp(ack, "OK", 2) == 0;
 }
 
 static void log_worker_thread(void *arg)
@@ -423,6 +443,9 @@ bool log_upload_history(void)
             break;
         }
     }
+
+    if (ok)
+        ok = remote_wait_for_upload_ack(sock);
 
     close(sock);
     free(snapshot);

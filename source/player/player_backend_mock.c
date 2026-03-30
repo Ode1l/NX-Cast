@@ -240,6 +240,11 @@ static bool mock_get_mute(void)
     return g_mute;
 }
 
+static bool mock_is_seekable(void)
+{
+    return g_uri[0] != '\0' && g_duration_ms > 0;
+}
+
 static PlayerState mock_get_state(void)
 {
     refresh_position(false);
@@ -263,5 +268,6 @@ const PlayerBackendOps g_player_backend_mock = {
     .get_duration_ms = mock_get_duration_ms,
     .get_volume = mock_get_volume,
     .get_mute = mock_get_mute,
+    .is_seekable = mock_is_seekable,
     .get_state = mock_get_state
 };
