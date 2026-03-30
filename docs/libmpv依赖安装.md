@@ -243,11 +243,79 @@ dkp-pacman -Si switch-ffmpeg
 2. 安装后缺少关键头文件或静态库
 3. 功能不足，无法满足后续 Switch 特性需求
 
-## 5. 第三步（仅在必要时）：手工编译 Switch 版 FFmpeg
+### 4.7 当前二进制包的已知限制
+
+`NX-Cast` 当前已经实测确认：
+
+1. `switch-libmpv + switch-ffmpeg` 可以跑通：
+   1. 纯 `http://` 的 `faststart mp4`
+   2. `SetURI -> Play -> GetPositionInfo -> Seek -> Pause -> Stop`
+2. 当前 `switch-ffmpeg 7.1-5` 库里有：
+   1. `ff_http_protocol`
+   2. `ff_tcp_protocol`
+   3. `ff_tls_protocol`
+   4. `ff_hls_demuxer`
+3. 但当前库里没有：
+   1. `ff_https_protocol`
+
+这会直接导致：
+
+1. `https://...mp4` 打不开
+2. `https://...m3u8` 打不开
+3. `Bilibili` 这类 `https` CDN 源不能直接打开
+
+当前库中还可以直接看到这条提示字符串：
+
+```text
+https protocol not found, recompile FFmpeg with openssl, gnutls or securetransport enabled.
+```
+
+因此，当前官方二进制包只能作为：
+
+1. `HTTP` 基线验证环境
+2. `player-libmpv` 控制链路验证环境
+
+如果目标进入：
+
+1. `https`
+2. `https m3u8`
+3. `Bilibili`
+
+就必须进入后面的自定义重编步骤。
+
+### 4.8 如何验证当前是否缺少 `https`
+
+执行：
+
+```bash
+source /opt/devkitpro/switchvars.sh
+strings "$PORTLIBS_PREFIX/lib/libavformat.a" | rg 'ff_https_protocol|ff_hls_demuxer|ff_http_protocol|ff_tls_protocol|https protocol not found'
+```
+
+如果结果里出现：
+
+1. `ff_hls_demuxer`
+2. `ff_http_protocol`
+3. `ff_tls_protocol`
+4. 同时又出现 `https protocol not found`
+
+那就说明当前状态正是：
+
+1. `HLS` 在
+2. `HTTP/TCP/TLS` 在
+3. 但 `HTTPS` 包装协议不在
+
+## 5. 第三步（当前已需要）：手工编译 Switch 版 FFmpeg
 
 ### 5.1 目的
 
 这是 `libmpv` 的底层依赖，也是后续硬解码路线的一部分。
+
+对 `NX-Cast` 当前阶段，这一步已经不是“以后再说”的可选项，而是为了解决下面这些源兼容性问题的必要步骤：
+
+1. `https://...mp4`
+2. `https://...m3u8`
+3. `Bilibili` 这类 `https` 视频源
 
 ### 5.2 仓库
 
@@ -290,6 +358,20 @@ git checkout nvtegra
 4. 开启 `swscale / swresample`
 5. 保留后续 `nvtegra` 支持
 
+对 `NX-Cast` 当前目标，最小必须项是：
+
+1. `http`
+2. `https`
+3. `tcp`
+4. `tls`
+5. `hls demuxer`
+6. `mbedtls`
+
+也就是说，当前最重要的不是一步到位做完整播放器栈，而是先补齐：
+
+1. `HTTPS`
+2. `HTTPS + HLS`
+
 ### 5.5 编译安装
 
 执行前先清理旧配置：
@@ -304,6 +386,19 @@ make distclean 2>/dev/null || true
 
 1. 具体 `configure` 选项建议以 `nxmp` 的 `BUILD.md` 为基线
 2. 这一步建议单独保存为脚本，不建议每次手敲长命令
+3. `NX-Cast` 当前优先推荐先用“最小 HTTPS/HLS 配置”替换官方 `switch-ffmpeg`
+
+项目里已经提供了对应脚本：
+
+```bash
+scripts/build_switch_ffmpeg_https.sh
+```
+
+直接执行：
+
+```bash
+./scripts/build_switch_ffmpeg_https.sh
+```
 
 ### 5.6 这一阶段如何验证
 
@@ -315,6 +410,7 @@ test -f "$PORTLIBS_PREFIX/lib/libavformat.a" && echo OK || echo MISSING
 test -f "$PORTLIBS_PREFIX/lib/libavcodec.a" && echo OK || echo MISSING
 test -f "$PORTLIBS_PREFIX/lib/libswscale.a" && echo OK || echo MISSING
 test -f "$PORTLIBS_PREFIX/lib/libswresample.a" && echo OK || echo MISSING
+strings "$PORTLIBS_PREFIX/lib/libavformat.a" | rg 'ff_https_protocol|ff_hls_demuxer|ff_http_protocol|ff_tls_protocol'
 
 test -d "$PORTLIBS_PREFIX/include/libavformat" && echo OK || echo MISSING
 test -d "$PORTLIBS_PREFIX/include/libavcodec" && echo OK || echo MISSING
@@ -324,6 +420,8 @@ test -d "$PORTLIBS_PREFIX/include/libavcodec" && echo OK || echo MISSING
 
 1. 四个核心静态库都存在
 2. 头文件目录存在
+3. `ff_https_protocol` 出现
+4. `ff_hls_demuxer` 出现
 
 如果这一步不过，就不要进入 `mpv` 阶段。
 
@@ -387,6 +485,11 @@ find "$PORTLIBS_PREFIX" -iname 'uam*' | head
 1. 获取 `libmpv`
 2. 供 `NX-Cast` 的 `player_backend_libmpv.c` 使用
 
+注意：
+
+1. 对 `NX-Cast` 当前问题，先重编 `FFmpeg` 再验证 `https/hls`
+2. 只有在自定义 `FFmpeg` 之后，`switch-libmpv` 仍然无法正常工作时，才进入这一步
+
 ### 7.2 仓库
 
 ```text
@@ -443,6 +546,12 @@ TARGET=aarch64-none-elf \
 ```
 
 如果配置阶段生成了 `build/config.h`，可按 `nxmp` 的经验对 `HAVE_POSIX` 做一次检查和必要修正。
+
+项目里已经提供了对应脚本：
+
+```bash
+scripts/build_switch_mpv_custom.sh
+```
 
 ### 7.6 这一阶段如何验证
 

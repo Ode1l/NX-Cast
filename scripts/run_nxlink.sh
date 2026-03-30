@@ -5,8 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOG_DIR="${PROJECT_ROOT}/logs"
 mkdir -p "$LOG_DIR"
-LOG_FILE="${LOG_DIR}/$(basename "${BASH_SOURCE[0]}" .sh)-$(date +%Y%m%d-%H%M%S).log"
-exec > >(tee -a "$LOG_FILE") 2>&1
 
 NXLINK_BIN=${NXLINK_BIN:-nxlink}
 NRO_PATH=${1:-${PROJECT_ROOT}/NX-Cast.nro}
@@ -14,6 +12,7 @@ SWITCH_IP=${SWITCH_IP:-}
 NO_BUILD=${NO_BUILD:-0}
 BUILD_JOBS=${BUILD_JOBS:-4}
 LOG_TCP_PORT=${LOG_TCP_PORT:-28772}
+START_LOG_RECEIVER=${START_LOG_RECEIVER:-1}
 SWITCH_IP_SOURCE="env"
 LOG_RECEIVER_PID=""
 
@@ -24,11 +23,11 @@ stop_log_receiver() {
   fi
 }
 
-trap 'stop_log_receiver; printf "[run-nxlink] log saved: %s\n" "$LOG_FILE"' EXIT
+trap 'stop_log_receiver' EXIT
 
 detect_switch_ip_from_logs() {
   local latest_log
-  latest_log="$(find "$LOG_DIR" -maxdepth 1 -type f -name 'run_nxlink-*.log' ! -name "$(basename "$LOG_FILE")" | sort | tail -n 1 || true)"
+  latest_log="$(find "$LOG_DIR" -maxdepth 1 -type f -name 'remote-log-*.log' | sort | tail -n 1 || true)"
   if [ -z "$latest_log" ] || [ ! -f "$latest_log" ]; then
     return 1
   fi
@@ -47,41 +46,9 @@ start_log_receiver() {
     return 1
   fi
 
-  python3 -u - "$LOG_TCP_PORT" <<'PY' &
-import socket
-import sys
-
-port = int(sys.argv[1])
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(("0.0.0.0", port))
-server.listen(1)
-print(f"[run-nxlink] tcp-log listening on :{port}", flush=True)
-try:
-    while True:
-        conn, addr = server.accept()
-        print(f"[run-nxlink] tcp-log client {addr[0]}:{addr[1]}", flush=True)
-        with conn:
-            buffer = b""
-            while True:
-                data = conn.recv(4096)
-                if not data:
-                    break
-                buffer += data
-                while b"\n" in buffer:
-                    line, buffer = buffer.split(b"\n", 1)
-                    text = line.decode("utf-8", errors="replace").rstrip()
-                    if text:
-                        print(text, flush=True)
-except KeyboardInterrupt:
-    pass
-finally:
-    server.close()
-PY
+  python3 -u "${SCRIPT_DIR}/log_receiver.py" --port "$LOG_TCP_PORT" --stdout --once &
   LOG_RECEIVER_PID=$!
 }
-
-printf '[run-nxlink] log file: %s\n' "$LOG_FILE"
 
 if [ "$NO_BUILD" != "1" ]; then
   echo "[run-nxlink] build=make clean && make -j${BUILD_JOBS}"
@@ -98,7 +65,11 @@ if [ ! -f "$NRO_PATH" ]; then
   exit 1
 fi
 
-start_log_receiver || echo "[run-nxlink] tcp-log receiver unavailable"
+if [ "$START_LOG_RECEIVER" = "1" ]; then
+  start_log_receiver || echo "[run-nxlink] tcp-log receiver unavailable"
+else
+  echo "[run-nxlink] remote log receiver not started by script; run scripts/log_receiver.py --port ${LOG_TCP_PORT}"
+fi
 
 if [ -z "$SWITCH_IP" ]; then
   SWITCH_IP="$(detect_switch_ip_from_logs || true)"
@@ -106,9 +77,14 @@ if [ -z "$SWITCH_IP" ]; then
 fi
 
 if [ -n "$SWITCH_IP" ]; then
-  echo "[run-nxlink] target=${SWITCH_IP} source=${SWITCH_IP_SOURCE} server=on tcp-log=${LOG_TCP_PORT}"
-  "$NXLINK_BIN" -a "$SWITCH_IP" -s "$NRO_PATH"
+  echo "[run-nxlink] target=${SWITCH_IP} source=${SWITCH_IP_SOURCE} tcp-log=${LOG_TCP_PORT}"
+  "$NXLINK_BIN" -a "$SWITCH_IP" "$NRO_PATH"
 else
-  echo "[run-nxlink] target=auto server=on tcp-log=${LOG_TCP_PORT}"
-  "$NXLINK_BIN" -s "$NRO_PATH"
+  echo "[run-nxlink] target=auto tcp-log=${LOG_TCP_PORT}"
+  "$NXLINK_BIN" "$NRO_PATH"
+fi
+
+if [ -n "$LOG_RECEIVER_PID" ]; then
+  echo "[run-nxlink] upload complete; waiting for remote log upload on exit"
+  wait "$LOG_RECEIVER_PID" || true
 fi

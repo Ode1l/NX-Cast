@@ -15,6 +15,10 @@
 
 #define PLAYER_LIBMPV_URI_MAX 1024
 #define PLAYER_LIBMPV_METADATA_MAX 2048
+#define PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS "20"
+#define PLAYER_LIBMPV_DEMUXER_READAHEAD_SECONDS "20"
+#define PLAYER_LIBMPV_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) NX-Cast/0.1 Safari/537.36"
+#define PLAYER_LIBMPV_BILIBILI_REFERRER "https://www.bilibili.com/"
 
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 
@@ -27,11 +31,14 @@ static int g_duration_ms = 0;
 static int g_volume = 20;
 static bool g_mute = false;
 static bool g_media_loaded = false;
+static bool g_load_in_progress = false;
 static bool g_stop_mode = true;
 static char g_uri[PLAYER_LIBMPV_URI_MAX];
 static char g_metadata[PLAYER_LIBMPV_METADATA_MAX];
 
 static void libmpv_clip_for_log(const char *input, char *output, size_t output_size);
+static bool libmpv_is_bilibili_uri(const char *uri);
+static void libmpv_log_message(const mpv_event_log_message *message);
 
 static const char *libmpv_end_reason_name(mpv_end_file_reason reason)
 {
@@ -67,22 +74,28 @@ static void libmpv_drain_events_locked(void)
         {
         case MPV_EVENT_START_FILE:
             g_media_loaded = false;
+            g_load_in_progress = true;
             log_debug("[player-libmpv] event START_FILE\n");
             break;
         case MPV_EVENT_FILE_LOADED:
             g_media_loaded = true;
+            g_load_in_progress = false;
             log_info("[player-libmpv] event FILE_LOADED\n");
             break;
         case MPV_EVENT_END_FILE:
         {
             const mpv_event_end_file *end = (const mpv_event_end_file *)event->data;
             g_media_loaded = false;
+            g_load_in_progress = false;
             g_position_ms = 0;
             if (end)
             {
-                log_info("[player-libmpv] event END_FILE reason=%s error=%s\n",
-                         libmpv_end_reason_name(end->reason),
-                         end->error != 0 ? mpv_error_string(end->error) : "none");
+                const char *reason = libmpv_end_reason_name(end->reason);
+                const char *error = end->error != 0 ? mpv_error_string(end->error) : "none";
+                if (end->reason == MPV_END_FILE_REASON_ERROR)
+                    log_error("[player-libmpv] event END_FILE reason=%s error=%s\n", reason, error);
+                else
+                    log_info("[player-libmpv] event END_FILE reason=%s error=%s\n", reason, error);
                 if (end->reason == MPV_END_FILE_REASON_ERROR)
                     g_state = PLAYER_STATE_ERROR;
             }
@@ -97,17 +110,7 @@ static void libmpv_drain_events_locked(void)
         case MPV_EVENT_LOG_MESSAGE:
         {
             const mpv_event_log_message *message = (const mpv_event_log_message *)event->data;
-            if (!message || !message->text)
-                break;
-            if (message->log_level <= MPV_LOG_LEVEL_WARN)
-            {
-                char clipped[192];
-                libmpv_clip_for_log(message->text, clipped, sizeof(clipped));
-                log_warn("[player-libmpv] mpv[%s/%s] %s\n",
-                         message->prefix ? message->prefix : "?",
-                         message->level ? message->level : "?",
-                         clipped);
-            }
+            libmpv_log_message(message);
             break;
         }
         default:
@@ -154,6 +157,48 @@ static void libmpv_clip_for_log(const char *input, char *output, size_t output_s
     output[copy_len + 1] = '.';
     output[copy_len + 2] = '.';
     output[copy_len + 3] = '\0';
+}
+
+static bool libmpv_is_bilibili_uri(const char *uri)
+{
+    if (!uri)
+        return false;
+
+    return strstr(uri, "bilivideo.com") != NULL ||
+           strstr(uri, "bilibili.com") != NULL ||
+           strstr(uri, "hdslb.com") != NULL;
+}
+
+static void libmpv_log_message(const mpv_event_log_message *message)
+{
+    if (!message || !message->text)
+        return;
+
+    char clipped[192];
+    libmpv_clip_for_log(message->text, clipped, sizeof(clipped));
+
+    const char *prefix = message->prefix ? message->prefix : "?";
+    const char *level = message->level ? message->level : "?";
+
+    if (message->log_level <= MPV_LOG_LEVEL_ERROR)
+    {
+        log_error("[player-libmpv] mpv[%s/%s] %s\n", prefix, level, clipped);
+        return;
+    }
+
+    if (message->log_level <= MPV_LOG_LEVEL_WARN)
+    {
+        log_warn("[player-libmpv] mpv[%s/%s] %s\n", prefix, level, clipped);
+        return;
+    }
+
+    if (message->log_level <= MPV_LOG_LEVEL_INFO)
+    {
+        log_info("[player-libmpv] mpv[%s/%s] %s\n", prefix, level, clipped);
+        return;
+    }
+
+    log_debug("[player-libmpv] mpv[%s/%s] %s\n", prefix, level, clipped);
 }
 
 static int libmpv_ms_from_seconds(double seconds)
@@ -252,10 +297,21 @@ static bool libmpv_command_locked(const char *action, const char **args)
 static bool libmpv_load_uri_locked(const char *uri, bool paused)
 {
     const char *options = paused ? "pause=yes" : "pause=no";
+    const char *cmd[8];
+    size_t index = 0;
+
+    cmd[index++] = "loadfile";
+    cmd[index++] = uri;
+    cmd[index++] = "replace";
+    cmd[index++] = "-1";
+    cmd[index++] = options;
+    if (libmpv_is_bilibili_uri(uri))
+        cmd[index++] = "referrer=" PLAYER_LIBMPV_BILIBILI_REFERRER;
+    cmd[index] = NULL;
+
     // mpv 0.38+ inserts an optional playlist index as the 3rd argument of
     // loadfile. If we want to pass per-file options, we must explicitly pass
     // "-1" as the index placeholder and move options to the 4th argument.
-    const char *cmd[] = {"loadfile", uri, "replace", "-1", options, NULL};
     return libmpv_command_locked(paused ? "loadfile(pause=yes)" : "loadfile(pause=no)", cmd);
 }
 
@@ -331,7 +387,16 @@ static void libmpv_refresh_snapshot_locked(void)
     if (g_state == PLAYER_STATE_ERROR)
         return;
 
-    if (g_stop_mode || (!g_media_loaded && idle_active))
+    if (g_load_in_progress)
+    {
+        if (g_stop_mode)
+            g_state = PLAYER_STATE_STOPPED;
+        else if (paused)
+            g_state = PLAYER_STATE_PAUSED;
+        else
+            g_state = PLAYER_STATE_PLAYING;
+    }
+    else if (g_stop_mode || (!g_media_loaded && idle_active))
         g_state = PLAYER_STATE_STOPPED;
     else if (paused)
         g_state = PLAYER_STATE_PAUSED;
@@ -357,6 +422,7 @@ static bool libmpv_init(void)
     g_volume = 20;
     g_mute = false;
     g_media_loaded = false;
+    g_load_in_progress = false;
     g_stop_mode = true;
 
     g_mpv = mpv_create();
@@ -378,6 +444,15 @@ static bool libmpv_init(void)
     // Step 1 only binds DLNA control to a real playback core. Video rendering
     // stays disabled until the later render/deko3d design is in place.
     mpv_set_option_string(g_mpv, "vo", "null");
+    mpv_set_option_string(g_mpv, "network-timeout", PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS);
+    mpv_set_option_string(g_mpv, "user-agent", PLAYER_LIBMPV_DEFAULT_USER_AGENT);
+    mpv_set_option_string(g_mpv, "hls-bitrate", "max");
+    mpv_set_option_string(g_mpv, "demuxer-seekable-cache", "yes");
+    mpv_set_option_string(g_mpv, "demuxer-readahead-secs", PLAYER_LIBMPV_DEMUXER_READAHEAD_SECONDS);
+    mpv_set_option_string(g_mpv, "demuxer-lavf-analyzeduration", "0.4");
+    mpv_set_option_string(g_mpv, "demuxer-lavf-probescore", "24");
+    // Step 1 focuses on protocol compatibility before CA bundle plumbing exists.
+    mpv_set_option_string(g_mpv, "tls-verify", "no");
 
     int rc = mpv_initialize(g_mpv);
     if (rc < 0)
@@ -399,7 +474,8 @@ static bool libmpv_init(void)
     libmpv_emit_event_locked(PLAYER_EVENT_MUTE_CHANGED);
     mutexUnlock(&g_state_mutex);
 
-    log_info("[player-libmpv] init mode=control-only ao=null vo=null\n");
+    log_info("[player-libmpv] init mode=control-only ao=null vo=null net_timeout=%ss tls_verify=no\n",
+             PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS);
     return true;
 }
 
@@ -420,6 +496,7 @@ static void libmpv_deinit(void)
     g_position_ms = 0;
     g_duration_ms = 0;
     g_media_loaded = false;
+    g_load_in_progress = false;
     g_stop_mode = true;
     g_event_sink = NULL;
     mutexUnlock(&g_state_mutex);
@@ -468,6 +545,7 @@ static bool libmpv_set_uri(const char *uri, const char *metadata)
     g_duration_ms = 0;
     g_stop_mode = true;
     g_media_loaded = false;
+    g_load_in_progress = true;
     g_state = PLAYER_STATE_STOPPED;
     libmpv_refresh_snapshot_locked();
 
@@ -494,7 +572,15 @@ static bool libmpv_play(void)
     libmpv_refresh_snapshot_locked();
 
     bool reloaded = false;
-    if (!g_media_loaded)
+    if (g_load_in_progress)
+    {
+        if (!libmpv_set_flag_locked("pause", false))
+        {
+            mutexUnlock(&g_state_mutex);
+            return false;
+        }
+    }
+    else if (!g_media_loaded)
     {
         if (!libmpv_load_uri_locked(g_uri, false))
         {
@@ -504,6 +590,7 @@ static bool libmpv_play(void)
         g_position_ms = 0;
         g_duration_ms = 0;
         g_media_loaded = false;
+        g_load_in_progress = true;
         reloaded = true;
     }
     else if (!libmpv_set_flag_locked("pause", false))
@@ -570,11 +657,12 @@ static bool libmpv_stop(void)
         return false;
     }
 
-    if (g_stop_mode || !g_media_loaded)
+    if (g_stop_mode || (!g_media_loaded && !g_load_in_progress))
     {
         g_position_ms = 0;
         g_stop_mode = true;
         g_media_loaded = false;
+        g_load_in_progress = false;
         g_state = PLAYER_STATE_STOPPED;
         log_info("[player-libmpv] stop already-stopped=1\n");
         libmpv_emit_event_locked(PLAYER_EVENT_POSITION_CHANGED);
@@ -592,6 +680,7 @@ static bool libmpv_stop(void)
     g_position_ms = 0;
     g_stop_mode = true;
     g_media_loaded = false;
+    g_load_in_progress = false;
     g_state = PLAYER_STATE_STOPPED;
 
     log_info("[player-libmpv] stop\n");
@@ -617,12 +706,18 @@ static bool libmpv_seek_ms(int position_ms)
 
     if (!g_media_loaded)
     {
+        if (g_load_in_progress)
+        {
+            mutexUnlock(&g_state_mutex);
+            return false;
+        }
         if (!libmpv_load_uri_locked(g_uri, true))
         {
             mutexUnlock(&g_state_mutex);
             return false;
         }
         g_media_loaded = false;
+        g_load_in_progress = true;
         g_stop_mode = true;
     }
 

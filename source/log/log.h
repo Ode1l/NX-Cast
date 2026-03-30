@@ -15,6 +15,7 @@ typedef enum
 
 bool log_runtime_init(void);
 void log_runtime_shutdown(void);
+bool log_upload_history(void);
 
 void log_debug(const char *fmt, ...);
 void log_info(const char *fmt, ...);

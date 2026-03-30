@@ -178,13 +178,13 @@ static void enable_remote_logging(bool network_ready)
     if (__nxlink_host.s_addr != 0 && log_set_remote_host(__nxlink_host.s_addr, NXLINK_LOG_TCP_PORT))
     {
         g_remoteLogEnabled = true;
-        log_info("[log] remote TCP log enabled host=%s port=%d\n",
+        log_info("[log] remote TCP log upload configured host=%s port=%d\n",
                  inet_ntoa(__nxlink_host),
                  NXLINK_LOG_TCP_PORT);
     }
     else
     {
-        log_warn("[log] remote TCP log unavailable, using local console only.\n");
+        log_warn("[log] remote TCP log upload unavailable, using local console only.\n");
     }
 }
 
@@ -310,6 +310,14 @@ int main(int argc, char* argv[])
     {
         if (dlnaRunning)
             dlna_control_stop();
+
+        if (g_remoteLogEnabled)
+        {
+            log_info("[log] uploading history to remote receiver before exit.\n");
+            if (!log_upload_history())
+                log_warn("[log] history upload failed.\n");
+        }
+
         log_clear_remote_host();
         g_remoteLogEnabled = false;
         socketExit();

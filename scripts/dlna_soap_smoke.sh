@@ -15,8 +15,10 @@ BASE_URL="http://${HOST}:${PORT}"
 
 INSTANCE_ID="${INSTANCE_ID:-0}"
 CHANNEL="${CHANNEL:-Master}"
-MEDIA_URI="${MEDIA_URI:-http://example.com/mock-media.mp3}"
-SEEK_TARGET="${SEEK_TARGET:-00:00:10}"
+MEDIA_URI="${MEDIA_URI:-http://192.168.1.40:8000/sample-5s-faststart.mp4}"
+SEEK_TARGET="${SEEK_TARGET:-00:00:05}"
+STATE_WAIT_SECONDS="${STATE_WAIT_SECONDS:-15}"
+STATE_POLL_INTERVAL="${STATE_POLL_INTERVAL:-1}"
 
 LAST_BODY=""
 LAST_CODE=""
@@ -72,6 +74,27 @@ assert_body_contains() {
   printf '%s' "$LAST_BODY" | grep -Fq "$needle" || fail "response does not contain: $needle"
 }
 
+wait_for_transport_state() {
+  local expected_state="$1"
+  local attempts
+
+  attempts=$((STATE_WAIT_SECONDS / STATE_POLL_INTERVAL))
+  if [ "$attempts" -le 0 ]; then
+    attempts=1
+  fi
+
+  for ((i = 1; i <= attempts; i++)); do
+    soap_call "AVTransport" "GetTransportInfo" "<InstanceID>${INSTANCE_ID}</InstanceID>"
+    assert_http_200
+    if printf '%s' "$LAST_BODY" | grep -Fq "<CurrentTransportState>${expected_state}</CurrentTransportState>"; then
+      return 0
+    fi
+    sleep "$STATE_POLL_INTERVAL"
+  done
+
+  fail "transport state did not reach ${expected_state} within ${STATE_WAIT_SECONDS}s"
+}
+
 main() {
   log "log file: ${LOG_FILE}"
   require_cmd curl
@@ -92,10 +115,7 @@ main() {
   assert_http_200
 
   log "check transport state == PLAYING"
-  soap_call "AVTransport" "GetTransportInfo" \
-    "<InstanceID>${INSTANCE_ID}</InstanceID>"
-  assert_http_200
-  assert_body_contains "<CurrentTransportState>PLAYING</CurrentTransportState>"
+  wait_for_transport_state "PLAYING"
 
   sleep 1
 
@@ -116,10 +136,7 @@ main() {
   assert_http_200
 
   log "check transport state == PAUSED_PLAYBACK"
-  soap_call "AVTransport" "GetTransportInfo" \
-    "<InstanceID>${INSTANCE_ID}</InstanceID>"
-  assert_http_200
-  assert_body_contains "<CurrentTransportState>PAUSED_PLAYBACK</CurrentTransportState>"
+  wait_for_transport_state "PAUSED_PLAYBACK"
 
   log "6/6 Stop"
   soap_call "AVTransport" "Stop" \
@@ -127,10 +144,7 @@ main() {
   assert_http_200
 
   log "check transport state == STOPPED"
-  soap_call "AVTransport" "GetTransportInfo" \
-    "<InstanceID>${INSTANCE_ID}</InstanceID>"
-  assert_http_200
-  assert_body_contains "<CurrentTransportState>STOPPED</CurrentTransportState>"
+  wait_for_transport_state "STOPPED"
 
   log "optional: GetVolume"
   soap_call "RenderingControl" "GetVolume" \

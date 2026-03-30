@@ -4,6 +4,7 @@
 
 #include <arpa/inet.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,7 +16,6 @@
 #define LOG_HISTORY_CAPACITY 4096
 #define LOG_HISTORY_MESSAGE_MAX 512
 #define LOG_WORKER_STACK_SIZE (32 * 1024)
-#define LOG_REMOTE_CONNECT_RETRY_NS (1000ULL * 1000ULL * 1000ULL)
 #define LOG_REMOTE_IO_TIMEOUT_MS 200
 
 typedef struct
@@ -52,15 +52,17 @@ static size_t g_logHistoryCount = 0;
 static bool g_remoteConfigured = false;
 static uint32_t g_remoteHostAddrBe = 0;
 static uint16_t g_remotePort = 0;
-static int g_remoteSock = -1;
-static uint64_t g_remoteNextRetryTick = 0;
 
-static void close_remote_socket_locked(void)
+static void wait_for_log_queue_idle(void)
 {
-    if (g_remoteSock >= 0)
+    for (int i = 0; i < 100; ++i)
     {
-        close(g_remoteSock);
-        g_remoteSock = -1;
+        mutexLock(&g_logMutex);
+        bool idle = (g_logCount == 0 && g_logDroppedCount == 0);
+        mutexUnlock(&g_logMutex);
+        if (idle)
+            return;
+        svcSleepThread(20 * 1000 * 1000LL);
     }
 }
 
@@ -135,43 +137,11 @@ static void format_log_line(LogLevel level, const char *text, char *line, size_t
     normalize_log_text(text, line + prefix_len, line_size - prefix_len);
 }
 
-static bool remote_connect_if_needed(void)
+static int remote_open_upload_socket(uint32_t host_addr_be, uint16_t port)
 {
-    uint32_t host_addr_be = 0;
-    uint16_t port = 0;
-
-    mutexLock(&g_logMutex);
-    if (!g_remoteConfigured)
-    {
-        mutexUnlock(&g_logMutex);
-        return false;
-    }
-
-    if (g_remoteSock >= 0)
-    {
-        mutexUnlock(&g_logMutex);
-        return true;
-    }
-
-    uint64_t now = armGetSystemTick();
-    if (g_remoteNextRetryTick != 0 && now < g_remoteNextRetryTick)
-    {
-        mutexUnlock(&g_logMutex);
-        return false;
-    }
-
-    host_addr_be = g_remoteHostAddrBe;
-    port = g_remotePort;
-    mutexUnlock(&g_logMutex);
-
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0)
-    {
-        mutexLock(&g_logMutex);
-        g_remoteNextRetryTick = armGetSystemTick() + armNsToTicks(LOG_REMOTE_CONNECT_RETRY_NS);
-        mutexUnlock(&g_logMutex);
-        return false;
-    }
+        return -1;
 
     struct timeval timeout;
     timeout.tv_sec = 0;
@@ -188,47 +158,25 @@ static bool remote_connect_if_needed(void)
     if (connect(sock, (const struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
         close(sock);
-        mutexLock(&g_logMutex);
-        g_remoteNextRetryTick = armGetSystemTick() + armNsToTicks(LOG_REMOTE_CONNECT_RETRY_NS);
-        mutexUnlock(&g_logMutex);
-        return false;
+        return -1;
     }
 
-    mutexLock(&g_logMutex);
-    if (!g_remoteConfigured || g_remoteHostAddrBe != host_addr_be || g_remotePort != port)
-    {
-        mutexUnlock(&g_logMutex);
-        close(sock);
-        return false;
-    }
-    g_remoteSock = sock;
-    g_remoteNextRetryTick = 0;
-    mutexUnlock(&g_logMutex);
-    return true;
+    return sock;
 }
 
-static void remote_send_line(const char *line)
+static bool remote_send_all(int sock, const void *data, size_t size)
 {
-    if (!line)
-        return;
-
-    if (!remote_connect_if_needed())
-        return;
-
-    mutexLock(&g_logMutex);
-    int sock = g_remoteSock;
-    mutexUnlock(&g_logMutex);
-    if (sock < 0)
-        return;
-
-    size_t len = strlen(line);
-    if (send(sock, line, len, 0) < 0 || send(sock, "\n", 1, 0) < 0)
+    const char *cursor = (const char *)data;
+    size_t remaining = size;
+    while (remaining > 0)
     {
-        mutexLock(&g_logMutex);
-        close_remote_socket_locked();
-        g_remoteNextRetryTick = armGetSystemTick() + armNsToTicks(LOG_REMOTE_CONNECT_RETRY_NS);
-        mutexUnlock(&g_logMutex);
+        ssize_t written = send(sock, cursor, remaining, 0);
+        if (written <= 0)
+            return false;
+        cursor += (size_t)written;
+        remaining -= (size_t)written;
     }
+    return true;
 }
 
 static void log_worker_thread(void *arg)
@@ -282,7 +230,6 @@ static void log_worker_thread(void *arg)
                 fprintf(stderr, "%s\n", line);
                 fflush(stderr);
             }
-            remote_send_line(line);
             continue;
         }
 
@@ -300,12 +247,10 @@ static void log_worker_thread(void *arg)
                 fprintf(stderr, "%s\n", line);
                 fflush(stderr);
             }
-            remote_send_line(line);
         }
     }
 
     mutexLock(&g_logMutex);
-    close_remote_socket_locked();
     g_logWorkerRunning = false;
     mutexUnlock(&g_logMutex);
     threadExit();
@@ -359,7 +304,6 @@ void log_runtime_shutdown(void)
     mutexLock(&g_logMutex);
     if (!g_logThreadStarted)
     {
-        close_remote_socket_locked();
         mutexUnlock(&g_logMutex);
         return;
     }
@@ -374,7 +318,6 @@ void log_runtime_shutdown(void)
     mutexLock(&g_logMutex);
     g_logThreadStarted = false;
     g_logWorkerRunning = false;
-    close_remote_socket_locked();
     mutexUnlock(&g_logMutex);
 }
 
@@ -421,6 +364,69 @@ void vlog_write(LogLevel level, const char *fmt, va_list args)
 
 void log_flush(void)
 {
+}
+
+bool log_upload_history(void)
+{
+    wait_for_log_queue_idle();
+
+    mutexLock(&g_logMutex);
+    if (!g_remoteConfigured || g_remoteHostAddrBe == 0 || g_remotePort == 0)
+    {
+        mutexUnlock(&g_logMutex);
+        return false;
+    }
+
+    size_t count = g_logHistoryCount;
+    uint32_t host_addr_be = g_remoteHostAddrBe;
+    uint16_t port = g_remotePort;
+
+    if (count == 0)
+    {
+        mutexUnlock(&g_logMutex);
+        return true;
+    }
+
+    size_t snapshot_size = count * LOG_HISTORY_MESSAGE_MAX;
+    char *snapshot = (char *)malloc(snapshot_size);
+    if (!snapshot)
+    {
+        mutexUnlock(&g_logMutex);
+        return false;
+    }
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        size_t slot = (g_logHistoryHead + i) % LOG_HISTORY_CAPACITY;
+        snprintf(snapshot + (i * LOG_HISTORY_MESSAGE_MAX),
+                 LOG_HISTORY_MESSAGE_MAX,
+                 "%s",
+                 g_logHistory[slot].text);
+    }
+    mutexUnlock(&g_logMutex);
+
+    int sock = remote_open_upload_socket(host_addr_be, port);
+    if (sock < 0)
+    {
+        free(snapshot);
+        return false;
+    }
+
+    bool ok = true;
+    for (size_t i = 0; i < count; ++i)
+    {
+        const char *line = snapshot + (i * LOG_HISTORY_MESSAGE_MAX);
+        size_t len = strlen(line);
+        if (!remote_send_all(sock, line, len) || !remote_send_all(sock, "\n", 1))
+        {
+            ok = false;
+            break;
+        }
+    }
+
+    close(sock);
+    free(snapshot);
+    return ok;
 }
 
 size_t log_history_count(void)
@@ -491,10 +497,7 @@ bool log_set_remote_host(uint32_t host_addr_be, uint16_t port)
     g_remoteConfigured = true;
     g_remoteHostAddrBe = host_addr_be;
     g_remotePort = port;
-    close_remote_socket_locked();
-    g_remoteNextRetryTick = 0;
     mutexUnlock(&g_logMutex);
-    condvarWakeOne(&g_logCondVar);
     return true;
 }
 
@@ -504,8 +507,6 @@ void log_clear_remote_host(void)
     g_remoteConfigured = false;
     g_remoteHostAddrBe = 0;
     g_remotePort = 0;
-    g_remoteNextRetryTick = 0;
-    close_remote_socket_locked();
     mutexUnlock(&g_logMutex);
 }
 

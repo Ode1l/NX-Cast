@@ -1,0 +1,7 @@
+[soap-smoke] log file: /Users/ode1l/Documents/VSCode/NX-Cast/logs/dlna_soap_smoke-20260331-063824.log
+[soap-smoke] target: http://192.168.1.7:49152
+[soap-smoke] 1/6 SetAVTransportURI
+[soap-smoke] 2/6 Play
+[soap-smoke] check transport state == PLAYING
+[soap-smoke] ERROR: response does not contain: <CurrentTransportState>PLAYING</CurrentTransportState>
+[soap-smoke] log saved: /Users/ode1l/Documents/VSCode/NX-Cast/logs/dlna_soap_smoke-20260331-063824.log
