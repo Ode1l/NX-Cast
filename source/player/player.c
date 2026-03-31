@@ -11,6 +11,8 @@ static PlayerBackendType g_backend_type = PLAYER_BACKEND_AUTO;
 static bool g_initialized = false;
 static PlayerEventCallback g_event_callback = NULL;
 static void *g_event_user = NULL;
+static bool g_has_current_source = false;
+static PlayerResolvedSource g_current_source;
 
 static bool backend_available(const PlayerBackendOps *backend)
 {
@@ -92,6 +94,9 @@ bool player_init(void)
     if (g_initialized)
         return true;
 
+    player_source_reset(&g_current_source);
+    g_has_current_source = false;
+
     if (g_backend_type == PLAYER_BACKEND_AUTO)
     {
         log_info("[player] auto resolve libmpv_available=%d mock_available=%d\n",
@@ -146,13 +151,37 @@ void player_deinit(void)
     log_info("[player] deinit backend=%s\n", player_get_backend_name());
     g_backend = NULL;
     g_initialized = false;
+    g_has_current_source = false;
+    player_source_reset(&g_current_source);
 }
 
 bool player_set_uri(const char *uri, const char *metadata)
 {
-    if (!g_initialized || !g_backend || !g_backend->set_uri)
+    PlayerResolvedSource resolved;
+
+    if (!player_source_resolve(uri, metadata, &resolved))
         return false;
-    return g_backend->set_uri(uri, metadata);
+
+    log_info("[player] resolve_source profile=%s hls=%d signed=%d bilibili=%d timeout=%d\n",
+             player_source_profile_name(resolved.profile),
+             resolved.flags.is_hls ? 1 : 0,
+             resolved.flags.is_signed ? 1 : 0,
+             resolved.flags.is_bilibili ? 1 : 0,
+             resolved.network_timeout_seconds);
+
+    return player_set_source(&resolved);
+}
+
+bool player_set_source(const PlayerResolvedSource *source)
+{
+    if (!g_initialized || !g_backend || !g_backend->set_source || !source)
+        return false;
+    if (!g_backend->set_source(source))
+        return false;
+
+    g_current_source = *source;
+    g_has_current_source = true;
+    return true;
 }
 
 bool player_play(void)
@@ -237,4 +266,30 @@ PlayerState player_get_state(void)
     if (!g_initialized || !g_backend || !g_backend->get_state)
         return PLAYER_STATE_IDLE;
     return g_backend->get_state();
+}
+
+bool player_get_current_source(PlayerResolvedSource *out)
+{
+    if (!out || !g_has_current_source)
+        return false;
+    *out = g_current_source;
+    return true;
+}
+
+bool player_get_snapshot(PlayerSnapshot *out)
+{
+    if (!out)
+        return false;
+
+    memset(out, 0, sizeof(*out));
+    out->has_source = g_has_current_source;
+    if (g_has_current_source)
+        out->source = g_current_source;
+    out->state = player_get_state();
+    out->position_ms = player_get_position_ms();
+    out->duration_ms = player_get_duration_ms();
+    out->volume = player_get_volume();
+    out->mute = player_get_mute();
+    out->seekable = player_is_seekable();
+    return true;
 }

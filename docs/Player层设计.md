@@ -136,7 +136,7 @@
 
 ## 4. 当前代码映射
 
-当前仓库中已经存在最小可用骨架：
+当前仓库中已经存在的核心骨架：
 
 ```text
 source/player/
@@ -144,6 +144,7 @@ source/player/
   player.c
   player_backend.h
   player_backend_mock.c
+  player_backend_libmpv.c
 ```
 
 代码角色如下：
@@ -156,21 +157,32 @@ source/player/
    作用：Strategy 接口定义，约束后端能力集合
 4. `player_backend_mock.c`
    作用：第一个 backend，实现最小状态闭环与日志验证
+5. `player_backend_libmpv.c`
+   作用：当前真实播放 backend，已接入 `libmpv`，但仍是“同步适配器 + 最小状态机”，还不是正式 `Player Core`
 
 当前已实现能力：
 
 1. `player_*` 统一接口
 2. 事件回调机制
-3. 基础状态读写
+3. `mock` 与 `libmpv` 双 backend
 4. SOAP 到 player 的控制闭环
+5. `https mp4 / hls / header-sensitive URL` 的初步打开实验能力
+6. `SourceResolver -> ResolvedSource -> backend set_source` 的第一阶段边界已经接入
 
 当前未实现能力：
 
-1. 真实网络流拉取
-2. 真实音频输出
-3. 真实视频渲染
-4. 后端独立播放线程
-5. 更完整状态机
+1. 独立 `Player Core` 线程
+2. 真正持续运行的 `mpv` 事件循环
+3. 独立 `Source Strategy` 分层
+4. 真实视频渲染与平台输出
+5. 更完整的网络流状态机
+
+这里需要特别说明：
+
+1. “独立 `Source Strategy` 分层”在接口上已经开始落地
+2. 但当前还只是第一阶段
+3. 目前只是把 `ResolvedSource` 公共化，并接到了 backend 边界
+4. 还没有把所有来源策略都完全从 `libmpv backend` 中迁移出去
 
 ---
 
@@ -236,9 +248,14 @@ source/player/
   player.c
   player_backend.h
   player_backend_mock.c
-  player_backend_mpv.c
+  player_backend_libmpv.c
   player_backend_ffmpeg.c
   player_state.h
+  player_source.h
+  player_source_resolver.c
+  player_source_policy_default.c
+  player_source_policy_hls.c
+  player_source_policy_vendor.c
   player_platform.h
   player_platform_audio.c
   player_platform_video.c
@@ -246,11 +263,13 @@ source/player/
 
 说明：
 
-1. `player_backend_mpv.c`
-   作为第一版真实播放后端
+1. `player_backend_libmpv.c`
+   作为当前真实播放后端
 2. `player_backend_ffmpeg.c`
    仅作为验证或研究路径
-3. `player_platform_*`
+3. `player_source_*`
+   作为来源分类、Header 策略和 vendor-sensitive source 兼容层
+4. `player_platform_*`
    抽象 Switch 的音频、视频与硬件能力
 
 如果后端继续增长，再拆成 `core / backend / platform` 子目录。
@@ -608,6 +627,7 @@ Step 1 的通过标准：
 1. `SetURI / Play / Pause / Stop / Seek` 已接入真实 `libmpv`
 2. `GetPositionInfo / GetTransportInfo / GetVolume / GetMute` 返回真实值
 3. SOAP 层不再只依赖 `mock`
+4. 但这一步仍不代表网络流状态机已经正式完成
 
 ### Step 2：渲染与前台显示设计
 
@@ -802,6 +822,8 @@ Step 3 的通过标准：
 2. `wiliwili` 会长期观察 `core-idle`、`paused-for-cache`、`playback-abort`、`seeking`、`cache-speed`
 3. 两者都会把 `START_FILE`、缓存等待、seek 过程视为过渡态，而不是直接视为 `PLAYING`
 4. 对 HLS 场景，额外记录 `current-demuxer`、`stream-open-filename`、`stream-path` 这类“当前到底在打开什么流”的信息是必要的
+5. `trace` 级别日志只适合排查窗口，不能长期作为默认运行配置，否则会反向放大 HLS 首播延迟
+6. 当 HLS 已经能播、但首播长期卡在 `LOADING` 时，优先检查 `lavf probe` 策略是否过重；这类问题通常更适合先调 `demuxer-lavf-probe-info`，而不是盲目继续增大日志级别
 
 因此 `NX-Cast` 后续把：
 
@@ -825,11 +847,15 @@ Step 3 的通过标准：
 5. 对重操作使用异步 backend 线程
 6. 对平台能力使用独立适配层
 
-因此下一步最合理的实现目标不是继续扩充 `mock`，而是：
+因此下一步最合理的实现目标不再是“新增一个真实 backend”，而是：
 
-1. 增加 `player_backend_mpv`
-2. 保持现有 `player core` 不变
-3. 先打通真实网络 URL 播放
+1. 保留当前 `player_backend_libmpv`
+2. 把它从“同步适配器”升级成真正的 `Player Core + event loop`
+3. 同时把来源兼容逻辑从 backend 拆到独立 `Source Strategy`
+
+关于这一点的正式方案，见：
+
+1. [通用DLNA-DMR源适配设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/通用DLNA-DMR源适配设计.md)
 
 外部项目致谢放在 `README`，本设计文档只描述 `NX-Cast` 自身采用的技术方案。
 

@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include "player_source.h"
+
 typedef enum
 {
     PLAYER_STATE_IDLE = 0,
@@ -42,9 +44,22 @@ typedef struct
     bool mute;
     int error_code;
     const char *uri;
+    PlayerSourceProfile source_profile;
 } PlayerEvent;
 
 typedef void (*PlayerEventCallback)(const PlayerEvent *event, void *user);
+
+typedef struct
+{
+    bool has_source;
+    PlayerResolvedSource source;
+    PlayerState state;
+    int position_ms;
+    int duration_ms;
+    int volume;
+    bool mute;
+    bool seekable;
+} PlayerSnapshot;
 
 bool player_set_backend(PlayerBackendType backend);
 PlayerBackendType player_get_backend(void);
@@ -55,6 +70,7 @@ void player_deinit(void);
 
 void player_set_event_callback(PlayerEventCallback callback, void *user);
 
+bool player_set_source(const PlayerResolvedSource *source);
 bool player_set_uri(const char *uri, const char *metadata);
 bool player_play(void);
 bool player_pause(void);
@@ -69,3 +85,5 @@ int player_get_volume(void);
 bool player_get_mute(void);
 bool player_is_seekable(void);
 PlayerState player_get_state(void);
+bool player_get_current_source(PlayerResolvedSource *out);
+bool player_get_snapshot(PlayerSnapshot *out);

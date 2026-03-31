@@ -14,6 +14,8 @@ static int g_position_ms = 0;
 static int g_duration_ms = 0;
 static int g_volume = 20;
 static bool g_mute = false;
+static bool g_has_source = false;
+static PlayerResolvedSource g_source;
 static char g_uri[1024];
 static char g_metadata[2048];
 static int g_play_anchor_ms = 0;
@@ -39,7 +41,8 @@ static void emit_event(PlayerEventType type)
         .volume = g_volume,
         .mute = g_mute,
         .error_code = 0,
-        .uri = g_uri
+        .uri = g_uri,
+        .source_profile = g_has_source ? g_source.profile : PLAYER_SOURCE_PROFILE_UNKNOWN
     };
     g_event_sink(&event);
 }
@@ -86,6 +89,8 @@ static bool mock_init(void)
 {
     memset(g_uri, 0, sizeof(g_uri));
     memset(g_metadata, 0, sizeof(g_metadata));
+    player_source_reset(&g_source);
+    g_has_source = false;
     g_state = PLAYER_STATE_STOPPED;
     g_position_ms = 0;
     g_duration_ms = 0;
@@ -110,16 +115,15 @@ static void mock_set_event_sink(void (*sink)(const PlayerEvent *event))
     g_event_sink = sink;
 }
 
-static bool mock_set_uri(const char *uri, const char *metadata)
+static bool mock_set_source(const PlayerResolvedSource *source)
 {
-    if (!uri || uri[0] == '\0')
+    if (!source || source->uri[0] == '\0')
         return false;
 
-    snprintf(g_uri, sizeof(g_uri), "%s", uri);
-    if (metadata)
-        snprintf(g_metadata, sizeof(g_metadata), "%s", metadata);
-    else
-        g_metadata[0] = '\0';
+    g_source = *source;
+    g_has_source = true;
+    snprintf(g_uri, sizeof(g_uri), "%s", g_source.uri);
+    snprintf(g_metadata, sizeof(g_metadata), "%s", g_source.metadata);
 
     g_state = PLAYER_STATE_STOPPED;
     g_position_ms = 0;
@@ -128,7 +132,10 @@ static bool mock_set_uri(const char *uri, const char *metadata)
     g_play_anchor_ms = 0;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
 
-    log_info("[player-mock] set_uri uri=%s metadata_len=%zu\n", g_uri, strlen(g_metadata));
+    log_info("[player-mock] set_source profile=%s uri=%s metadata_len=%zu\n",
+             player_source_profile_name(g_source.profile),
+             g_uri,
+             strlen(g_metadata));
     emit_event(PLAYER_EVENT_URI_CHANGED);
     emit_event(PLAYER_EVENT_DURATION_CHANGED);
     emit_event(PLAYER_EVENT_POSITION_CHANGED);
@@ -257,7 +264,7 @@ const PlayerBackendOps g_player_backend_mock = {
     .init = mock_init,
     .deinit = mock_deinit,
     .set_event_sink = mock_set_event_sink,
-    .set_uri = mock_set_uri,
+    .set_source = mock_set_source,
     .play = mock_play,
     .pause = mock_pause,
     .stop = mock_stop,

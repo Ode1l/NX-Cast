@@ -12,7 +12,7 @@ typedef struct
     void (*deinit)(void);
     void (*set_event_sink)(void (*sink)(const PlayerEvent *event));
 
-    bool (*set_uri)(const char *uri, const char *metadata);
+    bool (*set_source)(const PlayerResolvedSource *source);
     bool (*play)(void);
     bool (*pause)(void);
     bool (*stop)(void);

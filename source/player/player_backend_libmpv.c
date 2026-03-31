@@ -15,14 +15,12 @@
 
 #define PLAYER_LIBMPV_URI_MAX 1024
 #define PLAYER_LIBMPV_METADATA_MAX 2048
-#define PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS "20"
-#define PLAYER_LIBMPV_DEMUXER_READAHEAD_SECONDS "20"
-#define PLAYER_LIBMPV_HLS_LOG_LEVEL "trace"
+#define PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS "10"
+#define PLAYER_LIBMPV_DEMUXER_READAHEAD_SECONDS "8"
+#define PLAYER_LIBMPV_HLS_LOG_LEVEL "warn"
 #define PLAYER_LIBMPV_DEFAULT_LOG_LEVEL "warn"
 #define PLAYER_LIBMPV_HLS_DIAG_INTERVAL_MS 2000
-#define PLAYER_LIBMPV_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) NX-Cast/0.1 Safari/537.36"
-#define PLAYER_LIBMPV_BILIBILI_REFERRER "https://www.bilibili.com/"
-
+#define PLAYER_LIBMPV_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 
 static Mutex g_state_mutex;
@@ -42,6 +40,7 @@ static bool g_seeking = false;
 static bool g_playback_abort = false;
 static bool g_stop_mode = true;
 static bool g_hls_mode = false;
+static bool g_has_source = false;
 static bool g_last_diag_valid = false;
 static PlayerState g_last_diag_state = PLAYER_STATE_IDLE;
 static bool g_last_diag_media_loaded = false;
@@ -54,18 +53,21 @@ static bool g_last_diag_playback_abort = false;
 static int g_cache_duration_ms = 0;
 static int64_t g_cache_speed_bps = 0;
 static uint64_t g_last_diag_log_ms = 0;
+static uint64_t g_load_started_ms = 0;
+static PlayerResolvedSource g_source;
 static char g_uri[PLAYER_LIBMPV_URI_MAX];
 static char g_metadata[PLAYER_LIBMPV_METADATA_MAX];
 
 static void libmpv_clip_for_log(const char *input, char *output, size_t output_size);
-static bool libmpv_is_bilibili_uri(const char *uri);
-static bool libmpv_is_hls_uri(const char *uri);
+static uint64_t libmpv_now_ms(void);
 static void libmpv_log_message(const mpv_event_log_message *message);
 static const char *libmpv_state_name(PlayerState state);
 static int libmpv_ms_from_seconds(double seconds);
 static bool libmpv_get_int64_locked(const char *name, int64_t *out);
 static bool libmpv_get_string_locked(const char *name, char *out, size_t out_size);
 static void libmpv_request_log_level_locked(const char *level);
+static bool libmpv_set_string_property_locked(const char *name, const char *value);
+static void libmpv_apply_source_runtime_overrides_locked(const PlayerResolvedSource *source);
 static void libmpv_log_cache_state_node(const mpv_node *node);
 static void libmpv_log_stream_details_locked(const char *reason);
 static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force);
@@ -122,17 +124,20 @@ static void libmpv_drain_events_locked(void)
             g_media_loaded = false;
             g_load_in_progress = true;
             g_seekable = false;
+            g_load_started_ms = libmpv_now_ms();
             log_debug("[player-libmpv] event START_FILE\n");
             libmpv_maybe_log_diagnostics_locked("START_FILE", true);
             break;
         case MPV_EVENT_FILE_LOADED:
             g_media_loaded = true;
             g_load_in_progress = false;
-            log_info("[player-libmpv] event FILE_LOADED\n");
+            log_info("[player-libmpv] event FILE_LOADED load_elapsed_ms=%llu\n",
+                     (unsigned long long)(g_load_started_ms == 0 ? 0 : (libmpv_now_ms() - g_load_started_ms)));
             libmpv_maybe_log_diagnostics_locked("FILE_LOADED", true);
             break;
         case MPV_EVENT_PLAYBACK_RESTART:
-            log_info("[player-libmpv] event PLAYBACK_RESTART\n");
+            log_info("[player-libmpv] event PLAYBACK_RESTART startup_elapsed_ms=%llu\n",
+                     (unsigned long long)(g_load_started_ms == 0 ? 0 : (libmpv_now_ms() - g_load_started_ms)));
             libmpv_maybe_log_diagnostics_locked("PLAYBACK_RESTART", true);
             break;
         case MPV_EVENT_END_FILE:
@@ -281,24 +286,9 @@ static void libmpv_clip_for_log(const char *input, char *output, size_t output_s
     output[copy_len + 3] = '\0';
 }
 
-static bool libmpv_is_bilibili_uri(const char *uri)
+static uint64_t libmpv_now_ms(void)
 {
-    if (!uri)
-        return false;
-
-    return strstr(uri, "bilivideo.com") != NULL ||
-           strstr(uri, "bilibili.com") != NULL ||
-           strstr(uri, "hdslb.com") != NULL;
-}
-
-static bool libmpv_is_hls_uri(const char *uri)
-{
-    if (!uri)
-        return false;
-
-    return strstr(uri, ".m3u8") != NULL ||
-           strstr(uri, "format=m3u8") != NULL ||
-           strstr(uri, "application/vnd.apple.mpegurl") != NULL;
+    return armTicksToNs(armGetSystemTick()) / 1000000ULL;
 }
 
 static const char *libmpv_state_name(PlayerState state)
@@ -382,7 +372,8 @@ static void libmpv_emit_event_locked(PlayerEventType type)
         .volume = g_volume,
         .mute = g_mute,
         .error_code = 0,
-        .uri = g_uri
+        .uri = g_uri,
+        .source_profile = g_has_source ? g_source.profile : PLAYER_SOURCE_PROFILE_UNKNOWN
     };
     g_event_sink(&event);
 }
@@ -447,6 +438,26 @@ static void libmpv_request_log_level_locked(const char *level)
         log_warn("[player-libmpv] request_log_messages level=%s failed: %s\n",
                  level,
                  mpv_error_string(rc));
+}
+
+static bool libmpv_set_string_property_locked(const char *name, const char *value)
+{
+    int rc;
+
+    if (!g_mpv || !name)
+        return false;
+
+    rc = mpv_set_property_string(g_mpv, name, value ? value : "");
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] set_property %s=%s failed: %s\n",
+                 name,
+                 value ? value : "<empty>",
+                 mpv_error_string(rc));
+        return false;
+    }
+
+    return true;
 }
 
 static bool libmpv_set_flag_locked(const char *name, bool value)
@@ -651,24 +662,51 @@ static void libmpv_log_stream_details_locked(const char *reason)
              clipped_path);
 }
 
+static void libmpv_apply_source_runtime_overrides_locked(const PlayerResolvedSource *source)
+{
+    char network_timeout[16];
+
+    if (!source)
+        return;
+
+    snprintf(network_timeout,
+             sizeof(network_timeout),
+             "%d",
+             source->network_timeout_seconds > 0 ? source->network_timeout_seconds : 10);
+    (void)libmpv_set_string_property_locked("user-agent", source->user_agent);
+    (void)libmpv_set_string_property_locked("referrer", source->referrer);
+    (void)libmpv_set_string_property_locked("network-timeout", network_timeout);
+    (void)libmpv_set_string_property_locked("http-header-fields", source->header_fields);
+    (void)libmpv_set_string_property_locked("demuxer-lavf-probe-info", source->probe_info);
+
+    log_info("[player-libmpv] runtime_overrides profile=%s hls=%d signed=%d bilibili=%d timeout=%s probe_info=%s headers=%d\n",
+             player_source_profile_name(source->profile),
+             source->flags.is_hls ? 1 : 0,
+             source->flags.is_signed ? 1 : 0,
+             source->flags.is_bilibili ? 1 : 0,
+             network_timeout,
+             source->probe_info[0] != '\0' ? source->probe_info : "auto",
+             source->header_fields[0] != '\0' ? 1 : 0);
+}
+
 static bool libmpv_load_uri_locked(const char *uri, bool paused)
 {
-    const char *options = paused ? "pause=yes" : "pause=no";
+    char options[256];
     const char *cmd[8];
     size_t index = 0;
+
+    snprintf(options, sizeof(options), "pause=%s", paused ? "yes" : "no");
 
     cmd[index++] = "loadfile";
     cmd[index++] = uri;
     cmd[index++] = "replace";
-    cmd[index++] = "-1";
+    cmd[index++] = "0";
     cmd[index++] = options;
-    if (libmpv_is_bilibili_uri(uri))
-        cmd[index++] = "referrer=" PLAYER_LIBMPV_BILIBILI_REFERRER;
     cmd[index] = NULL;
 
-    // mpv 0.38+ inserts an optional playlist index as the 3rd argument of
-    // loadfile. If we want to pass per-file options, we must explicitly pass
-    // "-1" as the index placeholder and move options to the 4th argument.
+    // mpv 0.38+ expects the optional playlist index placeholder before the
+    // per-file options string. Site-specific options must be combined into
+    // that single options argument rather than passed as extra argv items.
     return libmpv_command_locked(paused ? "loadfile(pause=yes)" : "loadfile(pause=no)", cmd);
 }
 
@@ -816,6 +854,7 @@ static bool libmpv_init(void)
     g_cache_duration_ms = 0;
     g_cache_speed_bps = 0;
     g_last_diag_log_ms = 0;
+    g_load_started_ms = 0;
 
     g_mpv = mpv_create();
     if (!g_mpv)
@@ -912,7 +951,10 @@ static void libmpv_deinit(void)
     g_cache_duration_ms = 0;
     g_cache_speed_bps = 0;
     g_last_diag_log_ms = 0;
+    g_load_started_ms = 0;
     g_event_sink = NULL;
+    player_source_reset(&g_source);
+    g_has_source = false;
     mutexUnlock(&g_state_mutex);
 
     log_info("[player-libmpv] deinit\n");
@@ -926,9 +968,9 @@ static void libmpv_set_event_sink(void (*sink)(const PlayerEvent *event))
     mutexUnlock(&g_state_mutex);
 }
 
-static bool libmpv_set_uri(const char *uri, const char *metadata)
+static bool libmpv_set_source(const PlayerResolvedSource *source)
 {
-    if (!uri || uri[0] == '\0')
+    if (!source || source->uri[0] == '\0')
         return false;
 
     libmpv_ensure_mutex();
@@ -941,21 +983,21 @@ static bool libmpv_set_uri(const char *uri, const char *metadata)
     }
 
     char clipped_uri[160];
-    libmpv_clip_for_log(uri, clipped_uri, sizeof(clipped_uri));
-    g_hls_mode = libmpv_is_hls_uri(uri);
+    libmpv_clip_for_log(source->uri, clipped_uri, sizeof(clipped_uri));
+    g_hls_mode = source->flags.is_hls;
     libmpv_request_log_level_locked(g_hls_mode ? PLAYER_LIBMPV_HLS_LOG_LEVEL : PLAYER_LIBMPV_DEFAULT_LOG_LEVEL);
+    libmpv_apply_source_runtime_overrides_locked(source);
 
-    if (!libmpv_load_uri_locked(uri, true))
+    if (!libmpv_load_uri_locked(source->uri, true))
     {
         mutexUnlock(&g_state_mutex);
         return false;
     }
 
-    snprintf(g_uri, sizeof(g_uri), "%s", uri);
-    if (metadata)
-        snprintf(g_metadata, sizeof(g_metadata), "%s", metadata);
-    else
-        g_metadata[0] = '\0';
+    g_source = *source;
+    g_has_source = true;
+    snprintf(g_uri, sizeof(g_uri), "%s", source->uri);
+    snprintf(g_metadata, sizeof(g_metadata), "%s", source->metadata);
 
     g_position_ms = 0;
     g_duration_ms = 0;
@@ -968,11 +1010,13 @@ static bool libmpv_set_uri(const char *uri, const char *metadata)
     g_playback_abort = false;
     g_cache_duration_ms = 0;
     g_cache_speed_bps = 0;
+    g_load_started_ms = libmpv_now_ms();
     g_last_diag_valid = false;
     g_state = PLAYER_STATE_LOADING;
     libmpv_refresh_snapshot_locked();
 
-    log_info("[player-libmpv] set_uri uri=%s metadata_len=%zu uri_kind=%s mpv_log=%s\n",
+    log_info("[player-libmpv] set_source profile=%s uri=%s metadata_len=%zu uri_kind=%s mpv_log=%s\n",
+             player_source_profile_name(source->profile),
              clipped_uri,
              strlen(g_metadata),
              g_hls_mode ? "hls" : "default",
@@ -1316,11 +1360,10 @@ static bool libmpv_not_ready(const char *action)
     return false;
 }
 
-static bool libmpv_set_uri(const char *uri, const char *metadata)
+static bool libmpv_set_source(const PlayerResolvedSource *source)
 {
-    (void)uri;
-    (void)metadata;
-    return libmpv_not_ready("set_uri");
+    (void)source;
+    return libmpv_not_ready("set_source");
 }
 
 static bool libmpv_play(void)
@@ -1394,7 +1437,7 @@ const PlayerBackendOps g_player_backend_libmpv = {
     .init = libmpv_init,
     .deinit = libmpv_deinit,
     .set_event_sink = libmpv_set_event_sink,
-    .set_uri = libmpv_set_uri,
+    .set_source = libmpv_set_source,
     .play = libmpv_play,
     .pause = libmpv_pause,
     .stop = libmpv_stop,

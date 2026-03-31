@@ -1,4 +1,4 @@
-[soap-smoke] log file: /Users/ode1l/Documents/VSCode/NX-Cast/logs/dlna_soap_smoke-20260331-075131.log
+[soap-smoke] log file: /Users/ode1l/Documents/VSCode/NX-Cast/logs/dlna_soap_smoke-20260331-112551.log
 [soap-smoke] target: http://192.168.1.7:49152
 [soap-smoke] 1/6 SetAVTransportURI
 [soap-smoke] 2/6 Play
@@ -46,15 +46,7 @@
 [soap-smoke] observe wait=41/45 state=TRANSITIONING rel=00:00:00 dur=00:00:00
 [soap-smoke] observe wait=42/45 state=TRANSITIONING rel=00:00:00 dur=00:00:00
 [soap-smoke] observe wait=43/45 state=TRANSITIONING rel=00:00:00 dur=00:00:00
-[soap-smoke] observe wait=44/45 state=PLAYING rel=00:00:00 dur=00:10:34
-[soap-smoke] 3/6 GetPositionInfo
-[soap-smoke] 4/6 Seek skipped target=00:00:00
-[soap-smoke] 5/6 Pause
-[soap-smoke] check transport state == PAUSED_PLAYBACK
-[soap-smoke] observe wait=1/45 state=PAUSED_PLAYBACK rel=00:00:02 dur=00:10:34
-[soap-smoke] 6/6 Stop
-[soap-smoke] check transport state == STOPPED
-[soap-smoke] observe wait=1/45 state=STOPPED rel=00:00:00 dur=00:10:34
-[soap-smoke] optional: GetVolume
-[soap-smoke] PASS
-[soap-smoke] log saved: /Users/ode1l/Documents/VSCode/NX-Cast/logs/dlna_soap_smoke-20260331-075131.log
+[soap-smoke] observe wait=44/45 state=TRANSITIONING rel=00:00:00 dur=00:00:00
+[soap-smoke] observe wait=45/45 state=TRANSITIONING rel=00:00:00 dur=00:00:00
+[soap-smoke] ERROR: transport state did not reach PLAYING within 45s
+[soap-smoke] log saved: /Users/ode1l/Documents/VSCode/NX-Cast/logs/dlna_soap_smoke-20260331-112551.log
