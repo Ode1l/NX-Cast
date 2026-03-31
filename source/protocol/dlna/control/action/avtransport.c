@@ -32,7 +32,14 @@ static const char *transport_state_from_player_state(PlayerState state)
 
 static PlayerState sync_transport_state_from_player(void)
 {
-    PlayerState player_state = player_get_state();
+    PlayerSnapshot snapshot;
+    PlayerState player_state = PLAYER_STATE_IDLE;
+
+    if (player_get_snapshot(&snapshot))
+        player_state = snapshot.state;
+    else
+        player_state = player_get_state();
+
     const char *transport_state = transport_state_from_player_state(player_state);
     snprintf(g_soap_runtime_state.transport_state,
              sizeof(g_soap_runtime_state.transport_state),
@@ -310,7 +317,14 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
     if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
         return false;
 
-    int duration_ms = player_get_duration_ms();
+    PlayerSnapshot snapshot;
+    int duration_ms = 0;
+
+    if (player_get_snapshot(&snapshot))
+        duration_ms = snapshot.duration_ms;
+    else
+        duration_ms = player_get_duration_ms();
+
     char duration_str[16];
     format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
     snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "%s", duration_str);
@@ -348,8 +362,21 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
     if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
         return false;
 
-    int position_ms = player_get_position_ms();
-    int duration_ms = player_get_duration_ms();
+    PlayerSnapshot snapshot;
+    int position_ms = 0;
+    int duration_ms = 0;
+
+    if (player_get_snapshot(&snapshot))
+    {
+        position_ms = snapshot.position_ms;
+        duration_ms = snapshot.duration_ms;
+    }
+    else
+    {
+        position_ms = player_get_position_ms();
+        duration_ms = player_get_duration_ms();
+    }
+
     char duration_str[16];
     char rel_time_str[16];
     char abs_time_str[16];
@@ -425,9 +452,22 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
-    PlayerState player_state = sync_transport_state_from_player();
-    if ((player_state != PLAYER_STATE_PLAYING && player_state != PLAYER_STATE_PAUSED) ||
-        !player_is_seekable())
+    PlayerSnapshot snapshot;
+    PlayerState player_state;
+    bool seekable;
+
+    if (player_get_snapshot(&snapshot))
+    {
+        player_state = snapshot.state;
+        seekable = snapshot.seekable;
+    }
+    else
+    {
+        player_state = sync_transport_state_from_player();
+        seekable = player_is_seekable();
+    }
+
+    if ((player_state != PLAYER_STATE_PLAYING && player_state != PLAYER_STATE_PAUSED) || !seekable)
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;

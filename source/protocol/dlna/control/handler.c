@@ -121,16 +121,21 @@ static void soap_handler_on_player_event(const PlayerEvent *event, void *user)
 
 static void sync_runtime_state_from_player_snapshot(void)
 {
+    PlayerSnapshot snapshot;
+
+    if (!player_get_snapshot(&snapshot))
+        return;
+
     snprintf(g_soap_runtime_state.transport_state, sizeof(g_soap_runtime_state.transport_state), "%s",
-             transport_state_from_player_state(player_get_state()));
-    format_hhmmss_from_ms(player_get_duration_ms(), g_soap_runtime_state.transport_duration,
+             transport_state_from_player_state(snapshot.state));
+    format_hhmmss_from_ms(snapshot.duration_ms, g_soap_runtime_state.transport_duration,
                           sizeof(g_soap_runtime_state.transport_duration));
-    format_hhmmss_from_ms(player_get_position_ms(), g_soap_runtime_state.transport_rel_time,
+    format_hhmmss_from_ms(snapshot.position_ms, g_soap_runtime_state.transport_rel_time,
                           sizeof(g_soap_runtime_state.transport_rel_time));
-    format_hhmmss_from_ms(player_get_position_ms(), g_soap_runtime_state.transport_abs_time,
+    format_hhmmss_from_ms(snapshot.position_ms, g_soap_runtime_state.transport_abs_time,
                           sizeof(g_soap_runtime_state.transport_abs_time));
-    g_soap_runtime_state.volume = player_get_volume();
-    g_soap_runtime_state.mute = player_get_mute();
+    g_soap_runtime_state.volume = snapshot.volume;
+    g_soap_runtime_state.mute = snapshot.mute;
 }
 
 void soap_handler_set_fault(SoapActionOutput *out, int code, const char *description)

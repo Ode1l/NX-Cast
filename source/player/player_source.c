@@ -4,9 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define PLAYER_SOURCE_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-#define PLAYER_SOURCE_BILIBILI_REFERRER "https://www.bilibili.com/"
-#define PLAYER_SOURCE_BILIBILI_ORIGIN "https://www.bilibili.com"
+#include "source_policy.h"
 
 static bool starts_with_ignore_case(const char *value, const char *prefix)
 {
@@ -109,9 +107,7 @@ void player_source_reset(PlayerResolvedSource *source)
 
     memset(source, 0, sizeof(*source));
     source->profile = PLAYER_SOURCE_PROFILE_UNKNOWN;
-    source->network_timeout_seconds = 10;
-    snprintf(source->user_agent, sizeof(source->user_agent), "%s", PLAYER_SOURCE_DEFAULT_USER_AGENT);
-    snprintf(source->probe_info, sizeof(source->probe_info), "%s", "auto");
+    source_policy_apply_default(source);
 }
 
 const char *player_source_profile_name(PlayerSourceProfile profile)
@@ -150,30 +146,15 @@ bool player_source_resolve(const char *uri, const char *metadata, PlayerResolved
     out->flags.is_signed = has_signed_tokens(uri);
     out->flags.is_bilibili = is_bilibili_source(uri, metadata);
 
-    if (out->flags.is_bilibili)
-        out->profile = PLAYER_SOURCE_PROFILE_VENDOR_SENSITIVE_URL;
-    else if (out->flags.is_hls)
+    if (out->flags.is_hls)
         out->profile = PLAYER_SOURCE_PROFILE_GENERIC_HLS;
     else if (out->flags.is_signed)
         out->profile = PLAYER_SOURCE_PROFILE_SIGNED_EPHEMERAL_URL;
     else if (out->flags.is_http)
         out->profile = PLAYER_SOURCE_PROFILE_DIRECT_HTTP_FILE;
 
-    if (out->flags.is_hls)
-        snprintf(out->probe_info, sizeof(out->probe_info), "%s", "nostreams");
-
-    if (out->flags.is_bilibili)
-    {
-        out->network_timeout_seconds = 5;
-        snprintf(out->referrer, sizeof(out->referrer), "%s", PLAYER_SOURCE_BILIBILI_REFERRER);
-        snprintf(out->origin, sizeof(out->origin), "%s", PLAYER_SOURCE_BILIBILI_ORIGIN);
-        snprintf(out->header_fields,
-                 sizeof(out->header_fields),
-                 "Referer: %s,Origin: %s,User-Agent: %s",
-                 PLAYER_SOURCE_BILIBILI_REFERRER,
-                 PLAYER_SOURCE_BILIBILI_ORIGIN,
-                 out->user_agent);
-    }
+    source_policy_apply_hls(out);
+    source_policy_apply_vendor(out);
 
     return true;
 }

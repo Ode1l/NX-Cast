@@ -581,7 +581,7 @@ generic DMR 可以做的合理动作：
 
 ### Phase 1. Player Core 重构
 
-先做：
+已完成：
 
 1. 独立 `Player Core` 线程
 2. 命令队列
@@ -592,13 +592,13 @@ generic DMR 可以做的合理动作：
 
 ### Phase 2. Source Strategy Layer
 
-新增：
+已完成第一版：
 
 1. `source_profile.h`
 2. `source_resolver.h`
 3. `source_policy_default.c`
 4. `source_policy_hls.c`
-5. `source_policy_bilibili.c`
+5. `source_policy_vendor.c`
 
 先把“URL 分类”和“打开策略”从 `player backend` 拆出去。
 
@@ -689,12 +689,30 @@ generic DMR 可以做的合理动作：
 
 当前还没完成：
 
-1. 独立 `Player Core` 线程
-2. 专门的 `mpv` 事件循环线程
-3. 基于 `ResolvedSource.profile` 的完整分策略执行器
-4. 标准化的错误域分类
+1. `source_policy_*` 仍是第一版策略实现，规则还不够细
+2. `libmpv backend` 里仍保留一部分来源相关 runtime overrides
+3. 标准化的错误域分类
+4. 针对 `bilibili / HLS / signed URL` 的策略观测与回退机制
 
 因此应把这次落地理解成：
 
-1. 先把接口边界立住
-2. 再把后续迁移做成连续重构
+1. `SourceResolver -> SourcePolicy -> Player Core -> Backend` 的主链已经成立
+2. 后续要做的是继续把策略细节从 backend 迁出，而不是再改外围接口
+
+### 12.4 第二阶段已落地
+
+当前已新增并接通：
+
+1. `player.c` 独立 owner 线程
+2. 固定容量命令队列
+3. `PlayerSnapshot` 快照缓存
+4. `libmpv` 持续 `mpv_wait_event` 事件循环
+5. `source_policy_default.c`
+6. `source_policy_hls.c`
+7. `source_policy_vendor.c`
+
+这意味着：
+
+1. getter 不再驱动 backend 吃事件
+2. SOAP 读取的是稳定快照，而不是临时拼接状态
+3. 后续 `bilibili / HLS` 的策略迁移可以继续沿 `source_policy_*` 推进

@@ -42,6 +42,7 @@ typedef struct
     int duration_ms;
     int volume;
     bool mute;
+    bool seekable;
     int error_code;
     const char *uri;
     PlayerSourceProfile source_profile;

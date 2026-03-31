@@ -171,15 +171,14 @@ source/player/
 
 当前未实现能力：
 
-1. 独立 `Player Core` 线程
-2. 真正持续运行的 `mpv` 事件循环
-3. 独立 `Source Strategy` 分层
-4. 真实视频渲染与平台输出
-5. 更完整的网络流状态机
+1. `source_policy_*` 仍是第一版，细粒度来源策略还不完整
+2. backend 内仍保留部分 runtime overrides
+3. 真实视频渲染与平台输出
+4. 更完整的网络流状态机
 
 这里需要特别说明：
 
-1. “独立 `Source Strategy` 分层”在接口上已经开始落地
+1. “独立 `Source Strategy` 分层”现在已经落地到 `source_policy_*`
 2. 但当前还只是第一阶段
 3. 目前只是把 `ResolvedSource` 公共化，并接到了 backend 边界
 4. 还没有把所有来源策略都完全从 `libmpv backend` 中迁移出去
@@ -252,10 +251,11 @@ source/player/
   player_backend_ffmpeg.c
   player_state.h
   player_source.h
-  player_source_resolver.c
-  player_source_policy_default.c
-  player_source_policy_hls.c
-  player_source_policy_vendor.c
+  player_source.c
+  source_policy.h
+  source_policy_default.c
+  source_policy_hls.c
+  source_policy_vendor.c
   player_platform.h
   player_platform_audio.c
   player_platform_video.c
@@ -974,6 +974,15 @@ Step 3 的通过标准：
 
 ##### 第二阶段
 
+已落地“`Player Core + event loop` 基础骨架”：
+
+1. `player.c` 独立 owner 线程
+2. 命令队列串行执行播放控制
+3. `mpv_wait_event` 持续事件循环
+4. `PlayerSnapshot` 作为 SOAP 的稳定只读快照
+
+##### 第三阶段
+
 再设计并实现“显示与渲染”：
 
 1. `libmpv render API`
@@ -981,26 +990,15 @@ Step 3 的通过标准：
 3. 日志 UI 切换
 4. `deko3d` 路径
 
-##### 第三阶段
-
-最后增强线程模型和事件模型：
-
-1. backend 线程
-2. mpv 事件循环
-3. 更完整状态机
-4. render 同步
-
 #### 5. 最终结论
 
 结论可以简化为：
 
 1. 当前设计已经足够开始实现基础 `libmpv` 播放控制
 2. 但还不足以无歧义地实现真实视频显示与渲染
-3. 所以下一步应先实现：
-   1. `SetURI / Play / Pause / Stop / Seek / 查询`
-4. 然后再单独设计：
+3. 现在播放控制、线程模型和事件模型已经有正式骨架
+4. 后续应单独设计：
    1. 渲染周期
    2. log UI 切换
    3. `libmpv render API`
    4. `deko3d`
-   5. backend 线程与 mpv 事件模型

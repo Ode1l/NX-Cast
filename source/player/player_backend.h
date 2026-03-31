@@ -19,6 +19,8 @@ typedef struct
     bool (*seek_ms)(int position_ms);
     bool (*set_volume)(int volume_0_100);
     bool (*set_mute)(bool mute);
+    bool (*pump_events)(int timeout_ms);
+    void (*wakeup)(void);
 
     int (*get_position_ms)(void);
     int (*get_duration_ms)(void);

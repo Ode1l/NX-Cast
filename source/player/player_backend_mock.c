@@ -1,5 +1,7 @@
 #include "player_backend.h"
 
+#include <switch.h>
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,6 +42,7 @@ static void emit_event(PlayerEventType type)
         .duration_ms = g_duration_ms,
         .volume = g_volume,
         .mute = g_mute,
+        .seekable = g_uri[0] != '\0' && g_duration_ms > 0,
         .error_code = 0,
         .uri = g_uri,
         .source_profile = g_has_source ? g_source.profile : PLAYER_SOURCE_PROFILE_UNKNOWN
@@ -225,6 +228,22 @@ static bool mock_set_mute(bool mute)
     return true;
 }
 
+static bool mock_pump_events(int timeout_ms)
+{
+    int before_position = g_position_ms;
+    PlayerState before_state = g_state;
+
+    if (timeout_ms > 0)
+        svcSleepThread((int64_t)timeout_ms * 1000000LL);
+
+    refresh_position(true);
+    return before_position != g_position_ms || before_state != g_state;
+}
+
+static void mock_wakeup(void)
+{
+}
+
 static int mock_get_position_ms(void)
 {
     refresh_position(false);
@@ -271,6 +290,8 @@ const PlayerBackendOps g_player_backend_mock = {
     .seek_ms = mock_seek_ms,
     .set_volume = mock_set_volume,
     .set_mute = mock_set_mute,
+    .pump_events = mock_pump_events,
+    .wakeup = mock_wakeup,
     .get_position_ms = mock_get_position_ms,
     .get_duration_ms = mock_get_duration_ms,
     .get_volume = mock_get_volume,
