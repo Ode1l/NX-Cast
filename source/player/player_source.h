@@ -10,6 +10,7 @@
 #define PLAYER_SOURCE_HEADER_FIELDS_MAX 512
 #define PLAYER_SOURCE_PROBE_INFO_MAX 32
 #define PLAYER_SOURCE_MIME_TYPE_MAX 96
+#define PLAYER_SOURCE_PROTOCOL_INFO_MAX 192
 #define PLAYER_SOURCE_FORMAT_HINT_MAX 48
 #define PLAYER_SOURCE_MPV_LOAD_OPTIONS_MAX 320
 
@@ -51,10 +52,13 @@ typedef struct
 typedef struct
 {
     char uri[PLAYER_SOURCE_URI_MAX];
+    char original_uri[PLAYER_SOURCE_URI_MAX];
     char metadata[PLAYER_SOURCE_METADATA_MAX];
     PlayerSourceProfile profile;
     PlayerSourceFormat format;
     PlayerSourceFlags flags;
+    bool selected_from_metadata;
+    int metadata_candidate_count;
     int network_timeout_seconds;
     char user_agent[PLAYER_SOURCE_USER_AGENT_MAX];
     char referrer[PLAYER_SOURCE_REFERRER_MAX];
@@ -62,6 +66,7 @@ typedef struct
     char header_fields[PLAYER_SOURCE_HEADER_FIELDS_MAX];
     char probe_info[PLAYER_SOURCE_PROBE_INFO_MAX];
     char mime_type[PLAYER_SOURCE_MIME_TYPE_MAX];
+    char protocol_info[PLAYER_SOURCE_PROTOCOL_INFO_MAX];
     char format_hint[PLAYER_SOURCE_FORMAT_HINT_MAX];
     char mpv_load_options[PLAYER_SOURCE_MPV_LOAD_OPTIONS_MAX];
 } PlayerResolvedSource;

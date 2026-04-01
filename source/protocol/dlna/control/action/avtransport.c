@@ -13,6 +13,8 @@ static const char *transport_state_from_player_state(PlayerState state)
 {
     switch (state)
     {
+    case PLAYER_STATE_IDLE:
+        return "NO_MEDIA_PRESENT";
     case PLAYER_STATE_PLAYING:
         return "PLAYING";
     case PLAYER_STATE_PAUSED:
@@ -22,12 +24,16 @@ static const char *transport_state_from_player_state(PlayerState state)
     case PLAYER_STATE_SEEKING:
         return "TRANSITIONING";
     case PLAYER_STATE_STOPPED:
-    case PLAYER_STATE_IDLE:
         return "STOPPED";
     case PLAYER_STATE_ERROR:
     default:
         return "STOPPED";
     }
+}
+
+static const char *transport_status_from_player_state(PlayerState state)
+{
+    return state == PLAYER_STATE_ERROR ? "ERROR_OCCURRED" : "OK";
 }
 
 static PlayerState sync_transport_state_from_player(void)
@@ -45,6 +51,10 @@ static PlayerState sync_transport_state_from_player(void)
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
              transport_state);
+    snprintf(g_soap_runtime_state.transport_status,
+             sizeof(g_soap_runtime_state.transport_status),
+             "%s",
+             transport_status_from_player_state(player_state));
     return player_state;
 }
 
@@ -152,6 +162,10 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
              transport_state_from_player_state(player_get_state()));
+    snprintf(g_soap_runtime_state.transport_status,
+             sizeof(g_soap_runtime_state.transport_status),
+             "%s",
+             "OK");
 
     soap_handler_set_success(out, "");
     return true;
@@ -188,6 +202,10 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
              transport_state_from_player_state(player_get_state()));
+    snprintf(g_soap_runtime_state.transport_status,
+             sizeof(g_soap_runtime_state.transport_status),
+             "%s",
+             "OK");
     soap_handler_set_success(out, "");
     return true;
 }
@@ -230,6 +248,10 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
              transport_state_from_player_state(player_get_state()));
+    snprintf(g_soap_runtime_state.transport_status,
+             sizeof(g_soap_runtime_state.transport_status),
+             "%s",
+             "OK");
     soap_handler_set_success(out, "");
     return true;
 }
@@ -267,6 +289,10 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
              transport_state_from_player_state(player_get_state()));
+    snprintf(g_soap_runtime_state.transport_status,
+             sizeof(g_soap_runtime_state.transport_status),
+             "%s",
+             "OK");
     soap_handler_set_success(out, "");
     return true;
 }
@@ -486,6 +512,14 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
+    snprintf(g_soap_runtime_state.transport_state,
+             sizeof(g_soap_runtime_state.transport_state),
+             "%s",
+             transport_state_from_player_state(player_get_state()));
+    snprintf(g_soap_runtime_state.transport_status,
+             sizeof(g_soap_runtime_state.transport_status),
+             "%s",
+             "OK");
     soap_handler_set_success(out, "");
     return true;
 }

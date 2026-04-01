@@ -3,8 +3,22 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "source_policy.h"
+
+#define PLAYER_SOURCE_METADATA_RESOURCE_MAX 8
+
+typedef struct
+{
+    char uri[PLAYER_SOURCE_URI_MAX];
+    char protocol_info[PLAYER_SOURCE_PROTOCOL_INFO_MAX];
+    char mime_type[PLAYER_SOURCE_MIME_TYPE_MAX];
+    PlayerSourceFormat format;
+    bool likely_segmented;
+    bool exact_uri_match;
+    int score;
+} PlayerMetadataResource;
 
 static bool starts_with_ignore_case(const char *value, const char *prefix)
 {
@@ -48,6 +62,111 @@ static bool contains_ignore_case(const char *haystack, const char *needle)
     }
 
     return false;
+}
+
+static bool span_equals_ignore_case(const char *start, const char *end, const char *value)
+{
+    size_t span_len;
+    size_t value_len;
+
+    if (!start || !end || !value || end < start)
+        return false;
+
+    span_len = (size_t)(end - start);
+    value_len = strlen(value);
+    return span_len == value_len && strncasecmp(start, value, value_len) == 0;
+}
+
+static bool local_name_equals_ignore_case(const char *start, const char *end, const char *value)
+{
+    const char *colon;
+
+    if (!start || !end || end < start)
+        return false;
+
+    colon = memchr(start, ':', (size_t)(end - start));
+    if (colon && colon + 1 < end)
+        start = colon + 1;
+
+    return span_equals_ignore_case(start, end, value);
+}
+
+static void trim_ascii_in_place(char *value)
+{
+    size_t begin = 0;
+    size_t end;
+
+    if (!value || value[0] == '\0')
+        return;
+
+    while (value[begin] && isspace((unsigned char)value[begin]))
+        ++begin;
+    if (begin > 0)
+        memmove(value, value + begin, strlen(value + begin) + 1);
+
+    end = strlen(value);
+    while (end > 0 && isspace((unsigned char)value[end - 1]))
+        value[--end] = '\0';
+}
+
+static void xml_decode_span(const char *start, const char *end, char *out, size_t out_size)
+{
+    size_t length = 0;
+
+    if (!out || out_size == 0)
+        return;
+
+    out[0] = '\0';
+    if (!start || !end || end < start)
+        return;
+
+    while (start < end && length + 1 < out_size)
+    {
+        if (*start == '&')
+        {
+            size_t remaining = (size_t)(end - start);
+            const char *replacement = NULL;
+            size_t consumed = 0;
+
+            if (remaining >= 5 && strncmp(start, "&amp;", 5) == 0)
+            {
+                replacement = "&";
+                consumed = 5;
+            }
+            else if (remaining >= 4 && strncmp(start, "&lt;", 4) == 0)
+            {
+                replacement = "<";
+                consumed = 4;
+            }
+            else if (remaining >= 4 && strncmp(start, "&gt;", 4) == 0)
+            {
+                replacement = ">";
+                consumed = 4;
+            }
+            else if (remaining >= 6 && strncmp(start, "&quot;", 6) == 0)
+            {
+                replacement = "\"";
+                consumed = 6;
+            }
+            else if (remaining >= 6 && strncmp(start, "&apos;", 6) == 0)
+            {
+                replacement = "'";
+                consumed = 6;
+            }
+
+            if (replacement)
+            {
+                out[length++] = replacement[0];
+                start += consumed;
+                continue;
+            }
+        }
+
+        out[length++] = *start++;
+    }
+
+    out[length] = '\0';
+    trim_ascii_in_place(out);
 }
 
 static bool is_http_like_uri(const char *uri)
@@ -146,12 +265,44 @@ static void detect_metadata_mime(const char *metadata, char *mime_type, size_t m
     set_if_contains(mime_type, mime_type_size, metadata, "video/mp2t", "video/mp2t");
 }
 
-static PlayerSourceFormat detect_source_format(const char *uri, const char *metadata, bool *likely_segmented)
+static void extract_protocol_info_mime(const char *protocol_info, char *mime_type, size_t mime_type_size)
+{
+    const char *first;
+    const char *second;
+    const char *third;
+
+    if (!mime_type || mime_type_size == 0)
+        return;
+
+    mime_type[0] = '\0';
+    if (!protocol_info || protocol_info[0] == '\0')
+        return;
+
+    first = strchr(protocol_info, ':');
+    if (!first)
+        return;
+    second = strchr(first + 1, ':');
+    if (!second)
+        return;
+    third = strchr(second + 1, ':');
+    if (!third || third <= second + 1)
+        return;
+
+    size_t copy_len = (size_t)(third - (second + 1));
+    if (copy_len >= mime_type_size)
+        copy_len = mime_type_size - 1;
+
+    memcpy(mime_type, second + 1, copy_len);
+    mime_type[copy_len] = '\0';
+    trim_ascii_in_place(mime_type);
+}
+
+static PlayerSourceFormat detect_source_format(const char *uri, const char *metadata_or_mime, bool *likely_segmented)
 {
     bool segmented = false;
 
-    if (contains_ignore_case(metadata, "application/vnd.apple.mpegurl") ||
-        contains_ignore_case(metadata, "application/x-mpegurl") ||
+    if (contains_ignore_case(metadata_or_mime, "application/vnd.apple.mpegurl") ||
+        contains_ignore_case(metadata_or_mime, "application/x-mpegurl") ||
         is_hls_uri(uri))
     {
         if (likely_segmented)
@@ -159,22 +310,22 @@ static PlayerSourceFormat detect_source_format(const char *uri, const char *meta
         return PLAYER_SOURCE_FORMAT_HLS;
     }
 
-    if (contains_ignore_case(metadata, "application/dash+xml") || is_dash_uri(uri))
+    if (contains_ignore_case(metadata_or_mime, "application/dash+xml") || is_dash_uri(uri))
     {
         if (likely_segmented)
             *likely_segmented = true;
         return PLAYER_SOURCE_FORMAT_DASH;
     }
 
-    if (contains_ignore_case(metadata, "video/x-flv") || is_flv_uri(uri))
+    if (contains_ignore_case(metadata_or_mime, "video/x-flv") || is_flv_uri(uri))
     {
         if (likely_segmented)
             *likely_segmented = false;
         return PLAYER_SOURCE_FORMAT_FLV;
     }
 
-    if (contains_ignore_case(metadata, "video/vnd.dlna.mpeg-tts") ||
-        contains_ignore_case(metadata, "video/mp2t") ||
+    if (contains_ignore_case(metadata_or_mime, "video/vnd.dlna.mpeg-tts") ||
+        contains_ignore_case(metadata_or_mime, "video/mp2t") ||
         is_mpeg_ts_uri(uri))
     {
         if (likely_segmented)
@@ -182,7 +333,7 @@ static PlayerSourceFormat detect_source_format(const char *uri, const char *meta
         return PLAYER_SOURCE_FORMAT_MPEG_TS;
     }
 
-    if (contains_ignore_case(metadata, "video/mp4") || is_mp4_uri(uri))
+    if (contains_ignore_case(metadata_or_mime, "video/mp4") || is_mp4_uri(uri))
     {
         if (likely_segmented)
             *likely_segmented = false;
@@ -192,6 +343,285 @@ static PlayerSourceFormat detect_source_format(const char *uri, const char *meta
     if (likely_segmented)
         *likely_segmented = segmented;
     return PLAYER_SOURCE_FORMAT_UNKNOWN;
+}
+
+static bool extract_xml_attribute_value(const char *tag_start, const char *tag_end, const char *attr_name,
+                                        char *out, size_t out_size)
+{
+    const char *cursor;
+
+    if (!tag_start || !tag_end || !attr_name || !out || out_size == 0 || tag_end < tag_start)
+        return false;
+
+    out[0] = '\0';
+    cursor = tag_start + 1;
+    while (cursor < tag_end)
+    {
+        while (cursor < tag_end && isspace((unsigned char)*cursor))
+            ++cursor;
+        while (cursor < tag_end && *cursor != '>' && !isspace((unsigned char)*cursor))
+            ++cursor;
+        while (cursor < tag_end && isspace((unsigned char)*cursor))
+            ++cursor;
+        if (cursor >= tag_end || *cursor == '>' || *cursor == '/')
+            break;
+
+        const char *name_start = cursor;
+        while (cursor < tag_end && *cursor != '=' && !isspace((unsigned char)*cursor) && *cursor != '>')
+            ++cursor;
+        const char *name_end = cursor;
+
+        while (cursor < tag_end && isspace((unsigned char)*cursor))
+            ++cursor;
+        if (cursor >= tag_end || *cursor != '=')
+        {
+            while (cursor < tag_end && *cursor != '>' && !isspace((unsigned char)*cursor))
+                ++cursor;
+            continue;
+        }
+        ++cursor;
+        while (cursor < tag_end && isspace((unsigned char)*cursor))
+            ++cursor;
+        if (cursor >= tag_end || (*cursor != '"' && *cursor != '\''))
+            continue;
+
+        char quote = *cursor++;
+        const char *value_start = cursor;
+        while (cursor < tag_end && *cursor != quote)
+            ++cursor;
+        const char *value_end = cursor;
+        if (cursor < tag_end)
+            ++cursor;
+
+        if (local_name_equals_ignore_case(name_start, name_end, attr_name))
+        {
+            xml_decode_span(value_start, value_end, out, out_size);
+            return out[0] != '\0';
+        }
+    }
+
+    return false;
+}
+
+static int score_metadata_resource(const char *current_uri, const PlayerMetadataResource *resource)
+{
+    int score = 0;
+
+    if (!resource || resource->uri[0] == '\0')
+        return -100000;
+
+    if (is_http_like_uri(resource->uri))
+        score += 50;
+    else
+        score -= 50;
+
+    if (starts_with_ignore_case(resource->protocol_info, "http-get:"))
+        score += 120;
+    else if (resource->protocol_info[0] != '\0')
+        score -= 120;
+
+    if (resource->mime_type[0] != '\0')
+        score += 25;
+
+    switch (resource->format)
+    {
+    case PLAYER_SOURCE_FORMAT_MP4:
+        score += 500;
+        break;
+    case PLAYER_SOURCE_FORMAT_HLS:
+        score += 450;
+        break;
+    case PLAYER_SOURCE_FORMAT_MPEG_TS:
+        score += 420;
+        break;
+    case PLAYER_SOURCE_FORMAT_FLV:
+        score += 320;
+        break;
+    case PLAYER_SOURCE_FORMAT_UNKNOWN:
+        score += 180;
+        break;
+    case PLAYER_SOURCE_FORMAT_DASH:
+        score += 40;
+        break;
+    }
+
+    if (resource->likely_segmented)
+        score -= 40;
+    if (resource->exact_uri_match)
+        score += 10;
+    if (current_uri && current_uri[0] != '\0' && strcmp(resource->uri, current_uri) == 0)
+        score += 10;
+
+    return score;
+}
+
+static int parse_metadata_resources(const char *metadata, const char *current_uri,
+                                    PlayerMetadataResource *resources, int max_resources)
+{
+    const char *cursor;
+    int count = 0;
+
+    if (!metadata || metadata[0] == '\0' || !resources || max_resources <= 0)
+        return 0;
+
+    cursor = metadata;
+    while ((cursor = strchr(cursor, '<')) != NULL)
+    {
+        if (cursor[1] == '/' || cursor[1] == '?' || cursor[1] == '!')
+        {
+            ++cursor;
+            continue;
+        }
+
+        const char *name_start = cursor + 1;
+        while (*name_start && isspace((unsigned char)*name_start))
+            ++name_start;
+
+        const char *name_end = name_start;
+        while (*name_end && !isspace((unsigned char)*name_end) && *name_end != '>' && *name_end != '/')
+            ++name_end;
+        if (name_end == name_start)
+        {
+            ++cursor;
+            continue;
+        }
+
+        const char *open_end = strchr(name_end, '>');
+        if (!open_end)
+            break;
+
+        if (!local_name_equals_ignore_case(name_start, name_end, "res"))
+        {
+            cursor = open_end + 1;
+            continue;
+        }
+
+        if (open_end > cursor && open_end[-1] == '/')
+        {
+            cursor = open_end + 1;
+            continue;
+        }
+
+        const char *value_start = open_end + 1;
+        const char *scan = value_start;
+        const char *close = NULL;
+
+        while (true)
+        {
+            close = strstr(scan, "</");
+            if (!close)
+                break;
+
+            const char *close_name_start = close + 2;
+            while (*close_name_start && isspace((unsigned char)*close_name_start))
+                ++close_name_start;
+            const char *close_name_end = close_name_start;
+            while (*close_name_end && !isspace((unsigned char)*close_name_end) && *close_name_end != '>')
+                ++close_name_end;
+
+            if (local_name_equals_ignore_case(close_name_start, close_name_end, "res"))
+                break;
+
+            scan = close + 2;
+        }
+
+        if (!close)
+            break;
+
+        if (count < max_resources)
+        {
+            PlayerMetadataResource *resource = &resources[count];
+            memset(resource, 0, sizeof(*resource));
+
+            extract_xml_attribute_value(cursor, open_end, "protocolInfo",
+                                        resource->protocol_info, sizeof(resource->protocol_info));
+            extract_protocol_info_mime(resource->protocol_info, resource->mime_type, sizeof(resource->mime_type));
+            xml_decode_span(value_start, close, resource->uri, sizeof(resource->uri));
+
+            if (resource->uri[0] != '\0')
+            {
+                resource->exact_uri_match = current_uri && strcmp(resource->uri, current_uri) == 0;
+                resource->format = detect_source_format(resource->uri,
+                                                       resource->mime_type[0] != '\0' ? resource->mime_type : resource->protocol_info,
+                                                       &resource->likely_segmented);
+                resource->score = score_metadata_resource(current_uri, resource);
+                ++count;
+            }
+        }
+
+        cursor = close + 2;
+    }
+
+    return count;
+}
+
+static void populate_source_flags(PlayerResolvedSource *source, bool likely_segmented)
+{
+    const char *metadata = source->metadata[0] != '\0' ? source->metadata : NULL;
+    const char *bilibili_uri = source->uri[0] != '\0' ? source->uri : source->original_uri;
+
+    source->flags.is_http = is_http_like_uri(source->uri);
+    source->flags.is_https = is_https_uri(source->uri);
+    source->flags.is_hls = source->format == PLAYER_SOURCE_FORMAT_HLS;
+    source->flags.is_signed = has_signed_tokens(source->uri);
+    source->flags.is_bilibili = is_bilibili_source(bilibili_uri, metadata) ||
+                                is_bilibili_source(source->original_uri, metadata);
+    source->flags.is_dash = source->format == PLAYER_SOURCE_FORMAT_DASH;
+    source->flags.is_flv = source->format == PLAYER_SOURCE_FORMAT_FLV;
+    source->flags.is_mp4 = source->format == PLAYER_SOURCE_FORMAT_MP4;
+    source->flags.is_mpeg_ts = source->format == PLAYER_SOURCE_FORMAT_MPEG_TS;
+    source->flags.likely_segmented = likely_segmented;
+    source->flags.likely_video_only = source->flags.is_dash && source->flags.is_bilibili && likely_segmented;
+}
+
+static void select_metadata_resource_if_better(const char *input_uri, PlayerResolvedSource *out, bool *likely_segmented)
+{
+    PlayerMetadataResource resources[PLAYER_SOURCE_METADATA_RESOURCE_MAX];
+    PlayerMetadataResource baseline;
+    int resource_count;
+    int best_index = -1;
+    int best_score = -100000;
+    int baseline_score;
+
+    if (!out || !likely_segmented)
+        return;
+
+    resource_count = parse_metadata_resources(out->metadata, input_uri, resources, PLAYER_SOURCE_METADATA_RESOURCE_MAX);
+    out->metadata_candidate_count = resource_count;
+    if (resource_count <= 0)
+        return;
+
+    memset(&baseline, 0, sizeof(baseline));
+    snprintf(baseline.uri, sizeof(baseline.uri), "%s", input_uri ? input_uri : "");
+    snprintf(baseline.mime_type, sizeof(baseline.mime_type), "%s", out->mime_type);
+    baseline.format = out->format;
+    baseline.likely_segmented = *likely_segmented;
+    baseline.exact_uri_match = true;
+    baseline.score = score_metadata_resource(input_uri, &baseline);
+    baseline_score = baseline.score;
+
+    for (int i = 0; i < resource_count; ++i)
+    {
+        if (resources[i].score > best_score)
+        {
+            best_score = resources[i].score;
+            best_index = i;
+        }
+    }
+
+    if (best_index < 0)
+        return;
+
+    if (best_score < baseline_score && !resources[best_index].exact_uri_match)
+        return;
+
+    snprintf(out->uri, sizeof(out->uri), "%s", resources[best_index].uri);
+    snprintf(out->protocol_info, sizeof(out->protocol_info), "%s", resources[best_index].protocol_info);
+    if (resources[best_index].mime_type[0] != '\0')
+        snprintf(out->mime_type, sizeof(out->mime_type), "%s", resources[best_index].mime_type);
+    out->format = resources[best_index].format;
+    out->selected_from_metadata = true;
+    *likely_segmented = resources[best_index].likely_segmented;
 }
 
 void player_source_reset(PlayerResolvedSource *source)
@@ -253,24 +683,15 @@ bool player_source_resolve(const char *uri, const char *metadata, PlayerResolved
 
     player_source_reset(out);
     snprintf(out->uri, sizeof(out->uri), "%s", uri);
+    snprintf(out->original_uri, sizeof(out->original_uri), "%s", uri);
     if (metadata)
         snprintf(out->metadata, sizeof(out->metadata), "%s", metadata);
 
     detect_metadata_mime(metadata, out->mime_type, sizeof(out->mime_type));
-    out->format = detect_source_format(uri, metadata, &likely_segmented);
+    out->format = detect_source_format(out->uri, out->mime_type[0] != '\0' ? out->mime_type : metadata, &likely_segmented);
+    select_metadata_resource_if_better(uri, out, &likely_segmented);
 
-    out->flags.is_http = is_http_like_uri(uri);
-    out->flags.is_https = is_https_uri(uri);
-    out->flags.is_hls = out->format == PLAYER_SOURCE_FORMAT_HLS;
-    out->flags.is_signed = has_signed_tokens(uri);
-    out->flags.is_bilibili = is_bilibili_source(uri, metadata);
-    out->flags.is_dash = out->format == PLAYER_SOURCE_FORMAT_DASH;
-    out->flags.is_flv = out->format == PLAYER_SOURCE_FORMAT_FLV;
-    out->flags.is_mp4 = out->format == PLAYER_SOURCE_FORMAT_MP4;
-    out->flags.is_mpeg_ts = out->format == PLAYER_SOURCE_FORMAT_MPEG_TS;
-    out->flags.likely_segmented = likely_segmented;
-    out->flags.likely_video_only = out->flags.is_dash && out->flags.is_bilibili && likely_segmented;
-
+    populate_source_flags(out, likely_segmented);
     snprintf(out->format_hint, sizeof(out->format_hint), "%s", player_source_format_name(out->format));
 
     if (out->flags.is_hls)

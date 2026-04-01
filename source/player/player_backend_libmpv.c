@@ -908,7 +908,7 @@ static void libmpv_sync_properties_locked(bool emit_events)
 
     if (g_uri[0] == '\0')
     {
-        g_state = PLAYER_STATE_STOPPED;
+        g_state = PLAYER_STATE_IDLE;
         return;
     }
 
@@ -1001,7 +1001,7 @@ static bool libmpv_init(void)
 
     memset(g_uri, 0, sizeof(g_uri));
     memset(g_metadata, 0, sizeof(g_metadata));
-    g_state = PLAYER_STATE_STOPPED;
+    g_state = PLAYER_STATE_IDLE;
     g_position_ms = 0;
     g_duration_ms = 0;
     g_volume = 20;
@@ -1108,7 +1108,7 @@ static void libmpv_deinit(void)
 
     memset(g_uri, 0, sizeof(g_uri));
     memset(g_metadata, 0, sizeof(g_metadata));
-    g_state = PLAYER_STATE_STOPPED;
+    g_state = PLAYER_STATE_IDLE;
     g_position_ms = 0;
     g_duration_ms = 0;
     g_media_loaded = false;

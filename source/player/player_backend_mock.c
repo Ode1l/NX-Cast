@@ -94,7 +94,7 @@ static bool mock_init(void)
     memset(g_metadata, 0, sizeof(g_metadata));
     player_source_reset(&g_source);
     g_has_source = false;
-    g_state = PLAYER_STATE_STOPPED;
+    g_state = PLAYER_STATE_IDLE;
     g_position_ms = 0;
     g_duration_ms = 0;
     g_volume = 20;

@@ -154,7 +154,15 @@ static void player_apply_event_locked(const PlayerEvent *event)
         g_snapshot.has_source = true;
         g_snapshot.source = g_current_source;
     }
-
+    else
+    {
+        g_snapshot.has_source = false;
+        player_source_reset(&g_snapshot.source);
+        g_snapshot.state = PLAYER_STATE_IDLE;
+        g_snapshot.position_ms = 0;
+        g_snapshot.duration_ms = 0;
+        g_snapshot.seekable = false;
+    }
 }
 
 static bool player_read_backend_snapshot(PlayerSnapshot *out)
@@ -184,6 +192,14 @@ static bool player_read_backend_snapshot(PlayerSnapshot *out)
     if (g_has_current_source)
         out->source = g_current_source;
     mutexUnlock(&g_player_mutex);
+
+    if (!out->has_source)
+    {
+        out->state = PLAYER_STATE_IDLE;
+        out->position_ms = 0;
+        out->duration_ms = 0;
+        out->seekable = false;
+    }
     return true;
 }
 
@@ -582,11 +598,13 @@ bool player_set_uri(const char *uri, const char *metadata)
     if (!player_source_resolve(uri, metadata, &resolved))
         return false;
 
-    log_info("[player] resolve_source profile=%s format=%s hint=%s mime=%s hls=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d\n",
+    log_info("[player] resolve_source profile=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d\n",
              player_source_profile_name(resolved.profile),
              player_source_format_name(resolved.format),
              resolved.format_hint[0] != '\0' ? resolved.format_hint : "unknown",
              resolved.mime_type[0] != '\0' ? resolved.mime_type : "unknown",
+             resolved.selected_from_metadata ? 1 : 0,
+             resolved.metadata_candidate_count,
              resolved.flags.is_hls ? 1 : 0,
              resolved.flags.is_dash ? 1 : 0,
              resolved.flags.is_flv ? 1 : 0,
@@ -597,6 +615,14 @@ bool player_set_uri(const char *uri, const char *metadata)
              resolved.flags.likely_segmented ? 1 : 0,
              resolved.flags.likely_video_only ? 1 : 0,
              resolved.network_timeout_seconds);
+
+    if (resolved.selected_from_metadata)
+    {
+        log_info("[player] selected_resource original_uri=%s selected_uri=%s protocol_info=%s\n",
+                 resolved.original_uri[0] != '\0' ? resolved.original_uri : "<empty>",
+                 resolved.uri[0] != '\0' ? resolved.uri : "<empty>",
+                 resolved.protocol_info[0] != '\0' ? resolved.protocol_info : "<none>");
+    }
 
     if (resolved.flags.is_bilibili && resolved.flags.likely_video_only)
     {
