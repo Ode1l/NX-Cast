@@ -9,16 +9,15 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/$(basename "${BASH_SOURCE[0]}" .sh)-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-HOST="${HOST:-192.168.1.7}"
-PORT="${PORT:-49152}"
-BASE_URL="http://${HOST}:${PORT}"
+HOST="${HOST:-192.168.2.108:49152}"
+BASE_URL="http://${HOST}"
 
 INSTANCE_ID="${INSTANCE_ID:-0}"
 CHANNEL="${CHANNEL:-Master}"
-MEDIA_URI="${MEDIA_URI:-http://192.168.1.40:8000/sample-5s-faststart.mp4}"
-SEEK_TARGET="${SEEK_TARGET:-00:00:05}"
+MEDIA_URI="${MEDIA_URI:-https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4}"
+SEEK_TARGET="${SEEK_TARGET:-00:00:01}"
 STATE_WAIT_SECONDS="${STATE_WAIT_SECONDS:-15}"
-HLS_STATE_WAIT_SECONDS="${HLS_STATE_WAIT_SECONDS:-30}"
+HLS_STATE_WAIT_SECONDS="${HLS_STATE_WAIT_SECONDS:-60}"
 STATE_POLL_INTERVAL="${STATE_POLL_INTERVAL:-1}"
 HLS_READY_GRACE_RETRIES="${HLS_READY_GRACE_RETRIES:-5}"
 HLS_READY_GRACE_INTERVAL="${HLS_READY_GRACE_INTERVAL:-0.2}"
@@ -103,6 +102,20 @@ extract_xml_value() {
   local xml="$1"
   local tag="$2"
   printf '%s' "$xml" | sed -n "s:.*<${tag}>\\([^<]*\\)</${tag}>.*:\\1:p" | head -n1
+}
+
+transport_actions_contains() {
+  local actions="$1"
+  local expected="$2"
+
+  case ",${actions}," in
+    *",${expected},"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 effective_wait_seconds() {
@@ -208,6 +221,45 @@ wait_for_transport_state() {
   fail "transport state did not reach ${expected_state} within ${wait_seconds}s"
 }
 
+wait_for_transport_action() {
+  local expected_action="$1"
+  local attempts
+  local wait_seconds
+  local current_state=""
+  local current_actions=""
+  local last_actions=""
+
+  wait_seconds="$(effective_wait_seconds)"
+  attempts=$((wait_seconds / STATE_POLL_INTERVAL))
+  if [ "$attempts" -le 0 ]; then
+    attempts=1
+  fi
+
+  for ((i = 1; i <= attempts; i++)); do
+    soap_call "AVTransport" "GetCurrentTransportActions" "<InstanceID>${INSTANCE_ID}</InstanceID>"
+    assert_http_200
+    current_actions="$(extract_xml_value "$LAST_BODY" "Actions")"
+
+    soap_call "AVTransport" "GetTransportInfo" "<InstanceID>${INSTANCE_ID}</InstanceID>"
+    assert_http_200
+    current_state="$(extract_xml_value "$LAST_BODY" "CurrentTransportState")"
+
+    if transport_actions_contains "$current_actions" "$expected_action"; then
+      log "observe wait=${i}/${attempts} action=${expected_action} state=${current_state:-<empty>} actions=${current_actions:-<empty>}"
+      return 0
+    fi
+
+    if [[ "$current_actions" != "$last_actions" ]]; then
+      log "observe wait=${i}/${attempts} state=${current_state:-<empty>} actions=${current_actions:-<empty>}"
+      last_actions="$current_actions"
+    fi
+
+    sleep "$STATE_POLL_INTERVAL"
+  done
+
+  fail "transport action ${expected_action} not available within ${wait_seconds}s"
+}
+
 main() {
   log "log file: ${LOG_FILE}"
   require_cmd curl
@@ -245,7 +297,12 @@ main() {
     soap_call "AVTransport" "Seek" \
       "<InstanceID>${INSTANCE_ID}</InstanceID><Unit>REL_TIME</Unit><Target>${SEEK_TARGET}</Target>"
     assert_http_200
+    log "check transport state == PLAYING after Seek"
+    wait_for_transport_state "PLAYING"
   fi
+
+  log "check transport action includes Pause"
+  wait_for_transport_action "Pause"
 
   log "5/6 Pause"
   soap_call "AVTransport" "Pause" \

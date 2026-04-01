@@ -29,6 +29,7 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutput *out);
+bool avtransport_get_current_transport_actions(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutput *out);
 bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out);

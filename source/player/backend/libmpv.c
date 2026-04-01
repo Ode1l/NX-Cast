@@ -937,10 +937,14 @@ static void libmpv_sync_properties_locked(bool emit_events)
         g_state = PLAYER_STATE_SEEKING;
     else if (g_paused_for_cache)
         g_state = PLAYER_STATE_BUFFERING;
+    else if (g_media_loaded && !paused && !idle_active)
+        g_state = PLAYER_STATE_PLAYING;
     else if (g_stop_mode || (!g_media_loaded && idle_active))
         g_state = PLAYER_STATE_STOPPED;
     else if (paused)
         g_state = PLAYER_STATE_PAUSED;
+    else if (idle_active)
+        g_state = PLAYER_STATE_STOPPED;
     else
         g_state = PLAYER_STATE_PLAYING;
 

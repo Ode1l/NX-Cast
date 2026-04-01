@@ -2,39 +2,25 @@
 
 #include <switch.h>
 
-#include <arpa/inet.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #define LOG_QUEUE_CAPACITY 2048
-#define LOG_MESSAGE_MAX 1024
 #define LOG_HISTORY_CAPACITY 4096
-#define LOG_HISTORY_MESSAGE_MAX 512
 #define LOG_WORKER_STACK_SIZE (32 * 1024)
-#define LOG_REMOTE_IO_TIMEOUT_MS 200
-#define LOG_REMOTE_UPLOAD_ACK_TIMEOUT_MS 2000
 
 typedef struct
 {
-    LogLevel level;
-    char text[LOG_MESSAGE_MAX];
+    char *line;
 } LogEntry;
-
-typedef struct
-{
-    char text[LOG_HISTORY_MESSAGE_MAX];
-} LogHistoryEntry;
 
 static Mutex g_logMutex;
 static CondVar g_logCondVar;
 static Thread g_logThread;
 static bool g_logThreadStarted = false;
-static bool g_logWorkerRunning = false;
 static bool g_logStopRequested = false;
 static bool g_logEnabled = true;
 static LogLevel g_logMinLevel = LOG_LEVEL_INFO;
@@ -46,26 +32,9 @@ static size_t g_logTail = 0;
 static size_t g_logCount = 0;
 static unsigned int g_logDroppedCount = 0;
 
-static LogHistoryEntry g_logHistory[LOG_HISTORY_CAPACITY];
+static LogEntry g_logHistory[LOG_HISTORY_CAPACITY];
 static size_t g_logHistoryHead = 0;
 static size_t g_logHistoryCount = 0;
-
-static bool g_remoteConfigured = false;
-static uint32_t g_remoteHostAddrBe = 0;
-static uint16_t g_remotePort = 0;
-
-static void wait_for_log_queue_idle(void)
-{
-    for (int i = 0; i < 100; ++i)
-    {
-        mutexLock(&g_logMutex);
-        bool idle = (g_logCount == 0 && g_logDroppedCount == 0);
-        mutexUnlock(&g_logMutex);
-        if (idle)
-            return;
-        svcSleepThread(20 * 1000 * 1000LL);
-    }
-}
 
 static const char *level_label(LogLevel level)
 {
@@ -83,40 +52,106 @@ static const char *level_label(LogLevel level)
     }
 }
 
-static void normalize_log_text(const char *src, char *dst, size_t dst_size)
+static char *strdup_local(const char *src)
 {
-    if (!dst || dst_size == 0)
-        return;
-
     if (!src)
-    {
-        dst[0] = '\0';
-        return;
-    }
+        return NULL;
 
-    size_t i = 0;
-    for (; src[i] && i + 1 < dst_size; ++i)
-    {
-        char c = src[i];
-        if (c == '\r' || c == '\n' || c == '\t')
-            c = ' ';
-        dst[i] = c;
-    }
-    dst[i] = '\0';
+    size_t len = strlen(src);
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
 
-    while (i > 0 && dst[i - 1] == ' ')
-        dst[--i] = '\0';
+    memcpy(copy, src, len + 1);
+    return copy;
 }
 
-static void append_history_line_locked(const char *text)
+static void normalize_log_text_inplace(char *text)
 {
     if (!text)
+        return;
+
+    size_t write = 0;
+    for (size_t read = 0; text[read] != '\0'; ++read)
+    {
+        char c = text[read];
+        if (c == '\r' || c == '\n' || c == '\t')
+            c = ' ';
+        text[write++] = c;
+    }
+
+    while (write > 0 && text[write - 1] == ' ')
+        --write;
+
+    text[write] = '\0';
+}
+
+static char *alloc_vformatted(const char *fmt, va_list args)
+{
+    va_list copy;
+    va_copy(copy, args);
+    int needed = vsnprintf(NULL, 0, fmt, copy);
+    va_end(copy);
+    if (needed < 0)
+        return NULL;
+
+    char *text = (char *)malloc((size_t)needed + 1);
+    if (!text)
+        return NULL;
+
+    va_copy(copy, args);
+    vsnprintf(text, (size_t)needed + 1, fmt, copy);
+    va_end(copy);
+    return text;
+}
+
+static char *build_log_line(LogLevel level, const char *fmt, va_list args)
+{
+    char *body = alloc_vformatted(fmt, args);
+    if (!body)
+        return NULL;
+
+    normalize_log_text_inplace(body);
+
+    const char *label = level_label(level);
+    int needed = snprintf(NULL, 0, "[%s] %s", label, body);
+    if (needed < 0)
+    {
+        free(body);
+        return NULL;
+    }
+
+    char *line = (char *)malloc((size_t)needed + 1);
+    if (!line)
+    {
+        free(body);
+        return NULL;
+    }
+
+    snprintf(line, (size_t)needed + 1, "[%s] %s", label, body);
+    free(body);
+    return line;
+}
+
+static void clear_entry(LogEntry *entry)
+{
+    if (!entry || !entry->line)
+        return;
+
+    free(entry->line);
+    entry->line = NULL;
+}
+
+static void append_history_locked(char *line)
+{
+    if (!line)
         return;
 
     size_t slot = (g_logHistoryHead + g_logHistoryCount) % LOG_HISTORY_CAPACITY;
     if (g_logHistoryCount >= LOG_HISTORY_CAPACITY)
     {
         slot = g_logHistoryHead;
+        clear_entry(&g_logHistory[slot]);
         g_logHistoryHead = (g_logHistoryHead + 1) % LOG_HISTORY_CAPACITY;
     }
     else
@@ -124,79 +159,21 @@ static void append_history_line_locked(const char *text)
         g_logHistoryCount++;
     }
 
-    normalize_log_text(text, g_logHistory[slot].text, sizeof(g_logHistory[slot].text));
+    g_logHistory[slot].line = line;
 }
 
-static void format_log_line(LogLevel level, const char *text, char *line, size_t line_size)
+static void clear_queue_locked(void)
 {
-    if (!line || line_size == 0)
-        return;
-
-    line[0] = '\0';
-    snprintf(line, line_size, "[%s] ", level_label(level));
-    size_t prefix_len = strlen(line);
-    normalize_log_text(text, line + prefix_len, line_size - prefix_len);
-}
-
-static int remote_open_upload_socket(uint32_t host_addr_be, uint16_t port)
-{
-    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock < 0)
-        return -1;
-
-    struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = LOG_REMOTE_IO_TIMEOUT_MS * 1000;
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = host_addr_be;
-
-    if (connect(sock, (const struct sockaddr *)&addr, sizeof(addr)) < 0)
+    for (size_t i = 0; i < g_logCount; ++i)
     {
-        close(sock);
-        return -1;
+        size_t slot = (g_logHead + i) % LOG_QUEUE_CAPACITY;
+        clear_entry(&g_logQueue[slot]);
     }
 
-    return sock;
-}
-
-static bool remote_send_all(int sock, const void *data, size_t size)
-{
-    const char *cursor = (const char *)data;
-    size_t remaining = size;
-    while (remaining > 0)
-    {
-        ssize_t written = send(sock, cursor, remaining, 0);
-        if (written <= 0)
-            return false;
-        cursor += (size_t)written;
-        remaining -= (size_t)written;
-    }
-    return true;
-}
-
-static bool remote_wait_for_upload_ack(int sock)
-{
-    struct timeval timeout;
-    timeout.tv_sec = LOG_REMOTE_UPLOAD_ACK_TIMEOUT_MS / 1000;
-    timeout.tv_usec = (LOG_REMOTE_UPLOAD_ACK_TIMEOUT_MS % 1000) * 1000;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
-    if (shutdown(sock, SHUT_WR) < 0)
-        return false;
-
-    char ack[16];
-    ssize_t received = recv(sock, ack, sizeof(ack) - 1, 0);
-    if (received <= 0)
-        return false;
-
-    ack[received] = '\0';
-    return strncmp(ack, "OK", 2) == 0;
+    g_logHead = 0;
+    g_logTail = 0;
+    g_logCount = 0;
+    g_logDroppedCount = 0;
 }
 
 static void log_worker_thread(void *arg)
@@ -205,8 +182,7 @@ static void log_worker_thread(void *arg)
 
     while (true)
     {
-        LogEntry entry;
-        bool has_entry = false;
+        char *line = NULL;
         unsigned int dropped = 0;
         bool mirror_to_stdio = false;
 
@@ -222,10 +198,10 @@ static void log_worker_thread(void *arg)
 
         if (g_logCount > 0)
         {
-            entry = g_logQueue[g_logHead];
+            line = g_logQueue[g_logHead].line;
+            g_logQueue[g_logHead].line = NULL;
             g_logHead = (g_logHead + 1) % LOG_QUEUE_CAPACITY;
             g_logCount--;
-            has_entry = true;
         }
         else if (g_logDroppedCount > 0)
         {
@@ -236,13 +212,10 @@ static void log_worker_thread(void *arg)
         mirror_to_stdio = g_logMirrorToStdio;
         mutexUnlock(&g_logMutex);
 
-        if (has_entry)
+        if (line)
         {
-            char line[LOG_HISTORY_MESSAGE_MAX];
-            format_log_line(entry.level, entry.text, line, sizeof(line));
-
             mutexLock(&g_logMutex);
-            append_history_line_locked(line);
+            append_history_locked(line);
             mutexUnlock(&g_logMutex);
 
             if (mirror_to_stdio)
@@ -255,24 +228,24 @@ static void log_worker_thread(void *arg)
 
         if (dropped > 0)
         {
-            char line[LOG_HISTORY_MESSAGE_MAX];
-            snprintf(line, sizeof(line), "[WARN] log queue full, dropped %u messages", dropped);
+            char fallback[96];
+            snprintf(fallback, sizeof(fallback), "[WARN] log queue full, dropped %u messages", dropped);
+            char *dropped_line = strdup_local(fallback);
+            if (!dropped_line)
+                continue;
 
             mutexLock(&g_logMutex);
-            append_history_line_locked(line);
+            append_history_locked(dropped_line);
             mutexUnlock(&g_logMutex);
 
             if (mirror_to_stdio)
             {
-                fprintf(stderr, "%s\n", line);
+                fprintf(stderr, "%s\n", dropped_line);
                 fflush(stderr);
             }
         }
     }
 
-    mutexLock(&g_logMutex);
-    g_logWorkerRunning = false;
-    mutexUnlock(&g_logMutex);
     threadExit();
 }
 
@@ -284,8 +257,8 @@ bool log_runtime_init(void)
         mutexUnlock(&g_logMutex);
         return true;
     }
+
     g_logStopRequested = false;
-    g_logWorkerRunning = true;
     mutexUnlock(&g_logMutex);
 
     Result rc = threadCreate(&g_logThread,
@@ -296,20 +269,12 @@ bool log_runtime_init(void)
                              0x2D,
                              -2);
     if (R_FAILED(rc))
-    {
-        mutexLock(&g_logMutex);
-        g_logWorkerRunning = false;
-        mutexUnlock(&g_logMutex);
         return false;
-    }
 
     rc = threadStart(&g_logThread);
     if (R_FAILED(rc))
     {
         threadClose(&g_logThread);
-        mutexLock(&g_logMutex);
-        g_logWorkerRunning = false;
-        mutexUnlock(&g_logMutex);
         return false;
     }
 
@@ -337,7 +302,7 @@ void log_runtime_shutdown(void)
 
     mutexLock(&g_logMutex);
     g_logThreadStarted = false;
-    g_logWorkerRunning = false;
+    clear_queue_locked();
     mutexUnlock(&g_logMutex);
 }
 
@@ -360,22 +325,20 @@ void vlog_write(LogLevel level, const char *fmt, va_list args)
     if (!enabled || level < min_level)
         return;
 
-    char formatted[LOG_MESSAGE_MAX];
-    int written = vsnprintf(formatted, sizeof(formatted), fmt, args);
-    if (written < 0)
+    char *line = build_log_line(level, fmt, args);
+    if (!line)
         return;
 
     mutexLock(&g_logMutex);
     if (g_logCount >= LOG_QUEUE_CAPACITY)
     {
+        clear_entry(&g_logQueue[g_logHead]);
         g_logHead = (g_logHead + 1) % LOG_QUEUE_CAPACITY;
         g_logCount--;
         g_logDroppedCount++;
     }
 
-    LogEntry *entry = &g_logQueue[g_logTail];
-    entry->level = level;
-    snprintf(entry->text, sizeof(entry->text), "%s", formatted);
+    g_logQueue[g_logTail].line = line;
     g_logTail = (g_logTail + 1) % LOG_QUEUE_CAPACITY;
     g_logCount++;
     condvarWakeOne(&g_logCondVar);
@@ -384,72 +347,6 @@ void vlog_write(LogLevel level, const char *fmt, va_list args)
 
 void log_flush(void)
 {
-}
-
-bool log_upload_history(void)
-{
-    wait_for_log_queue_idle();
-
-    mutexLock(&g_logMutex);
-    if (!g_remoteConfigured || g_remoteHostAddrBe == 0 || g_remotePort == 0)
-    {
-        mutexUnlock(&g_logMutex);
-        return false;
-    }
-
-    size_t count = g_logHistoryCount;
-    uint32_t host_addr_be = g_remoteHostAddrBe;
-    uint16_t port = g_remotePort;
-
-    if (count == 0)
-    {
-        mutexUnlock(&g_logMutex);
-        return true;
-    }
-
-    size_t snapshot_size = count * LOG_HISTORY_MESSAGE_MAX;
-    char *snapshot = (char *)malloc(snapshot_size);
-    if (!snapshot)
-    {
-        mutexUnlock(&g_logMutex);
-        return false;
-    }
-
-    for (size_t i = 0; i < count; ++i)
-    {
-        size_t slot = (g_logHistoryHead + i) % LOG_HISTORY_CAPACITY;
-        snprintf(snapshot + (i * LOG_HISTORY_MESSAGE_MAX),
-                 LOG_HISTORY_MESSAGE_MAX,
-                 "%s",
-                 g_logHistory[slot].text);
-    }
-    mutexUnlock(&g_logMutex);
-
-    int sock = remote_open_upload_socket(host_addr_be, port);
-    if (sock < 0)
-    {
-        free(snapshot);
-        return false;
-    }
-
-    bool ok = true;
-    for (size_t i = 0; i < count; ++i)
-    {
-        const char *line = snapshot + (i * LOG_HISTORY_MESSAGE_MAX);
-        size_t len = strlen(line);
-        if (!remote_send_all(sock, line, len) || !remote_send_all(sock, "\n", 1))
-        {
-            ok = false;
-            break;
-        }
-    }
-
-    if (ok)
-        ok = remote_wait_for_upload_ack(sock);
-
-    close(sock);
-    free(snapshot);
-    return ok;
 }
 
 size_t log_history_count(void)
@@ -475,7 +372,7 @@ bool log_history_get_line(size_t index, char *out, size_t out_size)
     }
 
     size_t slot = (g_logHistoryHead + index) % LOG_HISTORY_CAPACITY;
-    snprintf(out, out_size, "%s", g_logHistory[slot].text);
+    snprintf(out, out_size, "%s", g_logHistory[slot].line ? g_logHistory[slot].line : "");
     mutexUnlock(&g_logMutex);
     return true;
 }
@@ -511,25 +408,6 @@ void log_set_stdio_mirror(bool enabled)
 {
     mutexLock(&g_logMutex);
     g_logMirrorToStdio = enabled;
-    mutexUnlock(&g_logMutex);
-}
-
-bool log_set_remote_host(uint32_t host_addr_be, uint16_t port)
-{
-    mutexLock(&g_logMutex);
-    g_remoteConfigured = true;
-    g_remoteHostAddrBe = host_addr_be;
-    g_remotePort = port;
-    mutexUnlock(&g_logMutex);
-    return true;
-}
-
-void log_clear_remote_host(void)
-{
-    mutexLock(&g_logMutex);
-    g_remoteConfigured = false;
-    g_remoteHostAddrBe = 0;
-    g_remotePort = 0;
     mutexUnlock(&g_logMutex);
 }
 

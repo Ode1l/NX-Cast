@@ -24,6 +24,7 @@ static const SoapRouteEntry g_routes[] = {
     {"AVTransport", g_serviceTypeAvTransport, "Pause", "avtransport_pause", avtransport_pause},
     {"AVTransport", g_serviceTypeAvTransport, "Stop", "avtransport_stop", avtransport_stop},
     {"AVTransport", g_serviceTypeAvTransport, "GetTransportInfo", "avtransport_get_transport_info", avtransport_get_transport_info},
+    {"AVTransport", g_serviceTypeAvTransport, "GetCurrentTransportActions", "avtransport_get_current_transport_actions", avtransport_get_current_transport_actions},
     {"AVTransport", g_serviceTypeAvTransport, "GetMediaInfo", "avtransport_get_media_info", avtransport_get_media_info},
     {"AVTransport", g_serviceTypeAvTransport, "GetPositionInfo", "avtransport_get_position_info", avtransport_get_position_info},
     {"AVTransport", g_serviceTypeAvTransport, "Seek", "avtransport_seek", avtransport_seek},

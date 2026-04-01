@@ -15,7 +15,6 @@ typedef enum
 
 bool log_runtime_init(void);
 void log_runtime_shutdown(void);
-bool log_upload_history(void);
 
 void log_debug(const char *fmt, ...);
 void log_info(const char *fmt, ...);
@@ -29,8 +28,6 @@ void log_set_enabled(bool enabled);
 void log_set_level(LogLevel level);
 LogLevel log_get_level(void);
 void log_set_stdio_mirror(bool enabled);
-bool log_set_remote_host(uint32_t host_addr_be, uint16_t port);
-void log_clear_remote_host(void);
 
 size_t log_history_count(void);
 bool log_history_get_line(size_t index, char *out, size_t out_size);

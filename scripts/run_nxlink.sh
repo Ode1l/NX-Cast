@@ -11,53 +11,20 @@ NRO_PATH=${1:-${PROJECT_ROOT}/NX-Cast.nro}
 SWITCH_IP=${SWITCH_IP:-}
 NO_BUILD=${NO_BUILD:-0}
 BUILD_JOBS=${BUILD_JOBS:-4}
-LOG_TCP_PORT=${LOG_TCP_PORT:-28772}
-START_LOG_RECEIVER=${START_LOG_RECEIVER:-1}
-SWITCH_IP_SOURCE="env"
-LOG_RECEIVER_PID=""
+LOG_STAMP="$(date +%Y%m%d-%H%M%S)"
+SESSION_LOG="${LOG_DIR}/run_nxlink-${LOG_STAMP}.log"
+NXLINK_ARGS=()
 
-stop_log_receiver() {
-  if [ -n "$LOG_RECEIVER_PID" ] && kill -0 "$LOG_RECEIVER_PID" >/dev/null 2>&1; then
-    kill "$LOG_RECEIVER_PID" >/dev/null 2>&1 || true
-    wait "$LOG_RECEIVER_PID" >/dev/null 2>&1 || true
-  fi
-}
-
-trap 'stop_log_receiver' EXIT
-
-detect_switch_ip_from_logs() {
-  local latest_log
-  latest_log="$(find "$LOG_DIR" -maxdepth 1 -type f -name 'remote-log-*.log' | sort | tail -n 1 || true)"
-  if [ -z "$latest_log" ] || [ ! -f "$latest_log" ]; then
-    return 1
-  fi
-
-  local detected_ip
-  detected_ip="$(grep -Eo 'http://([0-9]{1,3}\.){3}[0-9]{1,3}(:[0-9]+)?' "$latest_log" | tail -n 1 | sed -E 's#http://(([0-9]{1,3}\.){3}[0-9]{1,3})(:[0-9]+)?#\1#' || true)"
-  if [ -z "$detected_ip" ]; then
-    return 1
-  fi
-
-  printf '%s\n' "$detected_ip"
-}
-
-start_log_receiver() {
-  if ! command -v python3 >/dev/null 2>&1; then
-    return 1
-  fi
-
-  python3 -u "${SCRIPT_DIR}/log_receiver.py" --port "$LOG_TCP_PORT" --stdout --once &
-  LOG_RECEIVER_PID=$!
-}
+if command -v stdbuf >/dev/null 2>&1; then
+  NXLINK_ARGS+=(stdbuf -oL -eL)
+fi
 
 if [ "$NO_BUILD" != "1" ]; then
   echo "[run-nxlink] build=make clean && make -j${BUILD_JOBS}"
-  (
-    cd "$PROJECT_ROOT"
-    source /opt/devkitpro/switchvars.sh
-    make clean
-    make -j"${BUILD_JOBS}"
-  )
+  cd "$PROJECT_ROOT"
+  source /opt/devkitpro/switchvars.sh
+  make clean
+  make -j"${BUILD_JOBS}"
 fi
 
 if [ ! -f "$NRO_PATH" ]; then
@@ -65,26 +32,22 @@ if [ ! -f "$NRO_PATH" ]; then
   exit 1
 fi
 
-if [ "$START_LOG_RECEIVER" = "1" ]; then
-  start_log_receiver || echo "[run-nxlink] tcp-log receiver unavailable"
-else
-  echo "[run-nxlink] remote log receiver not started by script; run scripts/log_receiver.py --port ${LOG_TCP_PORT}"
-fi
+cd "$PROJECT_ROOT"
 
-if [ -z "$SWITCH_IP" ]; then
-  SWITCH_IP="$(detect_switch_ip_from_logs || true)"
-  SWITCH_IP_SOURCE="log-cache"
-fi
+echo "[run-nxlink] session_log=${SESSION_LOG}"
 
+set +e
 if [ -n "$SWITCH_IP" ]; then
-  echo "[run-nxlink] target=${SWITCH_IP} source=${SWITCH_IP_SOURCE} tcp-log=${LOG_TCP_PORT}"
-  "$NXLINK_BIN" -a "$SWITCH_IP" "$NRO_PATH"
+  echo "[run-nxlink] target=${SWITCH_IP} mode=server"
+  "${NXLINK_ARGS[@]}" "$NXLINK_BIN" -a "$SWITCH_IP" -s "$NRO_PATH" 2>&1 | tee "$SESSION_LOG"
 else
-  echo "[run-nxlink] target=auto tcp-log=${LOG_TCP_PORT}"
-  "$NXLINK_BIN" "$NRO_PATH"
+  "${NXLINK_ARGS[@]}" "$NXLINK_BIN" -s "$NRO_PATH" 2>&1 | tee "$SESSION_LOG"
+fi
+nxlink_status=${PIPESTATUS[0]}
+set -e
+
+if [ "$nxlink_status" -ne 0 ]; then
+  echo "[run-nxlink] nxlink exited with status ${nxlink_status}"
 fi
 
-if [ -n "$LOG_RECEIVER_PID" ]; then
-  echo "[run-nxlink] upload complete; waiting for remote log upload on exit"
-  wait "$LOG_RECEIVER_PID" || true
-fi
+exit "$nxlink_status"

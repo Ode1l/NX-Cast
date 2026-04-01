@@ -25,9 +25,7 @@ typedef struct
 #define ANSI_ERROR "\x1b[31;1m"
 #define ANSI_TEXT  "\x1b[37;1m"
 
-#define NXLINK_LOG_TCP_PORT 28772
-
-static bool g_remoteLogEnabled = false;
+static int g_nxlinkSock = -1;
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -172,22 +170,33 @@ static bool initialize_network(void)
     return true;
 }
 
-static void enable_remote_logging(bool network_ready)
+static void enable_nxlink_stdio(bool network_ready)
 {
     if (!network_ready)
         return;
 
-    if (__nxlink_host.s_addr != 0 && log_set_remote_host(__nxlink_host.s_addr, NXLINK_LOG_TCP_PORT))
+    if (__nxlink_host.s_addr == 0)
     {
-        g_remoteLogEnabled = true;
-        log_info("[log] remote TCP log upload configured host=%s port=%d\n",
+        log_set_stdio_mirror(false);
+        log_warn("[log] nxlink host unavailable; local console only.\n");
+        return;
+    }
+
+    g_nxlinkSock = nxlinkStdioForDebug();
+    if (g_nxlinkSock >= 0)
+    {
+        log_set_stdio_mirror(true);
+        log_info("[log] nxlink stderr connected host=%s port=%d fd=%d stdout=local\n",
                  inet_ntoa(__nxlink_host),
-                 NXLINK_LOG_TCP_PORT);
+                 NXLINK_CLIENT_PORT,
+                 g_nxlinkSock);
+        return;
     }
-    else
-    {
-        log_warn("[log] remote TCP log upload unavailable, using local console only.\n");
-    }
+
+    log_set_stdio_mirror(false);
+    log_warn("[log] nxlink stderr connect failed host=%s port=%d\n",
+             inet_ntoa(__nxlink_host),
+             NXLINK_CLIENT_PORT);
 }
 
 int main(int argc, char* argv[])
@@ -201,7 +210,7 @@ int main(int argc, char* argv[])
     log_info("[log] level=DEBUG\n");
 
     bool networkReady = initialize_network();
-    enable_remote_logging(networkReady);
+    enable_nxlink_stdio(networkReady);
     bool dlnaRunning = false;
     bool videoPlatformReady = player_view_init();
 
@@ -327,34 +336,28 @@ int main(int argc, char* argv[])
         }
     }
 
-    bool had_remote_log = g_remoteLogEnabled;
-
     if (networkReady)
     {
         if (dlnaRunning)
             dlna_control_stop();
-
-        if (g_remoteLogEnabled)
-        {
-            log_info("[log] uploading history to remote receiver before exit.\n");
-            if (!log_upload_history())
-                log_warn("[log] history upload failed.\n");
-        }
-
-        log_clear_remote_host();
-        g_remoteLogEnabled = false;
-        socketExit();
     }
 
     if (videoPlatformReady)
         player_view_deinit();
 
     log_runtime_shutdown();
-    if (!had_remote_log)
+
+    if (g_nxlinkSock >= 0)
     {
-        render_log_view(0);
-        consoleUpdate(NULL);
+        close(g_nxlinkSock);
+        g_nxlinkSock = -1;
     }
+
+    if (networkReady)
+        socketExit();
+
+    render_log_view(0);
+    consoleUpdate(NULL);
     consoleExit(NULL);
     return 0;
 }
