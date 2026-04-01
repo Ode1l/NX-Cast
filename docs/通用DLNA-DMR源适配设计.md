@@ -555,7 +555,7 @@ generic DMR 可以做的合理动作：
 
 ### 9.3 不要继续做的事情
 
-不要继续把下面这些动作散落在 `player_backend_libmpv.c` 的分支里：
+不要继续把下面这些动作散落在 `libmpv.c` 的分支里：
 
 1. 基于域名临时拼接一串 `loadfile` 参数
 2. 一边调 `mpv` 参数，一边判断来源类型
@@ -594,11 +594,11 @@ generic DMR 可以做的合理动作：
 
 已完成第一版：
 
-1. `source_profile.h`
+1. `media_profile.h`
 2. `source_resolver.h`
-3. `source_policy_default.c`
-4. `source_policy_hls.c`
-5. `source_policy_vendor.c`
+3. `policy_default.c`
+4. `policy_hls.c`
+5. `policy_vendor.c`
 
 先把“URL 分类”和“打开策略”从 `player backend` 拆出去。
 
@@ -627,7 +627,7 @@ generic DMR 可以做的合理动作：
 1. 不只是 generic DMR
 2. 而是“尽量像原生客户端那样支持 bilibili”
 
-那应新增独立的 source-native adapter，而不是继续扩写 `player_backend_libmpv.c`。
+那应新增独立的 source-native adapter，而不是继续扩写 `libmpv.c`。
 
 ---
 
@@ -658,16 +658,16 @@ generic DMR 可以做的合理动作：
 
 已新增：
 
-1. `PlayerResolvedSource`
-2. `PlayerSourceProfile`
-3. `player_source_resolve()`
-4. `player_set_source()`
+1. `PlayerMedia`
+2. `PlayerMediaProfile`
+3. `ingress_resolve()`
+4. `player_set_media()`
 5. `PlayerSnapshot`
 
 对应代码：
 
-1. [player_source.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player_source.h)
-2. [player_source.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player_source.c)
+1. [ingress.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/ingress.h)
+2. [ingress.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/ingress.c)
 3. [player.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player.h)
 4. [player.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player.c)
 
@@ -678,7 +678,7 @@ generic DMR 可以做的合理动作：
 1. `SOAP` 仍然只调用 `player_set_uri()`
 2. 但 `player_set_uri()` 内部已经先过 `SourceResolver`
 3. backend 不再直接接收“原始 `uri + metadata`”，而是接收 `ResolvedSource`
-4. `mock` 与 `libmpv` backend 都已经接入新的 `set_source` 边界
+4. `mock` 与 `libmpv` backend 都已经接入新的 `set_media` 边界
 
 这意味着：
 
@@ -707,9 +707,9 @@ generic DMR 可以做的合理动作：
 2. 固定容量命令队列
 3. `PlayerSnapshot` 快照缓存
 4. `libmpv` 持续 `mpv_wait_event` 事件循环
-5. `source_policy_default.c`
-6. `source_policy_hls.c`
-7. `source_policy_vendor.c`
+5. `policy_default.c`
+6. `policy_hls.c`
+7. `policy_vendor.c`
 
 这意味着：
 

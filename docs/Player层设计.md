@@ -38,27 +38,27 @@
 
 ### 3.1 Facade 模式
 
-对外统一暴露 `player_*` API，由 `player.c` 作为唯一入口。
+对外统一暴露 `player_*` API，由 `core/session.c` 作为唯一入口实现。
 
 当前对应：
 
 1. [player.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player.h)
-2. [player.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player.c)
+2. [session.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/core/session.c)
 
 作用：
 
-1. `control` 层只依赖 `player_*`
+1. 协议/控制层只依赖 `player_*`
 2. 后端替换时，SOAP 层无需修改
 3. UI、本地按键、远程控制都走同一套入口
 
 ### 3.2 Strategy 模式
 
-具体播放实现通过 `PlayerBackendOps` 抽象为可替换策略。
+具体播放实现通过 `BackendOps` 抽象为可替换策略。
 
 当前对应：
 
-1. [player_backend.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player_backend.h)
-2. [player_backend_mock.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player_backend_mock.c)
+1. [backend.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/backend.h)
+2. [mock.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/backend/mock.c)
 
 核心思想：
 
@@ -141,24 +141,43 @@
 ```text
 source/player/
   player.h
-  player.c
-  player_backend.h
-  player_backend_mock.c
-  player_backend_libmpv.c
+  types.h
+  backend.h
+  ingress.h
+  policy.h
+  view.h
+  core/
+    session.c
+  backend/
+    mock.c
+    libmpv.c
+  render/
+    view.c
+    frontend.c
+    internal.h
+  ingress/
+    ingress.c
+    policy_default.c
+    policy_hls.c
+    policy_vendor.c
 ```
 
 代码角色如下：
 
 1. `player.h`
    作用：Facade 接口定义，供上层调用
-2. `player.c`
-   作用：Facade 实现，负责转发到当前 backend，并管理事件回调
-3. `player_backend.h`
+2. `core/session.c`
+   作用：当前 `player core` 实现，负责 owner thread、命令队列、snapshot 与事件转发
+3. `backend.h`
    作用：Strategy 接口定义，约束后端能力集合
-4. `player_backend_mock.c`
+4. `backend/mock.c`
    作用：第一个 backend，实现最小状态闭环与日志验证
-5. `player_backend_libmpv.c`
+5. `backend/libmpv.c`
    作用：当前真实播放 backend，已接入 `libmpv`，但仍是“同步适配器 + 最小状态机”，还不是正式 `Player Core`
+6. `ingress/`
+   作用：player 入口层，负责 `URI + metadata` 解析、候选资源选择、格式识别和策略注入
+7. `render/`
+   作用：player 前台视图与平台显示层，负责日志页/视频页切换和前台 render loop
 
 当前已实现能力：
 
@@ -167,11 +186,11 @@ source/player/
 3. `mock` 与 `libmpv` 双 backend
 4. SOAP 到 player 的控制闭环
 5. `https mp4 / hls / header-sensitive URL` 的初步打开实验能力
-6. `SourceResolver -> ResolvedSource -> backend set_source` 的第一阶段边界已经接入
+6. `ingress -> PlayerMedia -> backend set_media` 的第一阶段边界已经接入
 
 当前未实现能力：
 
-1. `source_policy_*` 仍是第一版，细粒度来源策略还不完整
+1. `policy_*` 仍是第一版，细粒度来源策略还不完整
 2. backend 内仍保留部分 runtime overrides
 3. 真实视频渲染与平台输出
 4. 更完整的网络流状态机
@@ -179,11 +198,11 @@ source/player/
 
 这里需要特别说明：
 
-1. “独立 `Source Strategy` 分层”现在已经落地到 `source_policy_*`
+1. “独立入口策略分层”现在已经落地到 `ingress/policy_*`
 2. 但当前还只是第一阶段
-3. 目前只是把 `ResolvedSource` 公共化，并接到了 backend 边界
+3. 目前只是把 `PlayerMedia` 公共化，并接到了 backend 边界
 4. 还没有把所有来源策略都完全从 `libmpv backend` 中迁移出去
-5. 基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 的最终候选资源选择，应归到 player 入口 / `SourceResolver`，不归到 `ConnectionManager` 内部硬编码
+5. 基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 的最终候选资源选择，应归到 player 入口 / `ingress`，不归到 `ConnectionManager` 内部硬编码
 
 ---
 
@@ -246,35 +265,41 @@ source/player/
 ```text
 source/player/
   player.h
-  player.c
-  player_backend.h
-  player_backend_mock.c
-  player_backend_libmpv.c
-  player_backend_ffmpeg.c
-  player_state.h
-  player_source.h
-  player_source.c
-  source_policy.h
-  source_policy_default.c
-  source_policy_hls.c
-  source_policy_vendor.c
-  player_platform.h
-  player_platform_audio.c
-  player_platform_video.c
+  types.h
+  backend.h
+  ingress.h
+  policy.h
+  view.h
+  core/
+    session.c
+  backend/
+    mock.c
+    libmpv.c
+    ffmpeg.c
+  ingress/
+    ingress.c
+    policy_default.c
+    policy_hls.c
+    policy_vendor.c
+  render/
+    audio.c
+    view.c
+    frontend.c
+    internal.h
 ```
 
 说明：
 
-1. `player_backend_libmpv.c`
+1. `libmpv.c`
    作为当前真实播放后端
-2. `player_backend_ffmpeg.c`
+2. `backend/ffmpeg.c`
    仅作为验证或研究路径
-3. `player_source_*`
-   作为来源分类、Header 策略和 vendor-sensitive source 兼容层
-4. `player_platform_*`
-   抽象 Switch 的音频、视频与硬件能力
+3. `ingress/*`
+   作为 player 入口、metadata 资源选择、格式识别和兼容策略层
+4. `render/*`
+   抽象 Switch 的前台显示、视频页和硬件相关 render 入口
 
-如果后端继续增长，再拆成 `core / backend / platform` 子目录。
+当前已经收敛为 `core / backend / render / ingress` 四层，后续继续增长时优先沿这四层拆分，不再回到单目录堆叠。
 
 ---
 
@@ -678,7 +703,7 @@ Step 2 的通过标准：
 
 1. 明确前台显示权由主线程 / UI 层持有
 2. `player backend` 不直接持有 render context
-3. `player_platform_video` 只负责平台显示抽象，由主线程每帧驱动
+3. `player_view` 只负责平台显示抽象，由主线程每帧驱动
 4. 先建立“日志视图 / 视频视图占位”的前台切换骨架
 
 这一阶段的目标不是马上把真实视频画面打出来，而是先把 ownership 和 render loop 位置固定。
@@ -687,9 +712,10 @@ Step 2 的通过标准：
 
 再完成：
 
-1. 把真实 render target 接到 `player_platform_video`
+1. 把真实 render target 接到 `player_view`
 2. 接通 `libmpv render API`
 3. 让前台每帧 render 能显示真实视频
+4. 当前最小落地先使用 `software render + libnx framebuffer`，不在这一步直接引入 `EGL/deko3d`
 
 ##### Step 2.3 平台显示完善
 
@@ -706,9 +732,56 @@ Step 2 的通过标准：
 
 1. 前台显示权归 `main` 所在主线程，不归 `player backend`
 2. `player backend` 继续只负责播放控制、状态与事件，不创建 render context
-3. `player_platform_video` 作为 Step 2 的平台显示适配层，接收 `PlayerSnapshot` 并决定前台视图
+3. `player_view` 作为 Step 2 的平台显示适配层，接收 `PlayerSnapshot` 并决定前台视图
 4. 主线程每帧调用 platform video 的 begin-frame / render-frame 骨架
 5. 真正的 `libmpv render API` 接入放到 Step 2.2
+
+#### Step 2.2 当前最小落地
+
+当前实现采用下面这条最小可运行路径：
+
+详细路线讨论见 [render设计.md](./render设计.md)。
+
+1. `player backend/libmpv` 提供窄接口，只暴露 `player_video_attach_sw / player_video_render_sw / player_video_detach`
+2. `player_view` 在主线程持有前台显示权，并负责接管/释放 `libnx framebuffer`
+3. 前台保持“日志页 / 视频页”切换
+4. 视频页进入时退出 `console`，改用 `libnx framebuffer`
+5. 每帧通过 `libmpv render API` 的 software backend 渲染到 `PIXEL_FORMAT_RGBX_8888` framebuffer
+6. 退出视频页后关闭 framebuffer，并恢复 `console` 日志页
+
+这样先保证：
+
+1. `Step 2` 的“真实视频可见”路径成立
+2. `player backend` 仍然不持有平台 render target
+3. 后续 `Step 2.3` 仍可把 software 路径替换成 `EGL/deko3d` 或更正式的 GPU 路径
+
+#### 当前代码目录分层
+
+当前 `source/player` 代码目录先按下面四层收敛：
+
+1. `core/`
+   1. owner thread
+   2. 命令队列
+   3. public player facade
+2. `backend/`
+   1. `libmpv`
+   2. `mock`
+3. `render/`
+   1. 平台显示状态
+   2. 前台视频页
+   3. framebuffer/front-end
+4. `ingress/`
+   1. media resolve
+   2. metadata 资源选择
+   3. policy 注入
+
+头文件当前仍保留在 `source/player` 根目录，作为 player 层的稳定接口面。
+
+命名与参考原则：
+
+1. 命名和接口层面，优先参考 `wiliwili` 和 `pplay`
+2. 平台渲染细节，优先参考 `nxmp`
+3. 目录已经表达层级语义时，文件名和内部接口不再重复写整段前缀
 
 ### Step 3：线程、事件与平台增强
 
@@ -891,9 +964,9 @@ Step 3 的通过标准：
 
 因此下一步最合理的实现目标不再是“新增一个真实 backend”，而是：
 
-1. 保留当前 `player_backend_libmpv`
+1. 保留当前 `backend/libmpv.c`
 2. 把它从“同步适配器”升级成真正的 `Player Core + event loop`
-3. 同时把来源兼容逻辑从 backend 拆到独立 `Source Strategy`
+3. 同时把来源兼容逻辑从 backend 拆到独立 `ingress + policy`
 
 关于这一点的正式方案，见：
 
@@ -1018,7 +1091,7 @@ Step 3 的通过标准：
 
 已落地“`Player Core + event loop` 基础骨架”：
 
-1. `player.c` 独立 owner 线程
+1. `core/session.c` 独立 owner 线程
 2. 命令队列串行执行播放控制
 3. `mpv_wait_event` 持续事件循环
 4. `PlayerSnapshot` 作为 SOAP 的稳定只读快照

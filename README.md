@@ -97,7 +97,7 @@ How to verify Milestone 1 locally:
 - On-device rendering path
 - Player-ingress resource selection from `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` candidates
 - Step 2.1: define foreground-display ownership and add a main-thread render-loop skeleton
-- Step 2.2: integrate the `libmpv render API` and establish a minimal on-device video path
+- Step 2.2: integrate the `libmpv render API` and establish a minimal on-device video path via `software render + libnx framebuffer`
 - Step 2.3: finish log/UI switching, screen ownership, and the `deko3d` path
 
 ### Phase 4

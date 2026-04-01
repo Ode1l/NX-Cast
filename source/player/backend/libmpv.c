@@ -1,4 +1,4 @@
-#include "player_backend.h"
+#include "player/backend.h"
 
 #include <switch.h>
 
@@ -12,6 +12,7 @@
 
 #ifdef HAVE_LIBMPV
 #include <mpv/client.h>
+#include <mpv/render.h>
 
 #define PLAYER_LIBMPV_URI_MAX 1024
 #define PLAYER_LIBMPV_METADATA_MAX 2048
@@ -28,6 +29,7 @@ static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 static Mutex g_state_mutex;
 static bool g_mutex_ready = false;
 static mpv_handle *g_mpv = NULL;
+static mpv_render_context *g_render_context = NULL;
 static PlayerState g_state = PLAYER_STATE_IDLE;
 static int g_position_ms = 0;
 static int g_duration_ms = 0;
@@ -42,7 +44,7 @@ static bool g_seeking = false;
 static bool g_playback_abort = false;
 static bool g_stop_mode = true;
 static bool g_hls_mode = false;
-static bool g_has_source = false;
+static bool g_has_media = false;
 static bool g_last_diag_valid = false;
 static PlayerState g_last_diag_state = PLAYER_STATE_IDLE;
 static bool g_last_diag_media_loaded = false;
@@ -62,9 +64,10 @@ static uint64_t g_first_progress_ms = 0;
 static uint64_t g_first_playing_ms = 0;
 static uint64_t g_last_hls_stall_log_ms = 0;
 static bool g_hls_startup_reported = false;
-static PlayerResolvedSource g_source;
+static PlayerMedia g_media;
 static char g_uri[PLAYER_LIBMPV_URI_MAX];
 static char g_metadata[PLAYER_LIBMPV_METADATA_MAX];
+static volatile bool g_render_update_pending = false;
 
 static void libmpv_clip_for_log(const char *input, char *output, size_t output_size);
 static uint64_t libmpv_now_ms(void);
@@ -76,13 +79,17 @@ static bool libmpv_get_int64_locked(const char *name, int64_t *out);
 static bool libmpv_get_string_locked(const char *name, char *out, size_t out_size);
 static void libmpv_request_log_level_locked(const char *level);
 static bool libmpv_set_string_property_locked(const char *name, const char *value);
-static void libmpv_apply_source_runtime_overrides_locked(const PlayerResolvedSource *source);
+static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media);
 static void libmpv_process_event_locked(const mpv_event *event);
 static void libmpv_track_hls_startup_locked(PlayerState previous_state);
 static void libmpv_sync_properties_locked(bool emit_events);
 static void libmpv_log_cache_state_node(const mpv_node *node);
 static void libmpv_log_stream_details_locked(const char *reason);
 static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force);
+static void libmpv_render_update(void *ctx);
+static bool libmpv_render_attach_sw(void);
+static void libmpv_render_detach(void);
+static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t stride);
 
 enum
 {
@@ -117,6 +124,12 @@ static const char *libmpv_end_reason_name(mpv_end_file_reason reason)
     default:
         return "unknown";
     }
+}
+
+static void libmpv_render_update(void *ctx)
+{
+    (void)ctx;
+    g_render_update_pending = true;
 }
 
 static void libmpv_process_event_locked(const mpv_event *event)
@@ -406,7 +419,7 @@ static void libmpv_emit_event_locked(PlayerEventType type)
         .seekable = g_seekable,
         .error_code = 0,
         .uri = g_uri,
-        .source_profile = g_has_source ? g_source.profile : PLAYER_SOURCE_PROFILE_UNKNOWN
+        .media_profile = g_has_media ? g_media.profile : PLAYER_MEDIA_PROFILE_UNKNOWN
     };
     g_event_sink(&event);
 }
@@ -618,11 +631,11 @@ static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force)
         snprintf(current_demuxer, sizeof(current_demuxer), "%s", "?");
     (void)libmpv_get_flag_locked("demuxer-via-network", &via_network);
 
-    log_info("[player-libmpv] diag reason=%s uri_kind=%s source_format=%s source_hint=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
+    log_info("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s media_hint=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
              reason ? reason : "refresh",
              g_hls_mode ? "hls" : "default",
-             player_source_format_name(g_source.format),
-             g_source.format_hint[0] != '\0' ? g_source.format_hint : "unknown",
+             ingress_format_name(g_media.format),
+             g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown",
              libmpv_state_name(g_state),
              g_media_loaded ? 1 : 0,
              g_load_in_progress ? 1 : 0,
@@ -697,46 +710,46 @@ static void libmpv_log_stream_details_locked(const char *reason)
              clipped_path);
 }
 
-static void libmpv_apply_source_runtime_overrides_locked(const PlayerResolvedSource *source)
+static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media)
 {
     char network_timeout[16];
 
-    if (!source)
+    if (!media)
         return;
 
     snprintf(network_timeout,
              sizeof(network_timeout),
              "%d",
-             source->network_timeout_seconds > 0 ? source->network_timeout_seconds : 10);
-    (void)libmpv_set_string_property_locked("user-agent", source->user_agent);
-    (void)libmpv_set_string_property_locked("referrer", source->referrer);
+             media->network_timeout_seconds > 0 ? media->network_timeout_seconds : 10);
+    (void)libmpv_set_string_property_locked("user-agent", media->user_agent);
+    (void)libmpv_set_string_property_locked("referrer", media->referrer);
     (void)libmpv_set_string_property_locked("network-timeout", network_timeout);
-    (void)libmpv_set_string_property_locked("http-header-fields", source->header_fields);
-    (void)libmpv_set_string_property_locked("demuxer-lavf-probe-info", source->probe_info);
+    (void)libmpv_set_string_property_locked("http-header-fields", media->header_fields);
+    (void)libmpv_set_string_property_locked("demuxer-lavf-probe-info", media->probe_info);
 
     log_info("[player-libmpv] runtime_overrides profile=%s format=%s hint=%s hls=%d dash=%d signed=%d bilibili=%d timeout=%s probe_info=%s headers=%d load_opts=%d\n",
-             player_source_profile_name(source->profile),
-             player_source_format_name(source->format),
-             source->format_hint[0] != '\0' ? source->format_hint : "unknown",
-             source->flags.is_hls ? 1 : 0,
-             source->flags.is_dash ? 1 : 0,
-             source->flags.is_signed ? 1 : 0,
-             source->flags.is_bilibili ? 1 : 0,
+             ingress_profile_name(media->profile),
+             ingress_format_name(media->format),
+             media->format_hint[0] != '\0' ? media->format_hint : "unknown",
+             media->flags.is_hls ? 1 : 0,
+             media->flags.is_dash ? 1 : 0,
+             media->flags.is_signed ? 1 : 0,
+             media->flags.is_bilibili ? 1 : 0,
              network_timeout,
-             source->probe_info[0] != '\0' ? source->probe_info : "auto",
-             source->header_fields[0] != '\0' ? 1 : 0,
-             source->mpv_load_options[0] != '\0' ? 1 : 0);
+             media->probe_info[0] != '\0' ? media->probe_info : "auto",
+             media->header_fields[0] != '\0' ? 1 : 0,
+             media->mpv_load_options[0] != '\0' ? 1 : 0);
 }
 
-static bool libmpv_load_uri_locked(const PlayerResolvedSource *source, const char *uri, bool paused)
+static bool libmpv_load_uri_locked(const PlayerMedia *media, const char *uri, bool paused)
 {
     char options[512];
     const char *cmd[8];
     size_t index = 0;
 
     snprintf(options, sizeof(options), "pause=%s", paused ? "yes" : "no");
-    if (source)
-        libmpv_append_option_string(options, sizeof(options), source->mpv_load_options);
+    if (media)
+        libmpv_append_option_string(options, sizeof(options), media->mpv_load_options);
 
     cmd[index++] = "loadfile";
     cmd[index++] = uri;
@@ -806,8 +819,8 @@ static void libmpv_track_hls_startup_locked(PlayerState previous_state)
                  (unsigned long long)(g_file_loaded_ms == 0 ? 0 : (g_file_loaded_ms - g_load_started_ms)),
                  (unsigned long long)(g_first_buffering_ms == 0 ? 0 : (g_first_buffering_ms - g_load_started_ms)),
                  (unsigned long long)(g_first_progress_ms - g_load_started_ms),
-                 player_source_format_name(g_source.format),
-                 g_source.format_hint[0] != '\0' ? g_source.format_hint : "unknown");
+                 ingress_format_name(g_media.format),
+                 g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown");
         g_hls_startup_reported = true;
         return;
     }
@@ -826,8 +839,8 @@ static void libmpv_track_hls_startup_locked(PlayerState previous_state)
                  g_paused_for_cache ? 1 : 0,
                  g_seekable ? 1 : 0,
                  g_cache_duration_ms,
-                 player_source_format_name(g_source.format),
-                 g_source.format_hint[0] != '\0' ? g_source.format_hint : "unknown");
+                 ingress_format_name(g_media.format),
+                 g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown");
         libmpv_log_stream_details_locked("HLS_STARTUP_PENDING");
     }
 }
@@ -1015,7 +1028,7 @@ static bool libmpv_init(void)
     g_playback_abort = false;
     g_stop_mode = true;
     g_hls_mode = false;
-    g_has_source = false;
+    g_has_media = false;
     g_last_diag_valid = false;
     g_cache_duration_ms = 0;
     g_cache_speed_bps = 0;
@@ -1027,7 +1040,8 @@ static bool libmpv_init(void)
     g_first_playing_ms = 0;
     g_last_hls_stall_log_ms = 0;
     g_hls_startup_reported = false;
-    player_source_reset(&g_source);
+    g_render_update_pending = false;
+    ingress_reset(&g_media);
 
     g_mpv = mpv_create();
     if (!g_mpv)
@@ -1045,9 +1059,7 @@ static bool libmpv_init(void)
     mpv_set_option_string(g_mpv, "osc", "no");
     mpv_set_option_string(g_mpv, "audio-display", "no");
     mpv_set_option_string(g_mpv, "ao", "null");
-    // Step 1 only binds DLNA control to a real playback core. Video rendering
-    // stays disabled until the later render/deko3d design is in place.
-    mpv_set_option_string(g_mpv, "vo", "null");
+    mpv_set_option_string(g_mpv, "vo", "libmpv");
     mpv_set_option_string(g_mpv, "network-timeout", PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS);
     mpv_set_option_string(g_mpv, "user-agent", PLAYER_LIBMPV_DEFAULT_USER_AGENT);
     mpv_set_option_string(g_mpv, "hls-bitrate", "max");
@@ -1090,13 +1102,14 @@ static bool libmpv_init(void)
     libmpv_emit_event_locked(PLAYER_EVENT_MUTE_CHANGED);
     mutexUnlock(&g_state_mutex);
 
-    log_info("[player-libmpv] init mode=control-only ao=null vo=null net_timeout=%ss tls_verify=no\n",
+    log_info("[player-libmpv] init mode=render-api ao=null vo=libmpv net_timeout=%ss tls_verify=no\n",
              PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS);
     return true;
 }
 
 static void libmpv_deinit(void)
 {
+    libmpv_render_detach();
     libmpv_ensure_mutex();
     mutexLock(&g_state_mutex);
 
@@ -1131,9 +1144,10 @@ static void libmpv_deinit(void)
     g_first_playing_ms = 0;
     g_last_hls_stall_log_ms = 0;
     g_hls_startup_reported = false;
+    g_render_update_pending = false;
     g_event_sink = NULL;
-    player_source_reset(&g_source);
-    g_has_source = false;
+    ingress_reset(&g_media);
+    g_has_media = false;
     mutexUnlock(&g_state_mutex);
 
     log_info("[player-libmpv] deinit\n");
@@ -1147,9 +1161,9 @@ static void libmpv_set_event_sink(void (*sink)(const PlayerEvent *event))
     mutexUnlock(&g_state_mutex);
 }
 
-static bool libmpv_set_source(const PlayerResolvedSource *source)
+static bool libmpv_set_media(const PlayerMedia *media)
 {
-    if (!source || source->uri[0] == '\0')
+    if (!media || media->uri[0] == '\0')
         return false;
 
     libmpv_ensure_mutex();
@@ -1162,21 +1176,21 @@ static bool libmpv_set_source(const PlayerResolvedSource *source)
     }
 
     char clipped_uri[160];
-    libmpv_clip_for_log(source->uri, clipped_uri, sizeof(clipped_uri));
-    g_hls_mode = source->flags.is_hls;
+    libmpv_clip_for_log(media->uri, clipped_uri, sizeof(clipped_uri));
+    g_hls_mode = media->flags.is_hls;
     libmpv_request_log_level_locked(g_hls_mode ? PLAYER_LIBMPV_HLS_LOG_LEVEL : PLAYER_LIBMPV_DEFAULT_LOG_LEVEL);
-    libmpv_apply_source_runtime_overrides_locked(source);
+    libmpv_apply_media_runtime_overrides_locked(media);
 
-    if (!libmpv_load_uri_locked(source, source->uri, true))
+    if (!libmpv_load_uri_locked(media, media->uri, true))
     {
         mutexUnlock(&g_state_mutex);
         return false;
     }
 
-    g_source = *source;
-    g_has_source = true;
-    snprintf(g_uri, sizeof(g_uri), "%s", source->uri);
-    snprintf(g_metadata, sizeof(g_metadata), "%s", source->metadata);
+    g_media = *media;
+    g_has_media = true;
+    snprintf(g_uri, sizeof(g_uri), "%s", media->uri);
+    snprintf(g_metadata, sizeof(g_metadata), "%s", media->metadata);
 
     g_position_ms = 0;
     g_duration_ms = 0;
@@ -1200,10 +1214,10 @@ static bool libmpv_set_source(const PlayerResolvedSource *source)
     g_state = PLAYER_STATE_LOADING;
     libmpv_sync_properties_locked(false);
 
-    log_info("[player-libmpv] set_source profile=%s format=%s hint=%s uri=%s metadata_len=%zu uri_kind=%s mpv_log_threshold=%s\n",
-             player_source_profile_name(source->profile),
-             player_source_format_name(source->format),
-             source->format_hint[0] != '\0' ? source->format_hint : "unknown",
+    log_info("[player-libmpv] set_media profile=%s format=%s hint=%s uri=%s metadata_len=%zu uri_kind=%s mpv_log_threshold=%s\n",
+             ingress_profile_name(media->profile),
+             ingress_format_name(media->format),
+             media->format_hint[0] != '\0' ? media->format_hint : "unknown",
              clipped_uri,
              strlen(g_metadata),
              g_hls_mode ? "hls" : "default",
@@ -1240,7 +1254,7 @@ static bool libmpv_play(void)
     }
     else if (!g_media_loaded)
     {
-        if (!libmpv_load_uri_locked(g_has_source ? &g_source : NULL, g_uri, false))
+        if (!libmpv_load_uri_locked(g_has_media ? &g_media : NULL, g_uri, false))
         {
             mutexUnlock(&g_state_mutex);
             return false;
@@ -1475,6 +1489,81 @@ static bool libmpv_set_mute(bool mute)
     return true;
 }
 
+static bool libmpv_render_supported(void)
+{
+    return true;
+}
+
+static bool libmpv_render_attach_sw(void)
+{
+    if (g_render_context)
+        return true;
+    if (!g_mpv)
+        return false;
+
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_SW},
+        {MPV_RENDER_PARAM_INVALID, NULL},
+    };
+
+    int rc = mpv_render_context_create(&g_render_context, g_mpv, params);
+    if (rc < 0)
+    {
+        g_render_context = NULL;
+        log_error("[player-libmpv] render_attach_sw failed: %s\n", mpv_error_string(rc));
+        return false;
+    }
+
+    g_render_update_pending = true;
+    mpv_render_context_set_update_callback(g_render_context, libmpv_render_update, NULL);
+    log_info("[player-libmpv] render_attach api=sw\n");
+    return true;
+}
+
+static void libmpv_render_detach(void)
+{
+    if (!g_render_context)
+        return;
+
+    mpv_render_context_set_update_callback(g_render_context, NULL, NULL);
+    mpv_render_context_free(g_render_context);
+    g_render_context = NULL;
+    g_render_update_pending = false;
+    log_info("[player-libmpv] render_detach api=sw\n");
+}
+
+static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t stride)
+{
+    if (!g_render_context || !pixels || width <= 0 || height <= 0 || stride == 0)
+        return false;
+
+    if (g_render_update_pending)
+    {
+        (void)mpv_render_context_update(g_render_context);
+        g_render_update_pending = false;
+    }
+
+    int size[2] = {width, height};
+    size_t render_stride = stride;
+    char format[] = "rgb0";
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_SW_SIZE, size},
+        {MPV_RENDER_PARAM_SW_FORMAT, format},
+        {MPV_RENDER_PARAM_SW_STRIDE, &render_stride},
+        {MPV_RENDER_PARAM_SW_POINTER, pixels},
+        {MPV_RENDER_PARAM_INVALID, NULL},
+    };
+
+    int rc = mpv_render_context_render(g_render_context, params);
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] render_frame_sw failed: %s\n", mpv_error_string(rc));
+        return false;
+    }
+
+    return true;
+}
+
 static int libmpv_get_position_ms(void)
 {
     libmpv_ensure_mutex();
@@ -1560,10 +1649,10 @@ static bool libmpv_not_ready(const char *action)
     return false;
 }
 
-static bool libmpv_set_source(const PlayerResolvedSource *source)
+static bool libmpv_set_media(const PlayerMedia *media)
 {
-    (void)source;
-    return libmpv_not_ready("set_source");
+    (void)media;
+    return libmpv_not_ready("set_media");
 }
 
 static bool libmpv_play(void)
@@ -1609,6 +1698,29 @@ static void libmpv_wakeup(void)
 {
 }
 
+static bool libmpv_render_supported(void)
+{
+    return false;
+}
+
+static bool libmpv_render_attach_sw(void)
+{
+    return libmpv_not_ready("render_attach_sw");
+}
+
+static void libmpv_render_detach(void)
+{
+}
+
+static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t stride)
+{
+    (void)pixels;
+    (void)width;
+    (void)height;
+    (void)stride;
+    return false;
+}
+
 static int libmpv_get_position_ms(void)
 {
     return 0;
@@ -1641,13 +1753,13 @@ static PlayerState libmpv_get_state(void)
 
 #endif
 
-const PlayerBackendOps g_player_backend_libmpv = {
+const BackendOps g_libmpv_ops = {
     .name = "libmpv",
     .available = libmpv_available,
     .init = libmpv_init,
     .deinit = libmpv_deinit,
     .set_event_sink = libmpv_set_event_sink,
-    .set_source = libmpv_set_source,
+    .set_media = libmpv_set_media,
     .play = libmpv_play,
     .pause = libmpv_pause,
     .stop = libmpv_stop,
@@ -1656,6 +1768,10 @@ const PlayerBackendOps g_player_backend_libmpv = {
     .set_mute = libmpv_set_mute,
     .pump_events = libmpv_pump_events,
     .wakeup = libmpv_wakeup,
+    .render_supported = libmpv_render_supported,
+    .render_attach_sw = libmpv_render_attach_sw,
+    .render_detach = libmpv_render_detach,
+    .render_frame_sw = libmpv_render_frame_sw,
     .get_position_ms = libmpv_get_position_ms,
     .get_duration_ms = libmpv_get_duration_ms,
     .get_volume = libmpv_get_volume,

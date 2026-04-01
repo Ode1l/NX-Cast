@@ -8,7 +8,7 @@
 
 #include "log/log.h"
 #include "player/player.h"
-#include "player/player_platform.h"
+#include "player/view.h"
 #include "protocol/dlna_control.h"
 // #include "protocol/airplay/discovery/mdns.h"
 
@@ -203,7 +203,7 @@ int main(int argc, char* argv[])
     bool networkReady = initialize_network();
     enable_remote_logging(networkReady);
     bool dlnaRunning = false;
-    bool videoPlatformReady = player_platform_video_init();
+    bool videoPlatformReady = player_view_init();
 
     if (networkReady)
     {
@@ -226,20 +226,20 @@ int main(int argc, char* argv[])
     log_info("[ui] NX-Cast starting. Press + to exit.\n");
     log_info("[ui] Use Up/Down, sticks, or touch drag to scroll logs.\n");
     if (videoPlatformReady)
-        log_info("[ui] Video placeholder view auto-activates while playback is active.\n");
+        log_info("[ui] Video view auto-activates while playback is active.\n");
 
     while (appletMainLoop())
     {
         padUpdate(&pad);
 
         PlayerSnapshot snapshot;
-        PlayerPlatformViewMode active_view = PLAYER_PLATFORM_VIEW_LOG;
+        PlayerViewMode active_view = PLAYER_VIEW_LOG;
         if (videoPlatformReady)
         {
             if (player_get_snapshot(&snapshot))
-                player_platform_video_sync_snapshot(&snapshot);
-            player_platform_video_begin_frame();
-            active_view = player_platform_video_get_active_view();
+                player_view_sync(&snapshot);
+            player_view_begin_frame();
+            active_view = player_view_get_mode();
         }
 
         u64 kDown = padGetButtonsDown(&pad);
@@ -248,7 +248,7 @@ int main(int argc, char* argv[])
         if (kDown & HidNpadButton_Plus)
             break;
 
-        if (active_view == PLAYER_PLATFORM_VIEW_LOG)
+        if (active_view == PLAYER_VIEW_LOG)
         {
             PrintConsole *con = consoleGetDefault();
             int width = con ? con->windowWidth : 80;
@@ -318,13 +318,13 @@ int main(int argc, char* argv[])
 
             scroll_from_bottom = clamp_int(scroll_from_bottom, 0, max_scroll);
             render_log_view(scroll_from_bottom);
+            consoleUpdate(NULL);
         }
         else
         {
             touch_scroll.active = false;
-            player_platform_video_render_placeholder();
+            player_view_render_frame();
         }
-        consoleUpdate(NULL);
     }
 
     bool had_remote_log = g_remoteLogEnabled;
@@ -347,7 +347,7 @@ int main(int argc, char* argv[])
     }
 
     if (videoPlatformReady)
-        player_platform_video_deinit();
+        player_view_deinit();
 
     log_runtime_shutdown();
     if (!had_remote_log)

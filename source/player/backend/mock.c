@@ -1,4 +1,4 @@
-#include "player_backend.h"
+#include "player/backend.h"
 
 #include <switch.h>
 
@@ -16,8 +16,8 @@ static int g_position_ms = 0;
 static int g_duration_ms = 0;
 static int g_volume = 20;
 static bool g_mute = false;
-static bool g_has_source = false;
-static PlayerResolvedSource g_source;
+static bool g_has_media = false;
+static PlayerMedia g_media;
 static char g_uri[1024];
 static char g_metadata[2048];
 static int g_play_anchor_ms = 0;
@@ -45,7 +45,7 @@ static void emit_event(PlayerEventType type)
         .seekable = g_uri[0] != '\0' && g_duration_ms > 0,
         .error_code = 0,
         .uri = g_uri,
-        .source_profile = g_has_source ? g_source.profile : PLAYER_SOURCE_PROFILE_UNKNOWN
+        .media_profile = g_has_media ? g_media.profile : PLAYER_MEDIA_PROFILE_UNKNOWN
     };
     g_event_sink(&event);
 }
@@ -92,8 +92,8 @@ static bool mock_init(void)
 {
     memset(g_uri, 0, sizeof(g_uri));
     memset(g_metadata, 0, sizeof(g_metadata));
-    player_source_reset(&g_source);
-    g_has_source = false;
+    ingress_reset(&g_media);
+    g_has_media = false;
     g_state = PLAYER_STATE_IDLE;
     g_position_ms = 0;
     g_duration_ms = 0;
@@ -118,15 +118,15 @@ static void mock_set_event_sink(void (*sink)(const PlayerEvent *event))
     g_event_sink = sink;
 }
 
-static bool mock_set_source(const PlayerResolvedSource *source)
+static bool mock_set_media(const PlayerMedia *media)
 {
-    if (!source || source->uri[0] == '\0')
+    if (!media || media->uri[0] == '\0')
         return false;
 
-    g_source = *source;
-    g_has_source = true;
-    snprintf(g_uri, sizeof(g_uri), "%s", g_source.uri);
-    snprintf(g_metadata, sizeof(g_metadata), "%s", g_source.metadata);
+    g_media = *media;
+    g_has_media = true;
+    snprintf(g_uri, sizeof(g_uri), "%s", g_media.uri);
+    snprintf(g_metadata, sizeof(g_metadata), "%s", g_media.metadata);
 
     g_state = PLAYER_STATE_STOPPED;
     g_position_ms = 0;
@@ -135,8 +135,8 @@ static bool mock_set_source(const PlayerResolvedSource *source)
     g_play_anchor_ms = 0;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
 
-    log_info("[player-mock] set_source profile=%s uri=%s metadata_len=%zu\n",
-             player_source_profile_name(g_source.profile),
+    log_info("[player-mock] set_media profile=%s uri=%s metadata_len=%zu\n",
+             ingress_profile_name(g_media.profile),
              g_uri,
              strlen(g_metadata));
     emit_event(PLAYER_EVENT_URI_CHANGED);
@@ -244,6 +244,29 @@ static void mock_wakeup(void)
 {
 }
 
+static bool mock_render_supported(void)
+{
+    return false;
+}
+
+static bool mock_render_attach_sw(void)
+{
+    return false;
+}
+
+static void mock_render_detach(void)
+{
+}
+
+static bool mock_render_frame_sw(void *pixels, int width, int height, size_t stride)
+{
+    (void)pixels;
+    (void)width;
+    (void)height;
+    (void)stride;
+    return false;
+}
+
 static int mock_get_position_ms(void)
 {
     refresh_position(false);
@@ -277,13 +300,13 @@ static PlayerState mock_get_state(void)
     return g_state;
 }
 
-const PlayerBackendOps g_player_backend_mock = {
+const BackendOps g_mock_ops = {
     .name = "mock",
     .available = NULL,
     .init = mock_init,
     .deinit = mock_deinit,
     .set_event_sink = mock_set_event_sink,
-    .set_source = mock_set_source,
+    .set_media = mock_set_media,
     .play = mock_play,
     .pause = mock_pause,
     .stop = mock_stop,
@@ -292,6 +315,10 @@ const PlayerBackendOps g_player_backend_mock = {
     .set_mute = mock_set_mute,
     .pump_events = mock_pump_events,
     .wakeup = mock_wakeup,
+    .render_supported = mock_render_supported,
+    .render_attach_sw = mock_render_attach_sw,
+    .render_detach = mock_render_detach,
+    .render_frame_sw = mock_render_frame_sw,
     .get_position_ms = mock_get_position_ms,
     .get_duration_ms = mock_get_duration_ms,
     .get_volume = mock_get_volume,

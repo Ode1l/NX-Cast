@@ -1,8 +1,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
-#include "player.h"
+#include "types.h"
 
 typedef struct
 {
@@ -12,7 +13,7 @@ typedef struct
     void (*deinit)(void);
     void (*set_event_sink)(void (*sink)(const PlayerEvent *event));
 
-    bool (*set_source)(const PlayerResolvedSource *source);
+    bool (*set_media)(const PlayerMedia *media);
     bool (*play)(void);
     bool (*pause)(void);
     bool (*stop)(void);
@@ -21,6 +22,10 @@ typedef struct
     bool (*set_mute)(bool mute);
     bool (*pump_events)(int timeout_ms);
     void (*wakeup)(void);
+    bool (*render_supported)(void);
+    bool (*render_attach_sw)(void);
+    void (*render_detach)(void);
+    bool (*render_frame_sw)(void *pixels, int width, int height, size_t stride);
 
     int (*get_position_ms)(void);
     int (*get_duration_ms)(void);
@@ -28,7 +33,7 @@ typedef struct
     bool (*get_mute)(void);
     bool (*is_seekable)(void);
     PlayerState (*get_state)(void);
-} PlayerBackendOps;
+} BackendOps;
 
-extern const PlayerBackendOps g_player_backend_mock;
-extern const PlayerBackendOps g_player_backend_libmpv;
+extern const BackendOps g_mock_ops;
+extern const BackendOps g_libmpv_ops;

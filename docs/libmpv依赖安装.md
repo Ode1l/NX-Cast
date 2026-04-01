@@ -483,7 +483,7 @@ find "$PORTLIBS_PREFIX" -iname 'uam*' | head
 这一步才是我们真正想要的目标：
 
 1. 获取 `libmpv`
-2. 供 `NX-Cast` 的 `player_backend_libmpv.c` 使用
+2. 供 `NX-Cast` 的 `libmpv.c` 使用
 
 注意：
 
@@ -650,7 +650,7 @@ make -j4
 
 1. `player` 外层保持 C
 2. `player` 已经支持 backend 选择
-3. 已有 `player_backend_libmpv.c` 占位
+3. 已有 `libmpv.c` 占位
 4. 当前更适合先验证二进制包路线，而不是立即手工重建整条媒体栈
 
 当前还没完成：
