@@ -20,6 +20,8 @@
 #define PLAYER_LIBMPV_HLS_LOG_LEVEL "warn"
 #define PLAYER_LIBMPV_DEFAULT_LOG_LEVEL "warn"
 #define PLAYER_LIBMPV_HLS_DIAG_INTERVAL_MS 2000
+#define PLAYER_LIBMPV_HLS_STARTUP_STALL_MS 6000
+#define PLAYER_LIBMPV_HLS_STARTUP_STALL_REPEAT_MS 3000
 #define PLAYER_LIBMPV_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 
@@ -54,6 +56,12 @@ static int g_cache_duration_ms = 0;
 static int64_t g_cache_speed_bps = 0;
 static uint64_t g_last_diag_log_ms = 0;
 static uint64_t g_load_started_ms = 0;
+static uint64_t g_file_loaded_ms = 0;
+static uint64_t g_first_buffering_ms = 0;
+static uint64_t g_first_progress_ms = 0;
+static uint64_t g_first_playing_ms = 0;
+static uint64_t g_last_hls_stall_log_ms = 0;
+static bool g_hls_startup_reported = false;
 static PlayerResolvedSource g_source;
 static char g_uri[PLAYER_LIBMPV_URI_MAX];
 static char g_metadata[PLAYER_LIBMPV_METADATA_MAX];
@@ -63,12 +71,14 @@ static uint64_t libmpv_now_ms(void);
 static void libmpv_log_message(const mpv_event_log_message *message);
 static const char *libmpv_state_name(PlayerState state);
 static int libmpv_ms_from_seconds(double seconds);
+static void libmpv_append_option_string(char *options, size_t options_size, const char *extra_options);
 static bool libmpv_get_int64_locked(const char *name, int64_t *out);
 static bool libmpv_get_string_locked(const char *name, char *out, size_t out_size);
 static void libmpv_request_log_level_locked(const char *level);
 static bool libmpv_set_string_property_locked(const char *name, const char *value);
 static void libmpv_apply_source_runtime_overrides_locked(const PlayerResolvedSource *source);
 static void libmpv_process_event_locked(const mpv_event *event);
+static void libmpv_track_hls_startup_locked(PlayerState previous_state);
 static void libmpv_sync_properties_locked(bool emit_events);
 static void libmpv_log_cache_state_node(const mpv_node *node);
 static void libmpv_log_stream_details_locked(const char *reason);
@@ -121,12 +131,19 @@ static void libmpv_process_event_locked(const mpv_event *event)
         g_load_in_progress = true;
         g_seekable = false;
         g_load_started_ms = libmpv_now_ms();
+        g_file_loaded_ms = 0;
+        g_first_buffering_ms = 0;
+        g_first_progress_ms = 0;
+        g_first_playing_ms = 0;
+        g_last_hls_stall_log_ms = 0;
+        g_hls_startup_reported = false;
         log_debug("[player-libmpv] event START_FILE\n");
         libmpv_maybe_log_diagnostics_locked("START_FILE", true);
         break;
     case MPV_EVENT_FILE_LOADED:
         g_media_loaded = true;
         g_load_in_progress = false;
+        g_file_loaded_ms = libmpv_now_ms();
         log_info("[player-libmpv] event FILE_LOADED load_elapsed_ms=%llu\n",
                  (unsigned long long)(g_load_started_ms == 0 ? 0 : (libmpv_now_ms() - g_load_started_ms)));
         libmpv_maybe_log_diagnostics_locked("FILE_LOADED", true);
@@ -145,6 +162,12 @@ static void libmpv_process_event_locked(const mpv_event *event)
         g_paused_for_cache = false;
         g_seeking = false;
         g_position_ms = 0;
+        g_file_loaded_ms = 0;
+        g_first_buffering_ms = 0;
+        g_first_progress_ms = 0;
+        g_first_playing_ms = 0;
+        g_last_hls_stall_log_ms = 0;
+        g_hls_startup_reported = false;
         if (end)
         {
             const char *reason = libmpv_end_reason_name(end->reason);
@@ -352,6 +375,20 @@ static int libmpv_ms_from_seconds(double seconds)
     if (ms >= (double)INT_MAX)
         return INT_MAX;
     return (int)(ms + 0.5);
+}
+
+static void libmpv_append_option_string(char *options, size_t options_size, const char *extra_options)
+{
+    size_t length;
+
+    if (!options || options_size == 0 || !extra_options || extra_options[0] == '\0')
+        return;
+
+    length = strlen(options);
+    if (length + 1 >= options_size)
+        return;
+
+    snprintf(options + length, options_size - length, ",%s", extra_options);
 }
 
 static void libmpv_emit_event_locked(PlayerEventType type)
@@ -581,9 +618,11 @@ static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force)
         snprintf(current_demuxer, sizeof(current_demuxer), "%s", "?");
     (void)libmpv_get_flag_locked("demuxer-via-network", &via_network);
 
-    log_info("[player-libmpv] diag reason=%s uri_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
+    log_info("[player-libmpv] diag reason=%s uri_kind=%s source_format=%s source_hint=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
              reason ? reason : "refresh",
              g_hls_mode ? "hls" : "default",
+             player_source_format_name(g_source.format),
+             g_source.format_hint[0] != '\0' ? g_source.format_hint : "unknown",
              libmpv_state_name(g_state),
              g_media_loaded ? 1 : 0,
              g_load_in_progress ? 1 : 0,
@@ -675,23 +714,29 @@ static void libmpv_apply_source_runtime_overrides_locked(const PlayerResolvedSou
     (void)libmpv_set_string_property_locked("http-header-fields", source->header_fields);
     (void)libmpv_set_string_property_locked("demuxer-lavf-probe-info", source->probe_info);
 
-    log_info("[player-libmpv] runtime_overrides profile=%s hls=%d signed=%d bilibili=%d timeout=%s probe_info=%s headers=%d\n",
+    log_info("[player-libmpv] runtime_overrides profile=%s format=%s hint=%s hls=%d dash=%d signed=%d bilibili=%d timeout=%s probe_info=%s headers=%d load_opts=%d\n",
              player_source_profile_name(source->profile),
+             player_source_format_name(source->format),
+             source->format_hint[0] != '\0' ? source->format_hint : "unknown",
              source->flags.is_hls ? 1 : 0,
+             source->flags.is_dash ? 1 : 0,
              source->flags.is_signed ? 1 : 0,
              source->flags.is_bilibili ? 1 : 0,
              network_timeout,
              source->probe_info[0] != '\0' ? source->probe_info : "auto",
-             source->header_fields[0] != '\0' ? 1 : 0);
+             source->header_fields[0] != '\0' ? 1 : 0,
+             source->mpv_load_options[0] != '\0' ? 1 : 0);
 }
 
-static bool libmpv_load_uri_locked(const char *uri, bool paused)
+static bool libmpv_load_uri_locked(const PlayerResolvedSource *source, const char *uri, bool paused)
 {
-    char options[256];
+    char options[512];
     const char *cmd[8];
     size_t index = 0;
 
     snprintf(options, sizeof(options), "pause=%s", paused ? "yes" : "no");
+    if (source)
+        libmpv_append_option_string(options, sizeof(options), source->mpv_load_options);
 
     cmd[index++] = "loadfile";
     cmd[index++] = uri;
@@ -720,6 +765,71 @@ static bool libmpv_stop_command_locked(void)
 {
     const char *cmd[] = {"stop", NULL};
     return libmpv_command_locked("stop", cmd);
+}
+
+static void libmpv_track_hls_startup_locked(PlayerState previous_state)
+{
+    uint64_t now_ms;
+
+    if (!g_hls_mode || g_load_started_ms == 0)
+        return;
+
+    now_ms = libmpv_now_ms();
+
+    if (g_paused_for_cache && g_first_buffering_ms == 0)
+    {
+        g_first_buffering_ms = now_ms;
+        log_info("[player-libmpv] hls_startup milestone=buffering elapsed_ms=%llu\n",
+                 (unsigned long long)(now_ms - g_load_started_ms));
+    }
+
+    if (g_position_ms > 0 && g_first_progress_ms == 0)
+    {
+        g_first_progress_ms = now_ms;
+        log_info("[player-libmpv] hls_startup milestone=first-progress elapsed_ms=%llu file_loaded_after_ms=%llu pos_ms=%d\n",
+                 (unsigned long long)(now_ms - g_load_started_ms),
+                 (unsigned long long)(g_file_loaded_ms == 0 ? 0 : (g_file_loaded_ms - g_load_started_ms)),
+                 g_position_ms);
+    }
+
+    if (g_state == PLAYER_STATE_PLAYING && previous_state != PLAYER_STATE_PLAYING && g_first_playing_ms == 0)
+    {
+        g_first_playing_ms = now_ms;
+        log_info("[player-libmpv] hls_startup milestone=playing elapsed_ms=%llu\n",
+                 (unsigned long long)(now_ms - g_load_started_ms));
+    }
+
+    if (!g_hls_startup_reported && g_first_progress_ms != 0 && g_first_playing_ms != 0)
+    {
+        log_info("[player-libmpv] hls_startup complete total_ms=%llu file_loaded_after_ms=%llu buffering_after_ms=%llu first_progress_after_ms=%llu format=%s hint=%s\n",
+                 (unsigned long long)(g_first_playing_ms - g_load_started_ms),
+                 (unsigned long long)(g_file_loaded_ms == 0 ? 0 : (g_file_loaded_ms - g_load_started_ms)),
+                 (unsigned long long)(g_first_buffering_ms == 0 ? 0 : (g_first_buffering_ms - g_load_started_ms)),
+                 (unsigned long long)(g_first_progress_ms - g_load_started_ms),
+                 player_source_format_name(g_source.format),
+                 g_source.format_hint[0] != '\0' ? g_source.format_hint : "unknown");
+        g_hls_startup_reported = true;
+        return;
+    }
+
+    if (!g_hls_startup_reported &&
+        (g_state == PLAYER_STATE_LOADING || g_state == PLAYER_STATE_BUFFERING || g_state == PLAYER_STATE_SEEKING) &&
+        now_ms - g_load_started_ms >= PLAYER_LIBMPV_HLS_STARTUP_STALL_MS &&
+        now_ms - g_last_hls_stall_log_ms >= PLAYER_LIBMPV_HLS_STARTUP_STALL_REPEAT_MS)
+    {
+        g_last_hls_stall_log_ms = now_ms;
+        log_warn("[player-libmpv] hls_startup pending elapsed_ms=%llu state=%s loaded=%d file_loaded=%d buffering=%d seekable=%d cache_ms=%d format=%s hint=%s\n",
+                 (unsigned long long)(now_ms - g_load_started_ms),
+                 libmpv_state_name(g_state),
+                 g_media_loaded ? 1 : 0,
+                 g_file_loaded_ms != 0 ? 1 : 0,
+                 g_paused_for_cache ? 1 : 0,
+                 g_seekable ? 1 : 0,
+                 g_cache_duration_ms,
+                 player_source_format_name(g_source.format),
+                 g_source.format_hint[0] != '\0' ? g_source.format_hint : "unknown");
+        libmpv_log_stream_details_locked("HLS_STARTUP_PENDING");
+    }
 }
 
 static void libmpv_sync_properties_locked(bool emit_events)
@@ -821,6 +931,7 @@ static void libmpv_sync_properties_locked(bool emit_events)
     else
         g_state = PLAYER_STATE_PLAYING;
 
+    libmpv_track_hls_startup_locked(prev_state);
     libmpv_maybe_log_diagnostics_locked("refresh", false);
 
     if (!emit_events)
@@ -904,11 +1015,19 @@ static bool libmpv_init(void)
     g_playback_abort = false;
     g_stop_mode = true;
     g_hls_mode = false;
+    g_has_source = false;
     g_last_diag_valid = false;
     g_cache_duration_ms = 0;
     g_cache_speed_bps = 0;
     g_last_diag_log_ms = 0;
     g_load_started_ms = 0;
+    g_file_loaded_ms = 0;
+    g_first_buffering_ms = 0;
+    g_first_progress_ms = 0;
+    g_first_playing_ms = 0;
+    g_last_hls_stall_log_ms = 0;
+    g_hls_startup_reported = false;
+    player_source_reset(&g_source);
 
     g_mpv = mpv_create();
     if (!g_mpv)
@@ -1006,6 +1125,12 @@ static void libmpv_deinit(void)
     g_cache_speed_bps = 0;
     g_last_diag_log_ms = 0;
     g_load_started_ms = 0;
+    g_file_loaded_ms = 0;
+    g_first_buffering_ms = 0;
+    g_first_progress_ms = 0;
+    g_first_playing_ms = 0;
+    g_last_hls_stall_log_ms = 0;
+    g_hls_startup_reported = false;
     g_event_sink = NULL;
     player_source_reset(&g_source);
     g_has_source = false;
@@ -1042,7 +1167,7 @@ static bool libmpv_set_source(const PlayerResolvedSource *source)
     libmpv_request_log_level_locked(g_hls_mode ? PLAYER_LIBMPV_HLS_LOG_LEVEL : PLAYER_LIBMPV_DEFAULT_LOG_LEVEL);
     libmpv_apply_source_runtime_overrides_locked(source);
 
-    if (!libmpv_load_uri_locked(source->uri, true))
+    if (!libmpv_load_uri_locked(source, source->uri, true))
     {
         mutexUnlock(&g_state_mutex);
         return false;
@@ -1065,12 +1190,20 @@ static bool libmpv_set_source(const PlayerResolvedSource *source)
     g_cache_duration_ms = 0;
     g_cache_speed_bps = 0;
     g_load_started_ms = libmpv_now_ms();
+    g_file_loaded_ms = 0;
+    g_first_buffering_ms = 0;
+    g_first_progress_ms = 0;
+    g_first_playing_ms = 0;
+    g_last_hls_stall_log_ms = 0;
+    g_hls_startup_reported = false;
     g_last_diag_valid = false;
     g_state = PLAYER_STATE_LOADING;
     libmpv_sync_properties_locked(false);
 
-    log_info("[player-libmpv] set_source profile=%s uri=%s metadata_len=%zu uri_kind=%s mpv_log=%s\n",
+    log_info("[player-libmpv] set_source profile=%s format=%s hint=%s uri=%s metadata_len=%zu uri_kind=%s mpv_log_threshold=%s\n",
              player_source_profile_name(source->profile),
+             player_source_format_name(source->format),
+             source->format_hint[0] != '\0' ? source->format_hint : "unknown",
              clipped_uri,
              strlen(g_metadata),
              g_hls_mode ? "hls" : "default",
@@ -1107,7 +1240,7 @@ static bool libmpv_play(void)
     }
     else if (!g_media_loaded)
     {
-        if (!libmpv_load_uri_locked(g_uri, false))
+        if (!libmpv_load_uri_locked(g_has_source ? &g_source : NULL, g_uri, false))
         {
             mutexUnlock(&g_state_mutex);
             return false;
@@ -1117,6 +1250,13 @@ static bool libmpv_play(void)
         g_media_loaded = false;
         g_load_in_progress = true;
         g_seekable = false;
+        g_load_started_ms = libmpv_now_ms();
+        g_file_loaded_ms = 0;
+        g_first_buffering_ms = 0;
+        g_first_progress_ms = 0;
+        g_first_playing_ms = 0;
+        g_last_hls_stall_log_ms = 0;
+        g_hls_startup_reported = false;
         reloaded = true;
     }
     else if (!libmpv_set_flag_locked("pause", false))
@@ -1194,6 +1334,12 @@ static bool libmpv_stop(void)
         g_playback_abort = false;
         g_cache_duration_ms = 0;
         g_cache_speed_bps = 0;
+        g_file_loaded_ms = 0;
+        g_first_buffering_ms = 0;
+        g_first_progress_ms = 0;
+        g_first_playing_ms = 0;
+        g_last_hls_stall_log_ms = 0;
+        g_hls_startup_reported = false;
         g_state = PLAYER_STATE_STOPPED;
         log_info("[player-libmpv] stop already-stopped=1\n");
         libmpv_emit_event_locked(PLAYER_EVENT_POSITION_CHANGED);
@@ -1218,6 +1364,12 @@ static bool libmpv_stop(void)
     g_playback_abort = false;
     g_cache_duration_ms = 0;
     g_cache_speed_bps = 0;
+    g_file_loaded_ms = 0;
+    g_first_buffering_ms = 0;
+    g_first_progress_ms = 0;
+    g_first_playing_ms = 0;
+    g_last_hls_stall_log_ms = 0;
+    g_hls_startup_reported = false;
     g_state = PLAYER_STATE_STOPPED;
 
     log_info("[player-libmpv] stop\n");

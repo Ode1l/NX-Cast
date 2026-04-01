@@ -32,6 +32,7 @@ NX-Cast 的目标是：
 - 发现层已具备 SSDP 响应与 mDNS 探测能力。
 - DLNA DMR 核心链路已基本实现：SCPD、SOAP 路由、AVTransport / RenderingControl / ConnectionManager，以及对应 smoke 测试均已接通。
 - 当前剩余的 DLNA 工作主要是 optional 能力，例如 `NOTIFY ssdp:alive/byebye` 和更完整的事件通知。
+- 为了接近商用电视盒子的投屏兼容性，后续还需要补两项关键能力：协议侧的 `ConnectionManager/SinkProtocolInfo` 输入能力宣告扩展，以及 player 入口侧基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 候选资源的接收端选择。
 - 下一阶段的重点是协议之后的真实播放与画面渲染。
 
 ---
@@ -89,11 +90,12 @@ NX-Cast 的目标是：
 ### Phase 2
 - DLNA Digital Media Renderer（DMR）实现
 - SCPD + SOAP 控制链路
-- 状态：核心能力基本完成，剩余 optional 的 `NOTIFY ssdp:alive/byebye` 与更完整事件通知能力
+- 状态：核心能力基本完成，剩余 optional 的 `NOTIFY ssdp:alive/byebye`、更完整事件通知能力，以及协议侧的 `ConnectionManager/SinkProtocolInfo` 扩展
 
 ### Phase 3
 - 基础播放管线
 - 设备端画面渲染
+- player 入口资源选择（基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 候选资源）
 
 ### Phase 4
 - 硬件解码支持

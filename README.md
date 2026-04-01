@@ -32,6 +32,7 @@ Current progress:
 - Device discovery is working with SSDP responder and mDNS probe support.
 - DLNA DMR core path is largely implemented: SCPD, SOAP routing, AVTransport/RenderingControl/ConnectionManager, and smoke-test coverage are all in place.
 - Remaining DLNA items are mainly optional features such as `NOTIFY ssdp:alive/byebye` and richer eventing.
+- To approach commercial TV-box compatibility, two cross-layer items are still pending: protocol-side `ConnectionManager/SinkProtocolInfo` capability advertisement and player-ingress receiver-side selection from `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` candidates.
 - Real playback/rendering is the next major milestone after protocol completion.
 
 ---
@@ -89,11 +90,12 @@ How to verify Milestone 1 locally:
 ### Phase 2
 - DLNA Digital Media Renderer (DMR) implementation
 - SCPD + SOAP control path
-- Status: largely complete, with optional `NOTIFY ssdp:alive/byebye` and richer event/eventing work still pending
+- Status: largely complete, with optional `NOTIFY ssdp:alive/byebye`, richer event/eventing work, and protocol-side `ConnectionManager/SinkProtocolInfo` expansion still pending
 
 ### Phase 3
 - Basic playback pipeline
 - On-device rendering path
+- Player-ingress resource selection from `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` candidates
 
 ### Phase 4
 - Hardware accelerated decode

@@ -582,12 +582,26 @@ bool player_set_uri(const char *uri, const char *metadata)
     if (!player_source_resolve(uri, metadata, &resolved))
         return false;
 
-    log_info("[player] resolve_source profile=%s hls=%d signed=%d bilibili=%d timeout=%d\n",
+    log_info("[player] resolve_source profile=%s format=%s hint=%s mime=%s hls=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d\n",
              player_source_profile_name(resolved.profile),
+             player_source_format_name(resolved.format),
+             resolved.format_hint[0] != '\0' ? resolved.format_hint : "unknown",
+             resolved.mime_type[0] != '\0' ? resolved.mime_type : "unknown",
              resolved.flags.is_hls ? 1 : 0,
+             resolved.flags.is_dash ? 1 : 0,
+             resolved.flags.is_flv ? 1 : 0,
+             resolved.flags.is_mp4 ? 1 : 0,
+             resolved.flags.is_mpeg_ts ? 1 : 0,
              resolved.flags.is_signed ? 1 : 0,
              resolved.flags.is_bilibili ? 1 : 0,
+             resolved.flags.likely_segmented ? 1 : 0,
+             resolved.flags.likely_video_only ? 1 : 0,
              resolved.network_timeout_seconds);
+
+    if (resolved.flags.is_bilibili && resolved.flags.likely_video_only)
+    {
+        log_warn("[player] bilibili source looks like segmented DASH/fMP4 video. Generic DMR may not have the companion audio track.\n");
+    }
 
     return player_set_source(&resolved);
 }

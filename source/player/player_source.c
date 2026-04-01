@@ -92,12 +92,106 @@ static bool is_hls_uri(const char *uri)
     return contains_ignore_case(uri, ".m3u8");
 }
 
+static bool is_dash_uri(const char *uri)
+{
+    return contains_ignore_case(uri, ".mpd") || contains_ignore_case(uri, ".m4s");
+}
+
+static bool is_flv_uri(const char *uri)
+{
+    return contains_ignore_case(uri, ".flv");
+}
+
+static bool is_mp4_uri(const char *uri)
+{
+    return contains_ignore_case(uri, ".mp4");
+}
+
+static bool is_mpeg_ts_uri(const char *uri)
+{
+    return contains_ignore_case(uri, ".ts");
+}
+
 static bool is_bilibili_source(const char *uri, const char *metadata)
 {
     return contains_ignore_case(uri, "bilivideo.com") ||
            contains_ignore_case(uri, "bilibili.com") ||
            contains_ignore_case(metadata, "bilivideo") ||
            contains_ignore_case(metadata, "bilibili");
+}
+
+static void set_if_contains(char *out, size_t out_size, const char *metadata, const char *needle, const char *value)
+{
+    if (!out || out_size == 0 || out[0] != '\0')
+        return;
+    if (contains_ignore_case(metadata, needle))
+        snprintf(out, out_size, "%s", value);
+}
+
+static void detect_metadata_mime(const char *metadata, char *mime_type, size_t mime_type_size)
+{
+    if (!mime_type || mime_type_size == 0)
+        return;
+
+    mime_type[0] = '\0';
+    if (!metadata || metadata[0] == '\0')
+        return;
+
+    set_if_contains(mime_type, mime_type_size, metadata, "application/vnd.apple.mpegurl", "application/vnd.apple.mpegurl");
+    set_if_contains(mime_type, mime_type_size, metadata, "application/x-mpegurl", "application/x-mpegurl");
+    set_if_contains(mime_type, mime_type_size, metadata, "application/dash+xml", "application/dash+xml");
+    set_if_contains(mime_type, mime_type_size, metadata, "video/x-flv", "video/x-flv");
+    set_if_contains(mime_type, mime_type_size, metadata, "video/mp4", "video/mp4");
+    set_if_contains(mime_type, mime_type_size, metadata, "video/vnd.dlna.mpeg-tts", "video/vnd.dlna.mpeg-tts");
+    set_if_contains(mime_type, mime_type_size, metadata, "video/mp2t", "video/mp2t");
+}
+
+static PlayerSourceFormat detect_source_format(const char *uri, const char *metadata, bool *likely_segmented)
+{
+    bool segmented = false;
+
+    if (contains_ignore_case(metadata, "application/vnd.apple.mpegurl") ||
+        contains_ignore_case(metadata, "application/x-mpegurl") ||
+        is_hls_uri(uri))
+    {
+        if (likely_segmented)
+            *likely_segmented = false;
+        return PLAYER_SOURCE_FORMAT_HLS;
+    }
+
+    if (contains_ignore_case(metadata, "application/dash+xml") || is_dash_uri(uri))
+    {
+        if (likely_segmented)
+            *likely_segmented = true;
+        return PLAYER_SOURCE_FORMAT_DASH;
+    }
+
+    if (contains_ignore_case(metadata, "video/x-flv") || is_flv_uri(uri))
+    {
+        if (likely_segmented)
+            *likely_segmented = false;
+        return PLAYER_SOURCE_FORMAT_FLV;
+    }
+
+    if (contains_ignore_case(metadata, "video/vnd.dlna.mpeg-tts") ||
+        contains_ignore_case(metadata, "video/mp2t") ||
+        is_mpeg_ts_uri(uri))
+    {
+        if (likely_segmented)
+            *likely_segmented = false;
+        return PLAYER_SOURCE_FORMAT_MPEG_TS;
+    }
+
+    if (contains_ignore_case(metadata, "video/mp4") || is_mp4_uri(uri))
+    {
+        if (likely_segmented)
+            *likely_segmented = false;
+        return PLAYER_SOURCE_FORMAT_MP4;
+    }
+
+    if (likely_segmented)
+        *likely_segmented = segmented;
+    return PLAYER_SOURCE_FORMAT_UNKNOWN;
 }
 
 void player_source_reset(PlayerResolvedSource *source)
@@ -130,8 +224,30 @@ const char *player_source_profile_name(PlayerSourceProfile profile)
     }
 }
 
+const char *player_source_format_name(PlayerSourceFormat format)
+{
+    switch (format)
+    {
+    case PLAYER_SOURCE_FORMAT_MP4:
+        return "mp4";
+    case PLAYER_SOURCE_FORMAT_FLV:
+        return "flv";
+    case PLAYER_SOURCE_FORMAT_HLS:
+        return "hls";
+    case PLAYER_SOURCE_FORMAT_DASH:
+        return "dash";
+    case PLAYER_SOURCE_FORMAT_MPEG_TS:
+        return "mpeg-ts";
+    case PLAYER_SOURCE_FORMAT_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
 bool player_source_resolve(const char *uri, const char *metadata, PlayerResolvedSource *out)
 {
+    bool likely_segmented = false;
+
     if (!uri || uri[0] == '\0' || !out)
         return false;
 
@@ -140,11 +256,22 @@ bool player_source_resolve(const char *uri, const char *metadata, PlayerResolved
     if (metadata)
         snprintf(out->metadata, sizeof(out->metadata), "%s", metadata);
 
+    detect_metadata_mime(metadata, out->mime_type, sizeof(out->mime_type));
+    out->format = detect_source_format(uri, metadata, &likely_segmented);
+
     out->flags.is_http = is_http_like_uri(uri);
     out->flags.is_https = is_https_uri(uri);
-    out->flags.is_hls = is_hls_uri(uri);
+    out->flags.is_hls = out->format == PLAYER_SOURCE_FORMAT_HLS;
     out->flags.is_signed = has_signed_tokens(uri);
     out->flags.is_bilibili = is_bilibili_source(uri, metadata);
+    out->flags.is_dash = out->format == PLAYER_SOURCE_FORMAT_DASH;
+    out->flags.is_flv = out->format == PLAYER_SOURCE_FORMAT_FLV;
+    out->flags.is_mp4 = out->format == PLAYER_SOURCE_FORMAT_MP4;
+    out->flags.is_mpeg_ts = out->format == PLAYER_SOURCE_FORMAT_MPEG_TS;
+    out->flags.likely_segmented = likely_segmented;
+    out->flags.likely_video_only = out->flags.is_dash && out->flags.is_bilibili && likely_segmented;
+
+    snprintf(out->format_hint, sizeof(out->format_hint), "%s", player_source_format_name(out->format));
 
     if (out->flags.is_hls)
         out->profile = PLAYER_SOURCE_PROFILE_GENERIC_HLS;

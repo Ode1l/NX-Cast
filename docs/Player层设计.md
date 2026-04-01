@@ -175,6 +175,7 @@ source/player/
 2. backend 内仍保留部分 runtime overrides
 3. 真实视频渲染与平台输出
 4. 更完整的网络流状态机
+5. player 入口的候选资源选择仍未独立设计
 
 这里需要特别说明：
 
@@ -182,6 +183,7 @@ source/player/
 2. 但当前还只是第一阶段
 3. 目前只是把 `ResolvedSource` 公共化，并接到了 backend 边界
 4. 还没有把所有来源策略都完全从 `libmpv backend` 中迁移出去
+5. 基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 的最终候选资源选择，应归到 player 入口 / `SourceResolver`，不归到 `ConnectionManager` 内部硬编码
 
 ---
 

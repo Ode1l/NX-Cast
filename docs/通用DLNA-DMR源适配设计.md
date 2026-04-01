@@ -716,3 +716,27 @@ generic DMR 可以做的合理动作：
 1. getter 不再驱动 backend 吃事件
 2. SOAP 读取的是稳定快照，而不是临时拼接状态
 3. 后续 `bilibili / HLS` 的策略迁移可以继续沿 `source_policy_*` 推进
+
+### 12.5 已确认但后续再做的 DMR 协议侧兼容性待办
+
+当前要接近商用电视盒子的投屏兼容性，协议侧还缺一项明确的 DMR 能力。
+
+#### 待办 1. 扩展 `ConnectionManager/SinkProtocolInfo`
+
+当前 `SinkProtocolInfo` 仍然过窄，容易让发送端只把 `mp4` 一类资源交给我们，而不是根据接收端真实能力选择更合适的 `HLS/TS` 路径。
+
+后续应做：
+
+1. 按真实可接收能力扩展 `SinkProtocolInfo`
+2. 明确区分“可以稳定接收”和“只是偶尔探测成功”的格式
+3. 在没做完资源选择与伴随音轨处理前，不对外宽泛宣告 `DASH`
+
+目标不是把能力字符串写得更长，而是让控制端在标准 `GetProtocolInfo` 路径上更容易给出可播资源。
+
+与 `CurrentURIMetaData` 相关的多路 `res/protocolInfo` 候选资源选择，不再归到本文件继续展开。
+
+原因：
+
+1. `CurrentURIMetaData` 是 DLNA 协议入口字段
+2. 但“从多个候选资源里选哪一路”本质上取决于 player 入口和 `SourceResolver`
+3. 因此详细设计单独占位到 [Player入口资源选择设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/Player入口资源选择设计.md)
