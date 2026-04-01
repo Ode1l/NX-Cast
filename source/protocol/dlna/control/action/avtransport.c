@@ -97,6 +97,10 @@ static unsigned int avtransport_current_actions(const PlayerSnapshot *snapshot)
         actions |= AVTRANSPORT_ACTION_PLAY | AVTRANSPORT_ACTION_STOP;
         break;
     case PLAYER_STATE_LOADING:
+        // Our SetAVTransportURI path preloads via mpv with pause=yes, so a
+        // control point's immediate Play should still be accepted.
+        actions |= AVTRANSPORT_ACTION_PLAY | AVTRANSPORT_ACTION_STOP;
+        break;
     case PLAYER_STATE_BUFFERING:
     case PLAYER_STATE_SEEKING:
         actions |= AVTRANSPORT_ACTION_STOP;

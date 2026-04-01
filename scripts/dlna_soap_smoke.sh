@@ -24,6 +24,8 @@ HLS_READY_GRACE_INTERVAL="${HLS_READY_GRACE_INTERVAL:-0.2}"
 
 LAST_BODY=""
 LAST_CODE=""
+LAST_SERVICE=""
+LAST_ACTION=""
 
 log() {
   printf '[soap-smoke] %s\n' "$*"
@@ -65,10 +67,35 @@ soap_call() {
 
   LAST_CODE="$(printf '%s' "$raw" | tail -n1 | tr -d '\r')"
   LAST_BODY="$(printf '%s' "$raw" | sed '$d')"
+  LAST_SERVICE="$service"
+  LAST_ACTION="$action"
+}
+
+compact_xml() {
+  local xml="$1"
+
+  printf '%s' "$xml" \
+    | tr '\r\n\t' '   ' \
+    | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
 }
 
 assert_http_200() {
-  [[ "$LAST_CODE" == "200" ]] || fail "expected HTTP 200, got ${LAST_CODE}"
+  local fault_code=""
+  local fault_string=""
+  local compact_body=""
+
+  if [[ "$LAST_CODE" == "200" ]]; then
+    return 0
+  fi
+
+  fault_code="$(extract_xml_value "$LAST_BODY" "errorCode")"
+  fault_string="$(extract_xml_value "$LAST_BODY" "errorDescription")"
+  if [[ -z "$fault_string" ]]; then
+    fault_string="$(extract_xml_value "$LAST_BODY" "faultstring")"
+  fi
+  compact_body="$(compact_xml "$LAST_BODY")"
+
+  fail "expected HTTP 200, got ${LAST_CODE} service=${LAST_SERVICE:-<unknown>} action=${LAST_ACTION:-<unknown>} fault_code=${fault_code:-<none>} fault=${fault_string:-<none>} body=${compact_body:-<empty>}"
 }
 
 assert_body_contains() {
