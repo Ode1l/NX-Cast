@@ -96,6 +96,9 @@ NX-Cast 的目标是：
 - 基础播放管线
 - 设备端画面渲染
 - player 入口资源选择（基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 候选资源）
+- Step 2.1：确定前台显示权归属，建立主线程驱动的 render loop 骨架
+- Step 2.2：接入 `libmpv render API`，打通最小视频显示路径
+- Step 2.3：完善日志 UI 切换、屏幕接管与 `deko3d` 路径
 
 ### Phase 4
 - 硬件解码支持

@@ -7,6 +7,8 @@
 #include <unistd.h>
 
 #include "log/log.h"
+#include "player/player.h"
+#include "player/player_platform.h"
 #include "protocol/dlna_control.h"
 // #include "protocol/airplay/discovery/mdns.h"
 
@@ -201,6 +203,7 @@ int main(int argc, char* argv[])
     bool networkReady = initialize_network();
     enable_remote_logging(networkReady);
     bool dlnaRunning = false;
+    bool videoPlatformReady = player_platform_video_init();
 
     if (networkReady)
     {
@@ -222,10 +225,22 @@ int main(int argc, char* argv[])
 
     log_info("[ui] NX-Cast starting. Press + to exit.\n");
     log_info("[ui] Use Up/Down, sticks, or touch drag to scroll logs.\n");
+    if (videoPlatformReady)
+        log_info("[ui] Video placeholder view auto-activates while playback is active.\n");
 
     while (appletMainLoop())
     {
         padUpdate(&pad);
+
+        PlayerSnapshot snapshot;
+        PlayerPlatformViewMode active_view = PLAYER_PLATFORM_VIEW_LOG;
+        if (videoPlatformReady)
+        {
+            if (player_get_snapshot(&snapshot))
+                player_platform_video_sync_snapshot(&snapshot);
+            player_platform_video_begin_frame();
+            active_view = player_platform_video_get_active_view();
+        }
 
         u64 kDown = padGetButtonsDown(&pad);
         u64 kHeld = padGetButtons(&pad);
@@ -233,74 +248,82 @@ int main(int argc, char* argv[])
         if (kDown & HidNpadButton_Plus)
             break;
 
-        PrintConsole *con = consoleGetDefault();
-        int width = con ? con->windowWidth : 80;
-        int visible_lines = (con ? con->windowHeight : 45) - 3;
-        if (visible_lines < 1)
-            visible_lines = 1;
-        size_t total_visual_lines = compute_total_visual_lines(width);
-        int max_scroll = 0;
-        if (total_visual_lines > (size_t)visible_lines)
-            max_scroll = (int)(total_visual_lines - (size_t)visible_lines);
-
-        padRepeaterUpdate(&repeater, kHeld & (HidNpadButton_Up | HidNpadButton_Down));
-        u64 repeated = padRepeaterGetButtons(&repeater);
-        u64 nav_buttons = kDown | repeated;
-        if (nav_buttons & HidNpadButton_Up)
-            scroll_from_bottom = clamp_int(scroll_from_bottom + 1, 0, max_scroll);
-        if (nav_buttons & HidNpadButton_Down)
-            scroll_from_bottom = clamp_int(scroll_from_bottom - 1, 0, max_scroll);
-
-        HidAnalogStickState l = padGetStickPos(&pad, 0);
-        HidAnalogStickState r = padGetStickPos(&pad, 1);
-        int stick_y = l.y;
-        if (abs(r.y) > abs(stick_y))
-            stick_y = r.y;
-
-        if (stick_repeat_cooldown > 0)
-            --stick_repeat_cooldown;
-        else if (stick_y > 12000)
+        if (active_view == PLAYER_PLATFORM_VIEW_LOG)
         {
-            int step = stick_y > 24000 ? 2 : 1;
-            scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
-            stick_repeat_cooldown = 3;
-        }
-        else if (stick_y < -12000)
-        {
-            int step = stick_y < -24000 ? 2 : 1;
-            scroll_from_bottom = clamp_int(scroll_from_bottom - step, 0, max_scroll);
-            stick_repeat_cooldown = 3;
-        }
+            PrintConsole *con = consoleGetDefault();
+            int width = con ? con->windowWidth : 80;
+            int visible_lines = (con ? con->windowHeight : 45) - 3;
+            if (visible_lines < 1)
+                visible_lines = 1;
+            size_t total_visual_lines = compute_total_visual_lines(width);
+            int max_scroll = 0;
+            if (total_visual_lines > (size_t)visible_lines)
+                max_scroll = (int)(total_visual_lines - (size_t)visible_lines);
 
-        HidTouchScreenState touch_state;
-        size_t touch_total = hidGetTouchScreenStates(&touch_state, 1);
-        if (touch_total > 0 && touch_state.count > 0)
-        {
-            s32 y = (s32)touch_state.touches[0].y;
-            if (!touch_scroll.active)
+            padRepeaterUpdate(&repeater, kHeld & (HidNpadButton_Up | HidNpadButton_Down));
+            u64 repeated = padRepeaterGetButtons(&repeater);
+            u64 nav_buttons = kDown | repeated;
+            if (nav_buttons & HidNpadButton_Up)
+                scroll_from_bottom = clamp_int(scroll_from_bottom + 1, 0, max_scroll);
+            if (nav_buttons & HidNpadButton_Down)
+                scroll_from_bottom = clamp_int(scroll_from_bottom - 1, 0, max_scroll);
+
+            HidAnalogStickState l = padGetStickPos(&pad, 0);
+            HidAnalogStickState r = padGetStickPos(&pad, 1);
+            int stick_y = l.y;
+            if (abs(r.y) > abs(stick_y))
+                stick_y = r.y;
+
+            if (stick_repeat_cooldown > 0)
+                --stick_repeat_cooldown;
+            else if (stick_y > 12000)
             {
-                touch_scroll.active = true;
-                touch_scroll.last_y = y;
+                int step = stick_y > 24000 ? 2 : 1;
+                scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
+                stick_repeat_cooldown = 3;
+            }
+            else if (stick_y < -12000)
+            {
+                int step = stick_y < -24000 ? 2 : 1;
+                scroll_from_bottom = clamp_int(scroll_from_bottom - step, 0, max_scroll);
+                stick_repeat_cooldown = 3;
+            }
+
+            HidTouchScreenState touch_state;
+            size_t touch_total = hidGetTouchScreenStates(&touch_state, 1);
+            if (touch_total > 0 && touch_state.count > 0)
+            {
+                s32 y = (s32)touch_state.touches[0].y;
+                if (!touch_scroll.active)
+                {
+                    touch_scroll.active = true;
+                    touch_scroll.last_y = y;
+                }
+                else
+                {
+                    s32 dy = y - touch_scroll.last_y;
+                    const int pixels_per_line = 18;
+                    if (dy >= pixels_per_line || dy <= -pixels_per_line)
+                    {
+                        int step = dy / pixels_per_line;
+                        scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
+                        touch_scroll.last_y = y;
+                    }
+                }
             }
             else
             {
-                s32 dy = y - touch_scroll.last_y;
-                const int pixels_per_line = 18;
-                if (dy >= pixels_per_line || dy <= -pixels_per_line)
-                {
-                    int step = dy / pixels_per_line;
-                    scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
-                    touch_scroll.last_y = y;
-                }
+                touch_scroll.active = false;
             }
+
+            scroll_from_bottom = clamp_int(scroll_from_bottom, 0, max_scroll);
+            render_log_view(scroll_from_bottom);
         }
         else
         {
             touch_scroll.active = false;
+            player_platform_video_render_placeholder();
         }
-
-        scroll_from_bottom = clamp_int(scroll_from_bottom, 0, max_scroll);
-        render_log_view(scroll_from_bottom);
         consoleUpdate(NULL);
     }
 
@@ -322,6 +345,9 @@ int main(int argc, char* argv[])
         g_remoteLogEnabled = false;
         socketExit();
     }
+
+    if (videoPlatformReady)
+        player_platform_video_deinit();
 
     log_runtime_shutdown();
     if (!had_remote_log)

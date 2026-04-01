@@ -670,6 +670,46 @@ Step 2 的通过标准：
 2. 至少有一条可运行的视频显示路径
 3. 日志 UI 与视频显示不会互相抢占导致异常
 
+#### Step 2 的阶段拆分
+
+##### Step 2.1 前台显示权与 render loop 骨架
+
+先完成：
+
+1. 明确前台显示权由主线程 / UI 层持有
+2. `player backend` 不直接持有 render context
+3. `player_platform_video` 只负责平台显示抽象，由主线程每帧驱动
+4. 先建立“日志视图 / 视频视图占位”的前台切换骨架
+
+这一阶段的目标不是马上把真实视频画面打出来，而是先把 ownership 和 render loop 位置固定。
+
+##### Step 2.2 `libmpv render API` 最小接入
+
+再完成：
+
+1. 把真实 render target 接到 `player_platform_video`
+2. 接通 `libmpv render API`
+3. 让前台每帧 render 能显示真实视频
+
+##### Step 2.3 平台显示完善
+
+最后完成：
+
+1. 日志 UI 与视频 UI 切换策略
+2. 屏幕接管
+3. `deko3d` 路径
+4. 调试叠加层和播放态 UI
+
+#### Step 2.1 当前先固定的边界
+
+当前实现先固定下面这组边界：
+
+1. 前台显示权归 `main` 所在主线程，不归 `player backend`
+2. `player backend` 继续只负责播放控制、状态与事件，不创建 render context
+3. `player_platform_video` 作为 Step 2 的平台显示适配层，接收 `PlayerSnapshot` 并决定前台视图
+4. 主线程每帧调用 platform video 的 begin-frame / render-frame 骨架
+5. 真正的 `libmpv render API` 接入放到 Step 2.2
+
 ### Step 3：线程、事件与平台增强
 
 目标：
