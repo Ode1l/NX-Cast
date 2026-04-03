@@ -611,6 +611,16 @@ generic DMR 可以做的合理动作：
 3. startup latency 观测
 4. TLS / demux 错误归类
 
+截至 `2026-04-04`，`generic/live HLS` 已经有实机通过案例，当前阶段结论变为：
+
+1. HLS 主链不是“完全不通”
+2. 当前主要矛盾已经收敛为：
+   1. startup 偏慢
+   2. live HLS 的 `ready` / `seekable` 分离
+   3. 首段与直播窗口相关的诊断和策略调优
+
+因此这一阶段的下一步应继续做“优化”，而不是继续停留在“能不能基本播起来”的判断。
+
 ### Phase 4. Bilibili 兼容
 
 只做 generic DMR 范围内合理的动作：

@@ -86,35 +86,38 @@
 
 播放器状态不能靠零散布尔变量拼出来，而必须由有限状态机驱动。
 
-当前状态还是简化版，但方向已经确定：
+当前已落地的正式状态至少包括：
 
 1. `IDLE`
 2. `STOPPED`
-3. `PLAYING`
-4. `PAUSED`
-5. `ERROR`
+3. `LOADING`
+4. `BUFFERING`
+5. `SEEKING`
+6. `PLAYING`
+7. `PAUSED`
+8. `ERROR`
 
-后续应扩展：
+对外 `SOAP` 侧则继续把：
 
-1. `OPENING`
-2. `BUFFERING`
-3. `SEEKING`
-4. `ENDED`
+1. `LOADING / BUFFERING / SEEKING`
+2. 映射成 `TRANSITIONING`
 
 ### 3.5 异步工作线程模式
 
 播放器重操作不能阻塞 SOAP 请求线程，因此正式后端必须采用独立播放线程。
 
-当前情况：
+当前情况已经是：
 
-1. `mock backend` 仍是同步模拟
-2. 正式后端应采用异步播放线程
+1. `core/session` 持有 owner thread 与命令队列
+2. `SOAP` 线程只负责下发命令与读取 snapshot
+3. `libmpv` backend 通过事件循环把真实状态同步回 `player`
+4. `mock backend` 仍是同步模拟，用于最小 fallback
 
-推荐模型：
+当前采用的模型：
 
 1. SOAP 线程只下发命令
-2. backend 线程执行打开、播放、seek、停止
-3. 事件回调把结果送回控制层
+2. owner thread 串行执行打开、播放、seek、停止
+3. backend 事件回调把结果送回控制层
 
 ### 3.6 平台适配层模式
 
@@ -755,6 +758,25 @@ Step 2 的通过标准：
 2. `player backend` 仍然不持有平台 render target
 3. 后续 `Step 2.3` 仍可把 software 路径替换成 `EGL/deko3d` 或更正式的 GPU 路径
 
+#### Step 2 当前验证结果
+
+截至 `2026-04-04` 当前分支，`Step 1` 与 `Step 2.1 / 2.2` 的主链已经过实机验证：
+
+1. `SOAP -> player -> libmpv -> render` 已能真实出画
+2. `mp4` 基线 smoke 已通过
+3. 一条中国 `live HLS` 源也已通过 smoke，但当前表现是：
+   1. 可播
+   2. 不可 seek
+   3. startup 偏慢
+
+这意味着：
+
+1. `Player` 状态机与 `CurrentTransportActions` 的主链已经可作为后续来源兼容的稳定基础
+2. 后续重点不再是“能不能播起来”，而是：
+   1. `HLS startup` 优化
+   2. `live / non-seekable` 来源的 readiness 判定
+   3. `bilibili` 等 vendor-sensitive ingress 策略
+
 #### 当前代码目录分层
 
 当前 `source/player` 代码目录先按下面四层收敛：
@@ -826,39 +848,36 @@ Step 3 的通过标准：
 
 ### 15.1 下一步要补的标准化设计
 
-当前实现已经回到正确方向，但还不是完整的标准播放器状态机。后续应继续补下面这些设计。
+当前实现已经回到正确方向，基础状态机也已落地。后续应继续补下面这些收尾与优化。
 
-#### 必须补
+#### 已落地
 
-1. `PlayerState` 增加更细状态
+1. `PlayerState` 的细化状态
 
-建议至少增加：
+当前已经具备：
 
 1. `LOADING`
 2. `BUFFERING`
+3. `SEEKING`
 
-原因：
-
-1. 现在只有 `STOPPED / PLAYING / PAUSED / ERROR`
-2. 对本地文件还勉强够用
-3. 对 `https/mp4`、`m3u8`、直播流不够
-
-如果不补这层，后续仍然会出现：
+这解决了过去最容易出现的两个误判：
 
 1. 加载中被误看成 `STOPPED`
 2. 缓冲中被误看成 `PLAYING`
 
-#### 必须补
+#### 已落地
 
 2. 内部状态映射到 SOAP 的 `TRANSITIONING`
 
-当前 SOAP 对外仍主要暴露：
+当前 `SOAP` 对外已固定为：
 
 1. `STOPPED`
 2. `PLAYING`
 3. `PAUSED_PLAYBACK`
+4. `TRANSITIONING`
+5. `NO_MEDIA_PRESENT`
 
-更标准的做法是：
+其中：
 
 1. `LOADING / BUFFERING / SEEKING`
 2. 对外优先映射成 `TRANSITIONING`
@@ -868,7 +887,7 @@ Step 3 的通过标准：
 1. 已稳定播放
 2. 已经可以拖动
 
-#### 必须补
+#### 继续补
 
 3. 观察更多 `mpv` 属性
 
@@ -892,7 +911,7 @@ Step 3 的通过标准：
 
 没有这些属性，网络流状态机仍然不够稳。
 
-#### Optional
+#### 继续补
 
 4. 为状态机引入 `ready` 与 `seekable` 分离判断
 
@@ -913,11 +932,16 @@ Step 3 的通过标准：
 
 就可以各自按不同前提判断，而不是共用同一条件。
 
-#### Optional
+这一点当前已经在实测里得到验证：
+
+1. 中国 `live HLS` 源已经出现“可播但不可 seek”的真实案例
+2. 因此 `ready` 与 `seekable` 的拆分不再只是设计推演，而是后续 HLS 优化的直接前置条件
+
+#### 继续补
 
 5. 冒烟测试脚本拆成“基础控制”和“seek 能力”两类
 
-当前 `dlna_soap_smoke.sh` 仍然是一个串行脚本。后续更标准的方式是拆成：
+当前 `dlna_soap_smoke.sh` 仍然是一个串行脚本，但判定逻辑已经开始按能力分流：
 
 1. 基础控制测试
    只测 `SetURI / Play / Pause / Stop / GetTransportInfo / GetPositionInfo`
@@ -928,6 +952,12 @@ Step 3 的通过标准：
 
 1. 播放成功但 seek 失败
 2. 或者加载中尚未 ready 就被拿去测 seek
+
+当前这一条已经在脚本中部分落地：
+
+1. `dlna_soap_smoke.sh` 已先查询 `GetCurrentTransportActions`
+2. 当动作中不包含 `Seek` 时，跳过 `Seek`
+3. 因此对 `live HLS` 这类 `seekable=false` 的来源，当前结论可以正确写成“可播但不可 seek”，而不是把它误判成整体失败
 
 #### 实现参考
 

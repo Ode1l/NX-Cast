@@ -31,9 +31,12 @@ NX-Cast 的目标是：
 - 应用启动、日志系统与网络初始化已经就位。
 - 发现层已具备 SSDP 响应与 mDNS 探测能力。
 - DLNA DMR 核心链路已基本实现：SCPD、SOAP 路由、AVTransport / RenderingControl / ConnectionManager，以及对应 smoke 测试均已接通。
+- `player` 已成为真实状态源，`SOAP -> player -> libmpv` 控制链路已打通；`SetURI / Play / Pause / Stop / Seek / GetTransportInfo / GetPositionInfo` 的主流程已通过实机 smoke。
+- `Step 2.1 / Step 2.2` 已落地：主线程前台显示权、render loop 骨架，以及 `software render + libnx framebuffer` 的最小真实出画路径均已接通。
+- `mp4` 基线已通过；一条中国 `live HLS` 源也已通过实机 smoke，当前结论是“可播、不可 seek、启动偏慢”。
 - 当前剩余的 DLNA 工作主要是 optional 能力，例如 `NOTIFY ssdp:alive/byebye` 和更完整的事件通知。
 - 为了接近商用电视盒子的投屏兼容性，后续还需要补两项关键能力：协议侧的 `ConnectionManager/SinkProtocolInfo` 输入能力宣告扩展，以及 player 入口侧基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 候选资源的接收端选择。
-- 下一阶段的重点是协议之后的真实播放与画面渲染。
+- 下一阶段的重点不再是“协议是否能通”，而是 `live/generic HLS` 的 startup 优化，以及后续的 `bilibili` 等 vendor-sensitive source 兼容。
 
 ---
 
@@ -99,6 +102,7 @@ NX-Cast 的目标是：
 - Step 2.1：确定前台显示权归属，建立主线程驱动的 render loop 骨架
 - Step 2.2：接入 `libmpv render API`，通过 `software render + libnx framebuffer` 打通最小视频显示路径
 - Step 2.3：完善日志 UI 切换、屏幕接管与 `deko3d` 路径
+- 状态：Step 1 与 Step 2.1 / 2.2 已落地；下一步优先做 HLS startup 优化，其后进入 `bilibili` 兼容与 player 入口资源选择
 
 ### Phase 4
 - 硬件解码支持

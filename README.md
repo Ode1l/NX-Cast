@@ -31,9 +31,12 @@ Current progress:
 - Application bootstrap, logging, and network initialization are in place.
 - Device discovery is working with SSDP responder and mDNS probe support.
 - DLNA DMR core path is largely implemented: SCPD, SOAP routing, AVTransport/RenderingControl/ConnectionManager, and smoke-test coverage are all in place.
+- `player` is now the real state source, and the `SOAP -> player -> libmpv` control path is working end to end; the main `SetURI / Play / Pause / Stop / Seek / GetTransportInfo / GetPositionInfo` flow has passed on-device smoke tests.
+- `Step 2.1 / Step 2.2` have landed: foreground-display ownership, the main-thread render-loop skeleton, and a minimal real video path via `software render + libnx framebuffer`.
+- The `mp4` baseline is passing, and one Chinese live HLS source now passes on-device smoke as "playable, non-seekable, slow-starting".
 - Remaining DLNA items are mainly optional features such as `NOTIFY ssdp:alive/byebye` and richer eventing.
 - To approach commercial TV-box compatibility, two cross-layer items are still pending: protocol-side `ConnectionManager/SinkProtocolInfo` capability advertisement and player-ingress receiver-side selection from `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` candidates.
-- Real playback/rendering is the next major milestone after protocol completion.
+- The next major milestone is no longer basic protocol bring-up, but `live/generic HLS` startup optimization followed by vendor-sensitive source work such as `bilibili`.
 
 ---
 
@@ -99,6 +102,7 @@ How to verify Milestone 1 locally:
 - Step 2.1: define foreground-display ownership and add a main-thread render-loop skeleton
 - Step 2.2: integrate the `libmpv render API` and establish a minimal on-device video path via `software render + libnx framebuffer`
 - Step 2.3: finish log/UI switching, screen ownership, and the `deko3d` path
+- Status: Step 1 and Step 2.1 / 2.2 are landed; the next priority is HLS startup optimization, then `bilibili` compatibility and player-ingress resource selection
 
 ### Phase 4
 - Hardware accelerated decode

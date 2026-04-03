@@ -287,7 +287,15 @@ wait_for_transport_action() {
   fail "transport action ${expected_action} not available within ${wait_seconds}s"
 }
 
+fetch_transport_actions() {
+  soap_call "AVTransport" "GetCurrentTransportActions" "<InstanceID>${INSTANCE_ID}</InstanceID>"
+  assert_http_200
+  extract_xml_value "$LAST_BODY" "Actions"
+}
+
 main() {
+  local current_actions=""
+
   log "log file: ${LOG_FILE}"
   require_cmd curl
   require_cmd grep
@@ -317,8 +325,13 @@ main() {
   assert_http_200
   assert_body_contains "<RelTime>"
 
+  current_actions="$(fetch_transport_actions)"
+  log "transport actions before Seek: ${current_actions:-<empty>}"
+
   if should_skip_seek; then
     log "4/6 Seek skipped target=${SEEK_TARGET:-<empty>}"
+  elif ! transport_actions_contains "$current_actions" "Seek"; then
+    log "4/6 Seek skipped action=unavailable actions=${current_actions:-<empty>}"
   else
     log "4/6 Seek to ${SEEK_TARGET}"
     soap_call "AVTransport" "Seek" \
