@@ -26,6 +26,17 @@ typedef enum
 
 typedef enum
 {
+    PLAYER_MEDIA_VENDOR_UNKNOWN = 0,
+    PLAYER_MEDIA_VENDOR_BILIBILI,
+    PLAYER_MEDIA_VENDOR_IQIYI,
+    PLAYER_MEDIA_VENDOR_MGTV,
+    PLAYER_MEDIA_VENDOR_YOUKU,
+    PLAYER_MEDIA_VENDOR_QQ_VIDEO,
+    PLAYER_MEDIA_VENDOR_CCTV
+} PlayerMediaVendor;
+
+typedef enum
+{
     PLAYER_MEDIA_FORMAT_UNKNOWN = 0,
     PLAYER_MEDIA_FORMAT_MP4,
     PLAYER_MEDIA_FORMAT_FLV,
@@ -56,6 +67,7 @@ typedef struct
     char original_uri[PLAYER_MEDIA_URI_MAX];
     char metadata[PLAYER_MEDIA_METADATA_MAX];
     PlayerMediaProfile profile;
+    PlayerMediaVendor vendor;
     PlayerMediaFormat format;
     PlayerMediaFlags flags;
     bool selected_from_metadata;
@@ -76,4 +88,5 @@ typedef struct
 void ingress_reset(PlayerMedia *media);
 bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out);
 const char *ingress_profile_name(PlayerMediaProfile profile);
+const char *ingress_vendor_name(PlayerMediaVendor vendor);
 const char *ingress_format_name(PlayerMediaFormat format);

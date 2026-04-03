@@ -1,6 +1,7 @@
 #include "soap_server.h"
 
 #include <ctype.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -423,8 +424,12 @@ static bool build_soap_success(const char *service_type,
     if (!service_type || !action_name)
         return false;
 
-    char body[4096];
-    int body_written = snprintf(body, sizeof(body),
+    size_t body_capacity = (response_args ? strlen(response_args) : 0) + 512;
+    char *body = malloc(body_capacity);
+    if (!body)
+        return false;
+
+    int body_written = snprintf(body, body_capacity,
                                 "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
                                 "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
                                 "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
@@ -437,16 +442,21 @@ static bool build_soap_success(const char *service_type,
                                 response_args ? response_args : "",
                                 action_name);
 
-    if (body_written < 0 || (size_t)body_written >= sizeof(body))
+    if (body_written < 0 || (size_t)body_written >= body_capacity)
+    {
+        free(body);
         return false;
+    }
 
-    return build_http_response(200,
-                               "OK",
-                               "text/xml; charset=\"utf-8\"",
-                               body,
-                               response,
-                               response_size,
-                               response_len);
+    bool built = build_http_response(200,
+                                     "OK",
+                                     "text/xml; charset=\"utf-8\"",
+                                     body,
+                                     response,
+                                     response_size,
+                                     response_len);
+    free(body);
+    return built;
 }
 
 static bool build_soap_fault(int fault_code,
@@ -457,8 +467,12 @@ static bool build_soap_fault(int fault_code,
 {
     const char *description = fault_description ? fault_description : "Action Failed";
 
-    char body[4096];
-    int body_written = snprintf(body, sizeof(body),
+    size_t body_capacity = strlen(description) + 512;
+    char *body = malloc(body_capacity);
+    if (!body)
+        return false;
+
+    int body_written = snprintf(body, body_capacity,
                                 "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
                                 "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
                                 "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
@@ -478,16 +492,21 @@ static bool build_soap_fault(int fault_code,
                                 fault_code,
                                 description);
 
-    if (body_written < 0 || (size_t)body_written >= sizeof(body))
+    if (body_written < 0 || (size_t)body_written >= body_capacity)
+    {
+        free(body);
         return false;
+    }
 
-    return build_http_response(500,
-                               "Internal Server Error",
-                               "text/xml; charset=\"utf-8\"",
-                               body,
-                               response,
-                               response_size,
-                               response_len);
+    bool built = build_http_response(500,
+                                     "Internal Server Error",
+                                     "text/xml; charset=\"utf-8\"",
+                                     body,
+                                     response,
+                                     response_size,
+                                     response_len);
+    free(body);
+    return built;
 }
 
 bool soap_server_start(void)
@@ -666,13 +685,19 @@ bool soap_server_try_handle_http(const char *method,
         .body = body
     };
 
-    SoapRouteResult result;
-    bool handled_ok = soap_router_route_action(&ctx, &result);
-    if (handled_ok && result.output.success)
+    SoapRouteResult *result = calloc(1, sizeof(*result));
+    if (!result)
     {
-        bool built = build_soap_success(result.service_type,
-                                        result.action_name,
-                                        result.output.output_xml,
+        log_error("[soap] failed to allocate route result\n");
+        return false;
+    }
+
+    bool handled_ok = soap_router_route_action(&ctx, result);
+    if (handled_ok && result->output.success)
+    {
+        bool built = build_soap_success(result->service_type,
+                                        result->action_name,
+                                        result->output.output_xml,
                                         response,
                                         response_size,
                                         response_len);
@@ -680,6 +705,7 @@ bool soap_server_try_handle_http(const char *method,
         {
             log_error("[soap] failed to build success response for %s#%s\n",
                       service_name, action_name);
+            free(result);
             return false;
         }
 
@@ -687,15 +713,16 @@ bool soap_server_try_handle_http(const char *method,
                   path, *response_len);
         log_info("[soap] assert_http_200 service=%s action=%s handler=%s\n",
                  service_name, action_name,
-                 result.handler_name ? result.handler_name : "(none)");
+                 result->handler_name ? result->handler_name : "(none)");
+        free(result);
         return true;
     }
 
-    int fault_code = result.output.fault_code > 0 ? result.output.fault_code : 501;
-    const char *fault_description = result.output.fault_description ? result.output.fault_description : "Action Failed";
+    int fault_code = result->output.fault_code > 0 ? result->output.fault_code : 501;
+    const char *fault_description = result->output.fault_description ? result->output.fault_description : "Action Failed";
     log_warn("[soap] action fault service=%s action=%s handler=%s code=%d desc=%s\n",
              service_name, action_name,
-             result.handler_name ? result.handler_name : "(none)",
+             result->handler_name ? result->handler_name : "(none)",
              fault_code, fault_description);
     log_fault_request_detail("handler_fault",
                              method,
@@ -714,6 +741,7 @@ bool soap_server_try_handle_http(const char *method,
     {
         log_error("[soap] failed to build fault response for %s#%s\n",
                   service_name, action_name);
+        free(result);
         return false;
     }
 
@@ -721,7 +749,8 @@ bool soap_server_try_handle_http(const char *method,
               path, *response_len);
     log_warn("[soap] assert_http_500 service=%s action=%s handler=%s code=%d\n",
              service_name, action_name,
-             result.handler_name ? result.handler_name : "(none)",
+             result->handler_name ? result->handler_name : "(none)",
              fault_code);
+    free(result);
     return true;
 }

@@ -21,17 +21,16 @@ bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput 
     if (!soap_handler_require_arg(ctx, out, "Channel", channel, sizeof(channel)))
         return false;
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
                        "<CurrentVolume>%d</CurrentVolume>",
                        g_soap_runtime_state.volume);
-    if (len < 0 || (size_t)len >= sizeof(response))
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 
@@ -83,17 +82,16 @@ bool renderingcontrol_get_mute(const SoapActionContext *ctx, SoapActionOutput *o
     if (!soap_handler_require_arg(ctx, out, "Channel", channel, sizeof(channel)))
         return false;
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
                        "<CurrentMute>%d</CurrentMute>",
                        g_soap_runtime_state.mute ? 1 : 0);
-    if (len < 0 || (size_t)len >= sizeof(response))
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 

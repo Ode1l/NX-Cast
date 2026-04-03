@@ -42,6 +42,109 @@ static void clip_for_log(const char *input, char *output, size_t output_size)
     output[copy_len + 3] = '\0';
 }
 
+static void xml_decode_in_place(char *value)
+{
+    char *src;
+    char *dst;
+
+    if (!value || value[0] == '\0')
+        return;
+
+    src = value;
+    dst = value;
+    while (*src)
+    {
+        if (*src == '&')
+        {
+            if (strncmp(src, "&amp;", 5) == 0)
+            {
+                *dst++ = '&';
+                src += 5;
+                continue;
+            }
+            if (strncmp(src, "&lt;", 4) == 0)
+            {
+                *dst++ = '<';
+                src += 4;
+                continue;
+            }
+            if (strncmp(src, "&gt;", 4) == 0)
+            {
+                *dst++ = '>';
+                src += 4;
+                continue;
+            }
+            if (strncmp(src, "&quot;", 6) == 0)
+            {
+                *dst++ = '"';
+                src += 6;
+                continue;
+            }
+            if (strncmp(src, "&apos;", 6) == 0)
+            {
+                *dst++ = '\'';
+                src += 6;
+                continue;
+            }
+        }
+
+        *dst++ = *src++;
+    }
+
+    *dst = '\0';
+}
+
+bool soap_handler_xml_escape(const char *value, char *out, size_t out_size)
+{
+    if (!out || out_size == 0)
+        return false;
+
+    out[0] = '\0';
+    if (!value)
+        return true;
+
+    size_t used = 0;
+    while (*value)
+    {
+        const char *replacement = NULL;
+        char literal[2] = {0, 0};
+
+        switch (*value)
+        {
+        case '&':
+            replacement = "&amp;";
+            break;
+        case '<':
+            replacement = "&lt;";
+            break;
+        case '>':
+            replacement = "&gt;";
+            break;
+        case '"':
+            replacement = "&quot;";
+            break;
+        case '\'':
+            replacement = "&apos;";
+            break;
+        default:
+            literal[0] = *value;
+            replacement = literal;
+            break;
+        }
+
+        size_t replacement_len = strlen(replacement);
+        if (used + replacement_len >= out_size)
+            return false;
+
+        memcpy(out + used, replacement, replacement_len);
+        used += replacement_len;
+        ++value;
+    }
+
+    out[used] = '\0';
+    return true;
+}
+
 static const char *transport_state_from_player_state(PlayerState state)
 {
     switch (state)
@@ -174,6 +277,9 @@ void soap_handler_set_success(SoapActionOutput *out, const char *xml)
         return;
     }
 
+    if (xml == out->output_xml)
+        return;
+
     snprintf(out->output_xml, sizeof(out->output_xml), "%s", xml);
 }
 
@@ -264,6 +370,7 @@ bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out,
                     value_len = out_size - 1;
                 memcpy(out, value_start, value_len);
                 out[value_len] = '\0';
+                xml_decode_in_place(out);
 
                 size_t begin = 0;
                 while (out[begin] && isspace((unsigned char)out[begin]))

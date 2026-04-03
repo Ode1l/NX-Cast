@@ -696,8 +696,9 @@ static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media
     (void)libmpv_set_string_property_locked("http-header-fields", media->header_fields);
     (void)libmpv_set_string_property_locked("demuxer-lavf-probe-info", media->probe_info);
 
-    log_info("[player-libmpv] runtime_overrides profile=%s format=%s hint=%s hls=%d live_hint=%d dash=%d signed=%d bilibili=%d timeout=%s readahead_s=%d probe_info=%s headers=%d load_opts=%d\n",
+    log_info("[player-libmpv] runtime_overrides profile=%s vendor=%s format=%s hint=%s hls=%d live_hint=%d dash=%d signed=%d bilibili=%d timeout=%s readahead_s=%d probe_info=%s headers=%d load_opts=%d\n",
              ingress_profile_name(media->profile),
+             ingress_vendor_name(media->vendor),
              ingress_format_name(media->format),
              media->format_hint[0] != '\0' ? media->format_hint : "unknown",
              media->flags.is_hls ? 1 : 0,
@@ -1246,8 +1247,9 @@ static bool libmpv_set_media(const PlayerMedia *media)
     g_state = PLAYER_STATE_LOADING;
     libmpv_sync_properties_locked(false);
 
-    log_info("[player-libmpv] set_media profile=%s format=%s hint=%s uri=%s metadata_len=%zu uri_kind=%s live_hint=%d readahead_s=%d mpv_log_threshold=%s\n",
+    log_info("[player-libmpv] set_media profile=%s vendor=%s format=%s hint=%s uri=%s metadata_len=%zu uri_kind=%s live_hint=%d readahead_s=%d mpv_log_threshold=%s\n",
              ingress_profile_name(media->profile),
+             ingress_vendor_name(media->vendor),
              ingress_format_name(media->format),
              media->format_hint[0] != '\0' ? media->format_hint : "unknown",
              clipped_uri,

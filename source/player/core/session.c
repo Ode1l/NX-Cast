@@ -598,8 +598,9 @@ bool player_set_uri(const char *uri, const char *metadata)
     if (!ingress_resolve(uri, metadata, &resolved))
         return false;
 
-    log_info("[player] resolve_media profile=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
+    log_info("[player] resolve_media profile=%s vendor=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
              ingress_profile_name(resolved.profile),
+             ingress_vendor_name(resolved.vendor),
              ingress_format_name(resolved.format),
              resolved.format_hint[0] != '\0' ? resolved.format_hint : "unknown",
              resolved.mime_type[0] != '\0' ? resolved.mime_type : "unknown",
@@ -626,9 +627,10 @@ bool player_set_uri(const char *uri, const char *metadata)
                  resolved.protocol_info[0] != '\0' ? resolved.protocol_info : "<none>");
     }
 
-    if (resolved.flags.is_bilibili && resolved.flags.likely_video_only)
+    if (resolved.flags.likely_video_only)
     {
-        log_warn("[player] bilibili media looks like segmented DASH/fMP4 video. Generic DMR may not have the companion audio track.\n");
+        log_warn("[player] %s media looks like segmented DASH/fMP4 video. Generic DMR may not have the companion audio track.\n",
+                 ingress_vendor_name(resolved.vendor));
     }
 
     return player_set_media(&resolved);

@@ -40,7 +40,10 @@ bool ingress_hls_uri_matches(const char *uri)
 bool ingress_hls_mime_matches(const char *value)
 {
     return contains_ignore_case(value, "application/vnd.apple.mpegurl") ||
-           contains_ignore_case(value, "application/x-mpegurl");
+           contains_ignore_case(value, "application/x-mpegurl") ||
+           contains_ignore_case(value, "application/mpegurl") ||
+           contains_ignore_case(value, "audio/mpegurl") ||
+           contains_ignore_case(value, "audio/x-mpegurl");
 }
 
 bool ingress_hls_live_hint(const char *uri, const char *metadata)

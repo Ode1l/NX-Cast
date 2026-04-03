@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -158,6 +159,45 @@ static void avtransport_format_actions(unsigned int actions, char *out, size_t o
         (void)snprintf(out + used, out_size - used, "%sSeek", first ? "" : ",");
 }
 
+static bool avtransport_try_instance_id(const SoapActionContext *ctx,
+                                        SoapActionOutput *out,
+                                        const char *action_name,
+                                        char *instance_id,
+                                        size_t instance_id_size)
+{
+    if (!ctx || !out || !action_name || !instance_id || instance_id_size == 0)
+        return false;
+
+    if (soap_handler_try_arg(ctx, "InstanceID", instance_id, instance_id_size))
+        return true;
+
+    snprintf(instance_id, instance_id_size, "0");
+    log_debug("[avtransport] default InstanceID=0 for %s\n", action_name);
+    return true;
+}
+
+static char *avtransport_escape_alloc(const char *value, SoapActionOutput *out)
+{
+    const char *input = value ? value : "";
+    size_t input_len = strlen(input);
+    size_t out_size = input_len * 6 + 1;
+    char *escaped = malloc(out_size);
+    if (!escaped)
+    {
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return NULL;
+    }
+
+    if (!soap_handler_xml_escape(input, escaped, out_size))
+    {
+        free(escaped);
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return NULL;
+    }
+
+    return escaped;
+}
+
 static void format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
 {
     if (!out || out_size == 0)
@@ -235,23 +275,43 @@ static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
 bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char instance_id[32];
-    char uri[sizeof(g_soap_runtime_state.transport_uri)];
-    char metadata[sizeof(g_soap_runtime_state.transport_uri_metadata)];
+    char *uri = NULL;
+    char *metadata = NULL;
 
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    uri = malloc(sizeof(g_soap_runtime_state.transport_uri));
+    metadata = malloc(sizeof(g_soap_runtime_state.transport_uri_metadata));
+    if (!uri || !metadata)
+    {
+        free(uri);
+        free(metadata);
+        soap_handler_set_fault(out, 501, "Action Failed");
         return false;
+    }
 
-    if (!soap_handler_require_arg(ctx, out, "CurrentURI", uri, sizeof(uri)))
+    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    {
+        free(uri);
+        free(metadata);
         return false;
+    }
+
+    if (!soap_handler_require_arg(ctx, out, "CurrentURI", uri, sizeof(g_soap_runtime_state.transport_uri)))
+    {
+        free(uri);
+        free(metadata);
+        return false;
+    }
 
     metadata[0] = '\0';
-    soap_handler_extract_xml_value(ctx->body, "CurrentURIMetaData", metadata, sizeof(metadata));
+    soap_handler_extract_xml_value(ctx->body, "CurrentURIMetaData", metadata, sizeof(g_soap_runtime_state.transport_uri_metadata));
 
     if (!player_set_uri(uri, metadata))
     {
+        free(uri);
+        free(metadata);
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
@@ -267,6 +327,8 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
              "%s",
              "OK");
 
+    free(uri);
+    free(metadata);
     soap_handler_set_success(out, "");
     return true;
 }
@@ -436,30 +498,26 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
 
     // Some mobile control points omit InstanceID for read-only queries.
     // Treat missing value as "0" for compatibility.
-    if (!soap_handler_try_arg(ctx, "InstanceID", instance_id, sizeof(instance_id)))
-    {
-        snprintf(instance_id, sizeof(instance_id), "0");
-        log_debug("[avtransport] default InstanceID=0 for GetTransportInfo\n");
-    }
+    if (!avtransport_try_instance_id(ctx, out, "GetTransportInfo", instance_id, sizeof(instance_id)))
+        return false;
 
     PlayerState player_state = sync_transport_state_from_player();
     const char *transport_state = transport_state_from_player_state(player_state);
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
                        "<CurrentTransportState>%s</CurrentTransportState>"
                        "<CurrentTransportStatus>%s</CurrentTransportStatus>"
                        "<CurrentSpeed>%s</CurrentSpeed>",
                        transport_state,
                        g_soap_runtime_state.transport_status,
                        g_soap_runtime_state.transport_speed);
-    if (len < 0 || (size_t)len >= sizeof(response))
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 
@@ -469,33 +527,29 @@ bool avtransport_get_current_transport_actions(const SoapActionContext *ctx, Soa
     PlayerSnapshot snapshot;
     unsigned int actions;
     char action_list[64];
-    char response[SOAP_HANDLER_OUTPUT_MAX];
     int len;
 
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_try_arg(ctx, "InstanceID", instance_id, sizeof(instance_id)))
-    {
-        snprintf(instance_id, sizeof(instance_id), "0");
-        log_debug("[avtransport] default InstanceID=0 for GetCurrentTransportActions\n");
-    }
+    if (!avtransport_try_instance_id(ctx, out, "GetCurrentTransportActions", instance_id, sizeof(instance_id)))
+        return false;
 
     avtransport_get_snapshot(&snapshot);
     sync_transport_state_from_player();
     actions = avtransport_current_actions(&snapshot);
     avtransport_format_actions(actions, action_list, sizeof(action_list));
 
-    len = snprintf(response, sizeof(response),
+    len = snprintf(out->output_xml, sizeof(out->output_xml),
                    "<Actions>%s</Actions>",
                    action_list);
-    if (len < 0 || (size_t)len >= sizeof(response))
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 
@@ -506,7 +560,7 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    if (!avtransport_try_instance_id(ctx, out, "GetMediaInfo", instance_id, sizeof(instance_id)))
         return false;
 
     PlayerSnapshot snapshot;
@@ -521,26 +575,37 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
     format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
     snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "%s", duration_str);
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
+    char *escaped_uri = avtransport_escape_alloc(g_soap_runtime_state.transport_uri, out);
+    char *escaped_metadata = avtransport_escape_alloc(g_soap_runtime_state.transport_uri_metadata, out);
+    if (!escaped_uri || !escaped_metadata)
+    {
+        free(escaped_uri);
+        free(escaped_metadata);
+        return false;
+    }
+
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
                        "<NrTracks>1</NrTracks>"
                        "<MediaDuration>%s</MediaDuration>"
                        "<CurrentURI>%s</CurrentURI>"
-                       "<CurrentURIMetaData></CurrentURIMetaData>"
+                       "<CurrentURIMetaData>%s</CurrentURIMetaData>"
                        "<NextURI></NextURI>"
                        "<NextURIMetaData></NextURIMetaData>"
                        "<PlayMedium>NETWORK</PlayMedium>"
                        "<RecordMedium>NOT_IMPLEMENTED</RecordMedium>"
                        "<WriteStatus>NOT_IMPLEMENTED</WriteStatus>",
                        duration_str,
-                       g_soap_runtime_state.transport_uri);
-    if (len < 0 || (size_t)len >= sizeof(response))
+                       escaped_uri,
+                       escaped_metadata);
+    free(escaped_uri);
+    free(escaped_metadata);
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 
@@ -551,7 +616,7 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    if (!avtransport_try_instance_id(ctx, out, "GetPositionInfo", instance_id, sizeof(instance_id)))
         return false;
 
     PlayerSnapshot snapshot;
@@ -581,27 +646,38 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
     snprintf(g_soap_runtime_state.transport_rel_time, sizeof(g_soap_runtime_state.transport_rel_time), "%s", rel_time_str);
     snprintf(g_soap_runtime_state.transport_abs_time, sizeof(g_soap_runtime_state.transport_abs_time), "%s", abs_time_str);
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
+    char *escaped_uri = avtransport_escape_alloc(g_soap_runtime_state.transport_uri, out);
+    char *escaped_metadata = avtransport_escape_alloc(g_soap_runtime_state.transport_uri_metadata, out);
+    if (!escaped_uri || !escaped_metadata)
+    {
+        free(escaped_uri);
+        free(escaped_metadata);
+        return false;
+    }
+
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
                        "<Track>1</Track>"
                        "<TrackDuration>%s</TrackDuration>"
-                       "<TrackMetaData>NOT_IMPLEMENTED</TrackMetaData>"
+                       "<TrackMetaData>%s</TrackMetaData>"
                        "<TrackURI>%s</TrackURI>"
                        "<RelTime>%s</RelTime>"
                        "<AbsTime>%s</AbsTime>"
                        "<RelCount>0</RelCount>"
                        "<AbsCount>0</AbsCount>",
                        duration_str,
-                       g_soap_runtime_state.transport_uri,
+                       escaped_metadata,
+                       escaped_uri,
                        rel_time_str,
                        abs_time_str);
-    if (len < 0 || (size_t)len >= sizeof(response))
+    free(escaped_uri);
+    free(escaped_metadata);
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 
@@ -616,11 +692,8 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_try_arg(ctx, "InstanceID", instance_id, sizeof(instance_id)))
-    {
-        snprintf(instance_id, sizeof(instance_id), "0");
-        log_debug("[avtransport] default InstanceID=0 for Seek\n");
-    }
+    if (!avtransport_try_instance_id(ctx, out, "Seek", instance_id, sizeof(instance_id)))
+        return false;
 
     if (!soap_handler_try_arg(ctx, "Unit", unit, sizeof(unit)))
     {

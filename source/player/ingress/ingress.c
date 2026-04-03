@@ -6,6 +6,7 @@
 #include <strings.h>
 
 #include "player/ingress/hls.h"
+#include "player/ingress/vendor.h"
 #include "player/policy.h"
 
 #define PLAYER_MEDIA_METADATA_RESOURCE_MAX 8
@@ -227,14 +228,6 @@ static bool is_mpeg_ts_uri(const char *uri)
     return contains_ignore_case(uri, ".ts");
 }
 
-static bool is_bilibili_source(const char *uri, const char *metadata)
-{
-    return contains_ignore_case(uri, "bilivideo.com") ||
-           contains_ignore_case(uri, "bilibili.com") ||
-           contains_ignore_case(metadata, "bilivideo") ||
-           contains_ignore_case(metadata, "bilibili");
-}
-
 static void set_if_contains(char *out, size_t out_size, const char *metadata, const char *needle, const char *value)
 {
     if (!out || out_size == 0 || out[0] != '\0')
@@ -254,9 +247,13 @@ static void detect_metadata_mime(const char *metadata, char *mime_type, size_t m
 
     set_if_contains(mime_type, mime_type_size, metadata, "application/vnd.apple.mpegurl", "application/vnd.apple.mpegurl");
     set_if_contains(mime_type, mime_type_size, metadata, "application/x-mpegurl", "application/x-mpegurl");
+    set_if_contains(mime_type, mime_type_size, metadata, "application/mpegurl", "application/mpegurl");
+    set_if_contains(mime_type, mime_type_size, metadata, "audio/mpegurl", "audio/mpegurl");
+    set_if_contains(mime_type, mime_type_size, metadata, "audio/x-mpegurl", "audio/x-mpegurl");
     set_if_contains(mime_type, mime_type_size, metadata, "application/dash+xml", "application/dash+xml");
     set_if_contains(mime_type, mime_type_size, metadata, "video/x-flv", "video/x-flv");
     set_if_contains(mime_type, mime_type_size, metadata, "video/mp4", "video/mp4");
+    set_if_contains(mime_type, mime_type_size, metadata, "application/mp4", "application/mp4");
     set_if_contains(mime_type, mime_type_size, metadata, "video/vnd.dlna.mpeg-tts", "video/vnd.dlna.mpeg-tts");
     set_if_contains(mime_type, mime_type_size, metadata, "video/mp2t", "video/mp2t");
 }
@@ -320,6 +317,8 @@ static PlayerMediaFormat detect_media_format(const char *uri, const char *metada
 
     if (contains_ignore_case(metadata_or_mime, "video/vnd.dlna.mpeg-tts") ||
         contains_ignore_case(metadata_or_mime, "video/mp2t") ||
+        contains_ignore_case(metadata_or_mime, "dlna.org_pn=avc_ts") ||
+        contains_ignore_case(metadata_or_mime, "dlna.org_pn=mpeg_ts") ||
         is_mpeg_ts_uri(uri))
     {
         if (likely_segmented)
@@ -327,7 +326,11 @@ static PlayerMediaFormat detect_media_format(const char *uri, const char *metada
         return PLAYER_MEDIA_FORMAT_MPEG_TS;
     }
 
-    if (contains_ignore_case(metadata_or_mime, "video/mp4") || is_mp4_uri(uri))
+    if (contains_ignore_case(metadata_or_mime, "video/mp4") ||
+        contains_ignore_case(metadata_or_mime, "application/mp4") ||
+        contains_ignore_case(metadata_or_mime, "dlna.org_pn=avc_mp4") ||
+        contains_ignore_case(metadata_or_mime, "dlna.org_pn=mpeg4") ||
+        is_mp4_uri(uri))
     {
         if (likely_segmented)
             *likely_segmented = false;
@@ -397,7 +400,8 @@ static bool extract_xml_attribute_value(const char *tag_start, const char *tag_e
     return false;
 }
 
-static int score_metadata_resource(const char *current_uri, const PlayerMetadataResource *resource)
+static int score_metadata_resource(const char *current_uri, const PlayerMetadataResource *resource,
+                                   PlayerMediaVendor vendor)
 {
     int score = 0;
 
@@ -446,11 +450,33 @@ static int score_metadata_resource(const char *current_uri, const PlayerMetadata
     if (current_uri && current_uri[0] != '\0' && strcmp(resource->uri, current_uri) == 0)
         score += 10;
 
+    if (ingress_vendor_is_sensitive(vendor))
+    {
+        switch (resource->format)
+        {
+        case PLAYER_MEDIA_FORMAT_HLS:
+        case PLAYER_MEDIA_FORMAT_FLV:
+        case PLAYER_MEDIA_FORMAT_MPEG_TS:
+            score += 50;
+            break;
+        case PLAYER_MEDIA_FORMAT_MP4:
+            score += 20;
+            break;
+        case PLAYER_MEDIA_FORMAT_DASH:
+            score -= 120;
+            break;
+        case PLAYER_MEDIA_FORMAT_UNKNOWN:
+        default:
+            break;
+        }
+    }
+
     return score;
 }
 
 static int parse_metadata_resources(const char *metadata, const char *current_uri,
-                                    PlayerMetadataResource *resources, int max_resources)
+                                    PlayerMetadataResource *resources, int max_resources,
+                                    PlayerMediaVendor vendor)
 {
     const char *cursor;
     int count = 0;
@@ -538,7 +564,7 @@ static int parse_metadata_resources(const char *metadata, const char *current_ur
                 resource->format = detect_media_format(resource->uri,
                                                        resource->mime_type[0] != '\0' ? resource->mime_type : resource->protocol_info,
                                                        &resource->likely_segmented);
-                resource->score = score_metadata_resource(current_uri, resource);
+                resource->score = score_metadata_resource(current_uri, resource, vendor);
                 ++count;
             }
         }
@@ -552,25 +578,30 @@ static int parse_metadata_resources(const char *metadata, const char *current_ur
 static void populate_media_flags(PlayerMedia *media, bool likely_segmented)
 {
     const char *metadata = media->metadata[0] != '\0' ? media->metadata : NULL;
-    const char *bilibili_uri = media->uri[0] != '\0' ? media->uri : media->original_uri;
+    const char *resolved_uri = media->uri[0] != '\0' ? media->uri : media->original_uri;
 
     media->flags.is_http = is_http_like_uri(media->uri);
     media->flags.is_https = is_https_uri(media->uri);
     media->flags.is_hls = media->format == PLAYER_MEDIA_FORMAT_HLS;
     media->flags.likely_live = media->flags.is_hls &&
-                               ingress_hls_live_hint(bilibili_uri, metadata);
+                               ingress_hls_live_hint(resolved_uri, metadata);
     media->flags.is_signed = has_signed_tokens(media->uri);
-    media->flags.is_bilibili = is_bilibili_source(bilibili_uri, metadata) ||
-                               is_bilibili_source(media->original_uri, metadata);
+    media->vendor = ingress_detect_vendor(resolved_uri, metadata);
+    if (media->vendor == PLAYER_MEDIA_VENDOR_UNKNOWN && media->original_uri[0] != '\0')
+        media->vendor = ingress_detect_vendor(media->original_uri, metadata);
+    media->flags.is_bilibili = media->vendor == PLAYER_MEDIA_VENDOR_BILIBILI;
     media->flags.is_dash = media->format == PLAYER_MEDIA_FORMAT_DASH;
     media->flags.is_flv = media->format == PLAYER_MEDIA_FORMAT_FLV;
     media->flags.is_mp4 = media->format == PLAYER_MEDIA_FORMAT_MP4;
     media->flags.is_mpeg_ts = media->format == PLAYER_MEDIA_FORMAT_MPEG_TS;
     media->flags.likely_segmented = likely_segmented;
-    media->flags.likely_video_only = media->flags.is_dash && media->flags.is_bilibili && likely_segmented;
+    media->flags.likely_video_only = media->flags.is_dash &&
+                                     likely_segmented &&
+                                     ingress_vendor_is_sensitive(media->vendor);
 }
 
-static void select_metadata_resource_if_better(const char *input_uri, PlayerMedia *out, bool *likely_segmented)
+static void select_metadata_resource_if_better(const char *input_uri, PlayerMedia *out, bool *likely_segmented,
+                                               PlayerMediaVendor vendor)
 {
     PlayerMetadataResource resources[PLAYER_MEDIA_METADATA_RESOURCE_MAX];
     PlayerMetadataResource baseline;
@@ -582,7 +613,7 @@ static void select_metadata_resource_if_better(const char *input_uri, PlayerMedi
     if (!out || !likely_segmented)
         return;
 
-    resource_count = parse_metadata_resources(out->metadata, input_uri, resources, PLAYER_MEDIA_METADATA_RESOURCE_MAX);
+    resource_count = parse_metadata_resources(out->metadata, input_uri, resources, PLAYER_MEDIA_METADATA_RESOURCE_MAX, vendor);
     out->metadata_candidate_count = resource_count;
     if (resource_count <= 0)
         return;
@@ -593,7 +624,7 @@ static void select_metadata_resource_if_better(const char *input_uri, PlayerMedi
     baseline.format = out->format;
     baseline.likely_segmented = *likely_segmented;
     baseline.exact_uri_match = true;
-    baseline.score = score_metadata_resource(input_uri, &baseline);
+    baseline.score = score_metadata_resource(input_uri, &baseline, vendor);
     baseline_score = baseline.score;
 
     for (int i = 0; i < resource_count; ++i)
@@ -650,6 +681,28 @@ const char *ingress_profile_name(PlayerMediaProfile profile)
     }
 }
 
+const char *ingress_vendor_name(PlayerMediaVendor vendor)
+{
+    switch (vendor)
+    {
+    case PLAYER_MEDIA_VENDOR_BILIBILI:
+        return "bilibili";
+    case PLAYER_MEDIA_VENDOR_IQIYI:
+        return "iqiyi";
+    case PLAYER_MEDIA_VENDOR_MGTV:
+        return "mgtv";
+    case PLAYER_MEDIA_VENDOR_YOUKU:
+        return "youku";
+    case PLAYER_MEDIA_VENDOR_QQ_VIDEO:
+        return "qq-video";
+    case PLAYER_MEDIA_VENDOR_CCTV:
+        return "cctv";
+    case PLAYER_MEDIA_VENDOR_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
 const char *ingress_format_name(PlayerMediaFormat format)
 {
     switch (format)
@@ -673,6 +726,7 @@ const char *ingress_format_name(PlayerMediaFormat format)
 bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 {
     bool likely_segmented = false;
+    PlayerMediaVendor input_vendor;
 
     if (!uri || uri[0] == '\0' || !out)
         return false;
@@ -685,12 +739,15 @@ bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 
     detect_metadata_mime(metadata, out->mime_type, sizeof(out->mime_type));
     out->format = detect_media_format(out->uri, out->mime_type[0] != '\0' ? out->mime_type : metadata, &likely_segmented);
-    select_metadata_resource_if_better(uri, out, &likely_segmented);
+    input_vendor = ingress_detect_vendor(uri, metadata);
+    select_metadata_resource_if_better(uri, out, &likely_segmented, input_vendor);
 
     populate_media_flags(out, likely_segmented);
     snprintf(out->format_hint, sizeof(out->format_hint), "%s", ingress_format_name(out->format));
 
-    if (out->flags.is_hls)
+    if (ingress_vendor_is_sensitive(out->vendor))
+        out->profile = PLAYER_MEDIA_PROFILE_VENDOR_SENSITIVE_URL;
+    else if (out->flags.is_hls)
         out->profile = PLAYER_MEDIA_PROFILE_GENERIC_HLS;
     else if (out->flags.is_signed)
         out->profile = PLAYER_MEDIA_PROFILE_SIGNED_EPHEMERAL_URL;

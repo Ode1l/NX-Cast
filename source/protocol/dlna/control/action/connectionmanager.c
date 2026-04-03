@@ -12,19 +12,27 @@ bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActio
     if (!out)
         return false;
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
-                       "<Source>%s</Source>"
-                       "<Sink>%s</Sink>",
-                       g_soap_runtime_state.source_protocol_info,
-                       g_soap_runtime_state.sink_protocol_info);
-    if (len < 0 || (size_t)len >= sizeof(response))
+    char escaped_source[sizeof(g_soap_runtime_state.source_protocol_info) * 2];
+    char escaped_sink[sizeof(g_soap_runtime_state.sink_protocol_info) * 2];
+    if (!soap_handler_xml_escape(g_soap_runtime_state.source_protocol_info, escaped_source, sizeof(escaped_source)) ||
+        !soap_handler_xml_escape(g_soap_runtime_state.sink_protocol_info, escaped_sink, sizeof(escaped_sink)))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
+                       "<Source>%s</Source>"
+                       "<Sink>%s</Sink>",
+                       escaped_source,
+                       escaped_sink);
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
+    {
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 
@@ -35,17 +43,16 @@ bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, 
     if (!out)
         return false;
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
                        "<ConnectionIDs>%s</ConnectionIDs>",
                        g_soap_runtime_state.connection_ids);
-    if (len < 0 || (size_t)len >= sizeof(response))
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }
 
@@ -66,8 +73,16 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
         return false;
     }
 
-    char response[SOAP_HANDLER_OUTPUT_MAX];
-    int len = snprintf(response, sizeof(response),
+    char escaped_protocol_info[sizeof(g_soap_runtime_state.sink_protocol_info) * 2];
+    if (!soap_handler_xml_escape(g_soap_runtime_state.sink_protocol_info,
+                                 escaped_protocol_info,
+                                 sizeof(escaped_protocol_info)))
+    {
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
+    int len = snprintf(out->output_xml, sizeof(out->output_xml),
                        "<RcsID>0</RcsID>"
                        "<AVTransportID>0</AVTransportID>"
                        "<ProtocolInfo>%s</ProtocolInfo>"
@@ -75,13 +90,13 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
                        "<PeerConnectionID>-1</PeerConnectionID>"
                        "<Direction>Input</Direction>"
                        "<Status>OK</Status>",
-                       g_soap_runtime_state.sink_protocol_info);
-    if (len < 0 || (size_t)len >= sizeof(response))
+                       escaped_protocol_info);
+    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, response);
+    soap_handler_set_success(out, out->output_xml);
     return true;
 }

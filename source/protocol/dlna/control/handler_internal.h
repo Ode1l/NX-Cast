@@ -7,8 +7,8 @@
 
 typedef struct
 {
-    char transport_uri[1024];
-    char transport_uri_metadata[2048];
+    char transport_uri[SOAP_TRANSPORT_URI_MAX];
+    char transport_uri_metadata[SOAP_TRANSPORT_METADATA_MAX];
     char transport_state[32];
     char transport_status[16];
     char transport_speed[16];
@@ -29,6 +29,7 @@ void soap_handler_set_fault(SoapActionOutput *out, int code, const char *descrip
 void soap_handler_set_success(SoapActionOutput *out, const char *xml);
 
 bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out, size_t out_size);
+bool soap_handler_xml_escape(const char *value, char *out, size_t out_size);
 bool soap_handler_require_arg(const SoapActionContext *ctx, SoapActionOutput *out, const char *arg_name,
                               char *buf, size_t buf_size);
 bool soap_handler_try_arg(const SoapActionContext *ctx, const char *arg_name, char *buf, size_t buf_size);
