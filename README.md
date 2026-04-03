@@ -111,6 +111,12 @@ How to verify Milestone 1 locally:
 - AirPlay-style video streaming
 
 ### Phase 6
+- DMP expansion
+- Source-side VOD browsing and playback
+- Program lists, detail pages, and on-demand entry points for source-backed content
+- Introduce source-native adapters only if the product scope explicitly moves beyond generic receiver behavior
+
+### Phase 7
 - UI and configuration
 - Home menu desktop shortcut entry (add-to-desktop style launch)
 

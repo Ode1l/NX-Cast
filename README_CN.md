@@ -111,6 +111,12 @@ NX-Cast 的目标是：
 - AirPlay 类视频投屏
 
 ### Phase 6
+- DMP 扩展
+- 源点播节目浏览与播放
+- 基于来源的节目列表、详情页与点播入口
+- 视目标范围决定是否引入 source-native adapter
+
+### Phase 7
 - UI 与配置界面
 - 添加到桌面（快捷入口）
 
