@@ -10,6 +10,7 @@ void policy_apply_default(PlayerMedia *media)
         return;
 
     media->network_timeout_seconds = 10;
+    media->demuxer_readahead_seconds = 8;
     snprintf(media->user_agent, sizeof(media->user_agent), "%s", SOURCE_POLICY_DEFAULT_USER_AGENT);
     snprintf(media->probe_info, sizeof(media->probe_info), "%s", "auto");
 }

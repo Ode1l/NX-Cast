@@ -154,6 +154,7 @@ source/player/
   backend/
     mock.c
     libmpv.c
+    libmpv_hls.c
   render/
     view.c
     frontend.c
@@ -161,7 +162,8 @@ source/player/
   ingress/
     ingress.c
     policy_default.c
-    policy_hls.c
+    hls_detect.c
+    hls_profile.c
     policy_vendor.c
 ```
 
@@ -176,10 +178,12 @@ source/player/
 4. `backend/mock.c`
    作用：第一个 backend，实现最小状态闭环与日志验证
 5. `backend/libmpv.c`
-   作用：当前真实播放 backend，已接入 `libmpv`，但仍是“同步适配器 + 最小状态机”，还不是正式 `Player Core`
-6. `ingress/`
+   作用：当前真实播放 backend 主文件，负责通用 `mpv` 控制、状态同步与 render 接口
+6. `backend/libmpv_hls.c`
+   作用：`HLS` 运行态分类与 cache 诊断等专项逻辑
+7. `ingress/`
    作用：player 入口层，负责 `URI + metadata` 解析、候选资源选择、格式识别和策略注入
-7. `render/`
+8. `render/`
    作用：player 前台视图与平台显示层，负责日志页/视频页切换和前台 render loop
 
 当前已实现能力：
@@ -278,11 +282,13 @@ source/player/
   backend/
     mock.c
     libmpv.c
+    libmpv_hls.c
     ffmpeg.c
   ingress/
     ingress.c
     policy_default.c
-    policy_hls.c
+    hls_detect.c
+    hls_profile.c
     policy_vendor.c
   render/
     audio.c
@@ -293,8 +299,8 @@ source/player/
 
 说明：
 
-1. `libmpv.c`
-   作为当前真实播放后端
+1. `libmpv.c + libmpv_hls.c`
+   作为当前真实播放后端及其 `HLS` 专项实现
 2. `backend/ffmpeg.c`
    仅作为验证或研究路径
 3. `ingress/*`

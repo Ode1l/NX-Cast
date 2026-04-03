@@ -598,7 +598,7 @@ bool player_set_uri(const char *uri, const char *metadata)
     if (!ingress_resolve(uri, metadata, &resolved))
         return false;
 
-    log_info("[player] resolve_media profile=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d\n",
+    log_info("[player] resolve_media profile=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
              ingress_profile_name(resolved.profile),
              ingress_format_name(resolved.format),
              resolved.format_hint[0] != '\0' ? resolved.format_hint : "unknown",
@@ -606,6 +606,7 @@ bool player_set_uri(const char *uri, const char *metadata)
              resolved.selected_from_metadata ? 1 : 0,
              resolved.metadata_candidate_count,
              resolved.flags.is_hls ? 1 : 0,
+             resolved.flags.likely_live ? 1 : 0,
              resolved.flags.is_dash ? 1 : 0,
              resolved.flags.is_flv ? 1 : 0,
              resolved.flags.is_mp4 ? 1 : 0,
@@ -614,7 +615,8 @@ bool player_set_uri(const char *uri, const char *metadata)
              resolved.flags.is_bilibili ? 1 : 0,
              resolved.flags.likely_segmented ? 1 : 0,
              resolved.flags.likely_video_only ? 1 : 0,
-             resolved.network_timeout_seconds);
+             resolved.network_timeout_seconds,
+             resolved.demuxer_readahead_seconds);
 
     if (resolved.selected_from_metadata)
     {

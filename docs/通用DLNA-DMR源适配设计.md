@@ -597,8 +597,9 @@ generic DMR 可以做的合理动作：
 1. `media_profile.h`
 2. `source_resolver.h`
 3. `policy_default.c`
-4. `policy_hls.c`
-5. `policy_vendor.c`
+4. `hls_detect.c`
+5. `hls_profile.c`
+6. `policy_vendor.c`
 
 先把“URL 分类”和“打开策略”从 `player backend` 拆出去。
 
@@ -718,7 +719,7 @@ generic DMR 可以做的合理动作：
 3. `PlayerSnapshot` 快照缓存
 4. `libmpv` 持续 `mpv_wait_event` 事件循环
 5. `policy_default.c`
-6. `policy_hls.c`
+6. `hls_profile.c`
 7. `policy_vendor.c`
 
 这意味着：

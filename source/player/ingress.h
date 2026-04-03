@@ -39,6 +39,7 @@ typedef struct
     bool is_http;
     bool is_https;
     bool is_hls;
+    bool likely_live;
     bool is_signed;
     bool is_bilibili;
     bool is_dash;
@@ -60,6 +61,7 @@ typedef struct
     bool selected_from_metadata;
     int metadata_candidate_count;
     int network_timeout_seconds;
+    int demuxer_readahead_seconds;
     char user_agent[PLAYER_MEDIA_USER_AGENT_MAX];
     char referrer[PLAYER_MEDIA_REFERRER_MAX];
     char origin[PLAYER_MEDIA_ORIGIN_MAX];

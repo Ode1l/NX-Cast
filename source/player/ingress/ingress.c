@@ -5,6 +5,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "player/ingress/hls.h"
 #include "player/policy.h"
 
 #define PLAYER_MEDIA_METADATA_RESOURCE_MAX 8
@@ -206,11 +207,6 @@ static bool has_signed_tokens(const char *uri)
     return false;
 }
 
-static bool is_hls_uri(const char *uri)
-{
-    return contains_ignore_case(uri, ".m3u8");
-}
-
 static bool is_dash_uri(const char *uri)
 {
     return contains_ignore_case(uri, ".mpd") || contains_ignore_case(uri, ".m4s");
@@ -301,9 +297,7 @@ static PlayerMediaFormat detect_media_format(const char *uri, const char *metada
 {
     bool segmented = false;
 
-    if (contains_ignore_case(metadata_or_mime, "application/vnd.apple.mpegurl") ||
-        contains_ignore_case(metadata_or_mime, "application/x-mpegurl") ||
-        is_hls_uri(uri))
+    if (ingress_hls_mime_matches(metadata_or_mime) || ingress_hls_uri_matches(uri))
     {
         if (likely_segmented)
             *likely_segmented = false;
@@ -563,6 +557,8 @@ static void populate_media_flags(PlayerMedia *media, bool likely_segmented)
     media->flags.is_http = is_http_like_uri(media->uri);
     media->flags.is_https = is_https_uri(media->uri);
     media->flags.is_hls = media->format == PLAYER_MEDIA_FORMAT_HLS;
+    media->flags.likely_live = media->flags.is_hls &&
+                               ingress_hls_live_hint(bilibili_uri, metadata);
     media->flags.is_signed = has_signed_tokens(media->uri);
     media->flags.is_bilibili = is_bilibili_source(bilibili_uri, metadata) ||
                                is_bilibili_source(media->original_uri, metadata);
