@@ -65,12 +65,12 @@ static bool should_show_video_view(const PlayerSnapshot *snapshot)
 
     switch (snapshot->state)
     {
-    case PLAYER_STATE_LOADING:
     case PLAYER_STATE_BUFFERING:
     case PLAYER_STATE_SEEKING:
     case PLAYER_STATE_PLAYING:
     case PLAYER_STATE_PAUSED:
         return true;
+    case PLAYER_STATE_LOADING:
     case PLAYER_STATE_IDLE:
     case PLAYER_STATE_STOPPED:
     case PLAYER_STATE_ERROR:

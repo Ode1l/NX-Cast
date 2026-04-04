@@ -118,7 +118,17 @@ static bool parse_request_line(const char *request,
     if (!request || !method || method_size == 0 || !raw_path || raw_path_size == 0)
         return false;
 
-    return sscanf(request, "%7s %255s", method, raw_path) == 2;
+    if (method_size == 0 || raw_path_size == 0)
+        return false;
+
+    char method_fmt[16];
+    char path_fmt[16];
+    snprintf(method_fmt, sizeof(method_fmt), "%%%zus", method_size - 1);
+    snprintf(path_fmt, sizeof(path_fmt), "%%%zus", raw_path_size - 1);
+
+    char format[40];
+    snprintf(format, sizeof(format), "%s %s", method_fmt, path_fmt);
+    return sscanf(request, format, method, raw_path) == 2;
 }
 
 static const char *find_header_end(const char *request, size_t request_len)
@@ -279,7 +289,7 @@ static void handle_client(int client_sock, const struct sockaddr_in *client_addr
     }
     request_buffer[request_size] = '\0';
 
-    char method[8];
+    char method[16];
     char raw_path[256];
     if (!parse_request_line(request_buffer, method, sizeof(method), raw_path, sizeof(raw_path)))
     {

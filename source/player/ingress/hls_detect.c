@@ -34,7 +34,9 @@ static bool contains_ignore_case(const char *haystack, const char *needle)
 
 bool ingress_hls_uri_matches(const char *uri)
 {
-    return contains_ignore_case(uri, ".m3u8") || contains_ignore_case(uri, "format=m3u8");
+    return contains_ignore_case(uri, ".m3u8") ||
+           contains_ignore_case(uri, "/playlist/m3u8") ||
+           contains_ignore_case(uri, "format=m3u8");
 }
 
 bool ingress_hls_mime_matches(const char *value)
@@ -55,6 +57,30 @@ bool ingress_hls_live_hint(const char *uri, const char *metadata)
            contains_ignore_case(metadata, " live ") ||
            contains_ignore_case(metadata, "live/") ||
            contains_ignore_case(metadata, "channel");
+}
+
+bool ingress_hls_local_proxy_uri(const char *uri)
+{
+    return contains_ignore_case(uri, "http://192.168.") ||
+           contains_ignore_case(uri, "http://10.") ||
+           contains_ignore_case(uri, "http://172.16.") ||
+           contains_ignore_case(uri, "http://172.17.") ||
+           contains_ignore_case(uri, "http://172.18.") ||
+           contains_ignore_case(uri, "http://172.19.") ||
+           contains_ignore_case(uri, "http://172.20.") ||
+           contains_ignore_case(uri, "http://172.21.") ||
+           contains_ignore_case(uri, "http://172.22.") ||
+           contains_ignore_case(uri, "http://172.23.") ||
+           contains_ignore_case(uri, "http://172.24.") ||
+           contains_ignore_case(uri, "http://172.25.") ||
+           contains_ignore_case(uri, "http://172.26.") ||
+           contains_ignore_case(uri, "http://172.27.") ||
+           contains_ignore_case(uri, "http://172.28.") ||
+           contains_ignore_case(uri, "http://172.29.") ||
+           contains_ignore_case(uri, "http://172.30.") ||
+           contains_ignore_case(uri, "http://172.31.") ||
+           contains_ignore_case(uri, "http://127.") ||
+           contains_ignore_case(uri, "http://localhost");
 }
 
 int ingress_hls_default_readahead_seconds(bool live_hint)

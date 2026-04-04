@@ -52,6 +52,7 @@ typedef struct
     bool is_http;
     bool is_https;
     bool is_hls;
+    bool is_local_proxy;
     bool likely_live;
     bool is_signed;
     bool is_bilibili;

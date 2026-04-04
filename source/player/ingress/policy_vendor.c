@@ -158,9 +158,19 @@ void policy_apply_vendor(PlayerMedia *media)
 
     policy_refresh_header_fields(media);
 
-    snprintf(media->format_hint,
-             sizeof(media->format_hint),
-             "%s-%s",
-             ingress_vendor_name(media->vendor),
-             vendor_format_suffix(media->format));
+    if (media->flags.is_hls && media->flags.is_local_proxy)
+    {
+        snprintf(media->format_hint,
+                 sizeof(media->format_hint),
+                 "%s-hls-local-proxy",
+                 ingress_vendor_name(media->vendor));
+    }
+    else
+    {
+        snprintf(media->format_hint,
+                 sizeof(media->format_hint),
+                 "%s-%s",
+                 ingress_vendor_name(media->vendor),
+                 vendor_format_suffix(media->format));
+    }
 }

@@ -71,7 +71,9 @@ PlayerMediaVendor ingress_detect_vendor(const char *uri, const char *metadata)
     static const char *const qq_video_needles[] = {
         "v.qq.com",
         "video.qq.com",
-        "qqvideo.tc.qq.com"
+        "qqvideo.tc.qq.com",
+        "video.dispatch.tc.qq.com",
+        "dispatch.tc.qq.com"
     };
     static const char *const cctv_needles[] = {
         "cctv",
@@ -117,7 +119,9 @@ PlayerMediaVendor ingress_detect_vendor_from_sender_ua(const char *sender_user_a
     static const char *const qq_video_needles[] = {
         "qqvideo",
         "qqlive",
-        "tencentvideo"
+        "tencentvideo",
+        "live4iphonerel",
+        "live4iphone"
     };
     static const char *const cctv_needles[] = {
         "yangshipin",

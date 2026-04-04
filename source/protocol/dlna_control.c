@@ -1,6 +1,7 @@
 #include "dlna_control.h"
 
 #include "log/log.h"
+#include "protocol/dlna/control/event_server.h"
 #include "protocol/dlna/control/soap_server.h"
 #include "protocol/dlna/description/scpd.h"
 #include "protocol/dlna/discovery/ssdp.h"
@@ -33,6 +34,14 @@ static bool dlna_http_dispatch(const HttpRequestContext *ctx,
                                     response,
                                     response_size,
                                     response_len))
+    {
+        return true;
+    }
+
+    if (event_server_try_handle_http(ctx,
+                                     response,
+                                     response_size,
+                                     response_len))
     {
         return true;
     }
@@ -84,6 +93,14 @@ bool dlna_control_start(void)
         return false;
     }
 
+    if (!event_server_start())
+    {
+        log_error("[dlna] Event control module failed to start.\n");
+        soap_server_stop();
+        scpd_stop();
+        return false;
+    }
+
     const HttpServerConfig httpConfig = {
         .port = g_dlnaHttpPort,
         .handler = dlna_http_dispatch,
@@ -93,6 +110,7 @@ bool dlna_control_start(void)
     if (!http_server_start(&httpConfig))
     {
         log_error("[dlna] HTTP server failed to start.\n");
+        event_server_stop();
         soap_server_stop();
         scpd_stop();
         return false;
@@ -102,6 +120,7 @@ bool dlna_control_start(void)
     {
         log_error("[dlna] SSDP responder failed to start.\n");
         http_server_stop();
+        event_server_stop();
         soap_server_stop();
         scpd_stop();
         return false;
@@ -119,6 +138,7 @@ void dlna_control_stop(void)
 
     ssdp_stop();
     http_server_stop();
+    event_server_stop();
     soap_server_stop();
     scpd_stop();
     g_dlnaRunning = false;

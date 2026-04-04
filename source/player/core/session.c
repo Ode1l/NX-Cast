@@ -13,6 +13,7 @@
 #define PLAYER_COMMAND_QUEUE_CAPACITY PLAYER_COMMAND_SLOT_COUNT
 #define PLAYER_THREAD_STACK_SIZE 0x8000
 #define PLAYER_THREAD_POLL_TIMEOUT_MS 50
+#define PLAYER_HLS_STARTUP_SEEK_GUARD_MS 5000
 
 typedef enum
 {
@@ -53,6 +54,8 @@ static Thread g_player_thread;
 static bool g_player_thread_started = false;
 static bool g_player_thread_running = false;
 static bool g_player_stop_requested = false;
+static bool g_pending_seek_active = false;
+static int g_pending_seek_ms = 0;
 
 static PlayerCommandSlot g_command_slots[PLAYER_COMMAND_SLOT_COUNT];
 static size_t g_command_queue[PLAYER_COMMAND_QUEUE_CAPACITY];
@@ -61,6 +64,31 @@ static size_t g_command_tail = 0;
 static size_t g_command_count = 0;
 
 static void player_thread_main(void *arg);
+
+static const char *player_state_name(PlayerState state)
+{
+    switch (state)
+    {
+    case PLAYER_STATE_IDLE:
+        return "IDLE";
+    case PLAYER_STATE_STOPPED:
+        return "STOPPED";
+    case PLAYER_STATE_LOADING:
+        return "LOADING";
+    case PLAYER_STATE_BUFFERING:
+        return "BUFFERING";
+    case PLAYER_STATE_SEEKING:
+        return "SEEKING";
+    case PLAYER_STATE_PLAYING:
+        return "PLAYING";
+    case PLAYER_STATE_PAUSED:
+        return "PAUSED";
+    case PLAYER_STATE_ERROR:
+        return "ERROR";
+    default:
+        return "UNKNOWN";
+    }
+}
 
 static bool backend_available(const BackendOps *backend)
 {
@@ -118,6 +146,8 @@ static void player_reset_command_queue_locked(void)
     g_command_head = 0;
     g_command_tail = 0;
     g_command_count = 0;
+    g_pending_seek_active = false;
+    g_pending_seek_ms = 0;
 }
 
 static void player_store_media_locked(bool has_media, const PlayerMedia *media)
@@ -339,6 +369,103 @@ static bool player_execute_command(PlayerCommandSlot *slot)
     return result;
 }
 
+static bool player_should_coalesce_seek_locked(int position_ms)
+{
+    (void)position_ms;
+
+    if (!g_has_current_media)
+        return false;
+
+    if (g_pending_seek_active)
+        return true;
+
+    if (g_snapshot.has_media &&
+        g_snapshot.media.flags.is_hls &&
+        g_snapshot.state == PLAYER_STATE_PLAYING &&
+        g_snapshot.position_ms >= 0 &&
+        g_snapshot.position_ms < PLAYER_HLS_STARTUP_SEEK_GUARD_MS)
+    {
+        return true;
+    }
+
+    switch (g_snapshot.state)
+    {
+    case PLAYER_STATE_LOADING:
+    case PLAYER_STATE_BUFFERING:
+    case PLAYER_STATE_SEEKING:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool player_maybe_dispatch_pending_seek(void)
+{
+    PlayerCommandSlot slot;
+    PlayerState state = PLAYER_STATE_IDLE;
+    int target_ms = 0;
+
+    memset(&slot, 0, sizeof(slot));
+
+    mutexLock(&g_player_mutex);
+    if (!g_pending_seek_active || !g_has_current_media)
+    {
+        if (!g_has_current_media)
+        {
+            g_pending_seek_active = false;
+            g_pending_seek_ms = 0;
+        }
+        mutexUnlock(&g_player_mutex);
+        return false;
+    }
+
+    state = g_snapshot.state;
+    switch (state)
+    {
+    case PLAYER_STATE_LOADING:
+    case PLAYER_STATE_BUFFERING:
+    case PLAYER_STATE_SEEKING:
+        mutexUnlock(&g_player_mutex);
+        return false;
+    case PLAYER_STATE_IDLE:
+    case PLAYER_STATE_STOPPED:
+    case PLAYER_STATE_ERROR:
+        g_pending_seek_active = false;
+        g_pending_seek_ms = 0;
+        mutexUnlock(&g_player_mutex);
+        return false;
+    default:
+        break;
+    }
+
+    if (g_snapshot.media.flags.is_hls &&
+        state == PLAYER_STATE_PLAYING &&
+        g_snapshot.position_ms >= 0 &&
+        g_snapshot.position_ms < PLAYER_HLS_STARTUP_SEEK_GUARD_MS)
+    {
+        mutexUnlock(&g_player_mutex);
+        return false;
+    }
+
+    if (!g_snapshot.seekable)
+    {
+        mutexUnlock(&g_player_mutex);
+        return false;
+    }
+
+    target_ms = g_pending_seek_ms;
+    g_pending_seek_active = false;
+    g_pending_seek_ms = 0;
+    mutexUnlock(&g_player_mutex);
+
+    slot.type = PLAYER_COMMAND_SEEK_MS;
+    slot.int_value = target_ms;
+    log_info("[player] applying coalesced seek_ms=%d state=%s\n",
+             target_ms,
+             player_state_name(state));
+    return player_execute_command(&slot);
+}
+
 static bool player_submit_command(PlayerCommandType type,
                                   const PlayerMedia *media,
                                   int int_value,
@@ -352,6 +479,26 @@ static bool player_submit_command(PlayerCommandType type,
 
     player_ensure_sync_primitives();
     mutexLock(&g_player_mutex);
+
+    if (type == PLAYER_COMMAND_SET_MEDIA || type == PLAYER_COMMAND_STOP)
+    {
+        g_pending_seek_active = false;
+        g_pending_seek_ms = 0;
+    }
+
+    if (type == PLAYER_COMMAND_SEEK_MS && player_should_coalesce_seek_locked(int_value))
+    {
+        bool replaced = g_pending_seek_active;
+        g_pending_seek_active = true;
+        g_pending_seek_ms = int_value;
+        log_info("[player] coalesced seek_ms=%d state=%s replaced=%d\n",
+                 int_value,
+                 player_state_name(g_snapshot.state),
+                 replaced ? 1 : 0);
+        mutexUnlock(&g_player_mutex);
+        return true;
+    }
+
     slot_index = player_acquire_slot_locked();
     if (slot_index < 0)
     {
@@ -418,6 +565,9 @@ static void player_thread_main(void *arg)
             g_backend->pump_events(PLAYER_THREAD_POLL_TIMEOUT_MS);
         else
             svcSleepThread((int64_t)PLAYER_THREAD_POLL_TIMEOUT_MS * 1000000LL);
+
+        if (player_maybe_dispatch_pending_seek())
+            continue;
     }
 
     mutexLock(&g_player_mutex);
@@ -603,7 +753,7 @@ bool player_set_uri_with_context(const char *uri, const char *metadata, const Pl
     if (!ingress_resolve_with_context(uri, metadata, ctx, &resolved))
         return false;
 
-    log_info("[player] resolve_media profile=%s vendor=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
+    log_info("[player] resolve_media profile=%s vendor=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d local_proxy=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
              ingress_profile_name(resolved.profile),
              ingress_vendor_name(resolved.vendor),
              ingress_format_name(resolved.format),
@@ -612,6 +762,7 @@ bool player_set_uri_with_context(const char *uri, const char *metadata, const Pl
              resolved.selected_from_metadata ? 1 : 0,
              resolved.metadata_candidate_count,
              resolved.flags.is_hls ? 1 : 0,
+             resolved.flags.is_local_proxy ? 1 : 0,
              resolved.flags.likely_live ? 1 : 0,
              resolved.flags.is_dash ? 1 : 0,
              resolved.flags.is_flv ? 1 : 0,

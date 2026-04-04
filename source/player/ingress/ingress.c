@@ -725,6 +725,8 @@ static void populate_media_flags(PlayerMedia *media, bool likely_segmented, Play
     media->flags.is_http = is_http_like_uri(media->uri);
     media->flags.is_https = is_https_uri(media->uri);
     media->flags.is_hls = media->format == PLAYER_MEDIA_FORMAT_HLS;
+    media->flags.is_local_proxy = media->flags.is_hls &&
+                                  ingress_hls_local_proxy_uri(resolved_uri);
     media->flags.likely_live = media->flags.is_hls &&
                                ingress_hls_live_hint(resolved_uri, metadata);
     media->flags.is_signed = has_signed_tokens(media->uri);

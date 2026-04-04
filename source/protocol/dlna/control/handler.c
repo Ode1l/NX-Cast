@@ -5,6 +5,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "event_server.h"
 #include "handler_internal.h"
 #include "log/log.h"
 #include "player/player.h"
@@ -247,6 +248,8 @@ static void soap_handler_on_player_event(const PlayerEvent *event, void *user)
     default:
         break;
     }
+
+    event_server_on_player_event(event);
 }
 
 static void sync_runtime_state_from_player_snapshot(void)

@@ -21,6 +21,10 @@
 #define SSDP_THREAD_STACK_SIZE 0x8000
 #define SSDP_PACKET_BUFFER_SIZE 1536
 
+static const char g_serviceTypeAvTransport[] = "urn:schemas-upnp-org:service:AVTransport:1";
+static const char g_serviceTypeRenderingControl[] = "urn:schemas-upnp-org:service:RenderingControl:1";
+static const char g_serviceTypeConnectionManager[] = "urn:schemas-upnp-org:service:ConnectionManager:1";
+
 #ifndef INET_ADDRSTRLEN
 #define INET_ADDRSTRLEN 16
 #endif
@@ -151,37 +155,13 @@ static bool get_header_value(const char *packet, const char *header, char *out, 
 }
 
 // Build and send a 200 OK response for an incoming M-SEARCH.
-static void respond_to_msearch(const char *st_value, const struct sockaddr_in *from)
+static void send_msearch_response(const char *st, const char *usn, const struct sockaddr_in *from)
 {
     if (g_ssdp.socket_fd < 0)
         return;
 
-    if (!st_value || st_value[0] == '\0')
+    if (!st || st[0] == '\0' || !usn || usn[0] == '\0')
         return;
-
-    // Reply only to known/expected ST values.
-    // This avoids echoing arbitrary payload back to network and keeps parser behavior bounded.
-    const char *st = NULL;
-    if (strcasecmp(st_value, "ssdp:all") == 0)
-        st = g_ssdp.config.device_type;
-    else if (strcasecmp(st_value, "upnp:rootdevice") == 0)
-        st = "upnp:rootdevice";
-    else if (strcasecmp(st_value, g_ssdp.config.device_type) == 0)
-        st = g_ssdp.config.device_type;
-    else if (strcasecmp(st_value, g_ssdp.config.uuid) == 0)
-        st = g_ssdp.config.uuid;
-    else
-        return;
-
-    char usn[256];
-    if (strcasecmp(st, "upnp:rootdevice") == 0)
-        snprintf(usn, sizeof(usn), "%s::upnp:rootdevice", g_ssdp.config.uuid);
-    else if (strcasecmp(st, g_ssdp.config.device_type) == 0 || strcasecmp(st, "ssdp:all") == 0)
-        snprintf(usn, sizeof(usn), "%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
-    else if (strcasecmp(st, g_ssdp.config.uuid) == 0)
-        snprintf(usn, sizeof(usn), "%s", g_ssdp.config.uuid);
-    else
-        snprintf(usn, sizeof(usn), "%s::%s", g_ssdp.config.uuid, st);
 
     char response[768];
     int len = snprintf(response, sizeof(response),
@@ -209,6 +189,72 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
 
     log_info("[ssdp] send packet to %s:%d st=%s bytes=%zd\n",
              inet_ntoa(from->sin_addr), ntohs(from->sin_port), st, sent);
+}
+
+static void respond_to_msearch(const char *st_value, const struct sockaddr_in *from)
+{
+    if (!st_value || st_value[0] == '\0')
+        return;
+
+    char root_usn[256];
+    char device_usn[256];
+    char avtransport_usn[256];
+    char renderingcontrol_usn[256];
+    char connectionmanager_usn[256];
+
+    snprintf(root_usn, sizeof(root_usn), "%s::upnp:rootdevice", g_ssdp.config.uuid);
+    snprintf(device_usn, sizeof(device_usn), "%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
+    snprintf(avtransport_usn, sizeof(avtransport_usn), "%s::%s", g_ssdp.config.uuid, g_serviceTypeAvTransport);
+    snprintf(renderingcontrol_usn, sizeof(renderingcontrol_usn), "%s::%s", g_ssdp.config.uuid, g_serviceTypeRenderingControl);
+    snprintf(connectionmanager_usn, sizeof(connectionmanager_usn), "%s::%s", g_ssdp.config.uuid, g_serviceTypeConnectionManager);
+
+    // Reply only to known/expected ST values.
+    if (strcasecmp(st_value, "ssdp:all") == 0)
+    {
+        send_msearch_response("upnp:rootdevice", root_usn, from);
+        send_msearch_response(g_ssdp.config.device_type, device_usn, from);
+        send_msearch_response(g_ssdp.config.uuid, g_ssdp.config.uuid, from);
+        send_msearch_response(g_serviceTypeAvTransport, avtransport_usn, from);
+        send_msearch_response(g_serviceTypeRenderingControl, renderingcontrol_usn, from);
+        send_msearch_response(g_serviceTypeConnectionManager, connectionmanager_usn, from);
+        return;
+    }
+
+    if (strcasecmp(st_value, "upnp:rootdevice") == 0)
+    {
+        send_msearch_response("upnp:rootdevice", root_usn, from);
+        return;
+    }
+
+    if (strcasecmp(st_value, g_ssdp.config.device_type) == 0)
+    {
+        send_msearch_response(g_ssdp.config.device_type, device_usn, from);
+        return;
+    }
+
+    if (strcasecmp(st_value, g_ssdp.config.uuid) == 0)
+    {
+        send_msearch_response(g_ssdp.config.uuid, g_ssdp.config.uuid, from);
+        return;
+    }
+
+    if (strcasecmp(st_value, g_serviceTypeAvTransport) == 0)
+    {
+        send_msearch_response(g_serviceTypeAvTransport, avtransport_usn, from);
+        return;
+    }
+
+    if (strcasecmp(st_value, g_serviceTypeRenderingControl) == 0)
+    {
+        send_msearch_response(g_serviceTypeRenderingControl, renderingcontrol_usn, from);
+        return;
+    }
+
+    if (strcasecmp(st_value, g_serviceTypeConnectionManager) == 0)
+    {
+        send_msearch_response(g_serviceTypeConnectionManager, connectionmanager_usn, from);
+        return;
+    }
 }
 
 // Basic parser that filters for SSDP discovery packets.

@@ -18,6 +18,12 @@ typedef enum
     AVTRANSPORT_ACTION_SEEK = 1u << 3
 } AvTransportActionMask;
 
+static bool g_tencent_position_log_valid = false;
+static int g_tencent_position_log_bucket = -1;
+static int g_tencent_position_log_duration_ms = -1;
+static bool g_tencent_position_log_seekable = false;
+static PlayerState g_tencent_position_log_state = PLAYER_STATE_IDLE;
+
 static const char *transport_state_from_player_state(PlayerState state)
 {
     switch (state)
@@ -43,6 +49,69 @@ static const char *transport_state_from_player_state(PlayerState state)
 static const char *transport_status_from_player_state(PlayerState state)
 {
     return state == PLAYER_STATE_ERROR ? "ERROR_OCCURRED" : "OK";
+}
+
+static const char *avtransport_player_state_name(PlayerState state)
+{
+    switch (state)
+    {
+    case PLAYER_STATE_IDLE:
+        return "IDLE";
+    case PLAYER_STATE_STOPPED:
+        return "STOPPED";
+    case PLAYER_STATE_LOADING:
+        return "LOADING";
+    case PLAYER_STATE_BUFFERING:
+        return "BUFFERING";
+    case PLAYER_STATE_SEEKING:
+        return "SEEKING";
+    case PLAYER_STATE_PLAYING:
+        return "PLAYING";
+    case PLAYER_STATE_PAUSED:
+        return "PAUSED";
+    case PLAYER_STATE_ERROR:
+        return "ERROR";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static void avtransport_maybe_log_position_detail(const PlayerSnapshot *snapshot,
+                                                  int position_ms,
+                                                  int duration_ms,
+                                                  const char *rel_time,
+                                                  const char *track_duration)
+{
+    int bucket;
+
+    if (!snapshot || !snapshot->has_media || snapshot->media.vendor != PLAYER_MEDIA_VENDOR_QQ_VIDEO)
+        return;
+
+    bucket = position_ms >= 0 ? (position_ms / 1000) : -1;
+    if (g_tencent_position_log_valid &&
+        bucket == g_tencent_position_log_bucket &&
+        duration_ms == g_tencent_position_log_duration_ms &&
+        snapshot->seekable == g_tencent_position_log_seekable &&
+        snapshot->state == g_tencent_position_log_state)
+    {
+        return;
+    }
+
+    g_tencent_position_log_valid = true;
+    g_tencent_position_log_bucket = bucket;
+    g_tencent_position_log_duration_ms = duration_ms;
+    g_tencent_position_log_seekable = snapshot->seekable;
+    g_tencent_position_log_state = snapshot->state;
+
+    log_info("[avtransport] position_detail vendor=%s state=%s seekable=%d rel_ms=%d dur_ms=%d rel=%s dur=%s hint=%s\n",
+             ingress_vendor_name(snapshot->media.vendor),
+             avtransport_player_state_name(snapshot->state),
+             snapshot->seekable ? 1 : 0,
+             position_ms,
+             duration_ms,
+             rel_time,
+             track_duration,
+             snapshot->media.format_hint[0] != '\0' ? snapshot->media.format_hint : "unknown");
 }
 
 static PlayerState sync_transport_state_from_player(void)
@@ -105,6 +174,8 @@ static unsigned int avtransport_current_actions(const PlayerSnapshot *snapshot)
     case PLAYER_STATE_BUFFERING:
     case PLAYER_STATE_SEEKING:
         actions |= AVTRANSPORT_ACTION_STOP;
+        if (snapshot->seekable)
+            actions |= AVTRANSPORT_ACTION_SEEK;
         break;
     case PLAYER_STATE_PLAYING:
         actions |= AVTRANSPORT_ACTION_PAUSE | AVTRANSPORT_ACTION_STOP;
@@ -535,16 +606,24 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
 
     if (g_soap_runtime_state.transport_uri[0] == '\0')
     {
-        soap_handler_set_fault(out, 701, "Transition not available");
-        return false;
+        log_info("[avtransport] stop noop reason=no-media\n");
+        snprintf(g_soap_runtime_state.transport_status,
+                 sizeof(g_soap_runtime_state.transport_status),
+                 "%s",
+                 "OK");
+        soap_handler_set_success(out, "");
+        return true;
     }
 
     avtransport_get_snapshot(&snapshot);
     sync_transport_state_from_player();
     actions = avtransport_current_actions(&snapshot);
 
-    if (snapshot.state == PLAYER_STATE_STOPPED)
+    if (snapshot.state == PLAYER_STATE_STOPPED || snapshot.state == PLAYER_STATE_IDLE || !snapshot.has_media)
     {
+        log_info("[avtransport] stop noop state=%s has_media=%d\n",
+                 avtransport_player_state_name(snapshot.state),
+                 snapshot.has_media ? 1 : 0);
         soap_handler_set_success(out, "");
         return true;
     }
@@ -679,7 +758,6 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
 bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char instance_id[32];
-
     if (!ctx || !out)
         return false;
 
@@ -687,10 +765,13 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
         return false;
 
     PlayerSnapshot snapshot;
+    bool has_snapshot = false;
     int position_ms = 0;
     int duration_ms = 0;
 
-    if (player_get_snapshot(&snapshot))
+    memset(&snapshot, 0, sizeof(snapshot));
+    has_snapshot = player_get_snapshot(&snapshot);
+    if (has_snapshot)
     {
         position_ms = snapshot.position_ms;
         duration_ms = snapshot.duration_ms;
@@ -712,6 +793,9 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
     snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "%s", duration_str);
     snprintf(g_soap_runtime_state.transport_rel_time, sizeof(g_soap_runtime_state.transport_rel_time), "%s", rel_time_str);
     snprintf(g_soap_runtime_state.transport_abs_time, sizeof(g_soap_runtime_state.transport_abs_time), "%s", abs_time_str);
+
+    if (has_snapshot)
+        avtransport_maybe_log_position_detail(&snapshot, position_ms, duration_ms, rel_time_str, duration_str);
 
     char *escaped_uri = avtransport_escape_alloc(g_soap_runtime_state.transport_uri, out);
     char *escaped_metadata = avtransport_escape_alloc(g_soap_runtime_state.transport_uri_metadata, out);
@@ -778,20 +862,41 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
-    avtransport_get_snapshot(&snapshot);
-    sync_transport_state_from_player();
-    actions = avtransport_current_actions(&snapshot);
-
-    if (!avtransport_action_available(actions, AVTRANSPORT_ACTION_SEEK))
-    {
-        soap_handler_set_fault(out, 701, "Transition not available");
-        return false;
-    }
-
     int target_ms = 0;
     if (!parse_hhmmss_to_ms(target, &target_ms))
     {
         soap_handler_set_fault(out, 402, "Invalid Args");
+        return false;
+    }
+
+    avtransport_get_snapshot(&snapshot);
+    sync_transport_state_from_player();
+    actions = avtransport_current_actions(&snapshot);
+
+    if (target_ms == 0 &&
+        (snapshot.state == PLAYER_STATE_LOADING ||
+         snapshot.state == PLAYER_STATE_BUFFERING ||
+         snapshot.state == PLAYER_STATE_SEEKING ||
+         (!snapshot.seekable && snapshot.position_ms == 0)))
+    {
+        log_info("[avtransport] seek noop target_ms=0 state=%s seekable=%d\n",
+                 avtransport_player_state_name(snapshot.state),
+                 snapshot.seekable ? 1 : 0);
+        snprintf(g_soap_runtime_state.transport_state,
+                 sizeof(g_soap_runtime_state.transport_state),
+                 "%s",
+                 transport_state_from_player_state(player_get_state()));
+        snprintf(g_soap_runtime_state.transport_status,
+                 sizeof(g_soap_runtime_state.transport_status),
+                 "%s",
+                 "OK");
+        soap_handler_set_success(out, "");
+        return true;
+    }
+
+    if (!avtransport_action_available(actions, AVTRANSPORT_ACTION_SEEK))
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
