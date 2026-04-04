@@ -10,6 +10,34 @@
 #include "log/log.h"
 #include "player/player.h"
 
+#define SOAP_DEFAULT_SINK_PROTOCOL_INFO \
+    "http-get:*:audio/mpeg:*," \
+    "http-get:*:audio/mp4:*," \
+    "http-get:*:audio/x-m4a:*," \
+    "http-get:*:audio/aac:*," \
+    "http-get:*:audio/flac:*," \
+    "http-get:*:audio/x-flac:*," \
+    "http-get:*:audio/wav:*," \
+    "http-get:*:audio/x-wav:*," \
+    "http-get:*:audio/ogg:*," \
+    "http-get:*:audio/vnd.dlna.adts:*," \
+    "http-get:*:audio/x-mpegurl:*," \
+    "http-get:*:audio/mpegurl:*," \
+    "http-get:*:video/mp4:*," \
+    "http-get:*:video/x-m4v:*," \
+    "http-get:*:video/mpeg:*," \
+    "http-get:*:video/mp2t:*," \
+    "http-get:*:video/quicktime:*," \
+    "http-get:*:video/webm:*," \
+    "http-get:*:video/x-matroska:*," \
+    "http-get:*:video/x-msvideo:*," \
+    "http-get:*:video/vnd.dlna.mpeg-tts:*," \
+    "http-get:*:video/m3u8:*," \
+    "http-get:*:video/flv:*," \
+    "http-get:*:video/x-flv:*," \
+    "http-get:*:application/vnd.apple.mpegurl:*," \
+    "http-get:*:application/x-mpegURL:*"
+
 SoapRuntimeState g_soap_runtime_state;
 
 static void clip_for_log(const char *input, char *output, size_t output_size)
@@ -535,8 +563,10 @@ void soap_handler_init(void)
     g_soap_runtime_state.volume = 20;
     g_soap_runtime_state.mute = false;
     g_soap_runtime_state.source_protocol_info[0] = '\0';
-    snprintf(g_soap_runtime_state.sink_protocol_info, sizeof(g_soap_runtime_state.sink_protocol_info),
-             "http-get:*:audio/mpeg:*,http-get:*:audio/mp4:*,http-get:*:video/mp4:*");
+    snprintf(g_soap_runtime_state.sink_protocol_info,
+             sizeof(g_soap_runtime_state.sink_protocol_info),
+             "%s",
+             SOAP_DEFAULT_SINK_PROTOCOL_INFO);
     snprintf(g_soap_runtime_state.connection_ids, sizeof(g_soap_runtime_state.connection_ids), "0");
     g_soap_runtime_state.initialized = true;
 

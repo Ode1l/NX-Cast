@@ -62,11 +62,7 @@ void policy_apply_request_context(PlayerMedia *media, const PlayerOpenContext *c
         return;
 
     if (ctx->sender_user_agent[0] != '\0')
-    {
         snprintf(media->sender_user_agent, sizeof(media->sender_user_agent), "%s", ctx->sender_user_agent);
-        if (media->flags.is_local_proxy)
-            snprintf(media->user_agent, sizeof(media->user_agent), "%s", ctx->sender_user_agent);
-    }
 
     if (ctx->referrer[0] != '\0' && ingress_vendor_is_sensitive(media->vendor))
         snprintf(media->referrer, sizeof(media->referrer), "%s", ctx->referrer);

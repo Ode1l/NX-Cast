@@ -19,7 +19,7 @@ typedef struct
     int volume;
     bool mute;
     char source_protocol_info[256];
-    char sink_protocol_info[512];
+    char sink_protocol_info[2048];
     char connection_ids[16];
     bool initialized;
 } SoapRuntimeState;
