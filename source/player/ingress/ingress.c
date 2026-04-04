@@ -5,6 +5,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "log/log.h"
 #include "player/ingress/hls.h"
 #include "player/ingress/vendor.h"
 #include "player/policy.h"
@@ -21,6 +22,91 @@ typedef struct
     bool exact_uri_match;
     int score;
 } PlayerMetadataResource;
+
+static void ingress_clip_for_log(const char *input, char *output, size_t output_size)
+{
+    size_t length;
+
+    if (!output || output_size == 0)
+        return;
+
+    output[0] = '\0';
+    if (!input || input[0] == '\0')
+        return;
+
+    length = strlen(input);
+    if (length + 1 <= output_size)
+    {
+        memcpy(output, input, length + 1);
+        return;
+    }
+
+    if (output_size <= 4)
+    {
+        size_t copy_len = output_size - 1;
+        memcpy(output, input, copy_len);
+        output[copy_len] = '\0';
+        return;
+    }
+
+    memcpy(output, input, output_size - 4);
+    memcpy(output + output_size - 4, "...", 4);
+}
+
+static void ingress_log_metadata_summary(const char *uri, const char *metadata, PlayerMediaVendor vendor)
+{
+    char clipped_uri[256];
+    char clipped_metadata[512];
+
+    if (!ingress_vendor_is_sensitive(vendor))
+        return;
+
+    ingress_clip_for_log(uri, clipped_uri, sizeof(clipped_uri));
+    ingress_clip_for_log(metadata, clipped_metadata, sizeof(clipped_metadata));
+
+    log_info("[player-ingress] source_detail vendor=%s uri=%s metadata_len=%zu metadata_snippet=%s\n",
+             ingress_vendor_name(vendor),
+             clipped_uri[0] != '\0' ? clipped_uri : "<empty>",
+             metadata ? strlen(metadata) : 0U,
+             clipped_metadata[0] != '\0' ? clipped_metadata : "<empty>");
+}
+
+static void ingress_log_metadata_candidates(const PlayerMetadataResource *resources, int count,
+                                            PlayerMediaVendor vendor, int baseline_score,
+                                            int best_index, int best_score)
+{
+    if (!ingress_vendor_is_sensitive(vendor) || !resources || count <= 0)
+        return;
+
+    log_info("[player-ingress] metadata_candidates vendor=%s count=%d baseline_score=%d best_index=%d best_score=%d\n",
+             ingress_vendor_name(vendor),
+             count,
+             baseline_score,
+             best_index,
+             best_score);
+
+    for (int i = 0; i < count; ++i)
+    {
+        char clipped_uri[256];
+        char clipped_protocol[192];
+        char clipped_mime[96];
+
+        ingress_clip_for_log(resources[i].uri, clipped_uri, sizeof(clipped_uri));
+        ingress_clip_for_log(resources[i].protocol_info, clipped_protocol, sizeof(clipped_protocol));
+        ingress_clip_for_log(resources[i].mime_type, clipped_mime, sizeof(clipped_mime));
+
+        log_info("[player-ingress] metadata_res vendor=%s index=%d score=%d exact=%d format=%s segmented=%d mime=%s protocol_info=%s uri=%s\n",
+                 ingress_vendor_name(vendor),
+                 i,
+                 resources[i].score,
+                 resources[i].exact_uri_match ? 1 : 0,
+                 ingress_format_name(resources[i].format),
+                 resources[i].likely_segmented ? 1 : 0,
+                 clipped_mime[0] != '\0' ? clipped_mime : "<none>",
+                 clipped_protocol[0] != '\0' ? clipped_protocol : "<none>",
+                 clipped_uri[0] != '\0' ? clipped_uri : "<empty>");
+    }
+}
 
 static bool starts_with_ignore_case(const char *value, const char *prefix)
 {
@@ -179,6 +265,39 @@ static bool is_http_like_uri(const char *uri)
 static bool is_https_uri(const char *uri)
 {
     return starts_with_ignore_case(uri, "https://");
+}
+
+static bool uri_host_is_ipv4_literal(const char *uri)
+{
+    const char *host;
+    const char *end;
+    int dot_count = 0;
+
+    if (!is_http_like_uri(uri))
+        return false;
+
+    host = strstr(uri, "://");
+    if (!host)
+        return false;
+    host += 3;
+    end = host;
+    while (*end && *end != ':' && *end != '/' && *end != '?' && *end != '#')
+        ++end;
+    if (end == host)
+        return false;
+
+    for (const char *cursor = host; cursor < end; ++cursor)
+    {
+        if (*cursor == '.')
+        {
+            ++dot_count;
+            continue;
+        }
+        if (!isdigit((unsigned char)*cursor))
+            return false;
+    }
+
+    return dot_count == 3;
 }
 
 static bool has_signed_tokens(const char *uri)
@@ -575,7 +694,30 @@ static int parse_metadata_resources(const char *metadata, const char *current_ur
     return count;
 }
 
-static void populate_media_flags(PlayerMedia *media, bool likely_segmented)
+static PlayerMediaVendor resolve_vendor(const char *resolved_uri, const char *original_uri,
+                                        const char *metadata, PlayerMediaVendor vendor_hint)
+{
+    PlayerMediaVendor vendor;
+    bool bare_ip_uri;
+
+    bare_ip_uri = uri_host_is_ipv4_literal(resolved_uri) ||
+                  (original_uri && original_uri[0] != '\0' && uri_host_is_ipv4_literal(original_uri));
+
+    if (bare_ip_uri && vendor_hint != PLAYER_MEDIA_VENDOR_UNKNOWN)
+        vendor = vendor_hint;
+    else
+    {
+        vendor = ingress_detect_vendor(resolved_uri, metadata);
+        if (vendor == PLAYER_MEDIA_VENDOR_UNKNOWN && original_uri && original_uri[0] != '\0')
+            vendor = ingress_detect_vendor(original_uri, metadata);
+        if (vendor == PLAYER_MEDIA_VENDOR_UNKNOWN)
+            vendor = vendor_hint;
+    }
+
+    return vendor;
+}
+
+static void populate_media_flags(PlayerMedia *media, bool likely_segmented, PlayerMediaVendor vendor_hint)
 {
     const char *metadata = media->metadata[0] != '\0' ? media->metadata : NULL;
     const char *resolved_uri = media->uri[0] != '\0' ? media->uri : media->original_uri;
@@ -586,9 +728,7 @@ static void populate_media_flags(PlayerMedia *media, bool likely_segmented)
     media->flags.likely_live = media->flags.is_hls &&
                                ingress_hls_live_hint(resolved_uri, metadata);
     media->flags.is_signed = has_signed_tokens(media->uri);
-    media->vendor = ingress_detect_vendor(resolved_uri, metadata);
-    if (media->vendor == PLAYER_MEDIA_VENDOR_UNKNOWN && media->original_uri[0] != '\0')
-        media->vendor = ingress_detect_vendor(media->original_uri, metadata);
+    media->vendor = resolve_vendor(resolved_uri, media->original_uri, metadata, vendor_hint);
     media->flags.is_bilibili = media->vendor == PLAYER_MEDIA_VENDOR_BILIBILI;
     media->flags.is_dash = media->format == PLAYER_MEDIA_FORMAT_DASH;
     media->flags.is_flv = media->format == PLAYER_MEDIA_FORMAT_FLV;
@@ -639,8 +779,17 @@ static void select_metadata_resource_if_better(const char *input_uri, PlayerMedi
     if (best_index < 0)
         return;
 
+    ingress_log_metadata_candidates(resources, resource_count, vendor, baseline_score, best_index, best_score);
+
     if (best_score < baseline_score && !resources[best_index].exact_uri_match)
+    {
+        log_info("[player-ingress] metadata_select vendor=%s selected=0 reason=baseline-better baseline_score=%d best_score=%d best_index=%d\n",
+                 ingress_vendor_name(vendor),
+                 baseline_score,
+                 best_score,
+                 best_index);
         return;
+    }
 
     snprintf(out->uri, sizeof(out->uri), "%s", resources[best_index].uri);
     snprintf(out->protocol_info, sizeof(out->protocol_info), "%s", resources[best_index].protocol_info);
@@ -649,6 +798,16 @@ static void select_metadata_resource_if_better(const char *input_uri, PlayerMedi
     out->format = resources[best_index].format;
     out->selected_from_metadata = true;
     *likely_segmented = resources[best_index].likely_segmented;
+
+    {
+        char clipped_uri[256];
+        ingress_clip_for_log(out->uri, clipped_uri, sizeof(clipped_uri));
+        log_info("[player-ingress] metadata_select vendor=%s selected=1 best_index=%d best_score=%d selected_uri=%s\n",
+                 ingress_vendor_name(vendor),
+                 best_index,
+                 best_score,
+                 clipped_uri[0] != '\0' ? clipped_uri : "<empty>");
+    }
 }
 
 void ingress_reset(PlayerMedia *media)
@@ -725,8 +884,15 @@ const char *ingress_format_name(PlayerMediaFormat format)
 
 bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 {
+    return ingress_resolve_with_context(uri, metadata, NULL, out);
+}
+
+bool ingress_resolve_with_context(const char *uri, const char *metadata, const PlayerOpenContext *ctx, PlayerMedia *out)
+{
     bool likely_segmented = false;
     PlayerMediaVendor input_vendor;
+    PlayerMediaVendor detail_vendor;
+    PlayerMediaVendor sender_vendor = PLAYER_MEDIA_VENDOR_UNKNOWN;
 
     if (!uri || uri[0] == '\0' || !out)
         return false;
@@ -739,10 +905,17 @@ bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 
     detect_metadata_mime(metadata, out->mime_type, sizeof(out->mime_type));
     out->format = detect_media_format(out->uri, out->mime_type[0] != '\0' ? out->mime_type : metadata, &likely_segmented);
-    input_vendor = ingress_detect_vendor(uri, metadata);
+    if (ctx)
+        sender_vendor = ingress_detect_vendor_from_sender_ua(ctx->sender_user_agent);
+
+    input_vendor = resolve_vendor(uri, NULL, metadata, sender_vendor);
+    detail_vendor = input_vendor;
     select_metadata_resource_if_better(uri, out, &likely_segmented, input_vendor);
 
-    populate_media_flags(out, likely_segmented);
+    populate_media_flags(out, likely_segmented, sender_vendor);
+    if (detail_vendor == PLAYER_MEDIA_VENDOR_UNKNOWN)
+        detail_vendor = out->vendor;
+    ingress_log_metadata_summary(uri, metadata, detail_vendor);
     snprintf(out->format_hint, sizeof(out->format_hint), "%s", ingress_format_name(out->format));
 
     if (ingress_vendor_is_sensitive(out->vendor))
@@ -756,6 +929,7 @@ bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 
     policy_apply_hls(out);
     policy_apply_vendor(out);
+    policy_apply_request_context(out, ctx);
 
     return true;
 }

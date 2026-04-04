@@ -593,9 +593,14 @@ void player_deinit(void)
 
 bool player_set_uri(const char *uri, const char *metadata)
 {
+    return player_set_uri_with_context(uri, metadata, NULL);
+}
+
+bool player_set_uri_with_context(const char *uri, const char *metadata, const PlayerOpenContext *ctx)
+{
     PlayerMedia resolved;
 
-    if (!ingress_resolve(uri, metadata, &resolved))
+    if (!ingress_resolve_with_context(uri, metadata, ctx, &resolved))
         return false;
 
     log_info("[player] resolve_media profile=%s vendor=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",

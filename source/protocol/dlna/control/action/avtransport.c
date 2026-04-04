@@ -222,6 +222,25 @@ static bool avtransport_write_int_element(SoapActionOutput *out, const char *tag
     return false;
 }
 
+static void avtransport_append_named_header(char *out, size_t out_size, const char *name, const char *value)
+{
+    size_t used;
+
+    if (!out || out_size == 0 || !name || !value || value[0] == '\0')
+        return;
+
+    used = strlen(out);
+    if (used >= out_size - 1)
+        return;
+
+    snprintf(out + used,
+             out_size - used,
+             "%s%s: %s",
+             used > 0 ? "," : "",
+             name,
+             value);
+}
+
 static void format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
 {
     if (!out || out_size == 0)
@@ -301,9 +320,13 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     char instance_id[32];
     char *uri = NULL;
     char *metadata = NULL;
+    PlayerOpenContext open_ctx;
+    char sender_ua_short[96];
 
     if (!ctx || !out)
         return false;
+
+    memset(&open_ctx, 0, sizeof(open_ctx));
 
     uri = malloc(sizeof(g_soap_runtime_state.transport_uri));
     metadata = malloc(sizeof(g_soap_runtime_state.transport_uri_metadata));
@@ -332,7 +355,43 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     metadata[0] = '\0';
     soap_handler_extract_xml_value(ctx->body, "CurrentURIMetaData", metadata, sizeof(g_soap_runtime_state.transport_uri_metadata));
 
-    if (!player_set_uri(uri, metadata))
+    (void)soap_handler_try_http_header(ctx, "User-Agent", open_ctx.sender_user_agent, sizeof(open_ctx.sender_user_agent));
+    (void)soap_handler_try_http_header(ctx, "Cookie", open_ctx.cookie, sizeof(open_ctx.cookie));
+    (void)soap_handler_try_http_header(ctx, "Referer", open_ctx.referrer, sizeof(open_ctx.referrer));
+    (void)soap_handler_try_http_header(ctx, "Origin", open_ctx.origin, sizeof(open_ctx.origin));
+
+    {
+        char header_value[128];
+
+        if (soap_handler_try_http_header(ctx, "X-Requested-With", header_value, sizeof(header_value)))
+            avtransport_append_named_header(open_ctx.extra_headers, sizeof(open_ctx.extra_headers), "X-Requested-With", header_value);
+        if (soap_handler_try_http_header(ctx, "X-Playback-Session-Id", header_value, sizeof(header_value)))
+            avtransport_append_named_header(open_ctx.extra_headers, sizeof(open_ctx.extra_headers), "X-Playback-Session-Id", header_value);
+    }
+
+    sender_ua_short[0] = '\0';
+    if (open_ctx.sender_user_agent[0] != '\0')
+    {
+        size_t sender_len = strlen(open_ctx.sender_user_agent);
+        size_t copy_len = sender_len < sizeof(sender_ua_short) - 1 ? sender_len : sizeof(sender_ua_short) - 1;
+        memcpy(sender_ua_short, open_ctx.sender_user_agent, copy_len);
+        sender_ua_short[copy_len] = '\0';
+        if (copy_len < sender_len && copy_len >= 3)
+        {
+            sender_ua_short[copy_len - 3] = '.';
+            sender_ua_short[copy_len - 2] = '.';
+            sender_ua_short[copy_len - 1] = '.';
+        }
+    }
+
+    log_info("[avtransport] source_context sender_ua=%s cookie=%d extra_headers=%d referrer=%s origin=%s\n",
+             sender_ua_short[0] != '\0' ? sender_ua_short : "<none>",
+             open_ctx.cookie[0] != '\0' ? 1 : 0,
+             open_ctx.extra_headers[0] != '\0' ? 1 : 0,
+             open_ctx.referrer[0] != '\0' ? open_ctx.referrer : "<none>",
+             open_ctx.origin[0] != '\0' ? open_ctx.origin : "<none>");
+
+    if (!player_set_uri_with_context(uri, metadata, &open_ctx))
     {
         free(uri);
         free(metadata);

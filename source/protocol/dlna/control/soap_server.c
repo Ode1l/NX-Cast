@@ -683,7 +683,8 @@ bool soap_server_try_handle_http(const char *method,
     SoapActionContext ctx = {
         .service_name = service_name,
         .action_name = action_name,
-        .body = body
+        .body = body,
+        .request = request
     };
 
     SoapRouteResult *result = calloc(1, sizeof(*result));

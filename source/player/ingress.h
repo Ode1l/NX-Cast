@@ -7,7 +7,9 @@
 #define PLAYER_MEDIA_USER_AGENT_MAX 192
 #define PLAYER_MEDIA_REFERRER_MAX 192
 #define PLAYER_MEDIA_ORIGIN_MAX 128
-#define PLAYER_MEDIA_HEADER_FIELDS_MAX 512
+#define PLAYER_MEDIA_HEADER_FIELDS_MAX 1536
+#define PLAYER_MEDIA_COOKIE_MAX 768
+#define PLAYER_MEDIA_EXTRA_HEADERS_MAX 512
 #define PLAYER_MEDIA_PROBE_INFO_MAX 32
 #define PLAYER_MEDIA_MIME_TYPE_MAX 96
 #define PLAYER_MEDIA_PROTOCOL_INFO_MAX 192
@@ -63,6 +65,15 @@ typedef struct
 
 typedef struct
 {
+    char sender_user_agent[PLAYER_MEDIA_USER_AGENT_MAX];
+    char referrer[PLAYER_MEDIA_REFERRER_MAX];
+    char origin[PLAYER_MEDIA_ORIGIN_MAX];
+    char cookie[PLAYER_MEDIA_COOKIE_MAX];
+    char extra_headers[PLAYER_MEDIA_EXTRA_HEADERS_MAX];
+} PlayerOpenContext;
+
+typedef struct
+{
     char uri[PLAYER_MEDIA_URI_MAX];
     char original_uri[PLAYER_MEDIA_URI_MAX];
     char metadata[PLAYER_MEDIA_METADATA_MAX];
@@ -75,8 +86,11 @@ typedef struct
     int network_timeout_seconds;
     int demuxer_readahead_seconds;
     char user_agent[PLAYER_MEDIA_USER_AGENT_MAX];
+    char sender_user_agent[PLAYER_MEDIA_USER_AGENT_MAX];
     char referrer[PLAYER_MEDIA_REFERRER_MAX];
     char origin[PLAYER_MEDIA_ORIGIN_MAX];
+    char cookie[PLAYER_MEDIA_COOKIE_MAX];
+    char extra_headers[PLAYER_MEDIA_EXTRA_HEADERS_MAX];
     char header_fields[PLAYER_MEDIA_HEADER_FIELDS_MAX];
     char probe_info[PLAYER_MEDIA_PROBE_INFO_MAX];
     char mime_type[PLAYER_MEDIA_MIME_TYPE_MAX];
@@ -87,6 +101,7 @@ typedef struct
 
 void ingress_reset(PlayerMedia *media);
 bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out);
+bool ingress_resolve_with_context(const char *uri, const char *metadata, const PlayerOpenContext *ctx, PlayerMedia *out);
 const char *ingress_profile_name(PlayerMediaProfile profile);
 const char *ingress_vendor_name(PlayerMediaVendor vendor);
 const char *ingress_format_name(PlayerMediaFormat format);

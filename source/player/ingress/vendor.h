@@ -5,4 +5,5 @@
 #include "player/ingress.h"
 
 PlayerMediaVendor ingress_detect_vendor(const char *uri, const char *metadata);
+PlayerMediaVendor ingress_detect_vendor_from_sender_ua(const char *sender_user_agent);
 bool ingress_vendor_is_sensitive(PlayerMediaVendor vendor);

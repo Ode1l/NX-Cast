@@ -94,6 +94,25 @@ static void xml_decode_in_place(char *value)
     *dst = '\0';
 }
 
+static void trim_whitespace_in_place(char *value)
+{
+    size_t len;
+    size_t start = 0;
+
+    if (!value)
+        return;
+
+    len = strlen(value);
+    while (len > 0 && isspace((unsigned char)value[len - 1]))
+        value[--len] = '\0';
+
+    while (value[start] && isspace((unsigned char)value[start]))
+        ++start;
+
+    if (start > 0)
+        memmove(value, value + start, strlen(value + start) + 1);
+}
+
 bool soap_handler_xml_escape(const char *value, char *out, size_t out_size)
 {
     if (!out || out_size == 0)
@@ -451,6 +470,54 @@ bool soap_handler_try_arg(const SoapActionContext *ctx, const char *arg_name, ch
               arg_name,
               clipped);
     return true;
+}
+
+bool soap_handler_try_http_header(const SoapActionContext *ctx, const char *header_name, char *buf, size_t buf_size)
+{
+    size_t header_len;
+    const char *cursor;
+
+    if (!ctx || !ctx->request || !header_name || !buf || buf_size == 0)
+        return false;
+
+    buf[0] = '\0';
+    header_len = strlen(header_name);
+    cursor = ctx->request;
+
+    while (*cursor)
+    {
+        const char *line_end = strstr(cursor, "\r\n");
+        size_t line_len = line_end ? (size_t)(line_end - cursor) : strlen(cursor);
+
+        if (line_len == 0)
+            break;
+
+        if (line_len > header_len + 1 &&
+            strncasecmp(cursor, header_name, header_len) == 0 &&
+            cursor[header_len] == ':')
+        {
+            const char *value_start = cursor + header_len + 1;
+            size_t copy_len;
+
+            while (*value_start == ' ' || *value_start == '\t')
+                ++value_start;
+
+            copy_len = line_end ? (size_t)(line_end - value_start) : strlen(value_start);
+            if (copy_len >= buf_size)
+                copy_len = buf_size - 1;
+
+            memcpy(buf, value_start, copy_len);
+            buf[copy_len] = '\0';
+            trim_whitespace_in_place(buf);
+            return buf[0] != '\0';
+        }
+
+        if (!line_end)
+            break;
+        cursor = line_end + 2;
+    }
+
+    return false;
 }
 
 void soap_handler_init(void)

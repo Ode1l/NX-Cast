@@ -23,6 +23,7 @@ void player_set_event_callback(PlayerEventCallback callback, void *user);
 
 bool player_set_media(const PlayerMedia *media);
 bool player_set_uri(const char *uri, const char *metadata);
+bool player_set_uri_with_context(const char *uri, const char *metadata, const PlayerOpenContext *ctx);
 bool player_play(void);
 bool player_pause(void);
 bool player_stop(void);

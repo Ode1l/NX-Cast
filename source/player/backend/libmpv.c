@@ -12,6 +12,7 @@
 
 #ifdef HAVE_LIBMPV
 #include "player/backend/libmpv_hls.h"
+#include "player/ingress/vendor.h"
 #include <mpv/client.h>
 #include <mpv/render.h>
 
@@ -85,6 +86,7 @@ static bool libmpv_get_string_locked(const char *name, char *out, size_t out_siz
 static void libmpv_request_log_level_locked(const char *level);
 static bool libmpv_set_string_property_locked(const char *name, const char *value);
 static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media);
+static void libmpv_log_runtime_overrides_detail_locked(const PlayerMedia *media);
 static void libmpv_process_event_locked(const mpv_event *event);
 static void libmpv_track_hls_startup_locked(PlayerState previous_state);
 static void libmpv_sync_properties_locked(bool emit_events);
@@ -598,28 +600,56 @@ static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force)
         snprintf(current_demuxer, sizeof(current_demuxer), "%s", "?");
     (void)libmpv_get_flag_locked("demuxer-via-network", &via_network);
 
-    log_info("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s media_hint=%s hls_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
-             reason ? reason : "refresh",
-             g_hls_mode ? "hls" : "default",
-             ingress_format_name(g_media.format),
-             g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown",
-             libmpv_hls_runtime_kind_name(g_hls_kind),
-             libmpv_state_name(g_state),
-             g_media_loaded ? 1 : 0,
-             g_load_in_progress ? 1 : 0,
-             g_paused_for_cache ? 1 : 0,
-             g_seeking ? 1 : 0,
-             g_stop_mode ? 1 : 0,
-             g_core_idle ? 1 : 0,
-             g_playback_abort ? 1 : 0,
-             g_seekable ? 1 : 0,
-             via_network ? 1 : 0,
-             g_position_ms,
-             g_duration_ms,
-             g_cache_duration_ms,
-             (long long)g_cache_speed_bps,
-             file_format,
-             current_demuxer);
+    if (g_state == PLAYER_STATE_ERROR)
+    {
+        log_error("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s media_hint=%s hls_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
+                  reason ? reason : "refresh",
+                  g_hls_mode ? "hls" : "default",
+                  ingress_format_name(g_media.format),
+                  g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown",
+                  libmpv_hls_runtime_kind_name(g_hls_kind),
+                  libmpv_state_name(g_state),
+                  g_media_loaded ? 1 : 0,
+                  g_load_in_progress ? 1 : 0,
+                  g_paused_for_cache ? 1 : 0,
+                  g_seeking ? 1 : 0,
+                  g_stop_mode ? 1 : 0,
+                  g_core_idle ? 1 : 0,
+                  g_playback_abort ? 1 : 0,
+                  g_seekable ? 1 : 0,
+                  via_network ? 1 : 0,
+                  g_position_ms,
+                  g_duration_ms,
+                  g_cache_duration_ms,
+                  (long long)g_cache_speed_bps,
+                  file_format,
+                  current_demuxer);
+    }
+    else
+    {
+        log_info("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s media_hint=%s hls_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
+                 reason ? reason : "refresh",
+                 g_hls_mode ? "hls" : "default",
+                 ingress_format_name(g_media.format),
+                 g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown",
+                 libmpv_hls_runtime_kind_name(g_hls_kind),
+                 libmpv_state_name(g_state),
+                 g_media_loaded ? 1 : 0,
+                 g_load_in_progress ? 1 : 0,
+                 g_paused_for_cache ? 1 : 0,
+                 g_seeking ? 1 : 0,
+                 g_stop_mode ? 1 : 0,
+                 g_core_idle ? 1 : 0,
+                 g_playback_abort ? 1 : 0,
+                 g_seekable ? 1 : 0,
+                 via_network ? 1 : 0,
+                 g_position_ms,
+                 g_duration_ms,
+                 g_cache_duration_ms,
+                 (long long)g_cache_speed_bps,
+                 file_format,
+                 current_demuxer);
+    }
 
     if (g_hls_mode)
         libmpv_log_stream_details_locked(reason);
@@ -711,6 +741,38 @@ static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media
              media->probe_info[0] != '\0' ? media->probe_info : "auto",
              media->header_fields[0] != '\0' ? 1 : 0,
              media->mpv_load_options[0] != '\0' ? 1 : 0);
+    libmpv_log_runtime_overrides_detail_locked(media);
+}
+
+static void libmpv_log_runtime_overrides_detail_locked(const PlayerMedia *media)
+{
+    char clipped_headers[384];
+    char clipped_load_opts[320];
+    char clipped_user_agent[224];
+    char clipped_referrer[224];
+    char clipped_origin[160];
+    bool has_cookie = false;
+
+    if (!media || !ingress_vendor_is_sensitive(media->vendor))
+        return;
+
+    libmpv_clip_for_log(media->header_fields, clipped_headers, sizeof(clipped_headers));
+    libmpv_clip_for_log(media->mpv_load_options, clipped_load_opts, sizeof(clipped_load_opts));
+    libmpv_clip_for_log(media->user_agent, clipped_user_agent, sizeof(clipped_user_agent));
+    libmpv_clip_for_log(media->referrer, clipped_referrer, sizeof(clipped_referrer));
+    libmpv_clip_for_log(media->origin, clipped_origin, sizeof(clipped_origin));
+
+    if (strstr(media->header_fields, "Cookie:") || strstr(media->header_fields, "cookie:"))
+        has_cookie = true;
+
+    log_info("[player-libmpv] runtime_overrides_detail vendor=%s user_agent=%s referrer=%s origin=%s headers=%s cookie=%d load_opts=%s\n",
+             ingress_vendor_name(media->vendor),
+             clipped_user_agent[0] != '\0' ? clipped_user_agent : "<empty>",
+             clipped_referrer[0] != '\0' ? clipped_referrer : "<empty>",
+             clipped_origin[0] != '\0' ? clipped_origin : "<empty>",
+             clipped_headers[0] != '\0' ? clipped_headers : "<empty>",
+             has_cookie ? 1 : 0,
+             clipped_load_opts[0] != '\0' ? clipped_load_opts : "<empty>");
 }
 
 static bool libmpv_load_uri_locked(const PlayerMedia *media, const char *uri, bool paused)

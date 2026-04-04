@@ -13,6 +13,7 @@ typedef struct
     const char *service_name;
     const char *action_name;
     const char *body;
+    const char *request;
 } SoapActionContext;
 
 typedef struct
