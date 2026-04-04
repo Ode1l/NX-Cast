@@ -1,8 +1,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
-#define SOAP_HANDLER_OUTPUT_MAX 16384
+#define SOAP_HANDLER_OUTPUT_MAX 98304
 #define SOAP_HTTP_BODY_MAX (SOAP_HANDLER_OUTPUT_MAX + 1024)
 #define SOAP_TRANSPORT_URI_MAX 4096
 #define SOAP_TRANSPORT_METADATA_MAX 8192
@@ -19,7 +20,9 @@ typedef struct
     bool success;
     int fault_code;
     const char *fault_description;
-    char output_xml[SOAP_HANDLER_OUTPUT_MAX];
+    char *output_xml;
+    size_t output_len;
+    size_t output_cap;
 } SoapActionOutput;
 
 typedef bool (*SoapActionHandler)(const SoapActionContext *ctx, SoapActionOutput *out);

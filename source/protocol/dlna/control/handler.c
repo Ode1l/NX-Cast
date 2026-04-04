@@ -259,7 +259,7 @@ void soap_handler_set_fault(SoapActionOutput *out, int code, const char *descrip
     out->success = false;
     out->fault_code = code;
     out->fault_description = description;
-    out->output_xml[0] = '\0';
+    soap_writer_clear(out);
 }
 
 void soap_handler_set_success(SoapActionOutput *out, const char *xml)
@@ -272,15 +272,19 @@ void soap_handler_set_success(SoapActionOutput *out, const char *xml)
     out->fault_description = NULL;
 
     if (!xml)
-    {
-        out->output_xml[0] = '\0';
         return;
-    }
 
     if (xml == out->output_xml)
         return;
 
-    snprintf(out->output_xml, sizeof(out->output_xml), "%s", xml);
+    soap_writer_clear(out);
+    if (!soap_writer_append_raw(out, xml))
+    {
+        out->success = false;
+        out->fault_code = 501;
+        out->fault_description = "Action Failed";
+        soap_writer_clear(out);
+    }
 }
 
 bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out, size_t out_size)

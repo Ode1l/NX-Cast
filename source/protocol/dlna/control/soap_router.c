@@ -4,6 +4,7 @@
 #include <strings.h>
 
 #include "log/log.h"
+#include "soap_writer.h"
 
 static const char g_serviceTypeAvTransport[] = "urn:schemas-upnp-org:service:AVTransport:1";
 static const char g_serviceTypeRenderingControl[] = "urn:schemas-upnp-org:service:RenderingControl:1";
@@ -84,6 +85,6 @@ bool soap_router_route_action(const SoapActionContext *ctx, SoapRouteResult *res
     result->output.success = false;
     result->output.fault_code = 401;
     result->output.fault_description = "Invalid Action";
-    result->output.output_xml[0] = '\0';
+    soap_writer_clear(&result->output);
     return false;
 }

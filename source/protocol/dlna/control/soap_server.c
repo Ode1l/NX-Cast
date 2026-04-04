@@ -8,6 +8,7 @@
 
 #include "soap_router.h"
 #include "handler.h"
+#include "soap_writer.h"
 #include "log/log.h"
 
 static bool g_running = false;
@@ -705,6 +706,7 @@ bool soap_server_try_handle_http(const char *method,
         {
             log_error("[soap] failed to build success response for %s#%s\n",
                       service_name, action_name);
+            soap_writer_dispose(&result->output);
             free(result);
             return false;
         }
@@ -714,6 +716,7 @@ bool soap_server_try_handle_http(const char *method,
         log_info("[soap] assert_http_200 service=%s action=%s handler=%s\n",
                  service_name, action_name,
                  result->handler_name ? result->handler_name : "(none)");
+        soap_writer_dispose(&result->output);
         free(result);
         return true;
     }
@@ -741,6 +744,7 @@ bool soap_server_try_handle_http(const char *method,
     {
         log_error("[soap] failed to build fault response for %s#%s\n",
                   service_name, action_name);
+        soap_writer_dispose(&result->output);
         free(result);
         return false;
     }
@@ -751,6 +755,7 @@ bool soap_server_try_handle_http(const char *method,
              service_name, action_name,
              result->handler_name ? result->handler_name : "(none)",
              fault_code);
+    soap_writer_dispose(&result->output);
     free(result);
     return true;
 }

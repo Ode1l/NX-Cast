@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "handler.h"
+#include "soap_writer.h"
 
 typedef struct
 {

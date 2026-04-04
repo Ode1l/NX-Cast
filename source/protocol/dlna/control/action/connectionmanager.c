@@ -21,18 +21,15 @@ bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActio
         return false;
     }
 
-    int len = snprintf(out->output_xml, sizeof(out->output_xml),
-                       "<Source>%s</Source>"
-                       "<Sink>%s</Sink>",
-                       escaped_source,
-                       escaped_sink);
-    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
+    soap_writer_clear(out);
+    if (!soap_writer_element_raw(out, "Source", escaped_source) ||
+        !soap_writer_element_raw(out, "Sink", escaped_sink))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, out->output_xml);
+    soap_handler_set_success(out, NULL);
     return true;
 }
 
@@ -43,16 +40,14 @@ bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, 
     if (!out)
         return false;
 
-    int len = snprintf(out->output_xml, sizeof(out->output_xml),
-                       "<ConnectionIDs>%s</ConnectionIDs>",
-                       g_soap_runtime_state.connection_ids);
-    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
+    soap_writer_clear(out);
+    if (!soap_writer_element_text(out, "ConnectionIDs", g_soap_runtime_state.connection_ids))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, out->output_xml);
+    soap_handler_set_success(out, NULL);
     return true;
 }
 
@@ -82,21 +77,19 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
         return false;
     }
 
-    int len = snprintf(out->output_xml, sizeof(out->output_xml),
-                       "<RcsID>0</RcsID>"
-                       "<AVTransportID>0</AVTransportID>"
-                       "<ProtocolInfo>%s</ProtocolInfo>"
-                       "<PeerConnectionManager></PeerConnectionManager>"
-                       "<PeerConnectionID>-1</PeerConnectionID>"
-                       "<Direction>Input</Direction>"
-                       "<Status>OK</Status>",
-                       escaped_protocol_info);
-    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
+    soap_writer_clear(out);
+    if (!soap_writer_element_int(out, "RcsID", 0) ||
+        !soap_writer_element_int(out, "AVTransportID", 0) ||
+        !soap_writer_element_raw(out, "ProtocolInfo", escaped_protocol_info) ||
+        !soap_writer_element_text(out, "PeerConnectionManager", "") ||
+        !soap_writer_element_int(out, "PeerConnectionID", -1) ||
+        !soap_writer_element_text(out, "Direction", "Input") ||
+        !soap_writer_element_text(out, "Status", "OK"))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, out->output_xml);
+    soap_handler_set_success(out, NULL);
     return true;
 }

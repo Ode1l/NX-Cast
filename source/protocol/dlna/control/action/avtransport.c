@@ -198,6 +198,30 @@ static char *avtransport_escape_alloc(const char *value, SoapActionOutput *out)
     return escaped;
 }
 
+static bool avtransport_write_text_element(SoapActionOutput *out, const char *tag, const char *value)
+{
+    if (soap_writer_element_text(out, tag, value))
+        return true;
+    soap_handler_set_fault(out, 501, "Action Failed");
+    return false;
+}
+
+static bool avtransport_write_raw_element(SoapActionOutput *out, const char *tag, const char *value)
+{
+    if (soap_writer_element_raw(out, tag, value))
+        return true;
+    soap_handler_set_fault(out, 501, "Action Failed");
+    return false;
+}
+
+static bool avtransport_write_int_element(SoapActionOutput *out, const char *tag, long value)
+{
+    if (soap_writer_element_int(out, tag, value))
+        return true;
+    soap_handler_set_fault(out, 501, "Action Failed");
+    return false;
+}
+
 static void format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
 {
     if (!out || out_size == 0)
@@ -504,20 +528,15 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
     PlayerState player_state = sync_transport_state_from_player();
     const char *transport_state = transport_state_from_player_state(player_state);
 
-    int len = snprintf(out->output_xml, sizeof(out->output_xml),
-                       "<CurrentTransportState>%s</CurrentTransportState>"
-                       "<CurrentTransportStatus>%s</CurrentTransportStatus>"
-                       "<CurrentSpeed>%s</CurrentSpeed>",
-                       transport_state,
-                       g_soap_runtime_state.transport_status,
-                       g_soap_runtime_state.transport_speed);
-    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
+    soap_writer_clear(out);
+    if (!avtransport_write_text_element(out, "CurrentTransportState", transport_state) ||
+        !avtransport_write_text_element(out, "CurrentTransportStatus", g_soap_runtime_state.transport_status) ||
+        !avtransport_write_text_element(out, "CurrentSpeed", g_soap_runtime_state.transport_speed))
     {
-        soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, out->output_xml);
+    soap_handler_set_success(out, NULL);
     return true;
 }
 
@@ -527,8 +546,6 @@ bool avtransport_get_current_transport_actions(const SoapActionContext *ctx, Soa
     PlayerSnapshot snapshot;
     unsigned int actions;
     char action_list[64];
-    int len;
-
     if (!ctx || !out)
         return false;
 
@@ -540,16 +557,13 @@ bool avtransport_get_current_transport_actions(const SoapActionContext *ctx, Soa
     actions = avtransport_current_actions(&snapshot);
     avtransport_format_actions(actions, action_list, sizeof(action_list));
 
-    len = snprintf(out->output_xml, sizeof(out->output_xml),
-                   "<Actions>%s</Actions>",
-                   action_list);
-    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
+    soap_writer_clear(out);
+    if (!avtransport_write_text_element(out, "Actions", action_list))
     {
-        soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
-    soap_handler_set_success(out, out->output_xml);
+    soap_handler_set_success(out, NULL);
     return true;
 }
 
@@ -584,28 +598,22 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
         return false;
     }
 
-    int len = snprintf(out->output_xml, sizeof(out->output_xml),
-                       "<NrTracks>1</NrTracks>"
-                       "<MediaDuration>%s</MediaDuration>"
-                       "<CurrentURI>%s</CurrentURI>"
-                       "<CurrentURIMetaData>%s</CurrentURIMetaData>"
-                       "<NextURI></NextURI>"
-                       "<NextURIMetaData></NextURIMetaData>"
-                       "<PlayMedium>NETWORK</PlayMedium>"
-                       "<RecordMedium>NOT_IMPLEMENTED</RecordMedium>"
-                       "<WriteStatus>NOT_IMPLEMENTED</WriteStatus>",
-                       duration_str,
-                       escaped_uri,
-                       escaped_metadata);
+    soap_writer_clear(out);
+    bool ok = avtransport_write_int_element(out, "NrTracks", 1) &&
+              avtransport_write_text_element(out, "MediaDuration", duration_str) &&
+              avtransport_write_raw_element(out, "CurrentURI", escaped_uri) &&
+              avtransport_write_raw_element(out, "CurrentURIMetaData", escaped_metadata) &&
+              avtransport_write_text_element(out, "NextURI", "") &&
+              avtransport_write_text_element(out, "NextURIMetaData", "") &&
+              avtransport_write_text_element(out, "PlayMedium", "NETWORK") &&
+              avtransport_write_text_element(out, "RecordMedium", "NOT_IMPLEMENTED") &&
+              avtransport_write_text_element(out, "WriteStatus", "NOT_IMPLEMENTED");
     free(escaped_uri);
     free(escaped_metadata);
-    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
-    {
-        soap_handler_set_fault(out, 501, "Action Failed");
+    if (!ok)
         return false;
-    }
 
-    soap_handler_set_success(out, out->output_xml);
+    soap_handler_set_success(out, NULL);
     return true;
 }
 
@@ -655,29 +663,21 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
         return false;
     }
 
-    int len = snprintf(out->output_xml, sizeof(out->output_xml),
-                       "<Track>1</Track>"
-                       "<TrackDuration>%s</TrackDuration>"
-                       "<TrackMetaData>%s</TrackMetaData>"
-                       "<TrackURI>%s</TrackURI>"
-                       "<RelTime>%s</RelTime>"
-                       "<AbsTime>%s</AbsTime>"
-                       "<RelCount>0</RelCount>"
-                       "<AbsCount>0</AbsCount>",
-                       duration_str,
-                       escaped_metadata,
-                       escaped_uri,
-                       rel_time_str,
-                       abs_time_str);
+    soap_writer_clear(out);
+    bool ok = avtransport_write_int_element(out, "Track", 1) &&
+              avtransport_write_text_element(out, "TrackDuration", duration_str) &&
+              avtransport_write_raw_element(out, "TrackMetaData", escaped_metadata) &&
+              avtransport_write_raw_element(out, "TrackURI", escaped_uri) &&
+              avtransport_write_text_element(out, "RelTime", rel_time_str) &&
+              avtransport_write_text_element(out, "AbsTime", abs_time_str) &&
+              avtransport_write_int_element(out, "RelCount", 0) &&
+              avtransport_write_int_element(out, "AbsCount", 0);
     free(escaped_uri);
     free(escaped_metadata);
-    if (len < 0 || (size_t)len >= sizeof(out->output_xml))
-    {
-        soap_handler_set_fault(out, 501, "Action Failed");
+    if (!ok)
         return false;
-    }
 
-    soap_handler_set_success(out, out->output_xml);
+    soap_handler_set_success(out, NULL);
     return true;
 }
 
