@@ -15,6 +15,9 @@
 #include "player/ingress/vendor.h"
 #include <mpv/client.h>
 #include <mpv/render.h>
+#ifdef HAVE_MPV_RENDER_DK3D
+#include <mpv/render_dk3d.h>
+#endif
 
 #define PLAYER_LIBMPV_URI_MAX 1024
 #define PLAYER_LIBMPV_METADATA_MAX 2048
@@ -29,6 +32,11 @@
 #define PLAYER_LIBMPV_PLAYBACK_STALL_MS 3000
 #define PLAYER_LIBMPV_PLAYBACK_STALL_REPEAT_MS 5000
 #define PLAYER_LIBMPV_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+#define PLAYER_LIBMPV_DEFAULT_AO "hos"
+#define PLAYER_LIBMPV_FALLBACK_AO "null"
+#define PLAYER_LIBMPV_DEFAULT_HWDEC "nvtegra"
+#define PLAYER_LIBMPV_FALLBACK_HWDEC "no"
+#define PLAYER_LIBMPV_DEFAULT_HWDEC_CODECS "mpeg1video,mpeg2video,mpeg4,vc1,wmv3,h264,hevc,vp8,vp9,mjpeg"
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 
 static Mutex g_state_mutex;
@@ -80,6 +88,8 @@ static bool g_hls_startup_reported = false;
 static PlayerMedia g_media;
 static char g_uri[PLAYER_LIBMPV_URI_MAX];
 static char g_metadata[PLAYER_LIBMPV_METADATA_MAX];
+static char g_requested_ao[24];
+static char g_requested_hwdec[32];
 static volatile bool g_render_update_pending = false;
 
 static void libmpv_clip_for_log(const char *input, char *output, size_t output_size);
@@ -91,8 +101,10 @@ static void libmpv_append_option_string(char *options, size_t options_size, cons
 static bool libmpv_get_int64_locked(const char *name, int64_t *out);
 static bool libmpv_get_string_locked(const char *name, char *out, size_t out_size);
 static void libmpv_request_log_level_locked(const char *level);
+static bool libmpv_set_option_string_logged_locked(const char *name, const char *value);
 static bool libmpv_set_string_property_locked(const char *name, const char *value);
 static bool libmpv_set_flag_locked(const char *name, bool value);
+static void libmpv_log_backend_runtime_locked(const char *reason);
 static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media);
 static void libmpv_log_runtime_overrides_detail_locked(const PlayerMedia *media);
 static void libmpv_process_event_locked(const mpv_event *event);
@@ -187,11 +199,13 @@ static void libmpv_process_event_locked(const mpv_event *event)
         g_file_loaded_ms = libmpv_now_ms();
         log_info("[player-libmpv] event FILE_LOADED load_elapsed_ms=%llu\n",
                  (unsigned long long)(g_load_started_ms == 0 ? 0 : (libmpv_now_ms() - g_load_started_ms)));
+        libmpv_log_backend_runtime_locked("FILE_LOADED");
         libmpv_maybe_log_diagnostics_locked("FILE_LOADED", true);
         break;
     case MPV_EVENT_PLAYBACK_RESTART:
         log_info("[player-libmpv] event PLAYBACK_RESTART startup_elapsed_ms=%llu\n",
                  (unsigned long long)(g_load_started_ms == 0 ? 0 : (libmpv_now_ms() - g_load_started_ms)));
+        libmpv_log_backend_runtime_locked("PLAYBACK_RESTART");
         libmpv_maybe_log_diagnostics_locked("PLAYBACK_RESTART", true);
         break;
     case MPV_EVENT_END_FILE:
@@ -551,6 +565,26 @@ static void libmpv_request_log_level_locked(const char *level)
                  mpv_error_string(rc));
 }
 
+static bool libmpv_set_option_string_logged_locked(const char *name, const char *value)
+{
+    int rc;
+
+    if (!g_mpv || !name || !value)
+        return false;
+
+    rc = mpv_set_option_string(g_mpv, name, value);
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] set_option %s=%s failed: %s\n",
+                 name,
+                 value[0] != '\0' ? value : "<empty>",
+                 mpv_error_string(rc));
+        return false;
+    }
+
+    return true;
+}
+
 static bool libmpv_set_string_property_locked(const char *name, const char *value)
 {
     int rc;
@@ -584,6 +618,42 @@ static bool libmpv_set_flag_locked(const char *name, bool value)
         return false;
     }
     return true;
+}
+
+static void libmpv_log_backend_runtime_locked(const char *reason)
+{
+    char current_ao[64];
+    char current_vo[64];
+    char hwdec_current[64];
+
+    current_ao[0] = '\0';
+    current_vo[0] = '\0';
+    hwdec_current[0] = '\0';
+
+    if (!libmpv_get_string_locked("current-ao", current_ao, sizeof(current_ao)))
+        snprintf(current_ao, sizeof(current_ao), "%s", "?");
+    if (!libmpv_get_string_locked("current-vo", current_vo, sizeof(current_vo)))
+        snprintf(current_vo, sizeof(current_vo), "%s", "?");
+    if (!libmpv_get_string_locked("hwdec-current", hwdec_current, sizeof(hwdec_current)))
+        snprintf(hwdec_current, sizeof(hwdec_current), "%s", "?");
+
+    log_info("[player-libmpv] backend_runtime reason=%s requested_ao=%s current_ao=%s current_vo=%s requested_hwdec=%s hwdec_current=%s render_path=sw deko3d_header=%d nvtegra_header=%d\n",
+             reason ? reason : "refresh",
+             g_requested_ao[0] != '\0' ? g_requested_ao : "?",
+             current_ao[0] != '\0' ? current_ao : "?",
+             current_vo[0] != '\0' ? current_vo : "?",
+             g_requested_hwdec[0] != '\0' ? g_requested_hwdec : "?",
+             hwdec_current[0] != '\0' ? hwdec_current : "?",
+#ifdef HAVE_MPV_RENDER_DK3D
+             1,
+#else
+             0,
+#endif
+#ifdef HAVE_NVTEGRA_HWCONTEXT
+             1);
+#else
+             0);
+#endif
 }
 
 static bool libmpv_set_double_locked(const char *name, double value)
@@ -1277,6 +1347,8 @@ static bool libmpv_init(void)
     g_playback_stall_log_ms = 0;
     g_hls_startup_reported = false;
     g_render_update_pending = false;
+    memset(g_requested_ao, 0, sizeof(g_requested_ao));
+    memset(g_requested_hwdec, 0, sizeof(g_requested_hwdec));
     ingress_reset(&g_media);
 
     g_mpv = mpv_create();
@@ -1287,24 +1359,42 @@ static bool libmpv_init(void)
         return false;
     }
 
-    mpv_set_option_string(g_mpv, "config", "no");
-    mpv_set_option_string(g_mpv, "terminal", "no");
-    mpv_set_option_string(g_mpv, "idle", "yes");
-    mpv_set_option_string(g_mpv, "input-default-bindings", "no");
-    mpv_set_option_string(g_mpv, "input-vo-keyboard", "no");
-    mpv_set_option_string(g_mpv, "osc", "no");
-    mpv_set_option_string(g_mpv, "audio-display", "no");
-    mpv_set_option_string(g_mpv, "ao", "null");
-    mpv_set_option_string(g_mpv, "vo", "libmpv");
-    mpv_set_option_string(g_mpv, "network-timeout", PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS);
-    mpv_set_option_string(g_mpv, "user-agent", PLAYER_LIBMPV_DEFAULT_USER_AGENT);
-    mpv_set_option_string(g_mpv, "hls-bitrate", "max");
-    mpv_set_option_string(g_mpv, "demuxer-seekable-cache", "yes");
-    mpv_set_option_string(g_mpv, "demuxer-readahead-secs", PLAYER_LIBMPV_DEMUXER_READAHEAD_SECONDS);
-    mpv_set_option_string(g_mpv, "demuxer-lavf-analyzeduration", "0.4");
-    mpv_set_option_string(g_mpv, "demuxer-lavf-probescore", "24");
+    libmpv_set_option_string_logged_locked("config", "no");
+    libmpv_set_option_string_logged_locked("terminal", "no");
+    libmpv_set_option_string_logged_locked("idle", "yes");
+    libmpv_set_option_string_logged_locked("input-default-bindings", "no");
+    libmpv_set_option_string_logged_locked("input-vo-keyboard", "no");
+    libmpv_set_option_string_logged_locked("osc", "no");
+    libmpv_set_option_string_logged_locked("audio-display", "no");
+    libmpv_set_option_string_logged_locked("audio-channels", "stereo");
+    libmpv_set_option_string_logged_locked("vd-lavc-dr", "yes");
+    if (libmpv_set_option_string_logged_locked("ao", PLAYER_LIBMPV_DEFAULT_AO))
+        snprintf(g_requested_ao, sizeof(g_requested_ao), "%s", PLAYER_LIBMPV_DEFAULT_AO);
+    else
+    {
+        (void)libmpv_set_option_string_logged_locked("ao", PLAYER_LIBMPV_FALLBACK_AO);
+        snprintf(g_requested_ao, sizeof(g_requested_ao), "%s", PLAYER_LIBMPV_FALLBACK_AO);
+    }
+    libmpv_set_option_string_logged_locked("vo", "libmpv");
+    if (libmpv_set_option_string_logged_locked("hwdec", PLAYER_LIBMPV_DEFAULT_HWDEC))
+    {
+        snprintf(g_requested_hwdec, sizeof(g_requested_hwdec), "%s", PLAYER_LIBMPV_DEFAULT_HWDEC);
+        (void)libmpv_set_option_string_logged_locked("hwdec-codecs", PLAYER_LIBMPV_DEFAULT_HWDEC_CODECS);
+    }
+    else
+    {
+        (void)libmpv_set_option_string_logged_locked("hwdec", PLAYER_LIBMPV_FALLBACK_HWDEC);
+        snprintf(g_requested_hwdec, sizeof(g_requested_hwdec), "%s", PLAYER_LIBMPV_FALLBACK_HWDEC);
+    }
+    libmpv_set_option_string_logged_locked("network-timeout", PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS);
+    libmpv_set_option_string_logged_locked("user-agent", PLAYER_LIBMPV_DEFAULT_USER_AGENT);
+    libmpv_set_option_string_logged_locked("hls-bitrate", "max");
+    libmpv_set_option_string_logged_locked("demuxer-seekable-cache", "yes");
+    libmpv_set_option_string_logged_locked("demuxer-readahead-secs", PLAYER_LIBMPV_DEMUXER_READAHEAD_SECONDS);
+    libmpv_set_option_string_logged_locked("demuxer-lavf-analyzeduration", "0.4");
+    libmpv_set_option_string_logged_locked("demuxer-lavf-probescore", "24");
     // Step 1 focuses on protocol compatibility before CA bundle plumbing exists.
-    mpv_set_option_string(g_mpv, "tls-verify", "no");
+    libmpv_set_option_string_logged_locked("tls-verify", "no");
 
     int rc = mpv_initialize(g_mpv);
     if (rc < 0)
@@ -1333,13 +1423,26 @@ static bool libmpv_init(void)
     libmpv_set_double_locked("volume", (double)g_volume);
     libmpv_set_flag_locked("mute", g_mute);
     libmpv_sync_properties_locked(false);
+    libmpv_log_backend_runtime_locked("init");
     libmpv_emit_event_locked(PLAYER_EVENT_STATE_CHANGED);
     libmpv_emit_event_locked(PLAYER_EVENT_VOLUME_CHANGED);
     libmpv_emit_event_locked(PLAYER_EVENT_MUTE_CHANGED);
     mutexUnlock(&g_state_mutex);
 
-    log_info("[player-libmpv] init mode=render-api ao=null vo=libmpv net_timeout=%ss tls_verify=no\n",
-             PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS);
+    log_info("[player-libmpv] init mode=render-api ao=%s vo=libmpv hwdec=%s net_timeout=%ss tls_verify=no render_path=sw deko3d_header=%d nvtegra_header=%d\n",
+             g_requested_ao[0] != '\0' ? g_requested_ao : PLAYER_LIBMPV_FALLBACK_AO,
+             g_requested_hwdec[0] != '\0' ? g_requested_hwdec : PLAYER_LIBMPV_FALLBACK_HWDEC,
+             PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS,
+#ifdef HAVE_MPV_RENDER_DK3D
+             1,
+#else
+             0,
+#endif
+#ifdef HAVE_NVTEGRA_HWCONTEXT
+             1);
+#else
+             0);
+#endif
     return true;
 }
 
@@ -1386,6 +1489,8 @@ static void libmpv_deinit(void)
     g_hls_startup_reported = false;
     g_render_update_pending = false;
     g_event_sink = NULL;
+    memset(g_requested_ao, 0, sizeof(g_requested_ao));
+    memset(g_requested_hwdec, 0, sizeof(g_requested_hwdec));
     ingress_reset(&g_media);
     g_has_media = false;
     mutexUnlock(&g_state_mutex);

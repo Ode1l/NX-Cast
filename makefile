@@ -85,10 +85,20 @@ LIBS	:= -lnx
 PKG_CONFIG	?= pkg-config
 MPV_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
 MPV_FOUND := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exists mpv >/dev/null 2>&1 && echo 1)
+MPV_RENDER_DK3D_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_dk3d.h" && echo 1)
+FFMPEG_NVTEGRA_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/libavutil/hwcontext_nvtegra.h" && echo 1)
 
 ifeq ($(MPV_FOUND),1)
 CFLAGS	+=	-DHAVE_LIBMPV
 LIBS	+= $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs mpv)
+endif
+
+ifeq ($(MPV_RENDER_DK3D_HEADER_FOUND),1)
+CFLAGS	+=	-DHAVE_MPV_RENDER_DK3D
+endif
+
+ifeq ($(FFMPEG_NVTEGRA_HEADER_FOUND),1)
+CFLAGS	+=	-DHAVE_NVTEGRA_HWCONTEXT
 endif
 
 #---------------------------------------------------------------------------------
