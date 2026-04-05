@@ -330,6 +330,14 @@ source/player/
 
 `player` 对外接口保持尽量小，但必须完整覆盖 DMR 控制需求。
 
+当前公开接口已经收敛成 5 类能力：
+
+1. 生命周期：`init / deinit`
+2. 命令：`set_uri[_with_context] / play / pause / stop / seek / volume / mute`
+3. 状态读取：`snapshot / state / position / duration / volume / mute / seekable`
+4. 事件：`set_event_callback`
+5. 渲染挂接：`video_attach_* / video_render_* / video_detach`
+
 当前最小接口：
 
 ```c
@@ -339,6 +347,8 @@ void player_deinit(void);
 void player_set_event_callback(PlayerEventCallback callback, void *user);
 
 bool player_set_uri(const char *uri, const char *metadata);
+bool player_set_uri_with_context(const char *uri, const char *metadata,
+                                 const PlayerOpenContext *ctx);
 bool player_play(void);
 bool player_pause(void);
 bool player_stop(void);
@@ -346,26 +356,27 @@ bool player_seek_ms(int position_ms);
 bool player_set_volume(int volume_0_100);
 bool player_set_mute(bool mute);
 
+bool player_get_snapshot(PlayerSnapshot *out);
 int player_get_position_ms(void);
 int player_get_duration_ms(void);
 int player_get_volume(void);
 bool player_get_mute(void);
+bool player_is_seekable(void);
 PlayerState player_get_state(void);
 ```
 
 接口约束：
 
 1. `SetURI` 只负责切换媒体，不自动播放
-2. `Play` 只在当前 URI 已存在时有效
-3. `Pause` 只对 `PLAYING` 有意义
+2. `player` 对外不再暴露完整 `PlayerMedia`，只暴露 `PlayerMediaSummary`
+3. `PlayerOpenContext` 只保留 sender 请求上下文，不暴露 ingress/policy 内部结构
 4. `Seek` 采用毫秒作为内部统一单位
 5. `Volume` 使用 `0..100`
 
 后续可选扩展：
 
 1. `player_set_rate()`
-2. `player_get_media_info()`
-3. `player_get_last_error()`
+2. `player_get_last_error()`
 
 ---
 

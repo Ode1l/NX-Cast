@@ -7,49 +7,15 @@
 #include <strings.h>
 
 #include "../handler_internal.h"
+#include "../transport_runtime.h"
 #include "log/log.h"
 #include "player/player.h"
-
-typedef enum
-{
-    AVTRANSPORT_ACTION_PLAY = 1u << 0,
-    AVTRANSPORT_ACTION_STOP = 1u << 1,
-    AVTRANSPORT_ACTION_PAUSE = 1u << 2,
-    AVTRANSPORT_ACTION_SEEK = 1u << 3
-} AvTransportActionMask;
 
 static bool g_tencent_position_log_valid = false;
 static int g_tencent_position_log_bucket = -1;
 static int g_tencent_position_log_duration_ms = -1;
 static bool g_tencent_position_log_seekable = false;
 static PlayerState g_tencent_position_log_state = PLAYER_STATE_IDLE;
-
-static const char *transport_state_from_player_state(PlayerState state)
-{
-    switch (state)
-    {
-    case PLAYER_STATE_IDLE:
-        return "NO_MEDIA_PRESENT";
-    case PLAYER_STATE_PLAYING:
-        return "PLAYING";
-    case PLAYER_STATE_PAUSED:
-        return "PAUSED_PLAYBACK";
-    case PLAYER_STATE_LOADING:
-    case PLAYER_STATE_BUFFERING:
-    case PLAYER_STATE_SEEKING:
-        return "TRANSITIONING";
-    case PLAYER_STATE_STOPPED:
-        return "STOPPED";
-    case PLAYER_STATE_ERROR:
-    default:
-        return "STOPPED";
-    }
-}
-
-static const char *transport_status_from_player_state(PlayerState state)
-{
-    return state == PLAYER_STATE_ERROR ? "ERROR_OCCURRED" : "OK";
-}
 
 static const char *avtransport_player_state_name(PlayerState state)
 {
@@ -104,7 +70,7 @@ static void avtransport_maybe_log_position_detail(const PlayerSnapshot *snapshot
     g_tencent_position_log_state = snapshot->state;
 
     log_info("[avtransport] position_detail vendor=%s state=%s seekable=%d rel_ms=%d dur_ms=%d rel=%s dur=%s hint=%s\n",
-             ingress_vendor_name(snapshot->media.vendor),
+             player_media_vendor_name(snapshot->media.vendor),
              avtransport_player_state_name(snapshot->state),
              snapshot->seekable ? 1 : 0,
              position_ms,
@@ -116,15 +82,15 @@ static void avtransport_maybe_log_position_detail(const PlayerSnapshot *snapshot
 
 static PlayerState sync_transport_state_from_player(void)
 {
-    PlayerSnapshot snapshot;
     PlayerState player_state = PLAYER_STATE_IDLE;
+    PlayerSnapshot snapshot;
 
     if (player_get_snapshot(&snapshot))
         player_state = snapshot.state;
     else
         player_state = player_get_state();
 
-    const char *transport_state = transport_state_from_player_state(player_state);
+    const char *transport_state = dlna_transport_state_from_player_state(player_state);
     snprintf(g_soap_runtime_state.transport_state,
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
@@ -132,104 +98,13 @@ static PlayerState sync_transport_state_from_player(void)
     snprintf(g_soap_runtime_state.transport_status,
              sizeof(g_soap_runtime_state.transport_status),
              "%s",
-             transport_status_from_player_state(player_state));
+             dlna_transport_status_from_player_state(player_state));
     return player_state;
 }
 
 static void avtransport_get_snapshot(PlayerSnapshot *snapshot)
 {
-    if (!snapshot)
-        return;
-
-    memset(snapshot, 0, sizeof(*snapshot));
-    if (player_get_snapshot(snapshot))
-        return;
-
-    snapshot->state = player_get_state();
-    snapshot->position_ms = player_get_position_ms();
-    snapshot->duration_ms = player_get_duration_ms();
-    snapshot->volume = player_get_volume();
-    snapshot->mute = player_get_mute();
-    snapshot->seekable = player_is_seekable();
-    snapshot->has_media = g_soap_runtime_state.transport_uri[0] != '\0';
-}
-
-static unsigned int avtransport_current_actions(const PlayerSnapshot *snapshot)
-{
-    unsigned int actions = 0;
-
-    if (!snapshot || !snapshot->has_media)
-        return 0;
-
-    switch (snapshot->state)
-    {
-    case PLAYER_STATE_STOPPED:
-        actions |= AVTRANSPORT_ACTION_PLAY | AVTRANSPORT_ACTION_STOP;
-        break;
-    case PLAYER_STATE_LOADING:
-        // Our SetAVTransportURI path preloads via mpv with pause=yes, so a
-        // control point's immediate Play should still be accepted. Some
-        // senders also optimistically issue Pause during this window; treat it
-        // as a harmless no-op instead of a fault.
-        actions |= AVTRANSPORT_ACTION_PLAY | AVTRANSPORT_ACTION_PAUSE | AVTRANSPORT_ACTION_STOP;
-        break;
-    case PLAYER_STATE_BUFFERING:
-    case PLAYER_STATE_SEEKING:
-        actions |= AVTRANSPORT_ACTION_PAUSE | AVTRANSPORT_ACTION_STOP;
-        if (snapshot->seekable)
-            actions |= AVTRANSPORT_ACTION_SEEK;
-        break;
-    case PLAYER_STATE_PLAYING:
-        actions |= AVTRANSPORT_ACTION_PAUSE | AVTRANSPORT_ACTION_STOP;
-        if (snapshot->seekable)
-            actions |= AVTRANSPORT_ACTION_SEEK;
-        break;
-    case PLAYER_STATE_PAUSED:
-        actions |= AVTRANSPORT_ACTION_PLAY | AVTRANSPORT_ACTION_STOP;
-        if (snapshot->seekable)
-            actions |= AVTRANSPORT_ACTION_SEEK;
-        break;
-    case PLAYER_STATE_IDLE:
-    case PLAYER_STATE_ERROR:
-    default:
-        break;
-    }
-
-    return actions;
-}
-
-static bool avtransport_action_available(unsigned int actions, AvTransportActionMask action)
-{
-    return (actions & (unsigned int)action) != 0;
-}
-
-static void avtransport_format_actions(unsigned int actions, char *out, size_t out_size)
-{
-    bool first = true;
-    size_t used = 0;
-
-    if (!out || out_size == 0)
-        return;
-
-    out[0] = '\0';
-
-    if (avtransport_action_available(actions, AVTRANSPORT_ACTION_PLAY))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPlay", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && avtransport_action_available(actions, AVTRANSPORT_ACTION_STOP))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sStop", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && avtransport_action_available(actions, AVTRANSPORT_ACTION_PAUSE))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPause", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && avtransport_action_available(actions, AVTRANSPORT_ACTION_SEEK))
-        (void)snprintf(out + used, out_size - used, "%sSeek", first ? "" : ",");
+    dlna_transport_get_snapshot(snapshot, &g_soap_runtime_state);
 }
 
 static bool avtransport_try_instance_id(const SoapActionContext *ctx,
@@ -312,21 +187,6 @@ static void avtransport_append_named_header(char *out, size_t out_size, const ch
              used > 0 ? "," : "",
              name,
              value);
-}
-
-static void format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
-{
-    if (!out || out_size == 0)
-        return;
-
-    if (value_ms < 0)
-        value_ms = 0;
-
-    int total_seconds = value_ms / 1000;
-    int hour = total_seconds / 3600;
-    int minute = (total_seconds % 3600) / 60;
-    int second = total_seconds % 60;
-    snprintf(out, out_size, "%02d:%02d:%02d", hour, minute, second);
 }
 
 static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
@@ -477,7 +337,7 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     snprintf(g_soap_runtime_state.transport_state,
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
-             transport_state_from_player_state(player_get_state()));
+             dlna_transport_state_from_player_state(player_get_state()));
     snprintf(g_soap_runtime_state.transport_status,
              sizeof(g_soap_runtime_state.transport_status),
              "%s",
@@ -512,13 +372,13 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
     }
 
     avtransport_get_snapshot(&snapshot);
-    actions = avtransport_current_actions(&snapshot);
+    actions = dlna_transport_current_actions(&snapshot);
     if (snapshot.state == PLAYER_STATE_PLAYING)
     {
         soap_handler_set_success(out, "");
         return true;
     }
-    if (!avtransport_action_available(actions, AVTRANSPORT_ACTION_PLAY))
+    if (!dlna_transport_action_available(actions, DLNA_TRANSPORT_ACTION_PLAY))
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
@@ -534,7 +394,7 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
     snprintf(g_soap_runtime_state.transport_state,
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
-             transport_state_from_player_state(player_get_state()));
+             dlna_transport_state_from_player_state(player_get_state()));
     snprintf(g_soap_runtime_state.transport_status,
              sizeof(g_soap_runtime_state.transport_status),
              "%s",
@@ -563,7 +423,7 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
 
     avtransport_get_snapshot(&snapshot);
     sync_transport_state_from_player();
-    actions = avtransport_current_actions(&snapshot);
+    actions = dlna_transport_current_actions(&snapshot);
 
     if (snapshot.state == PLAYER_STATE_PAUSED)
     {
@@ -580,7 +440,7 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
         soap_handler_set_success(out, "");
         return true;
     }
-    if (!avtransport_action_available(actions, AVTRANSPORT_ACTION_PAUSE))
+    if (!dlna_transport_action_available(actions, DLNA_TRANSPORT_ACTION_PAUSE))
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
@@ -595,7 +455,7 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
     snprintf(g_soap_runtime_state.transport_state,
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
-             transport_state_from_player_state(player_get_state()));
+             dlna_transport_state_from_player_state(player_get_state()));
     snprintf(g_soap_runtime_state.transport_status,
              sizeof(g_soap_runtime_state.transport_status),
              "%s",
@@ -629,7 +489,7 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
 
     avtransport_get_snapshot(&snapshot);
     sync_transport_state_from_player();
-    actions = avtransport_current_actions(&snapshot);
+    actions = dlna_transport_current_actions(&snapshot);
 
     if (snapshot.state == PLAYER_STATE_STOPPED || snapshot.state == PLAYER_STATE_IDLE || !snapshot.has_media)
     {
@@ -639,7 +499,7 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
         soap_handler_set_success(out, "");
         return true;
     }
-    if (!avtransport_action_available(actions, AVTRANSPORT_ACTION_STOP))
+    if (!dlna_transport_action_available(actions, DLNA_TRANSPORT_ACTION_STOP))
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
@@ -654,7 +514,7 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
     snprintf(g_soap_runtime_state.transport_state,
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
-             transport_state_from_player_state(player_get_state()));
+             dlna_transport_state_from_player_state(player_get_state()));
     snprintf(g_soap_runtime_state.transport_status,
              sizeof(g_soap_runtime_state.transport_status),
              "%s",
@@ -676,7 +536,7 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
         return false;
 
     PlayerState player_state = sync_transport_state_from_player();
-    const char *transport_state = transport_state_from_player_state(player_state);
+    const char *transport_state = dlna_transport_state_from_player_state(player_state);
 
     soap_writer_clear(out);
     if (!avtransport_write_text_element(out, "CurrentTransportState", transport_state) ||
@@ -704,8 +564,8 @@ bool avtransport_get_current_transport_actions(const SoapActionContext *ctx, Soa
 
     avtransport_get_snapshot(&snapshot);
     sync_transport_state_from_player();
-    actions = avtransport_current_actions(&snapshot);
-    avtransport_format_actions(actions, action_list, sizeof(action_list));
+    actions = dlna_transport_current_actions(&snapshot);
+    dlna_transport_format_actions(actions, action_list, sizeof(action_list));
 
     soap_writer_clear(out);
     if (!avtransport_write_text_element(out, "Actions", action_list))
@@ -736,7 +596,7 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
         duration_ms = player_get_duration_ms();
 
     char duration_str[16];
-    format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
+    dlna_format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
     snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "%s", duration_str);
 
     char *escaped_uri = avtransport_escape_alloc(g_soap_runtime_state.transport_uri, out);
@@ -798,9 +658,9 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
     char rel_time_str[16];
     char abs_time_str[16];
 
-    format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
-    format_hhmmss_from_ms(position_ms, rel_time_str, sizeof(rel_time_str));
-    format_hhmmss_from_ms(position_ms, abs_time_str, sizeof(abs_time_str));
+    dlna_format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
+    dlna_format_hhmmss_from_ms(position_ms, rel_time_str, sizeof(rel_time_str));
+    dlna_format_hhmmss_from_ms(position_ms, abs_time_str, sizeof(abs_time_str));
 
     snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "%s", duration_str);
     snprintf(g_soap_runtime_state.transport_rel_time, sizeof(g_soap_runtime_state.transport_rel_time), "%s", rel_time_str);
@@ -883,7 +743,7 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
 
     avtransport_get_snapshot(&snapshot);
     sync_transport_state_from_player();
-    actions = avtransport_current_actions(&snapshot);
+    actions = dlna_transport_current_actions(&snapshot);
 
     if (target_ms == 0 &&
         (snapshot.state == PLAYER_STATE_LOADING ||
@@ -897,7 +757,7 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         snprintf(g_soap_runtime_state.transport_state,
                  sizeof(g_soap_runtime_state.transport_state),
                  "%s",
-                 transport_state_from_player_state(player_get_state()));
+                 dlna_transport_state_from_player_state(player_get_state()));
         snprintf(g_soap_runtime_state.transport_status,
                  sizeof(g_soap_runtime_state.transport_status),
                  "%s",
@@ -906,7 +766,7 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         return true;
     }
 
-    if (!avtransport_action_available(actions, AVTRANSPORT_ACTION_SEEK))
+    if (!dlna_transport_action_available(actions, DLNA_TRANSPORT_ACTION_SEEK))
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
@@ -921,7 +781,7 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     snprintf(g_soap_runtime_state.transport_state,
              sizeof(g_soap_runtime_state.transport_state),
              "%s",
-             transport_state_from_player_state(player_get_state()));
+             dlna_transport_state_from_player_state(player_get_state()));
     snprintf(g_soap_runtime_state.transport_status,
              sizeof(g_soap_runtime_state.transport_status),
              "%s",

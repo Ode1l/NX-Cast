@@ -54,6 +54,16 @@ static bool is_mpeg_ts_uri(const char *uri)
     return contains_ignore_case(uri, ".ts");
 }
 
+static bool is_hls_gateway_uri(const char *uri)
+{
+    return contains_ignore_case(uri, "/playlist/") ||
+           contains_ignore_case(uri, "/playlist/m3u8") ||
+           contains_ignore_case(uri, "playlist=") ||
+           contains_ignore_case(uri, "plinfo") ||
+           contains_ignore_case(uri, "m3u8?") ||
+           contains_ignore_case(uri, "dispatch");
+}
+
 PlayerMediaFormat ingress_classify_format(const char *uri, const char *metadata_or_mime, bool *likely_segmented)
 {
     if (ingress_hls_mime_matches(metadata_or_mime) || ingress_hls_uri_matches(uri))
@@ -130,6 +140,40 @@ PlayerMediaVendor ingress_classify_vendor(const char *resolved_uri,
     return vendor;
 }
 
+PlayerMediaTransport ingress_classify_transport(const PlayerMedia *media, const IngressEvidence *evidence)
+{
+    const char *uri;
+    const char *original_uri;
+    PlayerMediaVendor sender_vendor = evidence ? evidence->sender_vendor : PLAYER_MEDIA_VENDOR_UNKNOWN;
+
+    if (!media)
+        return PLAYER_MEDIA_TRANSPORT_UNKNOWN;
+
+    uri = media->uri[0] != '\0' ? media->uri : media->original_uri;
+    original_uri = media->original_uri[0] != '\0' ? media->original_uri : media->uri;
+
+    if (media->flags.is_hls)
+    {
+        if (media->flags.is_local_proxy)
+            return PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY;
+
+        if (is_hls_gateway_uri(uri) ||
+            is_hls_gateway_uri(original_uri) ||
+            ingress_vendor_is_sensitive(media->vendor) ||
+            sender_vendor != PLAYER_MEDIA_VENDOR_UNKNOWN)
+        {
+            return PLAYER_MEDIA_TRANSPORT_HLS_GATEWAY;
+        }
+
+        return PLAYER_MEDIA_TRANSPORT_HLS_DIRECT;
+    }
+
+    if (media->flags.is_http || media->flags.is_https)
+        return PLAYER_MEDIA_TRANSPORT_HTTP_FILE;
+
+    return PLAYER_MEDIA_TRANSPORT_UNKNOWN;
+}
+
 void ingress_apply_classification(PlayerMedia *media, bool likely_segmented, const IngressEvidence *evidence)
 {
     const char *metadata;
@@ -157,4 +201,5 @@ void ingress_apply_classification(PlayerMedia *media, bool likely_segmented, con
     media->flags.likely_video_only = media->flags.is_dash &&
                                      likely_segmented &&
                                      ingress_vendor_is_sensitive(media->vendor);
+    media->transport = ingress_classify_transport(media, evidence);
 }

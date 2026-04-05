@@ -5,23 +5,11 @@
 
 #include "types.h"
 
-typedef enum
-{
-    PLAYER_BACKEND_AUTO = 0,
-    PLAYER_BACKEND_MOCK,
-    PLAYER_BACKEND_LIBMPV
-} PlayerBackendType;
-
-bool player_set_backend(PlayerBackendType backend);
-PlayerBackendType player_get_backend(void);
-const char *player_get_backend_name(void);
-
 bool player_init(void);
 void player_deinit(void);
 
 void player_set_event_callback(PlayerEventCallback callback, void *user);
 
-bool player_set_media(const PlayerMedia *media);
 bool player_set_uri(const char *uri, const char *metadata);
 bool player_set_uri_with_context(const char *uri, const char *metadata, const PlayerOpenContext *ctx);
 bool player_play(void);
@@ -43,5 +31,12 @@ int player_get_volume(void);
 bool player_get_mute(void);
 bool player_is_seekable(void);
 PlayerState player_get_state(void);
-bool player_get_current_media(PlayerMedia *out);
 bool player_get_snapshot(PlayerSnapshot *out);
+
+/*
+ * Public enum-to-name helpers for protocol/render logging. External layers
+ * should not depend on ingress internals.
+ */
+const char *player_media_vendor_name(PlayerMediaVendor vendor);
+const char *player_media_format_name(PlayerMediaFormat format);
+const char *player_media_transport_name(PlayerMediaTransport transport);

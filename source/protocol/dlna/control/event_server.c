@@ -18,6 +18,7 @@
 #include "log/log.h"
 #include "player/player.h"
 #include "soap_writer.h"
+#include "transport_runtime.h"
 
 #define EVENT_MAX_SUBSCRIPTIONS 8
 #define EVENT_THREAD_STACK_SIZE 0x8000
@@ -34,8 +35,7 @@ typedef enum
     EVENT_SERVICE_INVALID = -1,
     EVENT_SERVICE_AVTRANSPORT = 0,
     EVENT_SERVICE_RENDERINGCONTROL,
-    EVENT_SERVICE_CONNECTIONMANAGER,
-    EVENT_SERVICE_COUNT
+    EVENT_SERVICE_CONNECTIONMANAGER
 } EventService;
 
 typedef struct
@@ -410,88 +410,9 @@ static void event_mark_dirty_locked(EventService service, bool position_only)
     }
 }
 
-static unsigned event_current_actions(const PlayerSnapshot *snapshot)
-{
-    unsigned actions = 0;
-
-    if (!snapshot || !snapshot->has_media)
-        return 0;
-
-    switch (snapshot->state)
-    {
-    case PLAYER_STATE_STOPPED:
-    case PLAYER_STATE_LOADING:
-        actions |= 1u << 0; /* Play */
-        actions |= 1u << 1; /* Stop */
-        break;
-    case PLAYER_STATE_BUFFERING:
-    case PLAYER_STATE_SEEKING:
-        actions |= 1u << 1; /* Stop */
-        break;
-    case PLAYER_STATE_PLAYING:
-        actions |= 1u << 1; /* Stop */
-        actions |= 1u << 2; /* Pause */
-        if (snapshot->seekable)
-            actions |= 1u << 3; /* Seek */
-        break;
-    case PLAYER_STATE_PAUSED:
-        actions |= 1u << 0; /* Play */
-        actions |= 1u << 1; /* Stop */
-        if (snapshot->seekable)
-            actions |= 1u << 3; /* Seek */
-        break;
-    case PLAYER_STATE_IDLE:
-    case PLAYER_STATE_ERROR:
-    default:
-        break;
-    }
-
-    return actions;
-}
-
-static void event_format_actions(unsigned actions, char *out, size_t out_size)
-{
-    bool first = true;
-    size_t used = 0;
-
-    if (!out || out_size == 0)
-        return;
-    out[0] = '\0';
-
-    if (actions & (1u << 0))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPlay", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && (actions & (1u << 1)))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sStop", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && (actions & (1u << 2)))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPause", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && (actions & (1u << 3)))
-        (void)snprintf(out + used, out_size - used, "%sSeek", first ? "" : ",");
-}
-
 static void event_get_snapshot(PlayerSnapshot *snapshot)
 {
-    if (!snapshot)
-        return;
-
-    memset(snapshot, 0, sizeof(*snapshot));
-    if (player_get_snapshot(snapshot))
-        return;
-
-    snapshot->state = player_get_state();
-    snapshot->position_ms = player_get_position_ms();
-    snapshot->duration_ms = player_get_duration_ms();
-    snapshot->volume = player_get_volume();
-    snapshot->mute = player_get_mute();
-    snapshot->seekable = player_is_seekable();
+    dlna_transport_get_snapshot(snapshot, &g_soap_runtime_state);
 }
 
 static bool event_append_val_element(SoapActionOutput *out, const char *tag, const char *value)
@@ -522,7 +443,7 @@ static bool event_build_avtransport_last_change(SoapActionOutput *out)
         return false;
 
     event_get_snapshot(&snapshot);
-    event_format_actions(event_current_actions(&snapshot), actions, sizeof(actions));
+    dlna_transport_format_actions(dlna_transport_current_actions(&snapshot), actions, sizeof(actions));
 
     return soap_writer_append_raw(out, "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT/\"><InstanceID val=\"0\">") &&
            event_append_val_element(out, "TransportState", g_soap_runtime_state.transport_state) &&
@@ -530,11 +451,16 @@ static bool event_build_avtransport_last_change(SoapActionOutput *out)
            event_append_val_element(out, "TransportPlaySpeed", g_soap_runtime_state.transport_speed) &&
            event_append_val_element(out, "CurrentTransportActions", actions) &&
            event_append_val_element(out, "AVTransportURI", g_soap_runtime_state.transport_uri) &&
+           event_append_val_element(out, "AVTransportURIMetaData", g_soap_runtime_state.transport_uri_metadata) &&
+           event_append_val_element(out, "CurrentTrack", "1") &&
            event_append_val_element(out, "CurrentTrackURI", g_soap_runtime_state.transport_uri) &&
+           event_append_val_element(out, "CurrentTrackMetaData", g_soap_runtime_state.transport_uri_metadata) &&
            event_append_val_element(out, "CurrentMediaDuration", g_soap_runtime_state.transport_duration) &&
            event_append_val_element(out, "CurrentTrackDuration", g_soap_runtime_state.transport_duration) &&
            event_append_val_element(out, "RelativeTimePosition", g_soap_runtime_state.transport_rel_time) &&
            event_append_val_element(out, "AbsoluteTimePosition", g_soap_runtime_state.transport_abs_time) &&
+           event_append_val_element(out, "RelativeCounterPosition", "0") &&
+           event_append_val_element(out, "AbsoluteCounterPosition", "0") &&
            soap_writer_append_raw(out, "</InstanceID></Event>");
 }
 

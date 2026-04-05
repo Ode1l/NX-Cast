@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "ingress.h"
 #include "types.h"
 
 typedef struct

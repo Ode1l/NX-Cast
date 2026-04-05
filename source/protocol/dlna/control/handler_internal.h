@@ -8,6 +8,7 @@
 
 typedef struct
 {
+    // AVTransport runtime values exposed through SOAP and LastChange.
     char transport_uri[SOAP_TRANSPORT_URI_MAX];
     char transport_uri_metadata[SOAP_TRANSPORT_METADATA_MAX];
     char transport_state[32];
@@ -16,12 +17,15 @@ typedef struct
     char transport_duration[16];
     char transport_rel_time[16];
     char transport_abs_time[16];
+
+    // RenderingControl runtime values.
     int volume;
     bool mute;
+
+    // ConnectionManager is intentionally simple for a single-renderer design.
     char source_protocol_info[256];
     char sink_protocol_info[2048];
     char connection_ids[16];
-    bool initialized;
 } SoapRuntimeState;
 
 extern SoapRuntimeState g_soap_runtime_state;

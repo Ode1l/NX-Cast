@@ -14,4 +14,6 @@ bool event_server_try_handle_http(const HttpRequestContext *ctx,
                                   size_t response_size,
                                   size_t *response_len);
 
+// GENA consumes the same player event stream as SOAP runtime state. It should
+// stay a thin protocol layer, not a second source of truth.
 void event_server_on_player_event(const PlayerEvent *event);

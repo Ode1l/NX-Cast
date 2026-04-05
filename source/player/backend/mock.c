@@ -44,8 +44,7 @@ static void emit_event(PlayerEventType type)
         .mute = g_mute,
         .seekable = g_uri[0] != '\0' && g_duration_ms > 0,
         .error_code = 0,
-        .uri = g_uri,
-        .media_profile = g_has_media ? g_media.profile : PLAYER_MEDIA_PROFILE_UNKNOWN
+        .uri = g_uri
     };
     g_event_sink(&event);
 }

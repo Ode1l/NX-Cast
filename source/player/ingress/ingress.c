@@ -259,6 +259,24 @@ const char *ingress_format_name(PlayerMediaFormat format)
     }
 }
 
+const char *ingress_transport_name(PlayerMediaTransport transport)
+{
+    switch (transport)
+    {
+    case PLAYER_MEDIA_TRANSPORT_HTTP_FILE:
+        return "http-file";
+    case PLAYER_MEDIA_TRANSPORT_HLS_DIRECT:
+        return "hls-direct";
+    case PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY:
+        return "hls-local-proxy";
+    case PLAYER_MEDIA_TRANSPORT_HLS_GATEWAY:
+        return "hls-gateway";
+    case PLAYER_MEDIA_TRANSPORT_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
 bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 {
     return ingress_resolve_with_context(uri, metadata, NULL, out);

@@ -2,19 +2,14 @@
 
 #include <stdbool.h>
 
-#define PLAYER_MEDIA_URI_MAX 1024
 #define PLAYER_MEDIA_METADATA_MAX 2048
-#define PLAYER_MEDIA_USER_AGENT_MAX 192
-#define PLAYER_MEDIA_REFERRER_MAX 192
-#define PLAYER_MEDIA_ORIGIN_MAX 128
 #define PLAYER_MEDIA_HEADER_FIELDS_MAX 1536
-#define PLAYER_MEDIA_COOKIE_MAX 768
-#define PLAYER_MEDIA_EXTRA_HEADERS_MAX 512
 #define PLAYER_MEDIA_PROBE_INFO_MAX 32
 #define PLAYER_MEDIA_MIME_TYPE_MAX 96
 #define PLAYER_MEDIA_PROTOCOL_INFO_MAX 192
-#define PLAYER_MEDIA_FORMAT_HINT_MAX 48
 #define PLAYER_MEDIA_MPV_LOAD_OPTIONS_MAX 320
+
+#include "types.h"
 
 typedef enum
 {
@@ -25,27 +20,6 @@ typedef enum
     PLAYER_MEDIA_PROFILE_SIGNED_EPHEMERAL_URL,
     PLAYER_MEDIA_PROFILE_VENDOR_SENSITIVE_URL
 } PlayerMediaProfile;
-
-typedef enum
-{
-    PLAYER_MEDIA_VENDOR_UNKNOWN = 0,
-    PLAYER_MEDIA_VENDOR_BILIBILI,
-    PLAYER_MEDIA_VENDOR_IQIYI,
-    PLAYER_MEDIA_VENDOR_MGTV,
-    PLAYER_MEDIA_VENDOR_YOUKU,
-    PLAYER_MEDIA_VENDOR_QQ_VIDEO,
-    PLAYER_MEDIA_VENDOR_CCTV
-} PlayerMediaVendor;
-
-typedef enum
-{
-    PLAYER_MEDIA_FORMAT_UNKNOWN = 0,
-    PLAYER_MEDIA_FORMAT_MP4,
-    PLAYER_MEDIA_FORMAT_FLV,
-    PLAYER_MEDIA_FORMAT_HLS,
-    PLAYER_MEDIA_FORMAT_DASH,
-    PLAYER_MEDIA_FORMAT_MPEG_TS
-} PlayerMediaFormat;
 
 typedef struct
 {
@@ -66,21 +40,13 @@ typedef struct
 
 typedef struct
 {
-    char sender_user_agent[PLAYER_MEDIA_USER_AGENT_MAX];
-    char referrer[PLAYER_MEDIA_REFERRER_MAX];
-    char origin[PLAYER_MEDIA_ORIGIN_MAX];
-    char cookie[PLAYER_MEDIA_COOKIE_MAX];
-    char extra_headers[PLAYER_MEDIA_EXTRA_HEADERS_MAX];
-} PlayerOpenContext;
-
-typedef struct
-{
     char uri[PLAYER_MEDIA_URI_MAX];
     char original_uri[PLAYER_MEDIA_URI_MAX];
     char metadata[PLAYER_MEDIA_METADATA_MAX];
     PlayerMediaProfile profile;
     PlayerMediaVendor vendor;
     PlayerMediaFormat format;
+    PlayerMediaTransport transport;
     PlayerMediaFlags flags;
     bool selected_from_metadata;
     int metadata_candidate_count;
@@ -106,3 +72,4 @@ bool ingress_resolve_with_context(const char *uri, const char *metadata, const P
 const char *ingress_profile_name(PlayerMediaProfile profile);
 const char *ingress_vendor_name(PlayerMediaVendor vendor);
 const char *ingress_format_name(PlayerMediaFormat format);
+const char *ingress_transport_name(PlayerMediaTransport transport);

@@ -506,8 +506,7 @@ static void libmpv_emit_event_locked(PlayerEventType type)
         .mute = g_mute,
         .seekable = g_seekable,
         .error_code = 0,
-        .uri = g_uri,
-        .media_profile = g_has_media ? g_media.profile : PLAYER_MEDIA_PROFILE_UNKNOWN
+        .uri = g_uri
     };
     g_event_sink(&event);
 }
@@ -747,10 +746,11 @@ static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force)
 
     if (g_state == PLAYER_STATE_ERROR)
     {
-        log_error("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s media_hint=%s hls_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
+        log_error("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s transport=%s media_hint=%s hls_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
                   reason ? reason : "refresh",
                   g_hls_mode ? "hls" : "default",
                   ingress_format_name(g_media.format),
+                  ingress_transport_name(g_media.transport),
                   g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown",
                   libmpv_hls_runtime_kind_name(g_hls_kind),
                   libmpv_state_name(g_state),
@@ -772,10 +772,11 @@ static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force)
     }
     else
     {
-        log_info("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s media_hint=%s hls_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
+        log_info("[player-libmpv] diag reason=%s uri_kind=%s media_format=%s transport=%s media_hint=%s hls_kind=%s state=%s loaded=%d loading=%d buffering=%d seeking=%d stop_mode=%d core_idle=%d abort=%d seekable=%d via_net=%d pos_ms=%d dur_ms=%d cache_ms=%d cache_speed_bps=%lld file_format=%s demuxer=%s\n",
                  reason ? reason : "refresh",
                  g_hls_mode ? "hls" : "default",
                  ingress_format_name(g_media.format),
+                 ingress_transport_name(g_media.transport),
                  g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown",
                  libmpv_hls_runtime_kind_name(g_hls_kind),
                  libmpv_state_name(g_state),
@@ -861,12 +862,13 @@ static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms)
     {
         if (g_playback_stall_active)
         {
-            log_info("[player-libmpv] playback_stall_clear elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld format=%s hint=%s\n",
+            log_info("[player-libmpv] playback_stall_clear elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld format=%s transport=%s hint=%s\n",
                      (unsigned long long)(now_ms - g_last_progress_wall_ms),
                      g_position_ms,
                      g_cache_duration_ms,
                      (long long)g_cache_speed_bps,
                      ingress_format_name(g_media.format),
+                     ingress_transport_name(g_media.transport),
                      g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown");
         }
         g_playback_stall_active = false;
@@ -880,12 +882,13 @@ static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms)
     {
         if (g_playback_stall_active)
         {
-            log_info("[player-libmpv] playback_stall_clear elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld format=%s hint=%s\n",
+            log_info("[player-libmpv] playback_stall_clear elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld format=%s transport=%s hint=%s\n",
                      (unsigned long long)(now_ms - g_last_progress_wall_ms),
                      g_position_ms,
                      g_cache_duration_ms,
                      (long long)g_cache_speed_bps,
                      ingress_format_name(g_media.format),
+                     ingress_transport_name(g_media.transport),
                      g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown");
         }
         g_playback_stall_active = false;
@@ -903,7 +906,7 @@ static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms)
     {
         g_playback_stall_active = true;
         g_playback_stall_log_ms = now_ms;
-        log_warn("[player-libmpv] playback_stall elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld seekable=%d paused_for_cache=%d format=%s hint=%s\n",
+        log_warn("[player-libmpv] playback_stall elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld seekable=%d paused_for_cache=%d format=%s transport=%s hint=%s\n",
                  (unsigned long long)(now_ms - g_last_progress_wall_ms),
                  g_position_ms,
                  g_cache_duration_ms,
@@ -911,6 +914,7 @@ static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms)
                  g_seekable ? 1 : 0,
                  g_paused_for_cache ? 1 : 0,
                  ingress_format_name(g_media.format),
+                 ingress_transport_name(g_media.transport),
                  g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown");
         libmpv_log_stream_details_locked("PLAYBACK_STALL");
         return;
@@ -920,7 +924,7 @@ static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms)
         now_ms - g_playback_stall_log_ms >= PLAYER_LIBMPV_PLAYBACK_STALL_REPEAT_MS)
     {
         g_playback_stall_log_ms = now_ms;
-        log_warn("[player-libmpv] playback_stall elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld seekable=%d paused_for_cache=%d format=%s hint=%s\n",
+        log_warn("[player-libmpv] playback_stall elapsed_ms=%llu pos_ms=%d cache_ms=%d cache_speed_bps=%lld seekable=%d paused_for_cache=%d format=%s transport=%s hint=%s\n",
                  (unsigned long long)(now_ms - g_last_progress_wall_ms),
                  g_position_ms,
                  g_cache_duration_ms,
@@ -928,6 +932,7 @@ static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms)
                  g_seekable ? 1 : 0,
                  g_paused_for_cache ? 1 : 0,
                  ingress_format_name(g_media.format),
+                 ingress_transport_name(g_media.transport),
                  g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown");
         libmpv_log_stream_details_locked("PLAYBACK_STALL");
     }
@@ -950,10 +955,11 @@ static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media
     (void)libmpv_set_string_property_locked("http-header-fields", media->header_fields);
     (void)libmpv_set_string_property_locked("demuxer-lavf-probe-info", media->probe_info);
 
-    log_info("[player-libmpv] runtime_overrides profile=%s vendor=%s format=%s hint=%s hls=%d local_proxy=%d live_hint=%d dash=%d signed=%d bilibili=%d timeout=%s readahead_s=%d probe_info=%s headers=%d load_opts=%d\n",
+    log_info("[player-libmpv] runtime_overrides profile=%s vendor=%s format=%s transport=%s hint=%s hls=%d local_proxy=%d live_hint=%d dash=%d signed=%d bilibili=%d timeout=%s readahead_s=%d probe_info=%s headers=%d load_opts=%d\n",
              ingress_profile_name(media->profile),
              ingress_vendor_name(media->vendor),
              ingress_format_name(media->format),
+             ingress_transport_name(media->transport),
              media->format_hint[0] != '\0' ? media->format_hint : "unknown",
              media->flags.is_hls ? 1 : 0,
              media->flags.is_local_proxy ? 1 : 0,

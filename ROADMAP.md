@@ -25,6 +25,7 @@ Generic DMR completeness
 - `CurrentTransportActions`
 - URL preflight and better resource selection
 - local-proxy / mixed-source classification
+- shared protocol-state layer for `SOAP + LastChange`
 - Status: largely done, still iterative
 
 ## Phase 3
@@ -58,6 +59,12 @@ Source compatibility and mixed transports
 - local proxy / hybrid transports
 - range/seekability/media preflight
 - Status: in progress; `mgtv-family`, Tencent normal/phone-acceleration, and parts of Youku/CCTV have improved, but `iqiyi` and some local-proxy/HLS transport cases remain incomplete
+
+### Current Execution Order
+
+1. stabilize `local_proxy` / mixed-source transport behavior first
+2. improve position/progress synchronization and control-point interoperability, continuing to align the shared protocol-state layer with `Macast`-style behavior
+3. only after transport/system behavior is stable, revisit custom media-toolchain work for real `nvtegra`
 
 ## Phase 7
 AirPlay receiver

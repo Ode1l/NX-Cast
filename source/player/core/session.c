@@ -3,17 +3,28 @@
 #include <switch.h>
 
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
 
 #include "log/log.h"
 #include "player/backend.h"
+#include "player/ingress.h"
 
 #define PLAYER_COMMAND_SLOT_COUNT 16
 #define PLAYER_COMMAND_QUEUE_CAPACITY PLAYER_COMMAND_SLOT_COUNT
 #define PLAYER_THREAD_STACK_SIZE 0x8000
 #define PLAYER_THREAD_POLL_TIMEOUT_MS 50
 #define PLAYER_HLS_STARTUP_SEEK_GUARD_MS 5000
+#define PLAYER_HLS_GATEWAY_STARTUP_SEEK_GUARD_MS 8000
+#define PLAYER_HLS_LOCAL_PROXY_STARTUP_SEEK_GUARD_MS 12000
+
+typedef enum
+{
+    PLAYER_BACKEND_AUTO = 0,
+    PLAYER_BACKEND_MOCK,
+    PLAYER_BACKEND_LIBMPV
+} PlayerBackendType;
 
 typedef enum
 {
@@ -64,6 +75,51 @@ static size_t g_command_tail = 0;
 static size_t g_command_count = 0;
 
 static void player_thread_main(void *arg);
+static bool player_set_media(const PlayerMedia *media);
+
+static void player_reset_media_summary(PlayerMediaSummary *summary)
+{
+    if (!summary)
+        return;
+
+    memset(summary, 0, sizeof(*summary));
+    summary->vendor = PLAYER_MEDIA_VENDOR_UNKNOWN;
+    summary->format = PLAYER_MEDIA_FORMAT_UNKNOWN;
+    summary->transport = PLAYER_MEDIA_TRANSPORT_UNKNOWN;
+}
+
+static void player_fill_media_summary(PlayerMediaSummary *summary, const PlayerMedia *media)
+{
+    if (!summary)
+        return;
+
+    player_reset_media_summary(summary);
+    if (!media)
+        return;
+
+    snprintf(summary->uri, sizeof(summary->uri), "%s", media->uri);
+    snprintf(summary->format_hint, sizeof(summary->format_hint), "%s", media->format_hint);
+    summary->vendor = media->vendor;
+    summary->format = media->format;
+    summary->transport = media->transport;
+}
+
+static int player_seek_guard_ms_for_media(const PlayerMedia *media)
+{
+    if (!media || !media->flags.is_hls)
+        return 0;
+
+    switch (media->transport)
+    {
+    case PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY:
+        return PLAYER_HLS_LOCAL_PROXY_STARTUP_SEEK_GUARD_MS;
+    case PLAYER_MEDIA_TRANSPORT_HLS_GATEWAY:
+        return PLAYER_HLS_GATEWAY_STARTUP_SEEK_GUARD_MS;
+    case PLAYER_MEDIA_TRANSPORT_HLS_DIRECT:
+    default:
+        return PLAYER_HLS_STARTUP_SEEK_GUARD_MS;
+    }
+}
 
 static const char *player_state_name(PlayerState state)
 {
@@ -137,6 +193,7 @@ static void player_reset_snapshot_locked(void)
 {
     memset(&g_snapshot, 0, sizeof(g_snapshot));
     g_snapshot.state = PLAYER_STATE_IDLE;
+    player_reset_media_summary(&g_snapshot.media);
 }
 
 static void player_reset_command_queue_locked(void)
@@ -157,13 +214,13 @@ static void player_store_media_locked(bool has_media, const PlayerMedia *media)
     {
         g_current_media = *media;
         g_snapshot.has_media = true;
-        g_snapshot.media = *media;
+        player_fill_media_summary(&g_snapshot.media, media);
     }
     else
     {
         ingress_reset(&g_current_media);
         g_snapshot.has_media = false;
-        ingress_reset(&g_snapshot.media);
+        player_reset_media_summary(&g_snapshot.media);
     }
 }
 
@@ -182,12 +239,12 @@ static void player_apply_event_locked(const PlayerEvent *event)
     if (g_has_current_media)
     {
         g_snapshot.has_media = true;
-        g_snapshot.media = g_current_media;
+        player_fill_media_summary(&g_snapshot.media, &g_current_media);
     }
     else
     {
         g_snapshot.has_media = false;
-        ingress_reset(&g_snapshot.media);
+        player_reset_media_summary(&g_snapshot.media);
         g_snapshot.state = PLAYER_STATE_IDLE;
         g_snapshot.position_ms = 0;
         g_snapshot.duration_ms = 0;
@@ -220,7 +277,7 @@ static bool player_read_backend_snapshot(PlayerSnapshot *out)
     mutexLock(&g_player_mutex);
     out->has_media = g_has_current_media;
     if (g_has_current_media)
-        out->media = g_current_media;
+        player_fill_media_summary(&out->media, &g_current_media);
     mutexUnlock(&g_player_mutex);
 
     if (!out->has_media)
@@ -371,6 +428,8 @@ static bool player_execute_command(PlayerCommandSlot *slot)
 
 static bool player_should_coalesce_seek_locked(int position_ms)
 {
+    int guard_ms;
+
     (void)position_ms;
 
     if (!g_has_current_media)
@@ -379,11 +438,14 @@ static bool player_should_coalesce_seek_locked(int position_ms)
     if (g_pending_seek_active)
         return true;
 
-    if (g_snapshot.has_media &&
-        g_snapshot.media.flags.is_hls &&
+    guard_ms = player_seek_guard_ms_for_media(&g_current_media);
+
+    if (g_has_current_media &&
+        guard_ms > 0 &&
+        g_current_media.flags.is_hls &&
         g_snapshot.state == PLAYER_STATE_PLAYING &&
         g_snapshot.position_ms >= 0 &&
-        g_snapshot.position_ms < PLAYER_HLS_STARTUP_SEEK_GUARD_MS)
+        g_snapshot.position_ms < guard_ms)
     {
         return true;
     }
@@ -404,6 +466,7 @@ static bool player_maybe_dispatch_pending_seek(void)
     PlayerCommandSlot slot;
     PlayerState state = PLAYER_STATE_IDLE;
     int target_ms = 0;
+    int guard_ms = 0;
 
     memset(&slot, 0, sizeof(slot));
 
@@ -438,10 +501,13 @@ static bool player_maybe_dispatch_pending_seek(void)
         break;
     }
 
-    if (g_snapshot.media.flags.is_hls &&
+    guard_ms = player_seek_guard_ms_for_media(&g_current_media);
+
+    if (guard_ms > 0 &&
+        g_current_media.flags.is_hls &&
         state == PLAYER_STATE_PLAYING &&
         g_snapshot.position_ms >= 0 &&
-        g_snapshot.position_ms < PLAYER_HLS_STARTUP_SEEK_GUARD_MS)
+        g_snapshot.position_ms < guard_ms)
     {
         mutexUnlock(&g_player_mutex);
         return false;
@@ -460,9 +526,10 @@ static bool player_maybe_dispatch_pending_seek(void)
 
     slot.type = PLAYER_COMMAND_SEEK_MS;
     slot.int_value = target_ms;
-    log_info("[player] applying coalesced seek_ms=%d state=%s\n",
+    log_info("[player] applying coalesced seek_ms=%d state=%s transport=%s\n",
              target_ms,
-             player_state_name(state));
+             player_state_name(state),
+             ingress_transport_name(g_current_media.transport));
     return player_execute_command(&slot);
 }
 
@@ -491,9 +558,10 @@ static bool player_submit_command(PlayerCommandType type,
         bool replaced = g_pending_seek_active;
         g_pending_seek_active = true;
         g_pending_seek_ms = int_value;
-        log_info("[player] coalesced seek_ms=%d state=%s replaced=%d\n",
+        log_info("[player] coalesced seek_ms=%d state=%s transport=%s replaced=%d\n",
                  int_value,
                  player_state_name(g_snapshot.state),
+                 ingress_transport_name(g_current_media.transport),
                  replaced ? 1 : 0);
         mutexUnlock(&g_player_mutex);
         return true;
@@ -576,32 +644,26 @@ static void player_thread_main(void *arg)
     mutexUnlock(&g_player_mutex);
 }
 
-bool player_set_backend(PlayerBackendType backend)
-{
-    if (g_initialized)
-    {
-        log_warn("[player] backend change rejected while initialized current=%s requested=%s\n",
-                 player_get_backend_name(),
-                 backend_name_from_type(backend));
-        return false;
-    }
-
-    g_backend_type = backend;
-    g_backend = NULL;
-    log_info("[player] backend configured=%s\n", backend_name_from_type(backend));
-    return true;
-}
-
-PlayerBackendType player_get_backend(void)
-{
-    return g_backend_type;
-}
-
-const char *player_get_backend_name(void)
+static const char *player_get_backend_name(void)
 {
     if (g_backend && g_backend->name)
         return g_backend->name;
     return backend_name_from_type(g_backend_type);
+}
+
+const char *player_media_vendor_name(PlayerMediaVendor vendor)
+{
+    return ingress_vendor_name(vendor);
+}
+
+const char *player_media_format_name(PlayerMediaFormat format)
+{
+    return ingress_format_name(format);
+}
+
+const char *player_media_transport_name(PlayerMediaTransport transport)
+{
+    return ingress_transport_name(transport);
 }
 
 void player_set_event_callback(PlayerEventCallback callback, void *user)
@@ -753,10 +815,11 @@ bool player_set_uri_with_context(const char *uri, const char *metadata, const Pl
     if (!ingress_resolve_with_context(uri, metadata, ctx, &resolved))
         return false;
 
-    log_info("[player] resolve_media profile=%s vendor=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d local_proxy=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
+    log_info("[player] resolve_media profile=%s vendor=%s format=%s transport=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d local_proxy=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
              ingress_profile_name(resolved.profile),
              ingress_vendor_name(resolved.vendor),
              ingress_format_name(resolved.format),
+             ingress_transport_name(resolved.transport),
              resolved.format_hint[0] != '\0' ? resolved.format_hint : "unknown",
              resolved.mime_type[0] != '\0' ? resolved.mime_type : "unknown",
              resolved.selected_from_metadata ? 1 : 0,
@@ -792,7 +855,7 @@ bool player_set_uri_with_context(const char *uri, const char *metadata, const Pl
     return player_set_media(&resolved);
 }
 
-bool player_set_media(const PlayerMedia *media)
+static bool player_set_media(const PlayerMedia *media)
 {
     if (!media)
         return false;
@@ -924,19 +987,6 @@ PlayerState player_get_state(void)
     PlayerState state = g_snapshot.state;
     mutexUnlock(&g_player_mutex);
     return state;
-}
-
-bool player_get_current_media(PlayerMedia *out)
-{
-    if (!out)
-        return false;
-
-    mutexLock(&g_player_mutex);
-    bool has_media = g_has_current_media;
-    if (has_media)
-        *out = g_current_media;
-    mutexUnlock(&g_player_mutex);
-    return has_media;
 }
 
 bool player_get_snapshot(PlayerSnapshot *out)
