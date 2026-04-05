@@ -23,6 +23,8 @@ typedef struct
     Framebuffer framebuffer;
     bool framebuffer_ready;
     FrontendRenderPath render_path;
+    uint64_t last_video_state_ms;
+    uint64_t stop_hold_until_ms;
 #ifdef HAVE_SWITCH_EGL_GLES
     EGLDisplay egl_display;
     EGLSurface egl_surface;

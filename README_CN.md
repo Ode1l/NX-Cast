@@ -34,16 +34,17 @@ NX-Cast 的目标是：
 - `player` 已成为真实状态源，`SOAP -> player -> libmpv` 控制链路已打通；`SetURI / Play / Pause / Stop / Seek / GetTransportInfo / GetPositionInfo` 的主流程已通过实机 smoke。
 - `Step 2.1 / Step 2.2` 已落地：主线程前台显示权、render loop 骨架，以及 `software render + libnx framebuffer` 的最小真实出画路径均已接通。
 - `ingress` 已从规则堆叠式实现收敛为 `evidence -> classify -> resource_select -> policy` 的第一版系统化流水线，并补了 `http` URL preflight、`SinkProtocolInfo` 扩展、metadata 资源选择与 `local_proxy` transport policy。
-- `mp4`、`bilibili`、`mgtv`、部分 `youku/tencent/cctv` 路径已完成实机验证；`iqiyi` 仍未打通，当前更像站点请求上下文或系统媒体能力差距，而不是基础 DMR 不通。
+- `mp4`、`bilibili`、`mgtv-family`、腾讯视频（含部分手机加速路径）、以及部分 `youku/cctv` 路径已完成实机验证；`iqiyi` 仍未打通，当前更像站点请求上下文或系统媒体能力差距，而不是基础 DMR 不通。
 - 当前主矛盾已从“协议是否能通”转移到两条线：
   1. 通用 DMR 完整度继续补完
   2. 完整播放器后端：真实音频输出、`OpenGL/libmpv render API` 路径、硬解码接入
+- `ao=hos` 与 `OpenGL/libmpv render API` 已完成实机验证；当前后端的真实短板已经收敛为 `hwdec=nvtegra` 尚未在官方 `dkp` `libmpv` 工具链下真正生效，以及部分混合源/本地代理 transport 仍不稳定。
 
 当前后端路线决策：
 
-1. 当前正式路线采用 `ao=hos + hwdec=nvtegra + OpenGL/libmpv render API`
-2. `deko3d` 仍然保留为未来能力，但不再作为当前阶段立即接入目标
-3. 原因不是架构否定 `deko3d`，而是当前官方 `libmpv` 工具链缺少 `mpv/render_dk3d.h`
+1. 当前已落地并实机验证的路线是 `ao=hos + OpenGL/libmpv render API`
+2. `hwdec=nvtegra` 仍然是目标方向，但当前官方 `dkp` `libmpv` 工具链尚未提供可实际工作的 explicit `nvtegra` hwdec backend
+3. `deko3d` 仍然保留为未来能力，但不再作为当前阶段立即接入目标
 4. 如果后续切换到自定义媒体工具链，再进入 `libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)` 路线
 
 ---
@@ -110,12 +111,12 @@ NX-Cast 的目标是：
 - Step 2.1：确定前台显示权归属，建立主线程驱动的 render loop 骨架
 - Step 2.2：接入 `libmpv render API`，通过 `software render + libnx framebuffer` 打通最小视频显示路径
 - Step 2.3：完善日志 UI 切换、屏幕接管与 `OpenGL/libmpv render API` 路径
-- 状态：Step 1 与 Step 2.1 / 2.2 已落地，player 入口资源选择也已落地第一版；下一步转向真实音频输出、`OpenGL/libmpv render API` 与硬解码
+- 状态：Step 1、Step 2.1 / 2.2 / 2.3 已落地，`player` 入口资源选择也已落地第一版；当前 `ao=hos + OpenGL/libmpv render API` 已实机通过，下一步转向 transport 稳定性与硬解码工具链问题
 
 ### Phase 4
 - 硬件解码支持
 - `hwdec=nvtegra`
-- 状态：已进入实现与验证阶段；当前不再把 `deko3d` 作为这一阶段前置条件
+- 状态：`ao=hos` 与 `OpenGL/libmpv render API` 已完成当前工具链下的第一阶段；`hwdec=nvtegra` 仍处于工具链核验与后续接入阶段
 
 ### Phase 5
 - AirPlay 类视频投屏

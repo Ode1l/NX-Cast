@@ -88,6 +88,7 @@ MPV_FOUND := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --ex
 MPV_RENDER_DK3D_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_dk3d.h" && echo 1)
 FFMPEG_NVTEGRA_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/libavutil/hwcontext_nvtegra.h" && echo 1)
 SWITCH_EGL_GLES_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/EGL/egl.h" && test -f "$(PORTLIBS_PREFIX)/include/GLES2/gl2.h" && echo 1)
+MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND := $(shell strings "$(PORTLIBS_PREFIX)/lib/libmpv.a" 2>/dev/null | grep -q nvtegra && echo 1)
 
 ifeq ($(MPV_FOUND),1)
 CFLAGS	+=	-DHAVE_LIBMPV
@@ -100,6 +101,10 @@ endif
 
 ifeq ($(FFMPEG_NVTEGRA_HEADER_FOUND),1)
 CFLAGS	+=	-DHAVE_NVTEGRA_HWCONTEXT
+endif
+
+ifeq ($(MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND),1)
+CFLAGS	+=	-DHAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
 endif
 
 ifeq ($(SWITCH_EGL_GLES_FOUND),1)

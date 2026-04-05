@@ -30,6 +30,18 @@
    2. `nvtegra` 已存在于 `FFmpeg`
    3. 但 `render_dk3d.h` 不存在，因此不构成完整 `deko3d` 路线
 
+补充对照：
+
+1. `wiliwili-dev` 的 Switch 路线证明，OpenGL 版本同样可以配合自编媒体栈使用硬解码。
+2. 它的实际做法是：
+   1. 自编 `switch-ffmpeg`，开启 `--enable-nvtegra`
+   2. 自编一套普通 `switch-libmpv`，依赖 `switch-mesa`，开启 `hos-audio`
+   3. 再额外自编一套 `switch-libmpv deko3d` 版本，开启 `--enable-deko3d --enable-hos-audio`
+3. 运行时在 Switch 上默认请求的是 `hwdec=auto`，而不是把 `nvtegra` 写死在 OpenGL 路线里。
+4. 这说明两件事：
+   1. `OpenGL` 与 `硬解码` 并不冲突
+   2. 真正的限制点在于 `FFmpeg/mpv` 工具链是否按 Switch 媒体栈能力正确编译出来
+
 ---
 
 ## 1. 路线说明
@@ -60,6 +72,15 @@
    1. `averne/FFmpeg`
    2. `averne/libuam`
    3. `averne/mpv`
+
+补充说明：
+
+1. `wiliwili-dev` 已经把这两档拆得非常清楚：
+   1. 普通 OpenGL 版 `mpv`
+   2. 独立的 `mpv_deko3d` 版
+2. 因此对 `NX-Cast` 来说，更合理的认知应是：
+   1. 当前 `ao=hos + OpenGL render API` 可以先基于官方包推进
+   2. 真正想把 `nvtegra` 和未来 `deko3d` 做完整，最终仍应切到自定义媒体工具链
 
 ### 1.3 如果改走纯 `FFmpeg` 路线会怎样
 

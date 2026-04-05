@@ -34,16 +34,17 @@ Current progress:
 - `player` is now the real state source, and the `SOAP -> player -> libmpv` control path is working end to end; the main `SetURI / Play / Pause / Stop / Seek / GetTransportInfo / GetPositionInfo` flow has passed on-device smoke tests.
 - `Step 2.1 / Step 2.2` have landed: foreground-display ownership, the main-thread render-loop skeleton, and a minimal real video path via `software render + libnx framebuffer`.
 - `ingress` has been refactored into a first-pass `evidence -> classify -> resource_select -> policy` pipeline, with `http` URL preflight, expanded `SinkProtocolInfo`, metadata resource selection, and `local_proxy` transport policy.
-- `mp4`, `bilibili`, `mgtv`, and parts of `youku/tencent/cctv` are now verified on device; `iqiyi` is still not working and currently looks more like request-context or system media-stack completeness than a basic DMR failure.
+- `mp4`, `bilibili`, `mgtv-family`, Tencent Video including parts of its phone-acceleration path, and parts of `youku/cctv` are now verified on device; `iqiyi` is still not working and currently looks more like request-context or system media-stack completeness than a basic DMR failure.
 - The current main work is no longer "can the protocol path work", but two deeper tracks:
   1. finishing the generic DMR compatibility baseline
   2. completing the real playback backend: audio output, an `OpenGL/libmpv render API` path, and hardware decode integration
+- `ao=hos` and the `OpenGL/libmpv render API` path are now both verified on device. The backend gap has narrowed to `hwdec=nvtegra` not actually becoming active under the current official `dkp` `libmpv` toolchain, plus remaining instability in some mixed/local-proxy transports.
 
 Current backend direction:
 
-1. The active target path is `ao=hos + hwdec=nvtegra + OpenGL/libmpv render API`
-2. `deko3d` remains a future capability instead of the immediate next step
-3. This is not because `deko3d` is rejected architecturally, but because the current official `libmpv` toolchain does not expose `mpv/render_dk3d.h`
+1. The currently landed and verified path is `ao=hos + OpenGL/libmpv render API`
+2. `hwdec=nvtegra` remains the desired direction, but the current official `dkp` `libmpv` toolchain does not expose a working explicit `nvtegra` hwdec backend
+3. `deko3d` remains a future capability instead of the immediate next step
 4. If the project later switches to a custom media toolchain, it can move to the `libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)` route
 
 ---
@@ -110,12 +111,12 @@ How to verify Milestone 1 locally:
 - Step 2.1: define foreground-display ownership and add a main-thread render-loop skeleton
 - Step 2.2: integrate the `libmpv render API` and establish a minimal on-device video path via `software render + libnx framebuffer`
 - Step 2.3: finish log/UI switching, screen ownership, and the `OpenGL/libmpv render API` path
-- Status: Step 1 and Step 2.1 / 2.2 are landed, and the first version of player-ingress resource selection is also landed; the next priority is real audio output, `OpenGL/libmpv render API`, and hardware decode
+- Status: Step 1 and Step 2.1 / 2.2 / 2.3 are landed, and the first version of player-ingress resource selection is also landed; `ao=hos + OpenGL/libmpv render API` is now verified on device, and the next priority is transport stability plus hardware-decode toolchain work
 
 ### Phase 4
 - Hardware accelerated decode
 - `hwdec=nvtegra`
-- Status: entering implementation and verification; `deko3d` is no longer treated as a prerequisite for this phase
+- Status: `ao=hos` and `OpenGL/libmpv render API` are already working under the current toolchain; `hwdec=nvtegra` is still in the toolchain-validation and later integration stage
 
 ### Phase 5
 - AirPlay-style video streaming

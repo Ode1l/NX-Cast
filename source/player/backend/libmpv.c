@@ -35,7 +35,11 @@
 #define PLAYER_LIBMPV_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 #define PLAYER_LIBMPV_DEFAULT_AO "hos"
 #define PLAYER_LIBMPV_FALLBACK_AO "null"
+#ifdef HAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
 #define PLAYER_LIBMPV_DEFAULT_HWDEC "nvtegra"
+#else
+#define PLAYER_LIBMPV_DEFAULT_HWDEC "auto-safe"
+#endif
 #define PLAYER_LIBMPV_FALLBACK_HWDEC "no"
 #define PLAYER_LIBMPV_DEFAULT_HWDEC_CODECS "mpeg1video,mpeg2video,mpeg4,vc1,wmv3,h264,hevc,vp8,vp9,mjpeg"
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
@@ -47,7 +51,7 @@ static mpv_render_context *g_render_context = NULL;
 static PlayerState g_state = PLAYER_STATE_IDLE;
 static int g_position_ms = 0;
 static int g_duration_ms = 0;
-static int g_volume = 20;
+static int g_volume = PLAYER_DEFAULT_VOLUME;
 static bool g_mute = false;
 static bool g_media_loaded = false;
 static bool g_load_in_progress = false;
@@ -93,6 +97,7 @@ static char g_requested_ao[24];
 static char g_requested_hwdec[32];
 static volatile bool g_render_update_pending = false;
 static const char *g_render_api_name = "none";
+static bool g_hwdec_explicit_nvtegra = false;
 
 static void libmpv_clip_for_log(const char *input, char *output, size_t output_size);
 static uint64_t libmpv_now_ms(void);
@@ -641,7 +646,7 @@ static void libmpv_log_backend_runtime_locked(const char *reason)
     if (!libmpv_get_string_locked("hwdec-current", hwdec_current, sizeof(hwdec_current)))
         snprintf(hwdec_current, sizeof(hwdec_current), "%s", "?");
 
-    log_info("[player-libmpv] backend_runtime reason=%s requested_ao=%s current_ao=%s current_vo=%s requested_hwdec=%s hwdec_current=%s render_path=%s deko3d_header=%d nvtegra_header=%d\n",
+    log_info("[player-libmpv] backend_runtime reason=%s requested_ao=%s current_ao=%s current_vo=%s requested_hwdec=%s hwdec_current=%s render_path=%s deko3d_header=%d nvtegra_header=%d mpv_nvtegra_backend=%d\n",
              reason ? reason : "refresh",
              g_requested_ao[0] != '\0' ? g_requested_ao : "?",
              current_ao[0] != '\0' ? current_ao : "?",
@@ -655,6 +660,11 @@ static void libmpv_log_backend_runtime_locked(const char *reason)
              0,
 #endif
 #ifdef HAVE_NVTEGRA_HWCONTEXT
+             1,
+#else
+             0,
+#endif
+#ifdef HAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
              1);
 #else
              0);
@@ -1320,7 +1330,7 @@ static bool libmpv_init(void)
     g_state = PLAYER_STATE_IDLE;
     g_position_ms = 0;
     g_duration_ms = 0;
-    g_volume = 20;
+    g_volume = PLAYER_DEFAULT_VOLUME;
     g_mute = false;
     g_media_loaded = false;
     g_load_in_progress = false;
@@ -1352,6 +1362,7 @@ static bool libmpv_init(void)
     g_playback_stall_log_ms = 0;
     g_hls_startup_reported = false;
     g_render_update_pending = false;
+    g_hwdec_explicit_nvtegra = false;
     memset(g_requested_ao, 0, sizeof(g_requested_ao));
     memset(g_requested_hwdec, 0, sizeof(g_requested_hwdec));
     ingress_reset(&g_media);
@@ -1369,7 +1380,6 @@ static bool libmpv_init(void)
     libmpv_set_option_string_logged_locked("idle", "yes");
     libmpv_set_option_string_logged_locked("input-default-bindings", "no");
     libmpv_set_option_string_logged_locked("input-vo-keyboard", "no");
-    libmpv_set_option_string_logged_locked("osc", "no");
     libmpv_set_option_string_logged_locked("audio-display", "no");
     libmpv_set_option_string_logged_locked("audio-channels", "stereo");
     libmpv_set_option_string_logged_locked("vd-lavc-dr", "yes");
@@ -1381,6 +1391,9 @@ static bool libmpv_init(void)
         snprintf(g_requested_ao, sizeof(g_requested_ao), "%s", PLAYER_LIBMPV_FALLBACK_AO);
     }
     libmpv_set_option_string_logged_locked("vo", "libmpv");
+#ifdef HAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
+    g_hwdec_explicit_nvtegra = true;
+#endif
     if (libmpv_set_option_string_logged_locked("hwdec", PLAYER_LIBMPV_DEFAULT_HWDEC))
     {
         snprintf(g_requested_hwdec, sizeof(g_requested_hwdec), "%s", PLAYER_LIBMPV_DEFAULT_HWDEC);
@@ -1434,7 +1447,13 @@ static bool libmpv_init(void)
     libmpv_emit_event_locked(PLAYER_EVENT_MUTE_CHANGED);
     mutexUnlock(&g_state_mutex);
 
-    log_info("[player-libmpv] init mode=render-api ao=%s vo=libmpv hwdec=%s net_timeout=%ss tls_verify=no render_path=%s deko3d_header=%d nvtegra_header=%d\n",
+    if (!g_hwdec_explicit_nvtegra)
+    {
+        log_info("[player-libmpv] toolchain lacks explicit nvtegra hwdec backend in libmpv; using hwdec=%s\n",
+                 g_requested_hwdec[0] != '\0' ? g_requested_hwdec : PLAYER_LIBMPV_FALLBACK_HWDEC);
+    }
+
+    log_info("[player-libmpv] init mode=render-api ao=%s vo=libmpv hwdec=%s net_timeout=%ss tls_verify=no render_path=%s deko3d_header=%d nvtegra_header=%d mpv_nvtegra_backend=%d\n",
              g_requested_ao[0] != '\0' ? g_requested_ao : PLAYER_LIBMPV_FALLBACK_AO,
              g_requested_hwdec[0] != '\0' ? g_requested_hwdec : PLAYER_LIBMPV_FALLBACK_HWDEC,
              PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS,
@@ -1445,6 +1464,11 @@ static bool libmpv_init(void)
              0,
 #endif
 #ifdef HAVE_NVTEGRA_HWCONTEXT
+             1,
+#else
+             0,
+#endif
+#ifdef HAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
              1);
 #else
              0);

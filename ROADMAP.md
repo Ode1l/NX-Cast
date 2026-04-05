@@ -42,14 +42,14 @@ Complete backend
 - real audio output (`ao=hos`)
 - `OpenGL/libmpv render API` path
 - Switch-oriented backend hardening
-- Status: next major focus
+- Status: largely done on the current official toolchain; `ao=hos` and `OpenGL/libmpv render API` are verified on device, remaining work is backend hardening and transport stability
 
 ## Phase 5
 Hardware decode
 
 - evaluate `hwdec=nvtegra`
 - connect decode path to the `OpenGL/libmpv render API` backend
-- Status: not started
+- Status: investigated and partially wired in code, but blocked by the current official `dkp` `libmpv` toolchain lacking a working explicit `nvtegra` hwdec backend
 
 ## Phase 6
 Source compatibility and mixed transports
@@ -57,7 +57,7 @@ Source compatibility and mixed transports
 - vendor-sensitive sources
 - local proxy / hybrid transports
 - range/seekability/media preflight
-- Status: in progress
+- Status: in progress; `mgtv-family`, Tencent normal/phone-acceleration, and parts of Youku/CCTV have improved, but `iqiyi` and some local-proxy/HLS transport cases remain incomplete
 
 ## Phase 7
 AirPlay receiver

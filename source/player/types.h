@@ -4,6 +4,8 @@
 
 #include "ingress.h"
 
+#define PLAYER_DEFAULT_VOLUME 100
+
 typedef enum
 {
     PLAYER_STATE_IDLE = 0,

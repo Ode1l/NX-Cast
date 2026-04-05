@@ -30,6 +30,20 @@
    3. `OpenGL/libmpv render API`
 5. `deko3d` 当前被降级为未来能力，原因是现有官方 `libmpv` 工具链没有提供 `mpv/render_dk3d.h`
 
+补充说明：
+
+1. `wiliwili-dev` 的 Switch OpenGL 版本不是“官方现成 libmpv + render_gl”的简单组合。
+2. 它的实际路线是：
+   1. 自编 `FFmpeg`，开启 `--enable-nvtegra`
+   2. 自编 `mpv` OpenGL 版本，开启 `hos-audio`
+   3. 运行时在 Switch 上请求 `hwdec=auto`
+   4. 通过 `hwdec-current` 判断最终是否真的启用了硬解
+3. 它同时保留独立的 `mpv_deko3d` 构建，因此 `OpenGL` 与 `deko3d` 是两条并列的渲染后端路线，而不是“OpenGL 版就没有硬解码”。
+4. 这对 `NX-Cast` 的意义是：
+   1. 当前阶段选择 `hos-audio + OpenGL/libmpv render API`
+   2. 不等于放弃硬解码
+   3. 但如果要达到 `wiliwili-dev` 那种硬解能力，最终仍需要自定义 `FFmpeg/mpv` 工具链，而不能只依赖当前官方 `dkp` 的 `libmpv`
+
 ---
 
 ## 2. 已确定边界
@@ -116,6 +130,14 @@
 
 1. 当前正式采用的 GPU 路线
 2. 与 `ao=hos + hwdec=nvtegra` 组合成这一阶段的完整后端目标
+
+参考补充：
+
+1. `wiliwili-dev` 的 Switch OpenGL 版本就是这条大路线：
+   1. 运行时使用 `MPV_RENDER_API_TYPE_OPENGL`
+   2. `FFmpeg` 侧自编并开启 `--enable-nvtegra`
+   3. `mpv` 侧单独维护 OpenGL 版本与 `deko3d` 版本两套构建
+2. 因此 `OpenGL` 版并不自动意味着“无硬解”；真正决定硬解的是底层 `FFmpeg/mpv` 工具链与运行时 `hwdec-current`
 
 ---
 

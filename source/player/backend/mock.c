@@ -14,7 +14,7 @@ static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 static PlayerState g_state = PLAYER_STATE_IDLE;
 static int g_position_ms = 0;
 static int g_duration_ms = 0;
-static int g_volume = 20;
+static int g_volume = PLAYER_DEFAULT_VOLUME;
 static bool g_mute = false;
 static bool g_has_media = false;
 static PlayerMedia g_media;
@@ -97,7 +97,7 @@ static bool mock_init(void)
     g_state = PLAYER_STATE_IDLE;
     g_position_ms = 0;
     g_duration_ms = 0;
-    g_volume = 20;
+    g_volume = PLAYER_DEFAULT_VOLUME;
     g_mute = false;
     g_play_anchor_ms = 0;
     g_play_anchor_monotonic_ms = monotonic_time_ms();

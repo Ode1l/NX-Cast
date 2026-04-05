@@ -7,7 +7,14 @@
 #include "player/player.h"
 #include "player/render/internal.h"
 
+#define PLAYER_VIEW_STOP_HOLD_MS 1500ULL
+
 static ViewContext g_view;
+
+static uint64_t monotonic_time_ms(void)
+{
+    return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
 
 static const char *player_state_name(PlayerState state)
 {
@@ -65,12 +72,12 @@ static bool should_show_video_view(const PlayerSnapshot *snapshot)
 
     switch (snapshot->state)
     {
+    case PLAYER_STATE_LOADING:
     case PLAYER_STATE_BUFFERING:
     case PLAYER_STATE_SEEKING:
     case PLAYER_STATE_PLAYING:
     case PLAYER_STATE_PAUSED:
         return true;
-    case PLAYER_STATE_LOADING:
     case PLAYER_STATE_IDLE:
     case PLAYER_STATE_STOPPED:
     case PLAYER_STATE_ERROR:
@@ -111,16 +118,46 @@ void player_view_deinit(void)
 
 void player_view_sync(const PlayerSnapshot *snapshot)
 {
+    uint64_t now_ms;
+    bool keep_video_hold = false;
+
     if (!g_view.status.initialized || !snapshot)
         return;
 
+    now_ms = monotonic_time_ms();
     PlayerViewMode previous_desired = g_view.status.desired_view;
 
     g_view.status.has_media = snapshot->has_media;
     g_view.status.session_active = should_show_video_view(snapshot);
     g_view.status.player_state = snapshot->state;
-    g_view.status.desired_view = g_view.status.session_active ? PLAYER_VIEW_VIDEO
-                                                              : PLAYER_VIEW_LOG;
+
+    if (g_view.status.session_active)
+    {
+        g_view.last_video_state_ms = now_ms;
+        g_view.stop_hold_until_ms = 0;
+        g_view.status.desired_view = PLAYER_VIEW_VIDEO;
+    }
+    else
+    {
+        if (snapshot->has_media &&
+            (snapshot->state == PLAYER_STATE_STOPPED || snapshot->state == PLAYER_STATE_IDLE) &&
+            g_view.status.active_view == PLAYER_VIEW_VIDEO &&
+            g_view.last_video_state_ms > 0)
+        {
+            if (g_view.stop_hold_until_ms == 0)
+                g_view.stop_hold_until_ms = g_view.last_video_state_ms + PLAYER_VIEW_STOP_HOLD_MS;
+
+            keep_video_hold = now_ms < g_view.stop_hold_until_ms;
+        }
+
+        if (keep_video_hold)
+            g_view.status.desired_view = PLAYER_VIEW_VIDEO;
+        else
+        {
+            g_view.stop_hold_until_ms = 0;
+            g_view.status.desired_view = PLAYER_VIEW_LOG;
+        }
+    }
 
     if (snapshot->has_media)
     {

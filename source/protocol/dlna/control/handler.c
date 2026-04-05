@@ -560,7 +560,7 @@ void soap_handler_init(void)
     snprintf(g_soap_runtime_state.transport_duration, sizeof(g_soap_runtime_state.transport_duration), "00:00:00");
     snprintf(g_soap_runtime_state.transport_rel_time, sizeof(g_soap_runtime_state.transport_rel_time), "00:00:00");
     snprintf(g_soap_runtime_state.transport_abs_time, sizeof(g_soap_runtime_state.transport_abs_time), "00:00:00");
-    g_soap_runtime_state.volume = 20;
+    g_soap_runtime_state.volume = PLAYER_DEFAULT_VOLUME;
     g_soap_runtime_state.mute = false;
     g_soap_runtime_state.source_protocol_info[0] = '\0';
     snprintf(g_soap_runtime_state.sink_protocol_info,
