@@ -37,7 +37,14 @@ Current progress:
 - `mp4`, `bilibili`, `mgtv`, and parts of `youku/tencent/cctv` are now verified on device; `iqiyi` is still not working and currently looks more like request-context or system media-stack completeness than a basic DMR failure.
 - The current main work is no longer "can the protocol path work", but two deeper tracks:
   1. finishing the generic DMR compatibility baseline
-  2. completing the real playback backend: audio output, `deko3d` render path, and hardware decode integration
+  2. completing the real playback backend: audio output, an `OpenGL/libmpv render API` path, and hardware decode integration
+
+Current backend direction:
+
+1. The active target path is `ao=hos + hwdec=nvtegra + OpenGL/libmpv render API`
+2. `deko3d` remains a future capability instead of the immediate next step
+3. This is not because `deko3d` is rejected architecturally, but because the current official `libmpv` toolchain does not expose `mpv/render_dk3d.h`
+4. If the project later switches to a custom media toolchain, it can move to the `libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)` route
 
 ---
 
@@ -102,12 +109,13 @@ How to verify Milestone 1 locally:
 - Player-ingress resource selection from `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` candidates
 - Step 2.1: define foreground-display ownership and add a main-thread render-loop skeleton
 - Step 2.2: integrate the `libmpv render API` and establish a minimal on-device video path via `software render + libnx framebuffer`
-- Step 2.3: finish log/UI switching, screen ownership, and the `deko3d` path
-- Status: Step 1 and Step 2.1 / 2.2 are landed, and the first version of player-ingress resource selection is also landed; the next priority is real audio output and the complete render/backend path
+- Step 2.3: finish log/UI switching, screen ownership, and the `OpenGL/libmpv render API` path
+- Status: Step 1 and Step 2.1 / 2.2 are landed, and the first version of player-ingress resource selection is also landed; the next priority is real audio output, `OpenGL/libmpv render API`, and hardware decode
 
 ### Phase 4
 - Hardware accelerated decode
-- Status: not started yet; the current backend is still in the `ao=null + vo=libmpv` stage
+- `hwdec=nvtegra`
+- Status: entering implementation and verification; `deko3d` is no longer treated as a prerequisite for this phase
 
 ### Phase 5
 - AirPlay-style video streaming
@@ -123,6 +131,9 @@ How to verify Milestone 1 locally:
 - Home menu desktop shortcut entry (add-to-desktop style launch)
 
 ### Optional Phase
+- Custom `mpv` toolchain
+- `deko3d` render backend
+- `render_dk3d` / `libuam` route
 - Sysmodule-based resident/background service
 - Suspended or persistent discovery/listening beyond normal foreground homebrew lifecycle
 

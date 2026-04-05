@@ -5,8 +5,17 @@
 1. 本文档主要解决“如何把 Switch 上可用的 `libmpv/ffmpeg` 依赖链装起来”。
 2. 当前项目已经完成 `libmpv` 控制链与最小 render 路径，下一阶段重点不再是“能否链接 `libmpv`”，而是：
    1. 真实音频输出
-   2. `deko3d` 渲染后端
-   3. `hwdec=nvtegra` 硬解码评估
+   2. `OpenGL/libmpv render API`
+   3. `hwdec=nvtegra` 硬解码
+
+当前路线决策：
+
+1. 当前正式后端路线采用 `ao=hos + hwdec=nvtegra + OpenGL/libmpv render API`
+2. `deko3d` 改为未来能力，不再作为当前阶段默认目标
+3. 原因不是业务代码排斥 `deko3d`，而是当前官方 `libmpv` 工具链缺少 `mpv/render_dk3d.h`
+4. 因此本文档需要区分两种依赖状态：
+   1. 官方包可满足：`hos-audio + nvtegra`
+   2. 自定义工具链才可满足：`render_dk3d + libuam`
 
 本文档定义 `NX-Cast` 后续接入真实 `player backend` 时所需的依赖安装步骤、验证方式，以及 `libmpv` 路线与纯 `FFmpeg` 路线的区别。
 
@@ -16,6 +25,10 @@
 2. `libmpv` 路线不等于“不要 FFmpeg”
 3. `libmpv` 依赖底层 `FFmpeg`
 4. `nxmp` 的构建线，本质上就是一条面向 Switch 的 `libmpv` 构建线
+5. 当前官方 `dkp-pacman` 安装结果里：
+   1. `ao_hos` 已存在于 `libmpv`
+   2. `nvtegra` 已存在于 `FFmpeg`
+   3. 但 `render_dk3d.h` 不存在，因此不构成完整 `deko3d` 路线
 
 ---
 

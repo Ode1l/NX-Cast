@@ -37,7 +37,14 @@ NX-Cast 的目标是：
 - `mp4`、`bilibili`、`mgtv`、部分 `youku/tencent/cctv` 路径已完成实机验证；`iqiyi` 仍未打通，当前更像站点请求上下文或系统媒体能力差距，而不是基础 DMR 不通。
 - 当前主矛盾已从“协议是否能通”转移到两条线：
   1. 通用 DMR 完整度继续补完
-  2. 完整播放器后端：真实音频输出、`deko3d` 渲染路径、硬解码接入
+  2. 完整播放器后端：真实音频输出、`OpenGL/libmpv render API` 路径、硬解码接入
+
+当前后端路线决策：
+
+1. 当前正式路线采用 `ao=hos + hwdec=nvtegra + OpenGL/libmpv render API`
+2. `deko3d` 仍然保留为未来能力，但不再作为当前阶段立即接入目标
+3. 原因不是架构否定 `deko3d`，而是当前官方 `libmpv` 工具链缺少 `mpv/render_dk3d.h`
+4. 如果后续切换到自定义媒体工具链，再进入 `libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)` 路线
 
 ---
 
@@ -102,12 +109,13 @@ NX-Cast 的目标是：
 - player 入口资源选择（基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 候选资源）
 - Step 2.1：确定前台显示权归属，建立主线程驱动的 render loop 骨架
 - Step 2.2：接入 `libmpv render API`，通过 `software render + libnx framebuffer` 打通最小视频显示路径
-- Step 2.3：完善日志 UI 切换、屏幕接管与 `deko3d` 路径
-- 状态：Step 1 与 Step 2.1 / 2.2 已落地，player 入口资源选择也已落地第一版；下一步转向真实音频输出、完整 render/backend 与 `deko3d` 路径
+- Step 2.3：完善日志 UI 切换、屏幕接管与 `OpenGL/libmpv render API` 路径
+- 状态：Step 1 与 Step 2.1 / 2.2 已落地，player 入口资源选择也已落地第一版；下一步转向真实音频输出、`OpenGL/libmpv render API` 与硬解码
 
 ### Phase 4
 - 硬件解码支持
-- 状态：尚未开始；当前仍是 `ao=null + vo=libmpv` 的控制链先行形态
+- `hwdec=nvtegra`
+- 状态：已进入实现与验证阶段；当前不再把 `deko3d` 作为这一阶段前置条件
 
 ### Phase 5
 - AirPlay 类视频投屏
@@ -123,6 +131,9 @@ NX-Cast 的目标是：
 - 添加到桌面（快捷入口）
 
 ### Optional Phase
+- 自定义 `mpv` 工具链
+- `deko3d` 渲染后端
+- `render_dk3d` / `libuam` 路线
 - 基于 sysmodule 的后台常驻服务
 - 脱离普通前台 homebrew 生命周期后的挂起/持续发现与监听
 

@@ -175,7 +175,7 @@ SSDP discover
 当前边界仍然是：
 
 1. 音频输出未完成
-2. `deko3d` 路径未完成
+2. 当前正式后端不再以 `deko3d` 作为立即目标；当前阶段采用 `ao=hos + hwdec=nvtegra + OpenGL/libmpv render API`
 3. 硬解码未接入
 
 ---
@@ -212,8 +212,9 @@ SSDP discover
 接下来更重要的是：
 
 1. 真实音频输出
-2. `deko3d` 渲染后端
+2. `OpenGL/libmpv render API`
 3. `hwdec=nvtegra`
+4. `deko3d` 作为未来能力
 4. 更强的 transport/media preflight
 
 ---

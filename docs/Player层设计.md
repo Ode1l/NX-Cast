@@ -746,8 +746,9 @@ Step 2 的通过标准：
 
 1. 日志 UI 与视频 UI 切换策略
 2. 屏幕接管
-3. `deko3d` 路径
+3. `OpenGL/libmpv render API` 路径
 4. 调试叠加层和播放态 UI
+5. `deko3d` 作为未来可选后端保留
 
 #### Step 2.1 当前先固定的边界
 
@@ -777,6 +778,7 @@ Step 2 的通过标准：
 1. `Step 2` 的“真实视频可见”路径成立
 2. `player backend` 仍然不持有平台 render target
 3. 后续 `Step 2.3` 仍可把 software 路径替换成 `EGL/deko3d` 或更正式的 GPU 路径
+4. 当前明确优先替换成 `OpenGL/libmpv render API`，而不是立即进入 `deko3d`
 
 #### Step 2 当前验证结果
 
@@ -796,6 +798,21 @@ Step 2 的通过标准：
    1. `HLS startup` 优化
    2. `live / non-seekable` 来源的 readiness 判定
    3. `bilibili` 等 vendor-sensitive ingress 策略
+
+#### 当前完整后端路线决策
+
+截至 `2026-04-05`，完整后端路线先明确收敛为：
+
+1. 音频：`ao=hos`
+2. 解码：`hwdec=nvtegra`
+3. 渲染：`OpenGL/libmpv render API`
+
+同时明确：
+
+1. `deko3d` 不是被否定，而是进入未来能力范围
+2. 当前官方 `libmpv` 环境缺少 `mpv/render_dk3d.h`
+3. 因此 `deko3d` 路线不再作为当前 `Step 2.3` 的前置要求
+4. 如果后续切换到自定义媒体工具链，再进入 `libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)` 路线
 
 #### 当前代码目录分层
 

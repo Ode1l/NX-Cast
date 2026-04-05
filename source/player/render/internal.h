@@ -4,13 +4,30 @@
 
 #include <switch.h>
 
+#ifdef HAVE_SWITCH_EGL_GLES
+#include <EGL/egl.h>
+#endif
+
 #include "player/view.h"
+
+typedef enum
+{
+    FRONTEND_RENDER_NONE = 0,
+    FRONTEND_RENDER_SW,
+    FRONTEND_RENDER_GL
+} FrontendRenderPath;
 
 typedef struct
 {
     PlayerViewStatus status;
     Framebuffer framebuffer;
     bool framebuffer_ready;
+    FrontendRenderPath render_path;
+#ifdef HAVE_SWITCH_EGL_GLES
+    EGLDisplay egl_display;
+    EGLSurface egl_surface;
+    EGLContext egl_context;
+#endif
 } ViewContext;
 
 bool frontend_connect(ViewContext *ctx);

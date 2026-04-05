@@ -40,8 +40,7 @@ Player and rendering baseline
 Complete backend
 
 - real audio output (`ao=hos`)
-- platform render path
-- `deko3d` integration
+- `OpenGL/libmpv render API` path
 - Switch-oriented backend hardening
 - Status: next major focus
 
@@ -49,7 +48,7 @@ Complete backend
 Hardware decode
 
 - evaluate `hwdec=nvtegra`
-- connect decode path to final render backend
+- connect decode path to the `OpenGL/libmpv render API` backend
 - Status: not started
 
 ## Phase 6
@@ -78,6 +77,8 @@ DMP expansion
 
 ## Optional
 
+- custom media toolchain (`libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)`)
+- `deko3d` / `render_dk3d`
 - `SSDP NOTIFY ssdp:alive/byebye`
 - resident/sysmodule mode
 - settings and UI polishing

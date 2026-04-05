@@ -31,8 +31,10 @@ bool player_seek_ms(int position_ms);
 bool player_set_volume(int volume_0_100);
 bool player_set_mute(bool mute);
 bool player_video_supported(void);
+bool player_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
 bool player_video_attach_sw(void);
 void player_video_detach(void);
+bool player_video_render_gl(int fbo, int width, int height, bool flip_y);
 bool player_video_render_sw(void *pixels, int width, int height, size_t stride);
 
 int player_get_position_ms(void);

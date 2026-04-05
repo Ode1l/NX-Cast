@@ -19,11 +19,16 @@
 1. 本文档记录的是 `Step 2.2` 期间的路线讨论和最小落地选择。
 2. 当前项目的下一阶段重点已经转向“完整播放器后端”：
    1. 真实音频输出（`ao=hos`）
-   2. `deko3d` 渲染路径
-   3. `hwdec=nvtegra` 硬解码评估
+   2. `OpenGL/libmpv render API` 路径
+   3. `hwdec=nvtegra` 硬解码
 3. 需要特别区分两件事：
    1. `deko3d` 是渲染后端
    2. `hwdec=nvtegra` 是解码后端
+4. 当前已明确采用的路线是：
+   1. `ao=hos`
+   2. `hwdec=nvtegra`
+   3. `OpenGL/libmpv render API`
+5. `deko3d` 当前被降级为未来能力，原因是现有官方 `libmpv` 工具链没有提供 `mpv/render_dk3d.h`
 
 ---
 
@@ -48,7 +53,7 @@
 1. 项目已经有 `console` 日志前台，视频显示不能无视它
 2. `player` 是 owner thread 模型，backend 与前台并不在同一线程
 3. `libmpv render API` 和普通 `libmpv` 控制 API 有线程边界
-4. Switch 平台最终可能要走 `deko3d`，但当下先需要一条最小可运行的视频路径
+4. Switch 平台长期仍可考虑 `deko3d`，但当前工具链更现实的正式路线是 `OpenGL/libmpv render API`
 5. 这一步的目标是“真实视频可见”，不是一次性把最终 GPU 路线全部做完
 
 ---
@@ -109,7 +114,8 @@
 
 适用阶段：
 
-1. 更像 `Step 2.3` 或其后的正式 GPU 路线
+1. 当前正式采用的 GPU 路线
+2. 与 `ao=hos + hwdec=nvtegra` 组合成这一阶段的完整后端目标
 
 ---
 
@@ -135,7 +141,18 @@
 
 适用阶段：
 
-1. `Step 2.3` 及以后
+1. 未来自定义媒体工具链阶段
+2. 当前不作为默认下一步
+
+限制说明：
+
+1. 当前官方 `libmpv` 工具链仅提供 `render.h` 与 `render_gl.h`
+2. 当前缺少 `mpv/render_dk3d.h`
+3. 因此当前阶段不能把 `deko3d` 当成“只差一点代码”的路径
+4. 若后续切换到自定义媒体工具链，需要同时准备：
+   1. `libuam`
+   2. `FFmpeg --enable-nvtegra`
+   3. `mpv --enable-deko3d --enable-hos-audio`
 2. 在前台显示权和最小 render loop 已稳定之后再做
 
 ---

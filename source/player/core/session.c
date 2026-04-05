@@ -831,16 +831,28 @@ bool player_set_mute(bool mute)
 
 bool player_video_supported(void)
 {
-    if (!g_initialized || !g_backend || !g_backend->render_attach_sw || !g_backend->render_frame_sw)
+    if (!g_initialized || !g_backend)
         return false;
+    if ((!g_backend->render_attach_gl || !g_backend->render_frame_gl) &&
+        (!g_backend->render_attach_sw || !g_backend->render_frame_sw))
+    {
+        return false;
+    }
     if (g_backend->render_supported)
         return g_backend->render_supported();
     return true;
 }
 
+bool player_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx)
+{
+    if (!player_video_supported() || !g_backend->render_attach_gl)
+        return false;
+    return g_backend->render_attach_gl(get_proc_address, get_proc_address_ctx);
+}
+
 bool player_video_attach_sw(void)
 {
-    if (!player_video_supported())
+    if (!player_video_supported() || !g_backend->render_attach_sw)
         return false;
     return g_backend->render_attach_sw();
 }
@@ -852,9 +864,16 @@ void player_video_detach(void)
     g_backend->render_detach();
 }
 
+bool player_video_render_gl(int fbo, int width, int height, bool flip_y)
+{
+    if (!player_video_supported() || !g_backend->render_frame_gl)
+        return false;
+    return g_backend->render_frame_gl(fbo, width, height, flip_y);
+}
+
 bool player_video_render_sw(void *pixels, int width, int height, size_t stride)
 {
-    if (!player_video_supported())
+    if (!player_video_supported() || !g_backend->render_frame_sw)
         return false;
     return g_backend->render_frame_sw(pixels, width, height, stride);
 }

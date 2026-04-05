@@ -249,6 +249,13 @@ static bool mock_render_supported(void)
     return false;
 }
 
+static bool mock_render_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx)
+{
+    (void)get_proc_address;
+    (void)get_proc_address_ctx;
+    return false;
+}
+
 static bool mock_render_attach_sw(void)
 {
     return false;
@@ -256,6 +263,15 @@ static bool mock_render_attach_sw(void)
 
 static void mock_render_detach(void)
 {
+}
+
+static bool mock_render_frame_gl(int fbo, int width, int height, bool flip_y)
+{
+    (void)fbo;
+    (void)width;
+    (void)height;
+    (void)flip_y;
+    return false;
 }
 
 static bool mock_render_frame_sw(void *pixels, int width, int height, size_t stride)
@@ -316,8 +332,10 @@ const BackendOps g_mock_ops = {
     .pump_events = mock_pump_events,
     .wakeup = mock_wakeup,
     .render_supported = mock_render_supported,
+    .render_attach_gl = mock_render_attach_gl,
     .render_attach_sw = mock_render_attach_sw,
     .render_detach = mock_render_detach,
+    .render_frame_gl = mock_render_frame_gl,
     .render_frame_sw = mock_render_frame_sw,
     .get_position_ms = mock_get_position_ms,
     .get_duration_ms = mock_get_duration_ms,

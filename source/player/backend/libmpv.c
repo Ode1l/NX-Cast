@@ -15,6 +15,7 @@
 #include "player/ingress/vendor.h"
 #include <mpv/client.h>
 #include <mpv/render.h>
+#include <mpv/render_gl.h>
 #ifdef HAVE_MPV_RENDER_DK3D
 #include <mpv/render_dk3d.h>
 #endif
@@ -91,6 +92,7 @@ static char g_metadata[PLAYER_LIBMPV_METADATA_MAX];
 static char g_requested_ao[24];
 static char g_requested_hwdec[32];
 static volatile bool g_render_update_pending = false;
+static const char *g_render_api_name = "none";
 
 static void libmpv_clip_for_log(const char *input, char *output, size_t output_size);
 static uint64_t libmpv_now_ms(void);
@@ -114,8 +116,10 @@ static void libmpv_log_stream_details_locked(const char *reason);
 static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force);
 static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms);
 static void libmpv_render_update(void *ctx);
+static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
 static bool libmpv_render_attach_sw(void);
 static void libmpv_render_detach(void);
+static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y);
 static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t stride);
 
 enum
@@ -637,13 +641,14 @@ static void libmpv_log_backend_runtime_locked(const char *reason)
     if (!libmpv_get_string_locked("hwdec-current", hwdec_current, sizeof(hwdec_current)))
         snprintf(hwdec_current, sizeof(hwdec_current), "%s", "?");
 
-    log_info("[player-libmpv] backend_runtime reason=%s requested_ao=%s current_ao=%s current_vo=%s requested_hwdec=%s hwdec_current=%s render_path=sw deko3d_header=%d nvtegra_header=%d\n",
+    log_info("[player-libmpv] backend_runtime reason=%s requested_ao=%s current_ao=%s current_vo=%s requested_hwdec=%s hwdec_current=%s render_path=%s deko3d_header=%d nvtegra_header=%d\n",
              reason ? reason : "refresh",
              g_requested_ao[0] != '\0' ? g_requested_ao : "?",
              current_ao[0] != '\0' ? current_ao : "?",
              current_vo[0] != '\0' ? current_vo : "?",
              g_requested_hwdec[0] != '\0' ? g_requested_hwdec : "?",
              hwdec_current[0] != '\0' ? hwdec_current : "?",
+             g_render_api_name ? g_render_api_name : "none",
 #ifdef HAVE_MPV_RENDER_DK3D
              1,
 #else
@@ -1429,10 +1434,11 @@ static bool libmpv_init(void)
     libmpv_emit_event_locked(PLAYER_EVENT_MUTE_CHANGED);
     mutexUnlock(&g_state_mutex);
 
-    log_info("[player-libmpv] init mode=render-api ao=%s vo=libmpv hwdec=%s net_timeout=%ss tls_verify=no render_path=sw deko3d_header=%d nvtegra_header=%d\n",
+    log_info("[player-libmpv] init mode=render-api ao=%s vo=libmpv hwdec=%s net_timeout=%ss tls_verify=no render_path=%s deko3d_header=%d nvtegra_header=%d\n",
              g_requested_ao[0] != '\0' ? g_requested_ao : PLAYER_LIBMPV_FALLBACK_AO,
              g_requested_hwdec[0] != '\0' ? g_requested_hwdec : PLAYER_LIBMPV_FALLBACK_HWDEC,
              PLAYER_LIBMPV_NETWORK_TIMEOUT_SECONDS,
+             g_render_api_name ? g_render_api_name : "none",
 #ifdef HAVE_MPV_RENDER_DK3D
              1,
 #else
@@ -1860,12 +1866,55 @@ static bool libmpv_render_supported(void)
     return true;
 }
 
+static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx)
+{
+    if (!g_mpv || !get_proc_address)
+        return false;
+
+    if (g_render_context)
+    {
+        if (g_render_api_name && strcmp(g_render_api_name, "gl") == 0)
+            return true;
+        libmpv_render_detach();
+    }
+
+    mpv_opengl_init_params gl_init_params = {
+        .get_proc_address = get_proc_address,
+        .get_proc_address_ctx = get_proc_address_ctx,
+    };
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_OPENGL},
+        {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params},
+        {MPV_RENDER_PARAM_INVALID, NULL},
+    };
+
+    int rc = mpv_render_context_create(&g_render_context, g_mpv, params);
+    if (rc < 0)
+    {
+        g_render_context = NULL;
+        g_render_api_name = "none";
+        log_error("[player-libmpv] render_attach_gl failed: %s\n", mpv_error_string(rc));
+        return false;
+    }
+
+    g_render_update_pending = true;
+    g_render_api_name = "gl";
+    mpv_render_context_set_update_callback(g_render_context, libmpv_render_update, NULL);
+    log_info("[player-libmpv] render_attach api=gl\n");
+    return true;
+}
+
 static bool libmpv_render_attach_sw(void)
 {
-    if (g_render_context)
-        return true;
     if (!g_mpv)
         return false;
+
+    if (g_render_context)
+    {
+        if (g_render_api_name && strcmp(g_render_api_name, "sw") == 0)
+            return true;
+        libmpv_render_detach();
+    }
 
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_SW},
@@ -1881,6 +1930,7 @@ static bool libmpv_render_attach_sw(void)
     }
 
     g_render_update_pending = true;
+    g_render_api_name = "sw";
     mpv_render_context_set_update_callback(g_render_context, libmpv_render_update, NULL);
     log_info("[player-libmpv] render_attach api=sw\n");
     return true;
@@ -1895,7 +1945,42 @@ static void libmpv_render_detach(void)
     mpv_render_context_free(g_render_context);
     g_render_context = NULL;
     g_render_update_pending = false;
-    log_info("[player-libmpv] render_detach api=sw\n");
+    log_info("[player-libmpv] render_detach api=%s\n", g_render_api_name ? g_render_api_name : "none");
+    g_render_api_name = "none";
+}
+
+static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y)
+{
+    if (!g_render_context || width <= 0 || height <= 0)
+        return false;
+
+    if (g_render_update_pending)
+    {
+        (void)mpv_render_context_update(g_render_context);
+        g_render_update_pending = false;
+    }
+
+    mpv_opengl_fbo gl_fbo = {
+        .fbo = fbo,
+        .w = width,
+        .h = height,
+        .internal_format = 0,
+    };
+    int flip = flip_y ? 1 : 0;
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_OPENGL_FBO, &gl_fbo},
+        {MPV_RENDER_PARAM_FLIP_Y, &flip},
+        {MPV_RENDER_PARAM_INVALID, NULL},
+    };
+
+    int rc = mpv_render_context_render(g_render_context, params);
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] render_frame_gl failed: %s\n", mpv_error_string(rc));
+        return false;
+    }
+
+    return true;
 }
 
 static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t stride)
@@ -2069,6 +2154,13 @@ static bool libmpv_render_supported(void)
     return false;
 }
 
+static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx)
+{
+    (void)get_proc_address;
+    (void)get_proc_address_ctx;
+    return libmpv_not_ready("render_attach_gl");
+}
+
 static bool libmpv_render_attach_sw(void)
 {
     return libmpv_not_ready("render_attach_sw");
@@ -2076,6 +2168,15 @@ static bool libmpv_render_attach_sw(void)
 
 static void libmpv_render_detach(void)
 {
+}
+
+static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y)
+{
+    (void)fbo;
+    (void)width;
+    (void)height;
+    (void)flip_y;
+    return false;
 }
 
 static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t stride)
@@ -2135,8 +2236,10 @@ const BackendOps g_libmpv_ops = {
     .pump_events = libmpv_pump_events,
     .wakeup = libmpv_wakeup,
     .render_supported = libmpv_render_supported,
+    .render_attach_gl = libmpv_render_attach_gl,
     .render_attach_sw = libmpv_render_attach_sw,
     .render_detach = libmpv_render_detach,
+    .render_frame_gl = libmpv_render_frame_gl,
     .render_frame_sw = libmpv_render_frame_sw,
     .get_position_ms = libmpv_get_position_ms,
     .get_duration_ms = libmpv_get_duration_ms,
