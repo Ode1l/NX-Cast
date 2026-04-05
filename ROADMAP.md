@@ -1,44 +1,83 @@
 # NX-Cast Roadmap
 
-## Milestone 0
-Project bootstrap
+## Phase 0
+Bootstrap and runtime foundation
 
-- Repository setup
-- Basic app framework
-- Switch homebrew launch
-- Network initialization
+- Repository, build system, `.nro/.nacp`
+- Logging, input, network bootstrap
+- Status: done
 
-## Milestone 1
-Device discovery
+## Phase 1
+Discovery and DLNA description/control baseline
 
-- `[MVP]` Ship `_airplay._tcp.local` mDNS probe so controllers can locate NX-Cast without Linux.
-- `[MVP]` Add an SSDP responder that listens on 239.255.255.250:1900, parses `M-SEARCH` (MAN/ST/MX) and returns `HTTP/1.1 200 OK` with `CACHE-CONTROL/LOCATION/ST/USN`.
-- `[Optional]` Emit `NOTIFY ssdp:alive/byebye` on startup/interval/exit to advertise presence proactively.
+- SSDP responder
+- mDNS probe
+- `device.xml` and SCPD
+- SOAP router and core actions
+- Status: done for current MVP
 
-## Milestone 2
-DLNA receiver
+## Phase 2
+Generic DMR completeness
 
-- `[MVP]` Serve `/device.xml` describing the MediaRenderer profile and exposing AVTransport/ConnectionManager/RenderingControl services.
-- `[MVP]` Implement minimal SCPD + SOAP handlers (`SetAVTransportURI`, `Play`) so controllers can push URLs and initiate playback.
-- `[MVP]` Add an HTTP client pipeline (H264 software path initially) that pulls the provided media URL and feeds the renderer.
-- `[Optional]` Add eventing (`SUBSCRIBE/NOTIFY`) and richer actions once the core DMR loop is stable.
+- `GENA` eventing
+- richer `SinkProtocolInfo`
+- complete metadata return
+- `CurrentTransportActions`
+- URL preflight and better resource selection
+- local-proxy / mixed-source classification
+- Status: largely done, still iterative
 
-## Milestone 3
+## Phase 3
+Player and rendering baseline
+
+- `player` as single state source
+- owner thread + command queue
+- `libmpv` backend
+- `software render + libnx framebuffer`
+- Status: done for minimal video path
+
+## Phase 4
+Complete backend
+
+- real audio output (`ao=hos`)
+- platform render path
+- `deko3d` integration
+- Switch-oriented backend hardening
+- Status: next major focus
+
+## Phase 5
+Hardware decode
+
+- evaluate `hwdec=nvtegra`
+- connect decode path to final render backend
+- Status: not started
+
+## Phase 6
+Source compatibility and mixed transports
+
+- vendor-sensitive sources
+- local proxy / hybrid transports
+- range/seekability/media preflight
+- Status: in progress
+
+## Phase 7
 AirPlay receiver
 
-- mDNS discovery
-- RTSP session
-- Video streaming
+- discovery
+- session control
+- media path
+- Status: not started
 
-## Milestone 4
-Performance optimization
+## Phase 8
+DMP expansion
 
-- Hardware decode
-- Reduced latency
+- source-native browsing
+- VOD program lists and detail pages
+- optional source adapters
+- Status: planned
 
-## Milestone 5
-User interface
+## Optional
 
-- Settings
-- Device name
-- Protocol toggles
+- `SSDP NOTIFY ssdp:alive/byebye`
+- resident/sysmodule mode
+- settings and UI polishing

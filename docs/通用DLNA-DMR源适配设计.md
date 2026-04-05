@@ -671,24 +671,24 @@ generic DMR 可以做的合理动作：
 
 1. `PlayerMedia`
 2. `PlayerMediaProfile`
-3. `ingress_resolve()`
-4. `player_set_media()`
+3. `ingress_resolve_media()`
+4. `player_set_uri_with_context() -> ingress -> backend set_media`
 5. `PlayerSnapshot`
 
 对应代码：
 
 1. [ingress.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/ingress.h)
-2. [ingress.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/ingress.c)
+2. [ingress.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/ingress/ingress.c)
 3. [player.h](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player.h)
-4. [player.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/player.c)
+4. [session.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/core/session.c)
 
 ### 12.2 当前已完成的边界
 
 当前已经完成：
 
 1. `SOAP` 仍然只调用 `player_set_uri()`
-2. 但 `player_set_uri()` 内部已经先过 `SourceResolver`
-3. backend 不再直接接收“原始 `uri + metadata`”，而是接收 `ResolvedSource`
+2. 但 `player_set_uri_with_context()` 内部已经先过 `ingress`
+3. backend 不再直接接收“原始 `uri + metadata`”，而是接收 `PlayerMedia`
 4. `mock` 与 `libmpv` backend 都已经接入新的 `set_media` 边界
 
 这意味着：
@@ -700,21 +700,21 @@ generic DMR 可以做的合理动作：
 
 当前还没完成：
 
-1. `source_policy_*` 仍是第一版策略实现，规则还不够细
+1. `policy_*` 仍是第一版策略实现，规则还不够细
 2. `libmpv backend` 里仍保留一部分来源相关 runtime overrides
 3. 标准化的错误域分类
 4. 针对 `bilibili / HLS / signed URL` 的策略观测与回退机制
 
 因此应把这次落地理解成：
 
-1. `SourceResolver -> SourcePolicy -> Player Core -> Backend` 的主链已经成立
+1. `ingress -> policy -> Player Core -> Backend` 的主链已经成立
 2. 后续要做的是继续把策略细节从 backend 迁出，而不是再改外围接口
 
 ### 12.4 第二阶段已落地
 
 当前已新增并接通：
 
-1. `player.c` 独立 owner 线程
+1. `session.c` 独立 owner 线程
 2. 固定容量命令队列
 3. `PlayerSnapshot` 快照缓存
 4. `libmpv` 持续 `mpv_wait_event` 事件循环
@@ -726,28 +726,22 @@ generic DMR 可以做的合理动作：
 
 1. getter 不再驱动 backend 吃事件
 2. SOAP 读取的是稳定快照，而不是临时拼接状态
-3. 后续 `bilibili / HLS` 的策略迁移可以继续沿 `source_policy_*` 推进
+3. 后续 `bilibili / HLS` 的策略迁移可以继续沿 `policy_*` 与 transport policy 推进
 
-### 12.5 已确认但后续再做的 DMR 协议侧兼容性待办
+### 12.5 后续仍需继续补完的 DMR 通用能力
 
-当前要接近商用电视盒子的投屏兼容性，协议侧还缺一项明确的 DMR 能力。
+这一阶段原先列出的两项待办，现在都已经从“待设计”进入“第一版已落地”：
 
-#### 待办 1. 扩展 `ConnectionManager/SinkProtocolInfo`
+1. `ConnectionManager/SinkProtocolInfo` 已完成第一轮扩展
+2. `CurrentURIMetaData` 多路 `res/protocolInfo` 候选资源选择已落到 player `ingress`
 
-当前 `SinkProtocolInfo` 仍然过窄，容易让发送端只把 `mp4` 一类资源交给我们，而不是根据接收端真实能力选择更合适的 `HLS/TS` 路径。
+当前的后续工作不再是“有没有这两项”，而是：
 
-后续应做：
+1. 继续扩完整的 `SinkProtocolInfo` 能力矩阵
+2. 继续提高 `resource_select` 的评分质量
+3. 结合 URL preflight、`Accept-Ranges` 和 transport policy 做更稳的资源分流
 
-1. 按真实可接收能力扩展 `SinkProtocolInfo`
-2. 明确区分“可以稳定接收”和“只是偶尔探测成功”的格式
-3. 在没做完资源选择与伴随音轨处理前，不对外宽泛宣告 `DASH`
+更具体的现状和边界已经并入：
 
-目标不是把能力字符串写得更长，而是让控制端在标准 `GetProtocolInfo` 路径上更容易给出可播资源。
-
-与 `CurrentURIMetaData` 相关的多路 `res/protocolInfo` 候选资源选择，不再归到本文件继续展开。
-
-原因：
-
-1. `CurrentURIMetaData` 是 DLNA 协议入口字段
-2. 但“从多个候选资源里选哪一路”本质上取决于 player 入口和 `SourceResolver`
-3. 因此详细设计单独占位到 [Player入口资源选择设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/Player入口资源选择设计.md)
+1. [源兼容性.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/源兼容性.md)
+2. [Player层设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/Player层设计.md)

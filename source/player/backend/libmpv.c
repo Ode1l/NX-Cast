@@ -397,7 +397,10 @@ static void libmpv_log_message(const mpv_event_log_message *message)
          strstr(message->text, "error reading packet") != NULL ||
          strstr(message->text, "Packet corrupt") != NULL ||
          strstr(message->text, "Invalid NAL unit size") != NULL ||
-         strstr(message->text, "missing picture in access unit") != NULL))
+         strstr(message->text, "missing picture in access unit") != NULL ||
+         strstr(message->text, "Error when loading first segment") != NULL ||
+         strstr(message->text, "avformat_open_input() failed") != NULL ||
+         strstr(message->text, "Leaking 1 nested connections") != NULL))
     {
         char clipped_stop[192];
         libmpv_clip_for_log(message->text, clipped_stop, sizeof(clipped_stop));

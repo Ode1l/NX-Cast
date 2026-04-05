@@ -160,8 +160,14 @@ source/player/
     frontend.c
     internal.h
   ingress/
+    evidence.c
+    classify.c
+    resource_select.c
+    http_probe.c
     ingress.c
     policy_default.c
+    policy_context.c
+    policy_transport.c
     hls_detect.c
     hls_profile.c
     policy_vendor.c
@@ -182,7 +188,7 @@ source/player/
 6. `backend/libmpv_hls.c`
    作用：`HLS` 运行态分类与 cache 诊断等专项逻辑
 7. `ingress/`
-   作用：player 入口层，负责 `URI + metadata` 解析、候选资源选择、格式识别和策略注入
+   作用：player 入口层，负责 `evidence -> classify -> resource_select -> policy` 流水线、URL preflight、候选资源选择、格式识别和策略注入
 8. `render/`
    作用：player 前台视图与平台显示层，负责日志页/视频页切换和前台 render loop
 
@@ -192,8 +198,10 @@ source/player/
 2. 事件回调机制
 3. `mock` 与 `libmpv` 双 backend
 4. SOAP 到 player 的控制闭环
-5. `https mp4 / hls / header-sensitive URL` 的初步打开实验能力
-6. `ingress -> PlayerMedia -> backend set_media` 的第一阶段边界已经接入
+5. `mp4 / hls / local_proxy / vendor-sensitive URL` 的第一阶段系统化入口处理
+6. `CurrentURIMetaData` 候选资源选择第一版
+7. `http` URL preflight（`HEAD / GET fallback / redirect / Accept-Ranges / Content-Type`）
+8. `ingress -> PlayerMedia -> backend set_media` 边界已经稳定接入
 
 当前未实现能力：
 
@@ -201,15 +209,15 @@ source/player/
 2. backend 内仍保留部分 runtime overrides
 3. 真实视频渲染与平台输出
 4. 更完整的网络流状态机
-5. player 入口的候选资源选择仍未独立设计
+5. 真实音频输出与完整平台后端
 
 这里需要特别说明：
 
 1. “独立入口策略分层”现在已经落地到 `ingress/policy_*`
-2. 但当前还只是第一阶段
-3. 目前只是把 `PlayerMedia` 公共化，并接到了 backend 边界
-4. 还没有把所有来源策略都完全从 `libmpv backend` 中迁移出去
-5. 基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 的最终候选资源选择，应归到 player 入口 / `ingress`，不归到 `ConnectionManager` 内部硬编码
+2. `evidence / classify / resource_select / policy` 现在已经是独立阶段化实现
+3. 但当前还只是第一版，transport 与 vendor 规则仍会继续收紧
+4. backend 内仍保留少量 runtime overrides，需要后续继续回收
+5. 基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 的候选资源选择，现在已经明确归到 player 入口 / `ingress`，不归到 `ConnectionManager` 内部硬编码
 
 ---
 
@@ -285,8 +293,14 @@ source/player/
     libmpv_hls.c
     ffmpeg.c
   ingress/
+    evidence.c
+    classify.c
+    resource_select.c
+    http_probe.c
     ingress.c
     policy_default.c
+    policy_context.c
+    policy_transport.c
     hls_detect.c
     hls_profile.c
     policy_vendor.c
@@ -304,7 +318,7 @@ source/player/
 2. `backend/ffmpeg.c`
    仅作为验证或研究路径
 3. `ingress/*`
-   作为 player 入口、metadata 资源选择、格式识别和兼容策略层
+   作为 player 入口、evidence/classify/resource_select/policy 流水线、metadata 资源选择、格式识别和兼容策略层
 4. `render/*`
    抽象 Switch 的前台显示、视频页和硬件相关 render 入口
 
@@ -447,16 +461,16 @@ PlayerState player_get_state(void);
 
 当前实现状态补充：
 
-1. Step 1 已给 `libmpv backend` 加入最小互斥保护
-2. 但 `player` 还没有真正独立的 backend 线程
-3. 当前 `player_*` 仍在调用者线程里直接执行 `libmpv` 控制
-4. 当前还没有命令队列、事件队列和专门的 `mpv` 事件循环
+1. `player` 已有真正独立的 owner thread
+2. `player_*` 已通过命令队列把重操作交给 owner thread
+3. `libmpv` 事件循环当前由 owner thread 周期性 `pump_events()`
+4. `GENA event worker` 已作为独立事件推送线程存在
 
 因此当前结论应理解为：
 
-1. 现在已经有“基础并发保护”
-2. 但还不能视为“正式并发模型已经完成”
-3. 真正完整的线程模型仍属于 Step 3 范围
+1. owner-thread 模型已经落地
+2. 但 render/audio/backend 的最终线程拆分仍未完成
+3. 真正完整的播放器后端线程模型仍属于 Step 3 范围
 
 推荐命令流：
 

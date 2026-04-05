@@ -1,5 +1,13 @@
 # libmpv 依赖安装与验证（面向 NX-Cast）
 
+注：
+
+1. 本文档主要解决“如何把 Switch 上可用的 `libmpv/ffmpeg` 依赖链装起来”。
+2. 当前项目已经完成 `libmpv` 控制链与最小 render 路径，下一阶段重点不再是“能否链接 `libmpv`”，而是：
+   1. 真实音频输出
+   2. `deko3d` 渲染后端
+   3. `hwdec=nvtegra` 硬解码评估
+
 本文档定义 `NX-Cast` 后续接入真实 `player backend` 时所需的依赖安装步骤、验证方式，以及 `libmpv` 路线与纯 `FFmpeg` 路线的区别。
 
 当前结论先说：

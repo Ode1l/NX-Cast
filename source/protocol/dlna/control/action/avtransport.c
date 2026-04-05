@@ -168,12 +168,14 @@ static unsigned int avtransport_current_actions(const PlayerSnapshot *snapshot)
         break;
     case PLAYER_STATE_LOADING:
         // Our SetAVTransportURI path preloads via mpv with pause=yes, so a
-        // control point's immediate Play should still be accepted.
-        actions |= AVTRANSPORT_ACTION_PLAY | AVTRANSPORT_ACTION_STOP;
+        // control point's immediate Play should still be accepted. Some
+        // senders also optimistically issue Pause during this window; treat it
+        // as a harmless no-op instead of a fault.
+        actions |= AVTRANSPORT_ACTION_PLAY | AVTRANSPORT_ACTION_PAUSE | AVTRANSPORT_ACTION_STOP;
         break;
     case PLAYER_STATE_BUFFERING:
     case PLAYER_STATE_SEEKING:
-        actions |= AVTRANSPORT_ACTION_STOP;
+        actions |= AVTRANSPORT_ACTION_PAUSE | AVTRANSPORT_ACTION_STOP;
         if (snapshot->seekable)
             actions |= AVTRANSPORT_ACTION_SEEK;
         break;
@@ -565,6 +567,16 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
 
     if (snapshot.state == PLAYER_STATE_PAUSED)
     {
+        soap_handler_set_success(out, "");
+        return true;
+    }
+    if (snapshot.state == PLAYER_STATE_LOADING ||
+        snapshot.state == PLAYER_STATE_BUFFERING ||
+        snapshot.state == PLAYER_STATE_SEEKING)
+    {
+        log_info("[avtransport] pause noop state=%s has_media=%d\n",
+                 avtransport_player_state_name(snapshot.state),
+                 snapshot.has_media ? 1 : 0);
         soap_handler_set_success(out, "");
         return true;
     }

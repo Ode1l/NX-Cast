@@ -24,19 +24,20 @@ NX-Cast 的目标是：
 
 ## 当前状态
 
-项目目前处于原型快速推进阶段。
+项目目前处于“通用 DMR 底座已成型，完整播放器后端待补完”的阶段。
 
 当前进度：
 
 - 应用启动、日志系统与网络初始化已经就位。
-- 发现层已具备 SSDP 响应与 mDNS 探测能力。
-- DLNA DMR 核心链路已基本实现：SCPD、SOAP 路由、AVTransport / RenderingControl / ConnectionManager，以及对应 smoke 测试均已接通。
+- 发现层已具备 SSDP 响应、service-type 回复与 mDNS 探测能力。
+- DLNA DMR 核心链路已基本实现：SCPD、SOAP 路由、AVTransport / RenderingControl / ConnectionManager、GENA 事件订阅，以及对应 smoke 测试。
 - `player` 已成为真实状态源，`SOAP -> player -> libmpv` 控制链路已打通；`SetURI / Play / Pause / Stop / Seek / GetTransportInfo / GetPositionInfo` 的主流程已通过实机 smoke。
 - `Step 2.1 / Step 2.2` 已落地：主线程前台显示权、render loop 骨架，以及 `software render + libnx framebuffer` 的最小真实出画路径均已接通。
-- `mp4` 基线已通过；一条中国 `live HLS` 源也已通过实机 smoke，当前结论是“可播、不可 seek、启动偏慢”。
-- 当前剩余的 DLNA 工作主要是 optional 能力，例如 `NOTIFY ssdp:alive/byebye` 和更完整的事件通知。
-- 为了接近商用电视盒子的投屏兼容性，后续还需要补两项关键能力：协议侧的 `ConnectionManager/SinkProtocolInfo` 输入能力宣告扩展，以及 player 入口侧基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 候选资源的接收端选择。
-- 下一阶段的重点不再是“协议是否能通”，而是 `live/generic HLS` 的 startup 优化，以及后续的 `bilibili` 等 vendor-sensitive source 兼容。
+- `ingress` 已从规则堆叠式实现收敛为 `evidence -> classify -> resource_select -> policy` 的第一版系统化流水线，并补了 `http` URL preflight、`SinkProtocolInfo` 扩展、metadata 资源选择与 `local_proxy` transport policy。
+- `mp4`、`bilibili`、`mgtv`、部分 `youku/tencent/cctv` 路径已完成实机验证；`iqiyi` 仍未打通，当前更像站点请求上下文或系统媒体能力差距，而不是基础 DMR 不通。
+- 当前主矛盾已从“协议是否能通”转移到两条线：
+  1. 通用 DMR 完整度继续补完
+  2. 完整播放器后端：真实音频输出、`deko3d` 渲染路径、硬解码接入
 
 ---
 
@@ -72,7 +73,7 @@ NX-Cast 的目标是：
 - 引入 `network/discovery` 模块，为后续的 mDNS/AirPlay 发现逻辑提供统一入口。
 - 实现基于 `_airplay._tcp.local` 的 mDNS 查询，多播请求并输出 PTR 应答结果。
 - 明确目标是实现 DLNA 的 DMR 角色，播放控制与内容由第三方 DMC/DMS 提供。
-- 新增 DLNA 控制占位模块，读取缓存结果并记录后续将建立控制会话的设备。
+- 这一阶段建立的 DLNA control 骨架，已经演进为当前正式的 `SOAP + GENA` 控制层。
 
 验证步骤：
 
@@ -93,7 +94,7 @@ NX-Cast 的目标是：
 ### Phase 2
 - DLNA Digital Media Renderer（DMR）实现
 - SCPD + SOAP 控制链路
-- 状态：核心能力基本完成，剩余 optional 的 `NOTIFY ssdp:alive/byebye`、更完整事件通知能力，以及协议侧的 `ConnectionManager/SinkProtocolInfo` 扩展
+- 状态：核心能力已基本完成；`SSDP responder + service-type response`、`SOAP`、`GENA eventing`、`SinkProtocolInfo`、metadata 返回和当前兼容性底座已落地
 
 ### Phase 3
 - 基础播放管线
@@ -102,10 +103,11 @@ NX-Cast 的目标是：
 - Step 2.1：确定前台显示权归属，建立主线程驱动的 render loop 骨架
 - Step 2.2：接入 `libmpv render API`，通过 `software render + libnx framebuffer` 打通最小视频显示路径
 - Step 2.3：完善日志 UI 切换、屏幕接管与 `deko3d` 路径
-- 状态：Step 1 与 Step 2.1 / 2.2 已落地；下一步优先做 HLS startup 优化，其后进入 `bilibili` 兼容与 player 入口资源选择
+- 状态：Step 1 与 Step 2.1 / 2.2 已落地，player 入口资源选择也已落地第一版；下一步转向真实音频输出、完整 render/backend 与 `deko3d` 路径
 
 ### Phase 4
 - 硬件解码支持
+- 状态：尚未开始；当前仍是 `ao=null + vo=libmpv` 的控制链先行形态
 
 ### Phase 5
 - AirPlay 类视频投屏
@@ -131,18 +133,19 @@ NX-Cast 的目标是：
 NX-Cast 采用分层架构：
 
 ```text
-应用层
+应用入口(main)
 │
 协议层
-(AirPlay / DLNA)
+(DLNA / AirPlay 占位)
 │
-媒体处理
+控制与描述
+(SSDP / SCPD / SOAP / GENA)
 │
-解码层
+player
+(core / ingress / backend / render)
 │
-渲染层
-│
-平台层 (libnx)
+平台与依赖
+(libnx / libmpv / 网络 / 后续 deko3d)
 ```
 
 ---
@@ -153,21 +156,33 @@ NX-Cast 采用分层架构：
 nx-cast
 │
 ├── docs
-│
-├── src
-│ ├── app
-│ ├── network
-│ ├── protocol
-│ ├── media
-│ ├── decoder
-│ └── render
-│
-├── include
-│
-├── examples
-│
-└── tests
+├── scripts
+├── source
+│   ├── log
+│   ├── player
+│   │   ├── core
+│   │   ├── ingress
+│   │   ├── backend
+│   │   └── render
+│   ├── protocol
+│   │   ├── airplay
+│   │   ├── dlna
+│   │   │   ├── discovery
+│   │   │   ├── description
+│   │   │   └── control
+│   │   └── http
+│   └── main.c
+├── xml
+├── README.md / README_CN.md
+└── ROADMAP.md
 ```
+
+建议阅读顺序：
+
+1. [Player层设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/Player层设计.md)
+2. [源兼容性.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/源兼容性.md)
+3. [DMR实现细节.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/DMR实现细节.md)
+4. [render设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/render设计.md)
 
 ---
 

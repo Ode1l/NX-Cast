@@ -24,19 +24,20 @@ The long-term goal is to provide a reusable infrastructure for media streaming a
 
 ## Current Status
 
-Active prototype stage.
+The project is now in a "generic DMR foundation is working, complete playback backend still pending" stage.
 
 Current progress:
 
 - Application bootstrap, logging, and network initialization are in place.
-- Device discovery is working with SSDP responder and mDNS probe support.
-- DLNA DMR core path is largely implemented: SCPD, SOAP routing, AVTransport/RenderingControl/ConnectionManager, and smoke-test coverage are all in place.
+- Device discovery now covers SSDP responder, service-type replies, and mDNS probe support.
+- The DLNA DMR core path is largely implemented: SCPD, SOAP routing, AVTransport/RenderingControl/ConnectionManager, GENA eventing, and smoke-test coverage are all in place.
 - `player` is now the real state source, and the `SOAP -> player -> libmpv` control path is working end to end; the main `SetURI / Play / Pause / Stop / Seek / GetTransportInfo / GetPositionInfo` flow has passed on-device smoke tests.
 - `Step 2.1 / Step 2.2` have landed: foreground-display ownership, the main-thread render-loop skeleton, and a minimal real video path via `software render + libnx framebuffer`.
-- The `mp4` baseline is passing, and one Chinese live HLS source now passes on-device smoke as "playable, non-seekable, slow-starting".
-- Remaining DLNA items are mainly optional features such as `NOTIFY ssdp:alive/byebye` and richer eventing.
-- To approach commercial TV-box compatibility, two cross-layer items are still pending: protocol-side `ConnectionManager/SinkProtocolInfo` capability advertisement and player-ingress receiver-side selection from `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` candidates.
-- The next major milestone is no longer basic protocol bring-up, but `live/generic HLS` startup optimization followed by vendor-sensitive source work such as `bilibili`.
+- `ingress` has been refactored into a first-pass `evidence -> classify -> resource_select -> policy` pipeline, with `http` URL preflight, expanded `SinkProtocolInfo`, metadata resource selection, and `local_proxy` transport policy.
+- `mp4`, `bilibili`, `mgtv`, and parts of `youku/tencent/cctv` are now verified on device; `iqiyi` is still not working and currently looks more like request-context or system media-stack completeness than a basic DMR failure.
+- The current main work is no longer "can the protocol path work", but two deeper tracks:
+  1. finishing the generic DMR compatibility baseline
+  2. completing the real playback backend: audio output, `deko3d` render path, and hardware decode integration
 
 ---
 
@@ -72,7 +73,7 @@ Highlights:
 - Introduced a dedicated `network/discovery` module that caches basic device metadata (USN/ST) and will host future mDNS/AirPlay discovery code.
 - Added a real mDNS probe that multicasts `_airplay._tcp.local` queries and prints PTR answers.
 - Clarifies that NX-Cast’s DLNA target is the Digital Media Renderer (DMR) role, relying on third-party DMC/DMS apps for control and content.
-- Added a placeholder DLNA control module that consumes cached results and logs which devices will get control sessions next.
+- The DLNA control skeleton introduced in this phase has since evolved into the current full `SOAP + GENA` control layer.
 
 How to verify Milestone 1 locally:
 
@@ -93,7 +94,7 @@ How to verify Milestone 1 locally:
 ### Phase 2
 - DLNA Digital Media Renderer (DMR) implementation
 - SCPD + SOAP control path
-- Status: largely complete, with optional `NOTIFY ssdp:alive/byebye`, richer event/eventing work, and protocol-side `ConnectionManager/SinkProtocolInfo` expansion still pending
+- Status: largely complete; `SSDP responder + service-type response`, `SOAP`, `GENA eventing`, `SinkProtocolInfo`, metadata return, and the current compatibility baseline are already landed
 
 ### Phase 3
 - Basic playback pipeline
@@ -102,10 +103,11 @@ How to verify Milestone 1 locally:
 - Step 2.1: define foreground-display ownership and add a main-thread render-loop skeleton
 - Step 2.2: integrate the `libmpv render API` and establish a minimal on-device video path via `software render + libnx framebuffer`
 - Step 2.3: finish log/UI switching, screen ownership, and the `deko3d` path
-- Status: Step 1 and Step 2.1 / 2.2 are landed; the next priority is HLS startup optimization, then `bilibili` compatibility and player-ingress resource selection
+- Status: Step 1 and Step 2.1 / 2.2 are landed, and the first version of player-ingress resource selection is also landed; the next priority is real audio output and the complete render/backend path
 
 ### Phase 4
 - Hardware accelerated decode
+- Status: not started yet; the current backend is still in the `ao=null + vo=libmpv` stage
 
 ### Phase 5
 - AirPlay-style video streaming
@@ -131,18 +133,19 @@ How to verify Milestone 1 locally:
 NX-Cast uses a layered architecture:
 
 ```text
-Application Layer
+Application entry (main)
 │
-Protocol Layer
-(AirPlay / DLNA)
+Protocol layer
+(DLNA / AirPlay placeholder)
 │
-Media Processing
+Control and description
+(SSDP / SCPD / SOAP / GENA)
 │
-Decoder
+player
+(core / ingress / backend / render)
 │
-Renderer
-│
-Platform Layer (libnx)
+Platform and dependencies
+(libnx / libmpv / networking / future deko3d)
 ```
 
 ---
@@ -153,21 +156,33 @@ Platform Layer (libnx)
 nx-cast
 │
 ├── docs
-│
-├── src
-│ ├── app
-│ ├── network
-│ ├── protocol
-│ ├── media
-│ ├── decoder
-│ └── render
-│
-├── include
-│
-├── examples
-│
-└── tests
+├── scripts
+├── source
+│   ├── log
+│   ├── player
+│   │   ├── core
+│   │   ├── ingress
+│   │   ├── backend
+│   │   └── render
+│   ├── protocol
+│   │   ├── airplay
+│   │   ├── dlna
+│   │   │   ├── discovery
+│   │   │   ├── description
+│   │   │   └── control
+│   │   └── http
+│   └── main.c
+├── xml
+├── README.md / README_CN.md
+└── ROADMAP.md
 ```
+
+Recommended reading order:
+
+1. [Player层设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/Player层设计.md)
+2. [源兼容性.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/源兼容性.md)
+3. [DMR实现细节.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/DMR实现细节.md)
+4. [render设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/render设计.md)
 
 ---
 

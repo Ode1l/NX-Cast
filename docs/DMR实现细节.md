@@ -1,453 +1,225 @@
-# DMR 实现细节（面向 NX-Cast）
+# DMR 实现细节
 
-本文档定义 `NX-Cast` 作为 `DLNA DMR` 的整体实现方式，按本项目采用的职责边界、数据流和状态流来描述。
+本文档描述 `NX-Cast` 作为 `DLNA Digital Media Renderer` 的当前实现，不再保留早期“未来计划版”的表述。
 
 ---
 
-## 1. 角色定义
+## 1. 当前角色
 
-`NX-Cast` 的目标角色是：
+`NX-Cast` 当前实现的是：
 
 1. `DMR`：Digital Media Renderer
 
-典型交互方：
-
-1. `DMC`：Digital Media Controller
-   例如手机、平板、电脑上的投屏控制端
-2. `DMS`：Digital Media Server
-   例如媒体服务器、NAS、HTTP 媒体源
-
-`NX-Cast` 本身不做控制端，也不做媒体目录浏览器。  
 它的职责是：
 
 1. 被发现
-2. 被控制
-3. 接收媒体 URI
-4. 主动拉取并播放该 URI
+2. 提供 `device.xml` 与 `SCPD`
+3. 接收 `SOAP` 控制
+4. 主动拉取媒体 URL
+5. 进行本地播放
+6. 通过查询和事件把状态同步给控制端
+
+它当前不实现：
+
+1. `DMC` 控制端
+2. `DMS` 媒体目录浏览
+3. AirPlay 主链
 
 ---
 
-## 2. 总体链路
+## 2. 当前完整链路
 
-`DMR` 的完整链路可以概括为：
+当前 DMR 主链已经是：
 
-`发现 -> 描述 -> 控制 -> 拉流 -> 播放 -> 事件同步`
+```text
+SSDP discover
+  -> device.xml / SCPD
+  -> SOAP control
+  -> player ingress
+  -> player core
+  -> libmpv backend
+  -> render/frontend
+  -> SOAP query + GENA notify
+```
 
-展开后是：
+按模块拆开是：
 
-1. `SSDP` 让控制端发现设备
-2. 控制端通过 `LOCATION` 访问 `device.xml`
-3. 控制端继续读取各服务的 `SCPD`
-4. 控制端对 `controlURL` 发送 `SOAP Action`
-5. `NX-Cast` 通过 `player` 拉取媒体 URI
-6. 本地进行播放、渲染、音频输出
-7. 状态变化再通过查询或事件同步回控制端
+1. 发现层：[ssdp.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/protocol/dlna/discovery/ssdp.c)
+2. 描述层：[scpd.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/protocol/dlna/description/scpd.c)
+3. 控制层：[soap_server.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/protocol/dlna/control/soap_server.c)
+4. 事件层：[event_server.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/protocol/dlna/control/event_server.c)
+5. 播放入口：[ingress.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/ingress/ingress.c)
+6. 播放核心：[session.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/core/session.c)
+7. 真实后端：[libmpv.c](/Users/ode1l/Documents/VSCode/NX-Cast/source/player/backend/libmpv.c)
 
 ---
 
-## 3. 采用的架构模式
+## 3. 当前分层边界
 
-### 3.1 分层模式
+### 3.1 发现层
 
-整个 DMR 采用严格分层：
+负责：
 
-1. 发现层：`SSDP`
-2. 描述层：`device.xml + SCPD`
-3. 控制层：`SOAP`
-4. 播放层：`player`
-5. 事件层：`GENA / LastChange`（后续）
+1. 回复 `M-SEARCH`
+2. 提供 `LOCATION`
+3. 回复 `device` 与 `service-type` 查询
 
-规则：
+当前未做：
 
-1. 上层不直接替代下层职责
-2. 每层只暴露必要接口
-3. 每层可单独调试与冒烟测试
+1. `SSDP NOTIFY ssdp:alive/byebye`
 
-### 3.2 控制面与数据面分离模式
+### 3.2 描述层
 
-DMR 必须明确区分两类流量：
+负责：
 
-1. 控制面
-   包括 `SSDP / HTTP XML / SOAP`
-2. 数据面
-   媒体 URI 的真实拉流与播放
+1. `device.xml`
+2. `AVTransport.xml`
+3. `RenderingControl.xml`
+4. `ConnectionManager.xml`
 
-这两个面不能混在一起设计。
+当前已经包含：
 
-控制面只负责：
+1. `eventSubURL`
+2. `LastChange`
+3. `GetCurrentTransportActions`
 
-1. 被发现
-2. 告诉别人“我支持什么”
-3. 接收播放命令
+### 3.3 控制层
 
-数据面只负责：
+负责：
 
-1. 访问媒体 URI
-2. 获取媒体数据
-3. 解码、渲染、输出
+1. `SOAP` 解析
+2. action 路由
+3. 参数校验
+4. 状态查询与动作映射
 
-### 3.3 Pull Model
+当前 action 范围：
 
-DMR 采用“接收 URI，由设备主动拉流”的模型。
+1. `SetAVTransportURI`
+2. `Play / Pause / Stop / Seek`
+3. `GetTransportInfo / GetMediaInfo / GetPositionInfo / GetCurrentTransportActions`
+4. `GetVolume / SetVolume / GetMute / SetMute`
+5. `GetProtocolInfo / GetCurrentConnectionIDs / GetCurrentConnectionInfo`
+
+### 3.4 事件层
+
+负责：
+
+1. `SUBSCRIBE / UNSUBSCRIBE`
+2. `NOTIFY`
+3. `LastChange`
+
+当前意义：
+
+1. 保证 DMR 事件层不是空壳
+2. 与 `SOAP` 查询一起组成较完整的控制兼容面
+
+### 3.5 Player 层
+
+负责：
+
+1. `CurrentURI + CurrentURIMetaData` 解析
+2. 资源分类、选择和策略注入
+3. 真实播放命令执行
+4. 真实状态和事件输出
+
+---
+
+## 4. 当前已经补完的 DMR 能力
+
+从系统性角度看，当前已补完的关键项有：
+
+1. `SOAP -> player -> libmpv` 主链
+2. `player` 作为单一真实状态源
+3. `SOAP` 动态 metadata 返回
+4. `CurrentTransportActions`
+5. `GENA / LastChange`
+6. `SinkProtocolInfo` 扩展
+7. `CurrentURIMetaData` 资源选择第一版
+8. URL preflight：`HEAD / GET fallback / redirect / Accept-Ranges / Content-Type`
+9. `local_proxy` 与混合源分类
 
 这意味着：
 
-1. 手机通常不是直接把媒体数据推给 Switch
-2. 手机通过 `SetAVTransportURI` 告诉设备媒体地址
-3. 设备在 `Play` 后主动对该 URI 发起请求
-
-这是整个 `DMR` 的核心实现前提。
-
-### 3.4 单一状态源模式
-
-整个系统的真实播放状态只能有一份。
-
-建议状态来源：
-
-1. 第一阶段：`SOAP runtime state + player mock`
-2. 后续阶段：`player`
-
-不能接受的设计：
-
-1. `SOAP` 自己维护一套状态
-2. `player` 再维护一套状态
-3. UI 再维护一套状态
-
-正确方式：
-
-1. `player` 是真实状态源
-2. `SOAP` 只是状态映射层
-3. UI 和本地输入也读取同一份状态
-
-### 3.5 增量实现模式
-
-DMR 不应一开始追求全量协议实现。
-
-正确顺序是：
-
-1. 先把链路打通
-2. 再补动作覆盖
-3. 再补事件通知
-4. 最后做兼容性和体验增强
+1. 当前的主要问题不再是“DLNA 主链没通”
+2. 而是通用 DMR 完整度、真实媒体后端和复杂源兼容
 
 ---
 
-## 4. 模块职责
+## 5. 当前系统对外暴露的真实能力
 
-### 4.1 发现层
+### 5.1 发现
 
-职责：
+已经能让控制端：
 
-1. 监听 `M-SEARCH`
-2. 响应匹配的 `ST`
-3. 提供 `LOCATION`
-4. 可选发送 `NOTIFY`
+1. 搜到设备
+2. 读取描述
+3. 按 `device` 或 `service-type` 把我们识别成标准 `MediaRenderer`
 
-输出给上层的信息：
+### 5.2 描述与控制
 
-1. 当前设备可被发现
-2. 当前 `LOCATION` 地址可用
+已经能让控制端：
 
-### 4.2 描述层
+1. 调 `SetURI / Play / Pause / Stop / Seek`
+2. 读 `TransportInfo / MediaInfo / PositionInfo`
+3. 读写音量和静音
+4. 读取 `SinkProtocolInfo`
 
-职责：
+### 5.3 播放
 
-1. 提供 `device.xml`
-2. 提供各服务 `SCPD`
-3. 对外声明支持的服务、动作和 URL
+当前真实媒体路径已经能做到：
 
-描述层不负责：
+1. `mp4` 基线播放
+2. `HLS` 基线播放
+3. 部分 vendor-sensitive 来源的实机出画
 
-1. 真正执行动作
-2. 维护播放状态
+当前边界仍然是：
 
-### 4.3 控制层
-
-职责：
-
-1. 接收 `SOAP Action`
-2. 校验参数
-3. 调用 `player` 或状态接口
-4. 返回标准 SOAP 响应
-
-### 4.4 播放层
-
-职责：
-
-1. 接收 `SetURI / Play / Pause / Stop / Seek`
-2. 管理真实播放状态
-3. 拉流并播放
-4. 向控制层回报状态变化
-
-### 4.5 事件层
-
-职责：
-
-1. 支持订阅
-2. 在状态变化时发送通知
-
-这层不是 MVP 必须项，但架构上要预留。
+1. 音频输出未完成
+2. `deko3d` 路径未完成
+3. 硬解码未接入
 
 ---
 
-## 5. 当前阶段划分
+## 6. 当前最接近商用品差距的部分
 
-### 5.1 已基本完成
+与成熟 DMR/电视盒子相比，当前差距主要不在“有没有 SOAP”，而在：
 
-1. 发现层基础能力
-2. `device.xml`
-3. `SCPD`
-4. `SOAP` 路由与核心动作
-5. `AVTransport / RenderingControl / ConnectionManager` 基础覆盖
-6. 冒烟脚本
+1. 通用媒体探测是否足够完整
+2. `SinkProtocolInfo` 与 metadata 选择是否足够成熟
+3. 混合源 / 本地代理 transport 是否有独立策略
+4. 完整播放器后端是否足够平台化
 
-### 5.2 正在推进
+这也是为什么：
 
-1. `player` 从 mock 走向真实后端
-2. 状态与控制层进一步收紧
-
-### 5.3 后续能力
-
-1. `GENA / LastChange`
-2. `NOTIFY alive/byebye`
-3. 更完整兼容性
-4. 更强播放后端
+1. `bilibili / mgtv` 已经有明显进展
+2. `iqiyi` 仍然不稳定
+3. 本地代理 HLS 仍然会暴露源链路极限
 
 ---
 
-## 6. 最小可用 DMR 链路
+## 7. 当前剩余工作
 
-当前最小闭环应满足：
+### 7.1 DMR 侧
 
-1. 控制端能看到 `NX-Cast`
-2. 能访问 `device.xml`
-3. 能访问三个 `SCPD`
-4. 能发送 `SetAVTransportURI`
-5. 能发送 `Play / Pause / Stop / Seek`
-6. 能查询：
-   1. `GetTransportInfo`
-   2. `GetPositionInfo`
-   3. `GetVolume / GetMute`
+当前真正还没做的 DMR 协议项已经不多：
 
-这条链路打通后，协议层就基本成立。
+1. `SSDP NOTIFY ssdp:alive/byebye`
+2. 继续扩完整的 `SinkProtocolInfo`
+3. 继续完善 `LastChange` 内容和控制端兼容矩阵
 
----
+### 7.2 Player / backend 侧
 
-## 7. 服务职责细化
+接下来更重要的是：
 
-### 7.1 AVTransport
-
-职责：
-
-1. 当前媒体 URI
-2. 播放状态
-3. 播放位置
-4. 播放控制
-
-核心动作：
-
-1. `SetAVTransportURI`
-2. `Play`
-3. `Pause`
-4. `Stop`
-5. `Seek`
-6. `GetTransportInfo`
-7. `GetPositionInfo`
-
-### 7.2 RenderingControl
-
-职责：
-
-1. 音量
-2. 静音
-
-核心动作：
-
-1. `GetVolume`
-2. `SetVolume`
-3. `GetMute`
-4. `SetMute`
-
-### 7.3 ConnectionManager
-
-职责：
-
-1. 宣告能力
-2. 提供协议与连接信息
-
-核心动作：
-
-1. `GetProtocolInfo`
-2. `GetCurrentConnectionIDs`
-3. `GetCurrentConnectionInfo`
+1. 真实音频输出
+2. `deko3d` 渲染后端
+3. `hwdec=nvtegra`
+4. 更强的 transport/media preflight
 
 ---
 
-## 8. 状态设计
+## 8. 结论
 
-`DMR` 不是只返回成功与失败，还必须维护一套可查询状态。
+一句话总结：
 
-最小状态集合：
-
-1. `transport_uri`
-2. `transport_uri_metadata`
-3. `transport_state`
-4. `transport_status`
-5. `transport_speed`
-6. `position`
-7. `duration`
-8. `volume`
-9. `mute`
-
-推荐状态来源：
-
-1. `player`
-
-控制层只是把这些状态映射到：
-
-1. SOAP 响应
-2. 未来事件通知
-
----
-
-## 9. 事件设计
-
-事件不是 MVP 必需，但架构上必须预留。
-
-原因：
-
-1. 手机控制和本地控制需要共享状态
-2. 控制端 UI 有时依赖事件同步
-3. `LastChange` 需要一个明确事件源
-
-推荐事件源：
-
-1. `player` 状态变化
-2. 音量变化
-3. 静音变化
-4. URI 变化
-
-推荐事件流：
-
-1. `player` 发生变化
-2. 控制层同步内部状态
-3. 事件层决定是否对订阅者发送通知
-
----
-
-## 10. 并发设计
-
-推荐最小并发模型：
-
-1. `SSDP` 线程
-2. `HTTP/SOAP` 线程
-3. `player backend` 线程
-
-可选扩展：
-
-1. 视频渲染线程
-2. 音频输出线程
-
-并发原则：
-
-1. 发现层与控制层并行
-2. 控制层与播放层并行
-3. 但真实播放命令应在单一 backend 线程串行处理
-
-这样做的原因：
-
-1. 协议收包不阻塞播放
-2. 播放状态不会被多线程同时修改
-3. 更容易实现可预测状态机
-
----
-
-## 11. 启动与停止顺序
-
-推荐启动顺序：
-
-1. `scpd_start`
-2. `soap_server_start`
-3. `ssdp_start`
-4. `player_init`
-
-如果 `player` 还不需要常驻初始化，也可在 `dlna_control` 中保持：
-
-1. `player_init`
-2. `scpd_start`
-3. `soap_server_start`
-4. `ssdp_start`
-
-核心原则：
-
-1. 对外可见前，描述和控制入口必须可用
-2. 停止时按对外影响反向关闭
-
-推荐停止顺序：
-
-1. `ssdp_stop`
-2. `soap_server_stop`
-3. `scpd_stop`
-4. `player_deinit`
-
----
-
-## 12. 关于 SSDP 等待与 `MX`
-
-发现阶段常见两个现象：
-
-1. 测试脚本需要保留接收窗口
-2. 设备端是否要按 `MX` 延迟响应
-
-本项目当前建议：
-
-1. 测试脚本保留短接收窗口
-2. 设备端默认收到即回
-3. `MX` 随机延迟响应作为 optional 能力保留
-
-原因：
-
-1. MVP 先保证发现稳定
-2. 多设备冲突优化不是当前第一优先级
-
----
-
-## 13. 当前实现顺序建议
-
-### 阶段 1：协议层稳定
-
-1. 保持 `SSDP -> device.xml -> SCPD -> SOAP` 全链路稳定
-2. 保证脚本冒烟通过
-3. 保证手机端可发现、可控制
-
-### 阶段 2：真实播放接入
-
-1. `SetAVTransportURI` 接到真实 `player`
-2. `Play / Pause / Stop / Seek` 驱动真实后端
-3. `GetPositionInfo` 读真实进度
-
-### 阶段 3：事件与兼容性
-
-1. 加入 `GENA / LastChange`
-2. 增强不同控制端兼容性
-3. 加入 optional 的 `NOTIFY`
-
----
-
-## 14. 结论
-
-`NX-Cast` 的 DMR 实现采用的是：
-
-1. 分层架构
-2. 控制面与数据面分离
-3. URI 拉流式播放模型
-4. 单一状态源
-5. 增量实现路线
-
-因此整个项目的核心不是“把所有协议一次性写满”，而是：
-
-1. 先把发现、描述、控制链路稳定打通
-2. 再把 `player` 接成真实后端
-3. 最后补事件通知和兼容性增强
-
-这条路线最适合当前 `NX-Cast` 的开发阶段。
+`NX-Cast` 当前已经不是“只会回 XML 的半成品 DMR”，而是拥有发现、描述、控制、事件和真实播放主链的通用 DMR 雏形；后续重点应转向完整播放器后端和更高完整度的通用媒体能力，而不是再回到基础 SOAP bring-up。
