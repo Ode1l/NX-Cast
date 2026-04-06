@@ -11,7 +11,10 @@
 
 #define PLAYER_COMMAND_SLOT_COUNT 16
 #define PLAYER_COMMAND_QUEUE_CAPACITY PLAYER_COMMAND_SLOT_COUNT
-#define PLAYER_THREAD_STACK_SIZE 0x8000
+// Keep the player owner thread on a conservative stack budget. It owns
+// backend calls plus command/event marshaling, so 0x8000 proved too tight for
+// repeated refactors.
+#define PLAYER_THREAD_STACK_SIZE 0x10000
 #define PLAYER_THREAD_POLL_TIMEOUT_MS 50
 #define PLAYER_HLS_STARTUP_SEEK_GUARD_MS 5000
 

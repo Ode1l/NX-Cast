@@ -2,8 +2,27 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "../handler_internal.h"
+
+static char *connectionmanager_escape_dup(const char *value)
+{
+    const char *src = value ? value : "";
+    size_t src_len = strlen(src);
+    size_t cap = src_len * 6 + 1;
+    char *escaped = malloc(cap);
+    if (!escaped)
+        return NULL;
+
+    if (!soap_handler_xml_escape(src, escaped, cap))
+    {
+        free(escaped);
+        return NULL;
+    }
+
+    return escaped;
+}
 
 bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
@@ -13,11 +32,12 @@ bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActio
     if (!out)
         return false;
 
-    char escaped_source[sizeof(state->source_protocol_info) * 2];
-    char escaped_sink[sizeof(state->sink_protocol_info) * 2];
-    if (!soap_handler_xml_escape(state->source_protocol_info, escaped_source, sizeof(escaped_source)) ||
-        !soap_handler_xml_escape(state->sink_protocol_info, escaped_sink, sizeof(escaped_sink)))
+    char *escaped_source = connectionmanager_escape_dup(state->source_protocol_info);
+    char *escaped_sink = connectionmanager_escape_dup(state->sink_protocol_info);
+    if (!escaped_source || !escaped_sink)
     {
+        free(escaped_source);
+        free(escaped_sink);
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
@@ -26,10 +46,14 @@ bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActio
     if (!soap_writer_element_raw(out, "Source", escaped_source) ||
         !soap_writer_element_raw(out, "Sink", escaped_sink))
     {
+        free(escaped_source);
+        free(escaped_sink);
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
+    free(escaped_source);
+    free(escaped_sink);
     soap_handler_set_success(out, NULL);
     return true;
 }
@@ -71,10 +95,8 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
         return false;
     }
 
-    char escaped_protocol_info[sizeof(state->sink_protocol_info) * 2];
-    if (!soap_handler_xml_escape(state->sink_protocol_info,
-                                 escaped_protocol_info,
-                                 sizeof(escaped_protocol_info)))
+    char *escaped_protocol_info = connectionmanager_escape_dup(state->sink_protocol_info);
+    if (!escaped_protocol_info)
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
@@ -89,10 +111,12 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
         !soap_writer_element_text(out, "Direction", "Input") ||
         !soap_writer_element_text(out, "Status", "OK"))
     {
+        free(escaped_protocol_info);
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
+    free(escaped_protocol_info);
     soap_handler_set_success(out, NULL);
     return true;
 }

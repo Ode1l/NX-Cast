@@ -18,7 +18,9 @@
 
 #define HTTP_SERVER_REQUEST_BUFFER_SIZE 16384
 #define HTTP_SERVER_RESPONSE_BUFFER_SIZE 131072
-#define HTTP_SERVER_THREAD_STACK_SIZE 0x8000
+// The HTTP thread can traverse SOAP parsing and action handlers. Use a more
+// conservative stack than the old 0x8000 baseline to reduce crash risk.
+#define HTTP_SERVER_THREAD_STACK_SIZE 0x10000
 #define HTTP_SERVER_RECV_IDLE_TIMEOUT_SEC 1
 
 typedef struct

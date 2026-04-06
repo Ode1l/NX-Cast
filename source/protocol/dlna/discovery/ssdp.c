@@ -17,8 +17,9 @@
 
 #define SSDP_PORT 1900
 #define SSDP_MULTICAST "239.255.255.250"
-// We keep SSDP thread stack at 0x8000 to avoid worker-thread stack crashes.
-#define SSDP_THREAD_STACK_SIZE 0x8000
+// Keep a conservative stack budget here too. SSDP itself is simple, but
+// repeated logging and response formatting make 0x10000 a safer floor.
+#define SSDP_THREAD_STACK_SIZE 0x10000
 #define SSDP_PACKET_BUFFER_SIZE 1536
 
 static const char g_serviceTypeAvTransport[] = "urn:schemas-upnp-org:service:AVTransport:1";

@@ -20,7 +20,9 @@
 #include "soap_writer.h"
 
 #define EVENT_MAX_SUBSCRIPTIONS 8
-#define EVENT_THREAD_STACK_SIZE 0x8000
+// Eventing builds XML and outgoing HTTP requests; use a safer stack floor than
+// the historical 0x8000.
+#define EVENT_THREAD_STACK_SIZE 0x10000
 #define EVENT_DEFAULT_TIMEOUT_SECONDS 1800
 #define EVENT_MIN_TIMEOUT_SECONDS 60
 #define EVENT_MAX_TIMEOUT_SECONDS 3600
