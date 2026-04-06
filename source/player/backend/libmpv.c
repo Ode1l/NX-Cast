@@ -431,7 +431,7 @@ static void libmpv_log_message(const mpv_event_log_message *message)
         return;
     }
 
-    if (g_media.flags.is_local_proxy &&
+    if (g_media.transport == PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY &&
         strstr(message->text, "mime type is not rfc8216 compliant") != NULL)
     {
         char clipped_local_proxy[192];
@@ -507,7 +507,6 @@ static void libmpv_emit_event_locked(PlayerEventType type)
         .seekable = g_seekable,
         .error_code = 0,
         .uri = g_uri,
-        .media_profile = g_has_media ? g_media.profile : PLAYER_MEDIA_PROFILE_UNKNOWN
     };
     g_event_sink(&event);
 }
@@ -950,17 +949,18 @@ static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media
     (void)libmpv_set_string_property_locked("http-header-fields", media->header_fields);
     (void)libmpv_set_string_property_locked("demuxer-lavf-probe-info", media->probe_info);
 
-    log_info("[player-libmpv] runtime_overrides profile=%s vendor=%s format=%s hint=%s hls=%d local_proxy=%d live_hint=%d dash=%d signed=%d bilibili=%d timeout=%s readahead_s=%d probe_info=%s headers=%d load_opts=%d\n",
+    log_info("[player-libmpv] runtime_overrides profile=%s vendor=%s format=%s transport=%s hint=%s hls=%d local_proxy=%d live_hint=%d dash=%d signed=%d bilibili=%d timeout=%s readahead_s=%d probe_info=%s headers=%d load_opts=%d\n",
              ingress_profile_name(media->profile),
              ingress_vendor_name(media->vendor),
              ingress_format_name(media->format),
+             ingress_transport_name(media->transport),
              media->format_hint[0] != '\0' ? media->format_hint : "unknown",
-             media->flags.is_hls ? 1 : 0,
-             media->flags.is_local_proxy ? 1 : 0,
+             media->format == PLAYER_MEDIA_FORMAT_HLS ? 1 : 0,
+             media->transport == PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY ? 1 : 0,
              media->flags.likely_live ? 1 : 0,
-             media->flags.is_dash ? 1 : 0,
+             media->format == PLAYER_MEDIA_FORMAT_DASH ? 1 : 0,
              media->flags.is_signed ? 1 : 0,
-             media->flags.is_bilibili ? 1 : 0,
+             media->vendor == PLAYER_MEDIA_VENDOR_BILIBILI ? 1 : 0,
              network_timeout,
              media->demuxer_readahead_seconds,
              media->probe_info[0] != '\0' ? media->probe_info : "auto",
@@ -1552,7 +1552,7 @@ static bool libmpv_set_media(const PlayerMedia *media)
 
     char clipped_uri[160];
     libmpv_clip_for_log(media->uri, clipped_uri, sizeof(clipped_uri));
-    g_hls_mode = media->flags.is_hls;
+    g_hls_mode = media->format == PLAYER_MEDIA_FORMAT_HLS;
     g_hls_live_hint = media->flags.likely_live;
     g_hls_kind = g_hls_mode && g_hls_live_hint ? LIBMPV_HLS_RUNTIME_LIVE : LIBMPV_HLS_RUNTIME_UNKNOWN;
     libmpv_request_log_level_locked(g_hls_mode ? PLAYER_LIBMPV_HLS_LOG_LEVEL : PLAYER_LIBMPV_DEFAULT_LOG_LEVEL);
@@ -1593,10 +1593,11 @@ static bool libmpv_set_media(const PlayerMedia *media)
     g_state = PLAYER_STATE_LOADING;
     libmpv_sync_properties_locked(false);
 
-    log_info("[player-libmpv] set_media profile=%s vendor=%s format=%s hint=%s uri=%s metadata_len=%zu uri_kind=%s live_hint=%d readahead_s=%d mpv_log_threshold=%s\n",
+    log_info("[player-libmpv] set_media profile=%s vendor=%s format=%s transport=%s hint=%s uri=%s metadata_len=%zu uri_kind=%s live_hint=%d readahead_s=%d mpv_log_threshold=%s\n",
              ingress_profile_name(media->profile),
              ingress_vendor_name(media->vendor),
              ingress_format_name(media->format),
+             ingress_transport_name(media->transport),
              media->format_hint[0] != '\0' ? media->format_hint : "unknown",
              clipped_uri,
              strlen(g_metadata),

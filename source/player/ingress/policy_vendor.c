@@ -144,7 +144,9 @@ void policy_apply_vendor(PlayerMedia *media)
         return;
 
     media->profile = PLAYER_MEDIA_PROFILE_VENDOR_SENSITIVE_URL;
-    media->network_timeout_seconds = (media->flags.is_hls || media->flags.is_flv || media->flags.is_mpeg_ts)
+    media->network_timeout_seconds = (media->format == PLAYER_MEDIA_FORMAT_HLS ||
+                                      media->format == PLAYER_MEDIA_FORMAT_FLV ||
+                                      media->format == PLAYER_MEDIA_FORMAT_MPEG_TS)
                                          ? policy->timeout_stream_seconds
                                          : policy->timeout_file_seconds;
 
@@ -158,7 +160,7 @@ void policy_apply_vendor(PlayerMedia *media)
 
     policy_refresh_header_fields(media);
 
-    if (media->flags.is_hls && media->flags.is_local_proxy)
+    if (media->transport == PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY)
     {
         snprintf(media->format_hint,
                  sizeof(media->format_hint),

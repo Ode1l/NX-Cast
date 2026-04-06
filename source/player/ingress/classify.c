@@ -130,6 +130,31 @@ PlayerMediaVendor ingress_classify_vendor(const char *resolved_uri,
     return vendor;
 }
 
+PlayerMediaTransport ingress_classify_transport(const char *resolved_uri,
+                                                PlayerMediaFormat format,
+                                                bool likely_segmented,
+                                                PlayerMediaVendor vendor)
+{
+    if (format == PLAYER_MEDIA_FORMAT_HLS)
+    {
+        if (ingress_hls_local_proxy_uri(resolved_uri))
+            return PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY;
+        if (ingress_vendor_is_sensitive(vendor) || likely_segmented)
+            return PLAYER_MEDIA_TRANSPORT_HLS_GATEWAY;
+        return PLAYER_MEDIA_TRANSPORT_HLS_DIRECT;
+    }
+
+    if (format == PLAYER_MEDIA_FORMAT_MP4 ||
+        format == PLAYER_MEDIA_FORMAT_FLV ||
+        format == PLAYER_MEDIA_FORMAT_MPEG_TS ||
+        format == PLAYER_MEDIA_FORMAT_DASH)
+    {
+        return PLAYER_MEDIA_TRANSPORT_HTTP_FILE;
+    }
+
+    return PLAYER_MEDIA_TRANSPORT_UNKNOWN;
+}
+
 void ingress_apply_classification(PlayerMedia *media, bool likely_segmented, const IngressEvidence *evidence)
 {
     const char *metadata;
@@ -141,20 +166,13 @@ void ingress_apply_classification(PlayerMedia *media, bool likely_segmented, con
     metadata = media->metadata[0] != '\0' ? media->metadata : NULL;
     resolved_uri = media->uri[0] != '\0' ? media->uri : media->original_uri;
 
-    media->flags.is_http = ingress_evidence_is_http_like_uri(media->uri);
-    media->flags.is_https = ingress_evidence_is_https_uri(media->uri);
-    media->flags.is_hls = media->format == PLAYER_MEDIA_FORMAT_HLS;
-    media->flags.is_local_proxy = media->flags.is_hls && ingress_hls_local_proxy_uri(resolved_uri);
-    media->flags.likely_live = media->flags.is_hls && ingress_hls_live_hint(resolved_uri, metadata);
-    media->flags.is_signed = ingress_evidence_has_signed_tokens(media->uri);
     media->vendor = ingress_classify_vendor(resolved_uri, media->original_uri, metadata, evidence);
-    media->flags.is_bilibili = media->vendor == PLAYER_MEDIA_VENDOR_BILIBILI;
-    media->flags.is_dash = media->format == PLAYER_MEDIA_FORMAT_DASH;
-    media->flags.is_flv = media->format == PLAYER_MEDIA_FORMAT_FLV;
-    media->flags.is_mp4 = media->format == PLAYER_MEDIA_FORMAT_MP4;
-    media->flags.is_mpeg_ts = media->format == PLAYER_MEDIA_FORMAT_MPEG_TS;
+    media->transport = ingress_classify_transport(resolved_uri, media->format, likely_segmented, media->vendor);
+    media->flags.likely_live = media->format == PLAYER_MEDIA_FORMAT_HLS &&
+                               ingress_hls_live_hint(resolved_uri, metadata);
+    media->flags.is_signed = ingress_evidence_has_signed_tokens(media->uri);
     media->flags.likely_segmented = likely_segmented;
-    media->flags.likely_video_only = media->flags.is_dash &&
+    media->flags.likely_video_only = media->format == PLAYER_MEDIA_FORMAT_DASH &&
                                      likely_segmented &&
                                      ingress_vendor_is_sensitive(media->vendor);
 }

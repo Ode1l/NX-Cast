@@ -380,7 +380,7 @@ static bool player_should_coalesce_seek_locked(int position_ms)
         return true;
 
     if (g_snapshot.has_media &&
-        g_snapshot.media.flags.is_hls &&
+        g_snapshot.media.format == PLAYER_MEDIA_FORMAT_HLS &&
         g_snapshot.state == PLAYER_STATE_PLAYING &&
         g_snapshot.position_ms >= 0 &&
         g_snapshot.position_ms < PLAYER_HLS_STARTUP_SEEK_GUARD_MS)
@@ -438,7 +438,7 @@ static bool player_maybe_dispatch_pending_seek(void)
         break;
     }
 
-    if (g_snapshot.media.flags.is_hls &&
+    if (g_snapshot.media.format == PLAYER_MEDIA_FORMAT_HLS &&
         state == PLAYER_STATE_PLAYING &&
         g_snapshot.position_ms >= 0 &&
         g_snapshot.position_ms < PLAYER_HLS_STARTUP_SEEK_GUARD_MS)
@@ -753,23 +753,24 @@ bool player_set_uri_with_context(const char *uri, const char *metadata, const Pl
     if (!ingress_resolve_with_context(uri, metadata, ctx, &resolved))
         return false;
 
-    log_info("[player] resolve_media profile=%s vendor=%s format=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d local_proxy=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
+    log_info("[player] resolve_media profile=%s vendor=%s format=%s transport=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d hls=%d local_proxy=%d live_hint=%d dash=%d flv=%d mp4=%d ts=%d signed=%d bilibili=%d segmented=%d video_only=%d timeout=%d readahead_s=%d\n",
              ingress_profile_name(resolved.profile),
              ingress_vendor_name(resolved.vendor),
              ingress_format_name(resolved.format),
+             ingress_transport_name(resolved.transport),
              resolved.format_hint[0] != '\0' ? resolved.format_hint : "unknown",
              resolved.mime_type[0] != '\0' ? resolved.mime_type : "unknown",
              resolved.selected_from_metadata ? 1 : 0,
              resolved.metadata_candidate_count,
-             resolved.flags.is_hls ? 1 : 0,
-             resolved.flags.is_local_proxy ? 1 : 0,
+             resolved.format == PLAYER_MEDIA_FORMAT_HLS ? 1 : 0,
+             resolved.transport == PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY ? 1 : 0,
              resolved.flags.likely_live ? 1 : 0,
-             resolved.flags.is_dash ? 1 : 0,
-             resolved.flags.is_flv ? 1 : 0,
-             resolved.flags.is_mp4 ? 1 : 0,
-             resolved.flags.is_mpeg_ts ? 1 : 0,
+             resolved.format == PLAYER_MEDIA_FORMAT_DASH ? 1 : 0,
+             resolved.format == PLAYER_MEDIA_FORMAT_FLV ? 1 : 0,
+             resolved.format == PLAYER_MEDIA_FORMAT_MP4 ? 1 : 0,
+             resolved.format == PLAYER_MEDIA_FORMAT_MPEG_TS ? 1 : 0,
              resolved.flags.is_signed ? 1 : 0,
-             resolved.flags.is_bilibili ? 1 : 0,
+             resolved.vendor == PLAYER_MEDIA_VENDOR_BILIBILI ? 1 : 0,
              resolved.flags.likely_segmented ? 1 : 0,
              resolved.flags.likely_video_only ? 1 : 0,
              resolved.network_timeout_seconds,

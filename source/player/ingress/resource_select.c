@@ -487,10 +487,7 @@ static void log_metadata_candidates(const PlayerMetadataResource *resources, int
     }
 }
 
-void ingress_select_metadata_resource(const char *input_uri,
-                                      PlayerMedia *media,
-                                      bool *likely_segmented,
-                                      PlayerMediaVendor vendor)
+void ingress_select_metadata_resource(IngressModel *model)
 {
     PlayerMetadataResource resources[PLAYER_MEDIA_METADATA_RESOURCE_MAX];
     PlayerMetadataResource baseline;
@@ -498,24 +495,29 @@ void ingress_select_metadata_resource(const char *input_uri,
     int best_index = -1;
     int best_score = -100000;
     int baseline_score;
+    const char *input_uri;
+    PlayerMediaVendor vendor;
 
-    if (!media || !likely_segmented)
+    if (!model)
         return;
 
-    resource_count = parse_metadata_resources(media->metadata,
+    input_uri = model->input_uri;
+    vendor = model->vendor;
+
+    resource_count = parse_metadata_resources(model->metadata,
                                               input_uri,
                                               resources,
                                               PLAYER_MEDIA_METADATA_RESOURCE_MAX,
                                               vendor);
-    media->metadata_candidate_count = resource_count;
+    model->metadata_candidate_count = resource_count;
     if (resource_count <= 0)
         return;
 
     memset(&baseline, 0, sizeof(baseline));
     snprintf(baseline.uri, sizeof(baseline.uri), "%s", input_uri ? input_uri : "");
-    snprintf(baseline.mime_type, sizeof(baseline.mime_type), "%s", media->mime_type);
-    baseline.format = media->format;
-    baseline.likely_segmented = *likely_segmented;
+    snprintf(baseline.mime_type, sizeof(baseline.mime_type), "%s", model->mime_type);
+    baseline.format = model->format;
+    baseline.likely_segmented = model->likely_segmented;
     baseline.exact_uri_match = true;
     baseline.score = score_metadata_resource(input_uri, &baseline, vendor);
     baseline_score = baseline.score;
@@ -544,17 +546,17 @@ void ingress_select_metadata_resource(const char *input_uri,
         return;
     }
 
-    snprintf(media->uri, sizeof(media->uri), "%s", resources[best_index].uri);
-    snprintf(media->protocol_info, sizeof(media->protocol_info), "%s", resources[best_index].protocol_info);
+    snprintf(model->resolved_uri, sizeof(model->resolved_uri), "%s", resources[best_index].uri);
+    snprintf(model->protocol_info, sizeof(model->protocol_info), "%s", resources[best_index].protocol_info);
     if (resources[best_index].mime_type[0] != '\0')
-        snprintf(media->mime_type, sizeof(media->mime_type), "%s", resources[best_index].mime_type);
-    media->format = resources[best_index].format;
-    media->selected_from_metadata = true;
-    *likely_segmented = resources[best_index].likely_segmented;
+        snprintf(model->mime_type, sizeof(model->mime_type), "%s", resources[best_index].mime_type);
+    model->format = resources[best_index].format;
+    model->selected_from_metadata = true;
+    model->likely_segmented = resources[best_index].likely_segmented;
 
     {
         char clipped_uri[256];
-        clip_for_log(media->uri, clipped_uri, sizeof(clipped_uri));
+        clip_for_log(model->resolved_uri, clipped_uri, sizeof(clipped_uri));
         log_info("[player-ingress] metadata_select vendor=%s selected=1 best_index=%d best_score=%d selected_uri=%s\n",
                  ingress_vendor_name(vendor),
                  best_index,

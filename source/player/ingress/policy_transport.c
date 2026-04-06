@@ -31,7 +31,7 @@ void policy_apply_transport(PlayerMedia *media, const PlayerOpenContext *ctx)
     if (!media)
         return;
 
-    if (media->flags.is_local_proxy && media->flags.is_hls)
+    if (media->transport == PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY)
     {
         media->network_timeout_seconds = 12;
         media->demuxer_readahead_seconds = 2;

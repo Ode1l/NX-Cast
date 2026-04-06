@@ -40,7 +40,6 @@ typedef struct
     bool seekable;
     int error_code;
     const char *uri;
-    PlayerMediaProfile media_profile;
 } PlayerEvent;
 
 typedef void (*PlayerEventCallback)(const PlayerEvent *event, void *user);

@@ -11,6 +11,7 @@ bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput 
 {
     char instance_id[32];
     char channel[32];
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
@@ -22,7 +23,7 @@ bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput 
         return false;
 
     soap_writer_clear(out);
-    if (!soap_writer_element_int(out, "CurrentVolume", g_soap_runtime_state.volume))
+    if (!soap_writer_element_int(out, "CurrentVolume", state->volume))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
@@ -70,6 +71,7 @@ bool renderingcontrol_get_mute(const SoapActionContext *ctx, SoapActionOutput *o
 {
     char instance_id[32];
     char channel[32];
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
@@ -81,7 +83,7 @@ bool renderingcontrol_get_mute(const SoapActionContext *ctx, SoapActionOutput *o
         return false;
 
     soap_writer_clear(out);
-    if (!soap_writer_element_int(out, "CurrentMute", g_soap_runtime_state.mute ? 1 : 0))
+    if (!soap_writer_element_int(out, "CurrentMute", state->mute ? 1 : 0))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;

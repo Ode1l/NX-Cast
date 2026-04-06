@@ -517,6 +517,7 @@ static bool event_build_avtransport_last_change(SoapActionOutput *out)
 {
     PlayerSnapshot snapshot;
     char actions[64];
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
@@ -525,16 +526,16 @@ static bool event_build_avtransport_last_change(SoapActionOutput *out)
     event_format_actions(event_current_actions(&snapshot), actions, sizeof(actions));
 
     return soap_writer_append_raw(out, "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT/\"><InstanceID val=\"0\">") &&
-           event_append_val_element(out, "TransportState", g_soap_runtime_state.transport_state) &&
-           event_append_val_element(out, "TransportStatus", g_soap_runtime_state.transport_status) &&
-           event_append_val_element(out, "TransportPlaySpeed", g_soap_runtime_state.transport_speed) &&
+           event_append_val_element(out, "TransportState", state->transport_state) &&
+           event_append_val_element(out, "TransportStatus", state->transport_status) &&
+           event_append_val_element(out, "TransportPlaySpeed", state->transport_speed) &&
            event_append_val_element(out, "CurrentTransportActions", actions) &&
-           event_append_val_element(out, "AVTransportURI", g_soap_runtime_state.transport_uri) &&
-           event_append_val_element(out, "CurrentTrackURI", g_soap_runtime_state.transport_uri) &&
-           event_append_val_element(out, "CurrentMediaDuration", g_soap_runtime_state.transport_duration) &&
-           event_append_val_element(out, "CurrentTrackDuration", g_soap_runtime_state.transport_duration) &&
-           event_append_val_element(out, "RelativeTimePosition", g_soap_runtime_state.transport_rel_time) &&
-           event_append_val_element(out, "AbsoluteTimePosition", g_soap_runtime_state.transport_abs_time) &&
+           event_append_val_element(out, "AVTransportURI", state->transport_uri) &&
+           event_append_val_element(out, "CurrentTrackURI", state->transport_uri) &&
+           event_append_val_element(out, "CurrentMediaDuration", state->transport_duration) &&
+           event_append_val_element(out, "CurrentTrackDuration", state->transport_duration) &&
+           event_append_val_element(out, "RelativeTimePosition", state->transport_rel_time) &&
+           event_append_val_element(out, "AbsoluteTimePosition", state->transport_abs_time) &&
            soap_writer_append_raw(out, "</InstanceID></Event>");
 }
 
@@ -542,12 +543,13 @@ static bool event_build_renderingcontrol_last_change(SoapActionOutput *out)
 {
     char volume[16];
     char mute[8];
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
 
-    snprintf(volume, sizeof(volume), "%d", g_soap_runtime_state.volume);
-    snprintf(mute, sizeof(mute), "%d", g_soap_runtime_state.mute ? 1 : 0);
+    snprintf(volume, sizeof(volume), "%d", state->volume);
+    snprintf(mute, sizeof(mute), "%d", state->mute ? 1 : 0);
 
     return soap_writer_append_raw(out, "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/RCS/\"><InstanceID val=\"0\">") &&
            event_append_channel_val_element(out, "Volume", "Master", volume) &&
@@ -561,6 +563,7 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
     bool ok = false;
     char volume[16];
     char mute[8];
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
@@ -585,8 +588,8 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
              soap_writer_append_raw(out, "</LastChange></e:property>");
         if (ok)
         {
-            snprintf(volume, sizeof(volume), "%d", g_soap_runtime_state.volume);
-            snprintf(mute, sizeof(mute), "%d", g_soap_runtime_state.mute ? 1 : 0);
+            snprintf(volume, sizeof(volume), "%d", state->volume);
+            snprintf(mute, sizeof(mute), "%d", state->mute ? 1 : 0);
             ok = soap_writer_append_raw(out, "<e:property><Volume>") &&
                  soap_writer_append_escaped(out, volume) &&
                  soap_writer_append_raw(out, "</Volume></e:property>") &&
@@ -597,7 +600,7 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
         break;
     case EVENT_SERVICE_CONNECTIONMANAGER:
         ok = soap_writer_append_raw(out, "<e:property><CurrentConnectionIDs>") &&
-             soap_writer_append_escaped(out, g_soap_runtime_state.connection_ids) &&
+             soap_writer_append_escaped(out, state->connection_ids) &&
              soap_writer_append_raw(out, "</CurrentConnectionIDs></e:property>");
         break;
     default:
@@ -608,7 +611,7 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
     if (service == EVENT_SERVICE_AVTRANSPORT && ok)
     {
         ok = soap_writer_append_raw(out, "<e:property><TransportState>") &&
-             soap_writer_append_escaped(out, g_soap_runtime_state.transport_state) &&
+             soap_writer_append_escaped(out, state->transport_state) &&
              soap_writer_append_raw(out, "</TransportState></e:property>");
     }
 

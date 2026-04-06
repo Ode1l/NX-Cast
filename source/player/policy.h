@@ -2,6 +2,10 @@
 
 #include "ingress.h"
 
+// Policy is intentionally the last stage in ingress resolution. It consumes a
+// fully classified PlayerMedia and may only refine playback configuration
+// (headers, timeouts, load options). It must not re-parse URI/metadata or
+// re-decide format/vendor/transport.
 void policy_apply_default(PlayerMedia *media);
 void policy_apply_hls(PlayerMedia *media);
 void policy_apply_vendor(PlayerMedia *media);

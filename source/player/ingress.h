@@ -47,19 +47,22 @@ typedef enum
     PLAYER_MEDIA_FORMAT_MPEG_TS
 } PlayerMediaFormat;
 
+typedef enum
+{
+    PLAYER_MEDIA_TRANSPORT_UNKNOWN = 0,
+    PLAYER_MEDIA_TRANSPORT_HTTP_FILE,
+    PLAYER_MEDIA_TRANSPORT_HLS_DIRECT,
+    PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY,
+    PLAYER_MEDIA_TRANSPORT_HLS_GATEWAY
+} PlayerMediaTransport;
+
 typedef struct
 {
-    bool is_http;
-    bool is_https;
-    bool is_hls;
-    bool is_local_proxy;
+    // Only keep non-derived hints here. Anything directly implied by
+    // format/vendor/transport should be computed from those enums instead of
+    // duplicated as another flag.
     bool likely_live;
     bool is_signed;
-    bool is_bilibili;
-    bool is_dash;
-    bool is_flv;
-    bool is_mp4;
-    bool is_mpeg_ts;
     bool likely_segmented;
     bool likely_video_only;
 } PlayerMediaFlags;
@@ -81,6 +84,7 @@ typedef struct
     PlayerMediaProfile profile;
     PlayerMediaVendor vendor;
     PlayerMediaFormat format;
+    PlayerMediaTransport transport;
     PlayerMediaFlags flags;
     bool selected_from_metadata;
     int metadata_candidate_count;
@@ -106,3 +110,4 @@ bool ingress_resolve_with_context(const char *uri, const char *metadata, const P
 const char *ingress_profile_name(PlayerMediaProfile profile);
 const char *ingress_vendor_name(PlayerMediaVendor vendor);
 const char *ingress_format_name(PlayerMediaFormat format);
+const char *ingress_transport_name(PlayerMediaTransport transport);

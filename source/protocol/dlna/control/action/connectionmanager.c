@@ -8,14 +8,15 @@
 bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     (void)ctx;
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
 
-    char escaped_source[sizeof(g_soap_runtime_state.source_protocol_info) * 2];
-    char escaped_sink[sizeof(g_soap_runtime_state.sink_protocol_info) * 2];
-    if (!soap_handler_xml_escape(g_soap_runtime_state.source_protocol_info, escaped_source, sizeof(escaped_source)) ||
-        !soap_handler_xml_escape(g_soap_runtime_state.sink_protocol_info, escaped_sink, sizeof(escaped_sink)))
+    char escaped_source[sizeof(state->source_protocol_info) * 2];
+    char escaped_sink[sizeof(state->sink_protocol_info) * 2];
+    if (!soap_handler_xml_escape(state->source_protocol_info, escaped_source, sizeof(escaped_source)) ||
+        !soap_handler_xml_escape(state->sink_protocol_info, escaped_sink, sizeof(escaped_sink)))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
@@ -36,12 +37,13 @@ bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActio
 bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     (void)ctx;
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
 
     soap_writer_clear(out);
-    if (!soap_writer_element_text(out, "ConnectionIDs", g_soap_runtime_state.connection_ids))
+    if (!soap_writer_element_text(out, "ConnectionIDs", state->connection_ids))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
@@ -54,6 +56,7 @@ bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, 
 bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char connection_id[32];
+    const DlnaProtocolState *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
@@ -68,8 +71,8 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
         return false;
     }
 
-    char escaped_protocol_info[sizeof(g_soap_runtime_state.sink_protocol_info) * 2];
-    if (!soap_handler_xml_escape(g_soap_runtime_state.sink_protocol_info,
+    char escaped_protocol_info[sizeof(state->sink_protocol_info) * 2];
+    if (!soap_handler_xml_escape(state->sink_protocol_info,
                                  escaped_protocol_info,
                                  sizeof(escaped_protocol_info)))
     {

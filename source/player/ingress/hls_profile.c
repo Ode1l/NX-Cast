@@ -10,7 +10,7 @@ void policy_apply_hls(PlayerMedia *media)
 {
     int cache_pause_wait_seconds;
 
-    if (!media || !media->flags.is_hls)
+    if (!media || media->format != PLAYER_MEDIA_FORMAT_HLS)
         return;
 
     media->profile = PLAYER_MEDIA_PROFILE_GENERIC_HLS;

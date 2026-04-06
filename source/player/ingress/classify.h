@@ -10,4 +10,8 @@ PlayerMediaVendor ingress_classify_vendor(const char *resolved_uri,
                                           const char *original_uri,
                                           const char *metadata,
                                           const IngressEvidence *evidence);
+PlayerMediaTransport ingress_classify_transport(const char *resolved_uri,
+                                                PlayerMediaFormat format,
+                                                bool likely_segmented,
+                                                PlayerMediaVendor vendor);
 void ingress_apply_classification(PlayerMedia *media, bool likely_segmented, const IngressEvidence *evidence);

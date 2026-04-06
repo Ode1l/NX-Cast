@@ -7,6 +7,7 @@
 #include "player/ingress/classify.h"
 #include "player/ingress/evidence.h"
 #include "player/ingress/http_probe.h"
+#include "player/ingress/model.h"
 #include "player/ingress/resource_select.h"
 #include "player/ingress/vendor.h"
 #include "player/policy.h"
@@ -59,24 +60,6 @@ static void log_metadata_summary(const char *uri, const char *metadata, PlayerMe
              clipped_metadata[0] != '\0' ? clipped_metadata : "<empty>");
 }
 
-static void append_load_option(char *options, size_t options_size, const char *value)
-{
-    size_t used;
-
-    if (!options || options_size == 0 || !value || value[0] == '\0')
-        return;
-
-    used = strlen(options);
-    if (used >= options_size - 1)
-        return;
-
-    snprintf(options + used,
-             options_size - used,
-             "%s%s",
-             used > 0 ? "," : "",
-             value);
-}
-
 static void assign_profile(PlayerMedia *media)
 {
     if (!media)
@@ -84,11 +67,11 @@ static void assign_profile(PlayerMedia *media)
 
     if (ingress_vendor_is_sensitive(media->vendor))
         media->profile = PLAYER_MEDIA_PROFILE_VENDOR_SENSITIVE_URL;
-    else if (media->flags.is_hls)
+    else if (media->format == PLAYER_MEDIA_FORMAT_HLS)
         media->profile = PLAYER_MEDIA_PROFILE_GENERIC_HLS;
     else if (media->flags.is_signed)
         media->profile = PLAYER_MEDIA_PROFILE_SIGNED_EPHEMERAL_URL;
-    else if (media->flags.is_http)
+    else if (media->transport == PLAYER_MEDIA_TRANSPORT_HTTP_FILE)
         media->profile = PLAYER_MEDIA_PROFILE_DIRECT_HTTP_FILE;
     else
         media->profile = PLAYER_MEDIA_PROFILE_UNKNOWN;
@@ -115,8 +98,9 @@ static void apply_policy_stack(PlayerMedia *media, const PlayerOpenContext *ctx)
     policy_apply_transport(media, ctx);
 }
 
-static void apply_http_probe(PlayerMedia *media, const PlayerOpenContext *ctx, const IngressEvidence *evidence)
+static void apply_http_probe(IngressModel *model, const PlayerOpenContext *ctx)
 {
+    PlayerMedia probe_media;
     PlayerHttpProbe probe;
     bool likely_segmented;
     PlayerMediaFormat format_before;
@@ -124,29 +108,42 @@ static void apply_http_probe(PlayerMedia *media, const PlayerOpenContext *ctx, c
     bool uri_changed = false;
     bool reclassified = false;
 
-    if (!media || !evidence)
+    if (!model)
         return;
 
-    if (!ingress_http_probe_head(media, &probe) || !probe.attempted)
+    ingress_reset(&probe_media);
+    ingress_model_apply_to_media(model, &probe_media);
+    apply_policy_stack(&probe_media, ctx);
+
+    if (!ingress_http_probe_head(&probe_media, &probe) || !probe.attempted)
         return;
 
-    format_before = media->format;
-    likely_segmented = media->flags.likely_segmented;
+    model->probe_attempted = probe.attempted;
+    model->probe_ok = probe.ok;
+    model->probe_redirected = probe.redirected;
+    model->probe_used_get_fallback = probe.used_get_fallback;
+    model->probe_status_code = probe.status_code;
+    model->probe_redirect_count = probe.redirect_count;
+    model->range_support_known = probe.accept_ranges_known;
+    model->range_seekable = probe.accept_ranges_seekable;
 
-    if (probe.effective_uri[0] != '\0' && strcmp(probe.effective_uri, media->uri) != 0)
+    format_before = model->format;
+    likely_segmented = model->likely_segmented;
+
+    if (probe.effective_uri[0] != '\0' && strcmp(probe.effective_uri, model->resolved_uri) != 0)
     {
-        snprintf(media->uri, sizeof(media->uri), "%s", probe.effective_uri);
+        snprintf(model->resolved_uri, sizeof(model->resolved_uri), "%s", probe.effective_uri);
         uri_changed = true;
     }
 
     if (probe.content_type[0] != '\0')
     {
-        detected_format = ingress_classify_format(media->uri, probe.content_type, &likely_segmented);
-        snprintf(media->mime_type, sizeof(media->mime_type), "%s", probe.content_type);
+        detected_format = ingress_classify_format(model->resolved_uri, probe.content_type, &likely_segmented);
+        snprintf(model->mime_type, sizeof(model->mime_type), "%s", probe.content_type);
 
-        if (detected_format != PLAYER_MEDIA_FORMAT_UNKNOWN && detected_format != media->format)
+        if (detected_format != PLAYER_MEDIA_FORMAT_UNKNOWN && detected_format != model->format)
         {
-            media->format = detected_format;
+            model->format = detected_format;
             reclassified = true;
         }
     }
@@ -155,23 +152,9 @@ static void apply_http_probe(PlayerMedia *media, const PlayerOpenContext *ctx, c
         reclassified = true;
 
     if (reclassified)
-    {
-        ingress_apply_classification(media, likely_segmented, evidence);
-        apply_policy_stack(media, ctx);
-    }
+        model->likely_segmented = likely_segmented;
 
-    if (probe.ok &&
-        probe.accept_ranges_known &&
-        !probe.accept_ranges_seekable &&
-        !media->flags.is_hls)
-    {
-        append_load_option(media->mpv_load_options,
-                           sizeof(media->mpv_load_options),
-                           "stream-lavf-o=seekable=0");
-        append_load_option(media->mpv_load_options,
-                           sizeof(media->mpv_load_options),
-                           "demuxer-seekable-cache=no");
-    }
+    ingress_model_finalize(model);
 
     log_info("[player-ingress] url_probe status=%d ok=%d redirects=%d get_fallback=%d accept_ranges=%s content_type=%s format_before=%s format_after=%s uri_changed=%d uri=%s\n",
              probe.status_code,
@@ -182,9 +165,9 @@ static void apply_http_probe(PlayerMedia *media, const PlayerOpenContext *ctx, c
              (probe.accept_ranges_seekable ? "bytes" : "none"),
              probe.content_type[0] != '\0' ? probe.content_type : "<none>",
              ingress_format_name(format_before),
-             ingress_format_name(media->format),
+             ingress_format_name(model->format),
              uri_changed ? 1 : 0,
-             media->uri);
+             model->resolved_uri);
 }
 
 void ingress_reset(PlayerMedia *media)
@@ -194,6 +177,7 @@ void ingress_reset(PlayerMedia *media)
 
     memset(media, 0, sizeof(*media));
     media->profile = PLAYER_MEDIA_PROFILE_UNKNOWN;
+    media->transport = PLAYER_MEDIA_TRANSPORT_UNKNOWN;
     policy_apply_default(media);
 }
 
@@ -259,6 +243,24 @@ const char *ingress_format_name(PlayerMediaFormat format)
     }
 }
 
+const char *ingress_transport_name(PlayerMediaTransport transport)
+{
+    switch (transport)
+    {
+    case PLAYER_MEDIA_TRANSPORT_HTTP_FILE:
+        return "http-file";
+    case PLAYER_MEDIA_TRANSPORT_HLS_DIRECT:
+        return "hls-direct";
+    case PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY:
+        return "hls-local-proxy";
+    case PLAYER_MEDIA_TRANSPORT_HLS_GATEWAY:
+        return "hls-gateway";
+    case PLAYER_MEDIA_TRANSPORT_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
 bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 {
     return ingress_resolve_with_context(uri, metadata, NULL, out);
@@ -266,39 +268,23 @@ bool ingress_resolve(const char *uri, const char *metadata, PlayerMedia *out)
 
 bool ingress_resolve_with_context(const char *uri, const char *metadata, const PlayerOpenContext *ctx, PlayerMedia *out)
 {
-    IngressEvidence evidence;
-    bool likely_segmented = false;
-    PlayerMediaVendor input_vendor;
-    PlayerMediaVendor detail_vendor;
+    IngressModel model;
 
     if (!uri || uri[0] == '\0' || !out)
         return false;
 
-    ingress_collect_evidence(uri, metadata, ctx, &evidence);
+    // Phase 1: normalize standard DLNA inputs into a stable model.
+    ingress_model_init(&model, uri, metadata, ctx);
+    ingress_select_metadata_resource(&model);
+    ingress_model_finalize(&model);
+    apply_http_probe(&model, ctx);
 
+    // Phase 2: materialize the normalized model into PlayerMedia, then apply
+    // playback policy from the final model.
     ingress_reset(out);
-    snprintf(out->uri, sizeof(out->uri), "%s", uri);
-    snprintf(out->original_uri, sizeof(out->original_uri), "%s", uri);
-    if (metadata)
-        snprintf(out->metadata, sizeof(out->metadata), "%s", metadata);
-    if (evidence.metadata_mime[0] != '\0')
-        snprintf(out->mime_type, sizeof(out->mime_type), "%s", evidence.metadata_mime);
-
-    out->format = ingress_classify_format(out->uri,
-                                          out->mime_type[0] != '\0' ? out->mime_type : metadata,
-                                          &likely_segmented);
-
-    input_vendor = ingress_classify_vendor(uri, NULL, metadata, &evidence);
-    detail_vendor = input_vendor;
-    ingress_select_metadata_resource(uri, out, &likely_segmented, input_vendor);
-
-    ingress_apply_classification(out, likely_segmented, &evidence);
-    if (detail_vendor == PLAYER_MEDIA_VENDOR_UNKNOWN)
-        detail_vendor = out->vendor;
-    log_metadata_summary(uri, metadata, detail_vendor);
-
+    ingress_model_apply_to_media(&model, out);
+    log_metadata_summary(model.input_uri, model.metadata, model.vendor);
     apply_policy_stack(out, ctx);
-    apply_http_probe(out, ctx, &evidence);
 
     return true;
 }
