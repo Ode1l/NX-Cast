@@ -1,321 +1,165 @@
 # NX-Cast
 
-NX-Cast 是一个运行在 Atmosphère 环境下的 Nintendo Switch 开源无线投屏接收程序。
+`NX-Cast` 是运行在 Atmosphère Homebrew 环境下的 Nintendo Switch 开源媒体接收器。
 
-该项目的目标是在 **不安装 Linux 的情况下**，通过 Switch 原生 Homebrew 环境实现无线媒体接收功能，例如 **DLNA 和 AirPlay 类似协议的视频接收**。
-
-NX-Cast 基于 **devkitPro + libnx** 开发，并运行在 Atmosphère 的 homebrew 上。
-
----
-
-## 项目目标
-
-NX-Cast 的目标是：
-
-- Atmosphère 实现
-- 支持无线媒体接收
-- 模块化协议架构
-- 利用 Switch 硬件解码能力
-- 构建可维护的开源社区项目
-
-长期目标是为 Switch Homebrew 生态提供一个 **通用媒体接收框架**。
-
----
+当前主线目标不是“做某一个站点的专用客户端”，而是把 Switch 上的 **通用 DLNA DMR 底座** 做完整，再在这个底座之上逐步增强混合源、站点策略和完整播放器后端。
 
 ## 当前状态
 
-项目目前处于“通用 DMR 底座已成型，完整播放器后端待补完”的阶段。
+项目已经完成并验证过这些基础能力：
 
-当前进度：
+- `SSDP` 发现、`device.xml`、`SCPD`
+- `SOAP` 控制链：`SetAVTransportURI / Play / Pause / Stop / Seek`
+- `GENA` 事件订阅与 `LastChange`
+- `player` 统一状态源、owner thread、命令队列
+- `ingress` 标准输入建模与资源选择
+- `libmpv` 后端
+- `ao=hos`
+- `OpenGL/libmpv render API`
 
-- 应用启动、日志系统与网络初始化已经就位。
-- 发现层已具备 SSDP 响应、service-type 回复与 mDNS 探测能力。
-- DLNA DMR 核心链路已基本实现：SCPD、SOAP 路由、AVTransport / RenderingControl / ConnectionManager、GENA 事件订阅，以及对应 smoke 测试。
-- `player` 已成为真实状态源，`SOAP -> player -> libmpv` 控制链路已打通；`SetURI / Play / Pause / Stop / Seek / GetTransportInfo / GetPositionInfo` 的主流程已通过实机 smoke。
-- `Step 2.1 / Step 2.2` 已落地：主线程前台显示权、render loop 骨架，以及 `software render + libnx framebuffer` 的最小真实出画路径均已接通。
-- `ingress` 已从规则堆叠式实现收敛为 `evidence -> classify -> resource_select -> policy` 的第一版系统化流水线，并补了 `http` URL preflight、`SinkProtocolInfo` 扩展、metadata 资源选择与 `local_proxy` transport policy。
-- `mp4`、`bilibili`、`mgtv-family`、腾讯视频（含部分手机加速路径）、以及部分 `youku/cctv` 路径已完成实机验证；`iqiyi` 仍未打通，当前更像站点请求上下文或系统媒体能力差距，而不是基础 DMR 不通。
-- 当前主矛盾已从“协议是否能通”转移到两条线：
-  1. 通用 DMR 完整度继续补完
-  2. 完整播放器后端：真实音频输出、`OpenGL/libmpv render API` 路径、硬解码接入
-- `ao=hos` 与 `OpenGL/libmpv render API` 已完成实机验证；当前后端的真实短板已经收敛为 `hwdec=nvtegra` 尚未在官方 `dkp` `libmpv` 工具链下真正生效，以及部分混合源/本地代理 transport 仍不稳定。
+当前更准确的阶段是：
 
-当前后端路线决策：
+1. 通用 `DMR` 底座已成立
+2. 标准输入建模正在收口
+3. 混合源与 transport 稳定性仍在迭代
+4. `hwdec=nvtegra` 仍受当前官方工具链限制
 
-1. 当前已落地并实机验证的路线是 `ao=hos + OpenGL/libmpv render API`
-2. `hwdec=nvtegra` 仍然是目标方向，但当前官方 `dkp` `libmpv` 工具链尚未提供可实际工作的 explicit `nvtegra` hwdec backend
-3. `deko3d` 仍然保留为未来能力，但不再作为当前阶段立即接入目标
-4. 如果后续切换到自定义媒体工具链，再进入 `libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)` 路线
+## 当前设计原则
 
----
+项目当前按这几条原则推进：
 
-## 里程碑 0 启动
+1. 结构重构与行为变化分开做
+2. 标准输入先正确建模，再谈播放策略
+3. `vendor` 只做加法，不覆盖标准解析结果
+4. 协议层不直接做站点兼容逻辑
+5. `player` 是唯一真实播放状态源
+6. `SOAP`、`LastChange`、兼容查询都读取同一份协议观察状态
 
-本阶段的目标是让 NX-Cast 能在 Atmosphère 中稳定启动，并完成后续协议开发需要的基础网络准备。
+一句话说：
 
-已完成内容：
+**先把“这是什么源”建模清楚，再决定“怎么播它”。**
 
-- 建立基于 devkitPro/libnx 的仓库与构建脚本
-- Homebrew 入口程序：初始化控制台输出和手柄输入
-- 生成可部署的 `.nro/.nacp` 文件
-- 通过 `socketInitializeDefault()` 启动网络栈，并输出运行时诊断信息
-
-本地验证步骤：
-
-1. 安装 devkitPro（含 devkitA64 与 libnx），执行 `make`。
-2. 将生成的 `NX-Cast.nro` 拷贝到 SD 卡的 `/switch/nx-cast/`。
-3. 保证 Switch 已连接 Wi-Fi，从 Homebrew Menu 启动 NX-Cast，查看控制台中的 `[net]` 初始化日志。
-4. 看到网络初始化成功提示后，按 `+` 退出。
-
----
-
-## 里程碑 1 设备发现
-
-该里程碑增加了基于 SSDP 的 DLNA/UPnP 设备发现能力。
-
-实现内容：
-
-- 通过向 `239.255.255.250:1900` 发送 `M-SEARCH` 探测请求获取同局域网中的服务。
-- 在控制台打印响应设备的 IP/端口以及原始响应头，并缓存 USN/ST 等元数据，方便确认兼容设备。
-- 新增基础 SSDP 响应端，使 NX-Cast 可以回复来自手机/电脑的 `M-SEARCH` 请求（周期性 `NOTIFY` 广播暂未实现）。
-- 引入 `network/discovery` 模块，为后续的 mDNS/AirPlay 发现逻辑提供统一入口。
-- 实现基于 `_airplay._tcp.local` 的 mDNS 查询，多播请求并输出 PTR 应答结果。
-- 明确目标是实现 DLNA 的 DMR 角色，播放控制与内容由第三方 DMC/DMS 提供。
-- 这一阶段建立的 DLNA control 骨架，已经演进为当前正式的 `SOAP + GENA` 控制层。
-
-验证步骤：
-
-1. 与里程碑 0 相同方式构建并部署最新 `.nro`。
-2. 确保 Switch 与 DLNA/UPnP 发送端处于同一 Wi-Fi 网络。
-3. 启动 NX-Cast，观察控制台中的 `[ssdp]` 日志，确认出现响应后按 `+` 退出。
-
----
-
-## 计划功能
-
-### Phase 1
-- 应用框架
-- 网络模块
-- 设备发现
-- 状态：基本完成
-
-### Phase 2
-- DLNA Digital Media Renderer（DMR）实现
-- SCPD + SOAP 控制链路
-- 状态：核心能力已基本完成；`SSDP responder + service-type response`、`SOAP`、`GENA eventing`、`SinkProtocolInfo`、metadata 返回和当前兼容性底座已落地
-
-### Phase 3
-- 基础播放管线
-- 设备端画面渲染
-- player 入口资源选择（基于 `CurrentURIMetaData` `DIDL-Lite res/protocolInfo` 候选资源）
-- Step 2.1：确定前台显示权归属，建立主线程驱动的 render loop 骨架
-- Step 2.2：接入 `libmpv render API`，通过 `software render + libnx framebuffer` 打通最小视频显示路径
-- Step 2.3：完善日志 UI 切换、屏幕接管与 `OpenGL/libmpv render API` 路径
-- 状态：Step 1、Step 2.1 / 2.2 / 2.3 已落地，`player` 入口资源选择也已落地第一版；当前 `ao=hos + OpenGL/libmpv render API` 已实机通过，下一步转向 transport 稳定性与硬解码工具链问题
-
-### Phase 4
-- 硬件解码支持
-- `hwdec=nvtegra`
-- 状态：`ao=hos` 与 `OpenGL/libmpv render API` 已完成当前工具链下的第一阶段；`hwdec=nvtegra` 仍处于工具链核验与后续接入阶段
-
-### Phase 5
-- AirPlay 类视频投屏
-
-### Phase 6
-- DMP 扩展
-- 源点播节目浏览与播放
-- 基于来源的节目列表、详情页与点播入口
-- 视目标范围决定是否引入 source-native adapter
-
-### Phase 7
-- UI 与配置界面
-- 添加到桌面（快捷入口）
-
-### Optional Phase
-- 自定义 `mpv` 工具链
-- `deko3d` 渲染后端
-- `render_dk3d` / `libuam` 路线
-- 基于 sysmodule 的后台常驻服务
-- 脱离普通前台 homebrew 生命周期后的挂起/持续发现与监听
-
----
-
-## 系统架构
-
-NX-Cast 采用分层架构：
+## 当前架构
 
 ```text
-应用入口(main)
-│
-协议层
-(DLNA / AirPlay 占位)
-│
-控制与描述
-(SSDP / SCPD / SOAP / GENA)
-│
-player
-(core / ingress / backend / render)
-│
-平台与依赖
-(libnx / libmpv / 网络 / 后续 deko3d)
+main
+  -> protocol/dlna
+       -> discovery (SSDP)
+       -> description (device.xml / SCPD)
+       -> control (SOAP / GENA / protocol_state)
+  -> player
+       -> core (owner thread / queue / snapshot)
+       -> ingress (evidence -> model -> resource_select -> http_probe -> media -> policy)
+       -> backend (libmpv / mock)
+       -> render (view / frontend)
 ```
 
----
+当前两条关键状态线：
 
-## 项目目录结构
+1. `player` 维护真实播放状态
+2. `protocol_state` 维护协议观察状态
+
+## ingress 当前流水线
+
+当前 `player/ingress` 已经不是“边解析边改最终对象”的旧模式，而是固定成：
 
 ```text
-nx-cast
-│
-├── docs
-├── scripts
-├── source
-│   ├── log
-│   ├── player
-│   │   ├── core
-│   │   ├── ingress
-│   │   ├── backend
-│   │   └── render
-│   ├── protocol
-│   │   ├── airplay
-│   │   ├── dlna
-│   │   │   ├── discovery
-│   │   │   ├── description
-│   │   │   └── control
-│   │   └── http
-│   └── main.c
-├── xml
-├── README.md / README_CN.md
-└── ROADMAP.md
+CurrentURI + CurrentURIMetaData + request headers
+  -> evidence
+  -> IngressModel
+  -> metadata resource selection
+  -> http probe / preflight
+  -> PlayerMedia
+  -> policy
 ```
 
-建议阅读顺序：
+它回答的问题分成两层：
 
-1. [Player层设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/Player层设计.md)
-2. [源兼容性.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/源兼容性.md)
-3. [DMR实现细节.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/DMR实现细节.md)
-4. [render设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/render设计.md)
+1. 解析层：这是什么源
+2. 策略层：怎样更稳地打开它
 
----
+当前显式 transport 分类：
 
-## 构建环境
+- `http-file`
+- `hls-direct`
+- `hls-local-proxy`
+- `hls-gateway`
 
-需要安装 Switch Homebrew 开发工具链：
+## 当前后端路线
 
-- devkitPro
-- devkitA64
-- libnx
+当前正式后端路线是：
 
-编译：
+1. `ao=hos`
+2. `OpenGL/libmpv render API`
+3. `libmpv` 继续作为播放器核心
+
+需要特别区分：
+
+- `OpenGL` / `deko3d` 是渲染路径
+- `hwdec=nvtegra` 是解码路径
+
+当前结论：
+
+1. `hos-audio + OpenGL` 已接通
+2. `hwdec=nvtegra` 已在代码路径中考虑，但当前官方 `dkp` `libmpv` 工具链下还没有真正成为可用的 explicit backend
+3. `deko3d` 仍然保留为未来能力，不是当前默认路线
+
+## 当前工作重点
+
+当前优先级不是继续堆单点站点 hack，而是：
+
+1. 完成标准输入建模
+2. 完成通用 `DMR` 兼容面
+3. 稳定 `local_proxy` 与 `HLS gateway` 这类 transport
+4. 继续完善控制端位置同步与互操作
+5. 在工具链成熟后再推进 `nvtegra` 和未来 `deko3d`
+
+## 目录
 
 ```text
+source/
+  main.c
+  log/
+  player/
+    core/
+    ingress/
+    backend/
+    render/
+  protocol/
+    dlna/
+      discovery/
+      description/
+      control/
+    http/
+```
+
+## 推荐阅读顺序
+
+1. [docs/Player层设计.md](docs/Player层设计.md)
+2. [docs/DMR实现细节.md](docs/DMR实现细节.md)
+3. [docs/源兼容性.md](docs/源兼容性.md)
+4. [docs/render设计.md](docs/render设计.md)
+5. [ROADMAP.md](ROADMAP.md)
+
+## 构建
+
+需要：
+
+- `devkitPro`
+- `devkitA64`
+- `libnx`
+
+构建：
+
+```bash
 make
- 生成 `.nro` 文件。
 ```
 
-### Docker 构建（可选）
+输出：
 
-如果你不想在本机安装 devkitPro，可用 Docker 进行可复现构建：
+- `NX-Cast.nro`
 
-```text
-./scripts/docker_build.sh
-```
+## 当前文档说明
 
-等价的 docker compose 命令：
-
-```text
-docker compose build nx-cast-build
-docker compose run --rm nx-cast-build
-```
-
-说明：
-
-- 设置 `NO_CLEAN=1` 可跳过 clean（`NO_CLEAN=1 ./scripts/docker_build.sh`）。
-- Docker 仅负责编译；运行与投屏联调仍需要真实 Switch 设备。
-
----
-
-## 运行
-
-将 `.nro` 放入：
-
-```text
-/switch/nx-cast/
-通过 Homebrew Menu 启动。
-```
-
----
-
-## 贡献
-
-欢迎贡献代码。
-
-提交 PR 前请阅读 `CONTRIBUTING.md`。
-
-当前需要帮助的方向：
-
-- 协议实现
-- 媒体处理优化
-- 硬件解码
-- UI 改进
-- 文档完善
-
----
-
-## 发布准备
-
-为了将 NX-Cast 正式发布到 switchbrew，除了核心功能外还需要补齐以下内容：
-
-- 许可证信息：保持 GPLv3 LICENSE，并在 `README`、发布页面和 `.nro/.nacp` 元数据中注明，同时列出依赖库和素材的授权情况。
-- 文档集合：开发环境搭建、模块/协议设计文档、编码规范、贡献流程、可复现的构建与测试指引。
-- 发布元数据：语义化版本号、更新日志、Release Note、`.nro/.nacp` 的应用名称/作者/描述，以及可选的截图或演示视频。
-- 合规说明：声明不包含受版权保护的固件/密钥，列出运行时依赖与安全注意事项。
-- 社区支持：Issue/PR 模板、贡献者行为准则、维护者联系方式以及必要的审核流程说明。
-
----
-
-## CI/CD 期望
-
-为了提高可信度，建议提供最基本的自动化流程：
-
-- 持续集成：在每个 PR 上运行格式检查、静态分析、`make` 构建 `.nro` 和现有测试。
-- 可选的许可证扫描与安全检查，避免引入不符合要求的依赖。
-- 发布流程自动化：在 CI 中打包产物并生成 release note，减少人工步骤。
-
-当前工作流：
-
-- `CI`：`.github/workflows/ci.yml`（push/PR 自动构建并上传产物）。
-- `Release`：`.github/workflows/release.yml`（推送 `v*` 标签时自动创建 GitHub Release，并上传 `NX-Cast.nro`）。
-
-标签发布示例：
-
-```text
-git tag v0.1.0
-git push origin v0.1.0
-```
-
----
-
-## 致谢
-
-NX-Cast 由本项目独立实现，但在协议架构、播放器分层以及 Switch 媒体后端方向上参考了以下开源项目的公开设计与源码思路：
-
-- [gmrender-resurrect](https://github.com/hzeller/gmrender-resurrect)：提供了 DLNA/UPnP DMR 服务建模、SCPD/SOAP/服务拆分以及渲染端控制流程方面的参考。
-- [pPlay](https://github.com/Cpasjuste/pplay)：提供了 `player` facade 设计与 `libmpv` 后端分层思路的参考。
-- [NXMP](https://github.com/proconsule/nxmp)：提供了 Switch 平台媒体后端方向的参考，包括 `libmpv`、`hos` 音频、`deko3d` 与硬解码接入思路。
-- [PlayerNX](https://github.com/XorTroll/PlayerNX)：提供了最小 FFmpeg 解码链路的参考，用于软件解码验证与研究。
-
-感谢这些项目的维护者与贡献者。
-
----
-
-## License
-
-NX-Cast 采用 GNU GPLv3 许可证。完整条款见 `LICENSE`。
-Copyright (c) 2026 Ode1l。
-
----
-
-## 免责声明
-
-NX-Cast 为独立开源项目，与 Nintendo 无任何官方关系。
+仓库文档已经按当前状态重写，不再保留“早期未来计划版”的表述。  
+如果文档和代码冲突，以 `source/` 当前实现为准，并应继续更新文档而不是保留过时描述。

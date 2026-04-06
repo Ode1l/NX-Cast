@@ -1,14 +1,32 @@
 # Player 入口资源选择设计
 
-这份占位文档已并入主文档，不再单独维护。
+这份文档当前作为入口资源选择的摘要说明保留。
 
-当前应阅读：
+## 当前结论
 
-1. [Player层设计.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/Player层设计.md)
-2. [源兼容性.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/源兼容性.md)
+1. 入口资源选择已经从“占位概念”变成当前 `ingress` 的正式一环
+2. 当前资源选择发生在 `IngressModel` 上，而不是直接修改最终 `PlayerMedia`
+3. 资源选择的目标是让 `format / transport / vendor` 建立在更真实的资源之上
 
-当前状态：
+## 当前位置
 
-1. `CurrentURIMetaData` 的 `res/protocolInfo` 候选资源选择已落到 `player/ingress`
-2. 当前实现已经是 `evidence -> classify -> resource_select -> policy` 的第一版
-3. 后续工作重点不再是“有没有入口资源选择”，而是评分和 transport 规则继续完善
+资源选择当前位于：
+
+- `source/player/ingress/resource_select.c`
+
+它处于这条流水线中：
+
+```text
+evidence
+  -> IngressModel
+  -> resource_select
+  -> http_probe
+  -> PlayerMedia
+  -> policy
+```
+
+## 当前应阅读
+
+1. [Player层设计.md](Player层设计.md)
+2. [通用DLNA-DMR源适配设计.md](通用DLNA-DMR源适配设计.md)
+3. [源兼容性.md](源兼容性.md)

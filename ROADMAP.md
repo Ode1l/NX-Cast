@@ -3,82 +3,94 @@
 ## Phase 0
 Bootstrap and runtime foundation
 
-- Repository, build system, `.nro/.nacp`
-- Logging, input, network bootstrap
-- Status: done
+- repository, build system, `.nro/.nacp`
+- logging, input, network bootstrap
+- status: done
 
 ## Phase 1
 Discovery and DLNA description/control baseline
 
-- SSDP responder
-- mDNS probe
-- `device.xml` and SCPD
-- SOAP router and core actions
-- Status: done for current MVP
+- `SSDP` responder
+- `device.xml`
+- `SCPD`
+- `SOAP` routing and core actions
+- status: done
 
 ## Phase 2
-Generic DMR completeness
+Protocol completeness
 
-- `GENA` eventing
-- richer `SinkProtocolInfo`
-- complete metadata return
+- `GENA`
+- `LastChange`
 - `CurrentTransportActions`
-- URL preflight and better resource selection
-- local-proxy / mixed-source classification
-- Status: largely done, still iterative
+- richer metadata return
+- expanded `SinkProtocolInfo`
+- Macast-style single protocol-observed state
+- status: largely done, still being hardened by compatibility testing
 
 ## Phase 3
-Player and rendering baseline
+Player core and standard input modeling
 
-- `player` as single state source
-- owner thread + command queue
-- `libmpv` backend
-- `software render + libnx framebuffer`
-- Status: done for minimal video path
+- `player` owner thread and command queue
+- snapshot and event surface
+- `IngressModel`
+- `evidence -> model -> resource_select -> http_probe -> media -> policy`
+- explicit transport kinds
+- status: in progress but already the active architecture
 
 ## Phase 4
-Complete backend
+Playback backend baseline
 
-- real audio output (`ao=hos`)
-- `OpenGL/libmpv render API` path
-- Switch-oriented backend hardening
-- Status: largely done on the current official toolchain; `ao=hos` and `OpenGL/libmpv render API` are verified on device, remaining work is backend hardening and transport stability
+- `libmpv` backend
+- `ao=hos`
+- `OpenGL/libmpv render API`
+- status: landed on the current baseline
 
 ## Phase 5
-Hardware decode
+Generic transport stability
 
-- evaluate `hwdec=nvtegra`
-- connect decode path to the `OpenGL/libmpv render API` backend
-- Status: investigated and partially wired in code, but blocked by the current official `dkp` `libmpv` toolchain lacking a working explicit `nvtegra` hwdec backend
+- `http-file`
+- `hls-direct`
+- `hls-local-proxy`
+- `hls-gateway`
+- mixed-source session stability
+- control-point progress/seek interoperability
+- status: main active behavior track
 
 ## Phase 6
-Source compatibility and mixed transports
+Source compatibility
 
-- vendor-sensitive sources
-- local proxy / hybrid transports
-- range/seekability/media preflight
-- Status: in progress; `mgtv-family`, Tencent normal/phone-acceleration, and parts of Youku/CCTV have improved, but `iqiyi` and some local-proxy/HLS transport cases remain incomplete
+- keep parsing generic and standards-first
+- vendor hints only as additive policy input
+- continue improving bilibili / mgtv-family / qq-video / youku / cctv / iqiyi behavior
+- status: ongoing, but no longer treated as the first architectural layer
 
 ## Phase 7
+Hardware decode
+
+- evaluate actual `hwdec=nvtegra` activation
+- if needed, move to a custom media toolchain
+- status: blocked by current official `dkp` toolchain limits
+
+## Phase 8
+Future backend upgrade
+
+- custom `FFmpeg/mpv` toolchain
+- optional `deko3d` / `render_dk3d`
+- `libuam`
+- status: future work, not current default path
+
+## Phase 9
 AirPlay receiver
 
 - discovery
 - session control
 - media path
-- Status: not started
+- status: not started
 
-## Phase 8
+## Phase 10
 DMP expansion
 
 - source-native browsing
 - VOD program lists and detail pages
 - optional source adapters
-- Status: planned
-
-## Optional
-
-- custom media toolchain (`libuam + FFmpeg(nvtegra) + mpv(deko3d + hos-audio)`)
-- `deko3d` / `render_dk3d`
-- `SSDP NOTIFY ssdp:alive/byebye`
-- resident/sysmodule mode
-- settings and UI polishing
+- status: planned
