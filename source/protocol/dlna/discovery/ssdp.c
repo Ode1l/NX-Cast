@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -259,9 +260,8 @@ static void send_msearch_response(const char *st, const char *usn, const struct 
 
 static char *ssdp_recv_packet_alloc(int socket_fd, struct sockaddr_in *from, ssize_t *out_len)
 {
-    char discard = '\0';
     socklen_t from_len;
-    ssize_t needed;
+    int pending = 0;
     ssize_t received;
     char *buffer;
 
@@ -269,28 +269,23 @@ static char *ssdp_recv_packet_alloc(int socket_fd, struct sockaddr_in *from, ssi
         return NULL;
 
     *out_len = -1;
-    from_len = sizeof(*from);
-    needed = recvfrom(socket_fd,
-                      &discard,
-                      sizeof(discard),
-                      MSG_PEEK | MSG_TRUNC,
-                      (struct sockaddr *)from,
-                      &from_len);
-    if (needed <= 0)
+    if (ioctl(socket_fd, FIONREAD, &pending) < 0)
+        return NULL;
+    if (pending <= 0)
         return NULL;
 
-    buffer = malloc((size_t)needed + 1);
+    buffer = malloc((size_t)pending + 1);
     if (!buffer)
     {
         from_len = sizeof(*from);
-        (void)recvfrom(socket_fd, &discard, sizeof(discard), 0, (struct sockaddr *)from, &from_len);
+        (void)recvfrom(socket_fd, NULL, 0, 0, (struct sockaddr *)from, &from_len);
         return NULL;
     }
 
     from_len = sizeof(*from);
     received = recvfrom(socket_fd,
                         buffer,
-                        (size_t)needed,
+                        (size_t)pending,
                         0,
                         (struct sockaddr *)from,
                         &from_len);
