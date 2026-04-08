@@ -22,8 +22,6 @@
 // Keep a conservative stack budget here too. SSDP itself is simple, but
 // repeated logging and response formatting make 0x10000 a safer floor.
 #define SSDP_THREAD_STACK_SIZE 0x10000
-#define SSDP_PACKET_BUFFER_SIZE 1536
-
 static const char g_serviceTypeAvTransport[] = "urn:schemas-upnp-org:service:AVTransport:1";
 static const char g_serviceTypeRenderingControl[] = "urn:schemas-upnp-org:service:RenderingControl:1";
 static const char g_serviceTypeConnectionManager[] = "urn:schemas-upnp-org:service:ConnectionManager:1";
@@ -222,38 +220,89 @@ static bool get_header_value_alloc(const char *packet, const char *header, char 
 // Build and send a 200 OK response for an incoming M-SEARCH.
 static void send_msearch_response(const char *st, const char *usn, const struct sockaddr_in *from)
 {
+    char *response;
+    size_t response_len;
+
     if (g_ssdp.socket_fd < 0)
         return;
 
     if (!st || st[0] == '\0' || !usn || usn[0] == '\0')
         return;
 
-    char response[768];
-    int len = snprintf(response, sizeof(response),
-                       "HTTP/1.1 200 OK\r\n"
-                       "CACHE-CONTROL: max-age=1800\r\n"
-                       "DATE: Sat, 01 Jan 2000 00:00:00 GMT\r\n"
-                       "EXT:\r\n"
-                       "LOCATION: %s\r\n"
-                       "SERVER: NintendoSwitch/1.0 UPnP/1.1 NX-Cast/0.1\r\n"
-                       "ST: %s\r\n"
-                       "USN: %s\r\n"
-                       "\r\n",
-                       g_ssdp.location, st, usn);
-
-    if (len <= 0 || (size_t)len >= sizeof(response))
+    response = ssdp_strdup_printf("HTTP/1.1 200 OK\r\n"
+                                  "CACHE-CONTROL: max-age=1800\r\n"
+                                  "DATE: Sat, 01 Jan 2000 00:00:00 GMT\r\n"
+                                  "EXT:\r\n"
+                                  "LOCATION: %s\r\n"
+                                  "SERVER: NintendoSwitch/1.0 UPnP/1.1 NX-Cast/0.1\r\n"
+                                  "ST: %s\r\n"
+                                  "USN: %s\r\n"
+                                  "\r\n",
+                                  g_ssdp.location, st, usn);
+    if (!response)
         return;
+    response_len = strlen(response);
 
-    ssize_t sent = sendto(g_ssdp.socket_fd, response, (size_t)len, 0,
+    ssize_t sent = sendto(g_ssdp.socket_fd, response, response_len, 0,
                           (const struct sockaddr *)from, sizeof(*from));
     if (sent < 0)
     {
         log_warn("[ssdp] sendto failed: %s (%d)\n", strerror(errno), errno);
+        free(response);
         return;
     }
 
     log_info("[ssdp] send packet to %s:%d st=%s bytes=%zd\n",
              inet_ntoa(from->sin_addr), ntohs(from->sin_port), st, sent);
+    free(response);
+}
+
+static char *ssdp_recv_packet_alloc(int socket_fd, struct sockaddr_in *from, ssize_t *out_len)
+{
+    char discard = '\0';
+    socklen_t from_len;
+    ssize_t needed;
+    ssize_t received;
+    char *buffer;
+
+    if (!from || !out_len)
+        return NULL;
+
+    *out_len = -1;
+    from_len = sizeof(*from);
+    needed = recvfrom(socket_fd,
+                      &discard,
+                      sizeof(discard),
+                      MSG_PEEK | MSG_TRUNC,
+                      (struct sockaddr *)from,
+                      &from_len);
+    if (needed <= 0)
+        return NULL;
+
+    buffer = malloc((size_t)needed + 1);
+    if (!buffer)
+    {
+        from_len = sizeof(*from);
+        (void)recvfrom(socket_fd, &discard, sizeof(discard), 0, (struct sockaddr *)from, &from_len);
+        return NULL;
+    }
+
+    from_len = sizeof(*from);
+    received = recvfrom(socket_fd,
+                        buffer,
+                        (size_t)needed,
+                        0,
+                        (struct sockaddr *)from,
+                        &from_len);
+    if (received <= 0)
+    {
+        free(buffer);
+        return NULL;
+    }
+
+    buffer[received] = '\0';
+    *out_len = received;
+    return buffer;
 }
 
 static void respond_to_msearch(const char *st_value, const struct sockaddr_in *from)
@@ -391,13 +440,13 @@ static void ssdp_thread(void *arg)
 
         if (FD_ISSET(g_ssdp.socket_fd, &readfds))
         {
-            char buffer[SSDP_PACKET_BUFFER_SIZE];
             struct sockaddr_in from;
-            socklen_t from_len = sizeof(from);
-            ssize_t len = recvfrom(g_ssdp.socket_fd, buffer, sizeof(buffer) - 1, 0,
-                                   (struct sockaddr *)&from, &from_len);
-            if (len > 0)
+            ssize_t len = -1;
+            char *buffer = ssdp_recv_packet_alloc(g_ssdp.socket_fd, &from, &len);
+
+            if (buffer && len > 0)
                 handle_packet(buffer, len, &from);
+            free(buffer);
         }
     }
 }
