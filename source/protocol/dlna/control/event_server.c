@@ -26,7 +26,6 @@
 #define EVENT_DEFAULT_TIMEOUT_SECONDS 1800
 #define EVENT_MIN_TIMEOUT_SECONDS 60
 #define EVENT_MAX_TIMEOUT_SECONDS 3600
-#define EVENT_NOTIFY_THROTTLE_MS 1000
 #define EVENT_NOTIFY_RETRY_SLEEP_MS 100
 #define EVENT_NOTIFY_IO_TIMEOUT_SEC 1
 #define EVENT_CALLBACK_URL_MAX 512
@@ -72,10 +71,8 @@ static bool g_event_thread_started = false;
 static bool g_event_stop_requested = false;
 static EventSubscription g_event_subscriptions[EVENT_MAX_SUBSCRIPTIONS];
 static bool g_avtransport_state_dirty = false;
-static bool g_avtransport_position_dirty = false;
 static bool g_renderingcontrol_dirty = false;
 static bool g_connectionmanager_dirty = false;
-static uint64_t g_last_avtransport_notify_ms = 0;
 static uint32_t g_next_sid = 1;
 
 static void event_thread_main(void *arg);
@@ -112,10 +109,36 @@ static const char *event_service_name(EventService service)
 
 static EventService event_service_from_path(const char *path)
 {
-    if (!path || strncmp(path, "/upnp/event/", strlen("/upnp/event/")) != 0)
+    const char *name = NULL;
+    size_t len = 0;
+    char service_name[64];
+
+    if (!path)
         return EVENT_SERVICE_INVALID;
 
-    const char *name = path + strlen("/upnp/event/");
+    if (strncmp(path, "/upnp/event/", strlen("/upnp/event/")) == 0)
+    {
+        name = path + strlen("/upnp/event/");
+        len = strcspn(name, " ?\r\n");
+    }
+    else if (path[0] == '/')
+    {
+        const char *service = path + 1;
+        const char *suffix = strchr(service, '/');
+        if (suffix && strcmp(suffix, "/event") == 0)
+        {
+            name = service;
+            len = (size_t)(suffix - service);
+        }
+    }
+
+    if (!name || len == 0 || len >= sizeof(service_name))
+        return EVENT_SERVICE_INVALID;
+
+    memcpy(service_name, name, len);
+    service_name[len] = '\0';
+
+    name = service_name;
     if (strcasecmp(name, "AVTransport") == 0)
         return EVENT_SERVICE_AVTRANSPORT;
     if (strcasecmp(name, "RenderingControl") == 0)
@@ -391,15 +414,12 @@ static ssize_t event_find_free_subscription_locked(void)
     return -1;
 }
 
-static void event_mark_dirty_locked(EventService service, bool position_only)
+static void event_mark_dirty_locked(EventService service)
 {
     switch (service)
     {
     case EVENT_SERVICE_AVTRANSPORT:
-        if (position_only)
-            g_avtransport_position_dirty = true;
-        else
-            g_avtransport_state_dirty = true;
+        g_avtransport_state_dirty = true;
         break;
     case EVENT_SERVICE_RENDERINGCONTROL:
         g_renderingcontrol_dirty = true;
@@ -410,90 +430,6 @@ static void event_mark_dirty_locked(EventService service, bool position_only)
     default:
         break;
     }
-}
-
-static unsigned event_current_actions(const PlayerSnapshot *snapshot)
-{
-    unsigned actions = 0;
-
-    if (!snapshot || !snapshot->has_media)
-        return 0;
-
-    switch (snapshot->state)
-    {
-    case PLAYER_STATE_STOPPED:
-    case PLAYER_STATE_LOADING:
-        actions |= 1u << 0; /* Play */
-        actions |= 1u << 1; /* Stop */
-        break;
-    case PLAYER_STATE_BUFFERING:
-    case PLAYER_STATE_SEEKING:
-        actions |= 1u << 1; /* Stop */
-        break;
-    case PLAYER_STATE_PLAYING:
-        actions |= 1u << 1; /* Stop */
-        actions |= 1u << 2; /* Pause */
-        if (snapshot->seekable)
-            actions |= 1u << 3; /* Seek */
-        break;
-    case PLAYER_STATE_PAUSED:
-        actions |= 1u << 0; /* Play */
-        actions |= 1u << 1; /* Stop */
-        if (snapshot->seekable)
-            actions |= 1u << 3; /* Seek */
-        break;
-    case PLAYER_STATE_IDLE:
-    case PLAYER_STATE_ERROR:
-    default:
-        break;
-    }
-
-    return actions;
-}
-
-static void event_format_actions(unsigned actions, char *out, size_t out_size)
-{
-    bool first = true;
-    size_t used = 0;
-
-    if (!out || out_size == 0)
-        return;
-    out[0] = '\0';
-
-    if (actions & (1u << 0))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPlay", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && (actions & (1u << 1)))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sStop", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && (actions & (1u << 2)))
-    {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPause", first ? "" : ",");
-        first = false;
-    }
-    if (used < out_size && (actions & (1u << 3)))
-        (void)snprintf(out + used, out_size - used, "%sSeek", first ? "" : ",");
-}
-
-static void event_get_snapshot(PlayerSnapshot *snapshot)
-{
-    if (!snapshot)
-        return;
-
-    memset(snapshot, 0, sizeof(*snapshot));
-    if (player_get_snapshot(snapshot))
-        return;
-
-    snapshot->state = player_get_state();
-    snapshot->position_ms = player_get_position_ms();
-    snapshot->duration_ms = player_get_duration_ms();
-    snapshot->volume = player_get_volume();
-    snapshot->mute = player_get_mute();
-    snapshot->seekable = player_is_seekable();
 }
 
 static bool event_append_val_element(SoapActionOutput *out, const char *tag, const char *value)
@@ -517,27 +453,23 @@ static bool event_append_channel_val_element(SoapActionOutput *out,
 
 static bool event_build_avtransport_last_change(SoapActionOutput *out)
 {
-    PlayerSnapshot snapshot;
-    char actions[64];
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    char current_track[16];
+    char number_of_tracks[16];
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
 
-    event_get_snapshot(&snapshot);
-    event_format_actions(event_current_actions(&snapshot), actions, sizeof(actions));
+    snprintf(current_track, sizeof(current_track), "%d", state->current_track);
+    snprintf(number_of_tracks, sizeof(number_of_tracks), "%d", state->number_of_tracks);
 
     return soap_writer_append_raw(out, "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT/\"><InstanceID val=\"0\">") &&
            event_append_val_element(out, "TransportState", state->transport_state) &&
            event_append_val_element(out, "TransportStatus", state->transport_status) &&
-           event_append_val_element(out, "TransportPlaySpeed", state->transport_speed) &&
-           event_append_val_element(out, "CurrentTransportActions", actions) &&
-           event_append_val_element(out, "AVTransportURI", state->transport_uri) &&
-           event_append_val_element(out, "CurrentTrackURI", state->transport_uri) &&
-           event_append_val_element(out, "CurrentMediaDuration", state->transport_duration) &&
-           event_append_val_element(out, "CurrentTrackDuration", state->transport_duration) &&
-           event_append_val_element(out, "RelativeTimePosition", state->transport_rel_time) &&
-           event_append_val_element(out, "AbsoluteTimePosition", state->transport_abs_time) &&
+           event_append_val_element(out, "CurrentTrack", current_track) &&
+           event_append_val_element(out, "NumberOfTracks", number_of_tracks) &&
+           event_append_val_element(out, "CurrentMediaDuration", state->current_media_duration) &&
+           event_append_val_element(out, "CurrentTrackDuration", state->current_track_duration) &&
            soap_writer_append_raw(out, "</InstanceID></Event>");
 }
 
@@ -545,7 +477,7 @@ static bool event_build_renderingcontrol_last_change(SoapActionOutput *out)
 {
     char volume[16];
     char mute[8];
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
@@ -565,7 +497,7 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
     bool ok = false;
     char volume[16];
     char mute[8];
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
@@ -602,19 +534,12 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
         break;
     case EVENT_SERVICE_CONNECTIONMANAGER:
         ok = soap_writer_append_raw(out, "<e:property><CurrentConnectionIDs>") &&
-             soap_writer_append_escaped(out, state->connection_ids) &&
+             soap_writer_append_escaped(out, state->current_connection_ids) &&
              soap_writer_append_raw(out, "</CurrentConnectionIDs></e:property>");
         break;
     default:
         ok = false;
         break;
-    }
-
-    if (service == EVENT_SERVICE_AVTRANSPORT && ok)
-    {
-        ok = soap_writer_append_raw(out, "<e:property><TransportState>") &&
-             soap_writer_append_escaped(out, state->transport_state) &&
-             soap_writer_append_raw(out, "</TransportState></e:property>");
     }
 
     soap_writer_dispose(&last_change);
@@ -795,7 +720,6 @@ static void event_thread_main(void *arg)
         mutexLock(&g_event_mutex);
         while (!g_event_stop_requested &&
                !g_avtransport_state_dirty &&
-               !g_avtransport_position_dirty &&
                !g_renderingcontrol_dirty &&
                !g_connectionmanager_dirty)
         {
@@ -808,11 +732,7 @@ static void event_thread_main(void *arg)
             break;
         }
 
-        uint64_t now_ms = event_now_ms();
         if (g_avtransport_state_dirty)
-            avt_due = true;
-        else if (g_avtransport_position_dirty &&
-                 (g_last_avtransport_notify_ms == 0 || now_ms - g_last_avtransport_notify_ms >= EVENT_NOTIFY_THROTTLE_MS))
             avt_due = true;
 
         rc_due = g_renderingcontrol_dirty;
@@ -822,8 +742,6 @@ static void event_thread_main(void *arg)
         {
             avt_count = event_collect_targets_locked(EVENT_SERVICE_AVTRANSPORT, avt_targets, EVENT_MAX_SUBSCRIPTIONS);
             g_avtransport_state_dirty = false;
-            g_avtransport_position_dirty = false;
-            g_last_avtransport_notify_ms = now_ms;
         }
 
         if (rc_due)
@@ -873,10 +791,8 @@ bool event_server_start(void)
     memset(g_event_subscriptions, 0, sizeof(g_event_subscriptions));
     g_event_stop_requested = false;
     g_avtransport_state_dirty = false;
-    g_avtransport_position_dirty = false;
     g_renderingcontrol_dirty = false;
     g_connectionmanager_dirty = false;
-    g_last_avtransport_notify_ms = 0;
     mutexUnlock(&g_event_mutex);
 
     rc = threadCreate(&g_event_thread,
@@ -925,7 +841,6 @@ void event_server_stop(void)
     g_event_thread_started = false;
     memset(g_event_subscriptions, 0, sizeof(g_event_subscriptions));
     g_avtransport_state_dirty = false;
-    g_avtransport_position_dirty = false;
     g_renderingcontrol_dirty = false;
     g_connectionmanager_dirty = false;
     mutexUnlock(&g_event_mutex);
@@ -1011,7 +926,7 @@ static bool event_handle_subscribe(const HttpRequestContext *ctx,
     snprintf(subscription->callback_path, sizeof(subscription->callback_path), "%s", path);
     subscription->seq = 0;
     subscription->expiry_ms = expiry_ms;
-    event_mark_dirty_locked(service, false);
+    event_mark_dirty_locked(service);
     condvarWakeOne(&g_event_cond);
     snprintf(headers, sizeof(headers),
              "SID: %s\r\nTIMEOUT: Second-%d\r\n",
@@ -1098,14 +1013,13 @@ void event_server_on_player_event(const PlayerEvent *event)
     case PLAYER_EVENT_URI_CHANGED:
     case PLAYER_EVENT_DURATION_CHANGED:
     case PLAYER_EVENT_ERROR:
-        event_mark_dirty_locked(EVENT_SERVICE_AVTRANSPORT, false);
+        event_mark_dirty_locked(EVENT_SERVICE_AVTRANSPORT);
         break;
     case PLAYER_EVENT_POSITION_CHANGED:
-        event_mark_dirty_locked(EVENT_SERVICE_AVTRANSPORT, true);
         break;
     case PLAYER_EVENT_VOLUME_CHANGED:
     case PLAYER_EVENT_MUTE_CHANGED:
-        event_mark_dirty_locked(EVENT_SERVICE_RENDERINGCONTROL, false);
+        event_mark_dirty_locked(EVENT_SERVICE_RENDERINGCONTROL);
         break;
     default:
         break;

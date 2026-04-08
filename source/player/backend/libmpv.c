@@ -32,6 +32,8 @@
 #define PLAYER_LIBMPV_HLS_STARTUP_STALL_REPEAT_MS 3000
 #define PLAYER_LIBMPV_PLAYBACK_STALL_MS 3000
 #define PLAYER_LIBMPV_PLAYBACK_STALL_REPEAT_MS 5000
+#define PLAYER_LIBMPV_LOCAL_PROXY_RECOVER_MS 3000
+#define PLAYER_LIBMPV_LOCAL_PROXY_RECOVER_COOLDOWN_MS 6000
 #define PLAYER_LIBMPV_DEFAULT_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 #define PLAYER_LIBMPV_DEFAULT_AO "hos"
 #define PLAYER_LIBMPV_FALLBACK_AO "null"
@@ -87,9 +89,12 @@ static uint64_t g_first_playing_ms = 0;
 static uint64_t g_last_hls_stall_log_ms = 0;
 static uint64_t g_last_progress_wall_ms = 0;
 static int g_last_progress_position_ms = 0;
+static uint64_t g_last_position_advance_ms = 0;
 static bool g_playback_stall_active = false;
 static uint64_t g_playback_stall_log_ms = 0;
 static bool g_hls_startup_reported = false;
+static uint64_t g_local_proxy_last_recover_ms = 0;
+static unsigned int g_local_proxy_recover_count = 0;
 static PlayerMedia g_media;
 static char g_uri[PLAYER_LIBMPV_URI_MAX];
 static char g_metadata[PLAYER_LIBMPV_METADATA_MAX];
@@ -114,12 +119,14 @@ static bool libmpv_set_flag_locked(const char *name, bool value);
 static void libmpv_log_backend_runtime_locked(const char *reason);
 static void libmpv_apply_media_runtime_overrides_locked(const PlayerMedia *media);
 static void libmpv_log_runtime_overrides_detail_locked(const PlayerMedia *media);
+static bool libmpv_load_uri_locked(const PlayerMedia *media, const char *uri, bool paused);
 static void libmpv_process_event_locked(const mpv_event *event);
 static void libmpv_track_hls_startup_locked(PlayerState previous_state);
 static void libmpv_sync_properties_locked(bool emit_events);
 static void libmpv_log_stream_details_locked(const char *reason);
 static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force);
 static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms);
+static void libmpv_maybe_recover_local_proxy_locked(uint64_t now_ms);
 static void libmpv_render_update(void *ctx);
 static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
 static bool libmpv_render_attach_sw(void);
@@ -187,9 +194,12 @@ static void libmpv_process_event_locked(const mpv_event *event)
         g_last_hls_stall_log_ms = 0;
         g_last_progress_wall_ms = 0;
         g_last_progress_position_ms = 0;
+        g_last_position_advance_ms = 0;
         g_playback_stall_active = false;
         g_playback_stall_log_ms = 0;
         g_hls_startup_reported = false;
+        g_local_proxy_last_recover_ms = 0;
+        g_local_proxy_recover_count = 0;
         g_hls_kind = g_hls_live_hint ? LIBMPV_HLS_RUNTIME_LIVE : LIBMPV_HLS_RUNTIME_UNKNOWN;
         if (g_play_requested)
         {
@@ -233,9 +243,12 @@ static void libmpv_process_event_locked(const mpv_event *event)
         g_last_hls_stall_log_ms = 0;
         g_last_progress_wall_ms = 0;
         g_last_progress_position_ms = 0;
+        g_last_position_advance_ms = 0;
         g_playback_stall_active = false;
         g_playback_stall_log_ms = 0;
         g_hls_startup_reported = false;
+        g_local_proxy_last_recover_ms = 0;
+        g_local_proxy_recover_count = 0;
         g_hls_kind = LIBMPV_HLS_RUNTIME_UNKNOWN;
         if (end)
         {
@@ -809,6 +822,7 @@ static void libmpv_maybe_log_diagnostics_locked(const char *reason, bool force)
     g_last_diag_playback_abort = g_playback_abort;
     g_last_diag_hls_kind = g_hls_kind;
     g_last_diag_log_ms = now_ms;
+    libmpv_maybe_recover_local_proxy_locked(now_ms);
     libmpv_maybe_log_playback_stall_locked(now_ms);
 }
 
@@ -929,6 +943,57 @@ static void libmpv_maybe_log_playback_stall_locked(uint64_t now_ms)
                  ingress_format_name(g_media.format),
                  g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown");
         libmpv_log_stream_details_locked("PLAYBACK_STALL");
+    }
+}
+
+static void libmpv_maybe_recover_local_proxy_locked(uint64_t now_ms)
+{
+    uint64_t last_progress_ms;
+
+    // Phone-proxied HLS can fall behind its tiny live window after the first
+    // frame. If we already progressed once and then sit in empty-cache
+    // buffering, reopen the same manifest to jump back to the newest edge.
+    if (g_media.transport != PLAYER_MEDIA_TRANSPORT_HLS_LOCAL_PROXY ||
+        !g_hls_mode ||
+        !g_play_requested ||
+        g_state != PLAYER_STATE_BUFFERING ||
+        g_cache_duration_ms > 0 ||
+        g_seeking)
+    {
+        return;
+    }
+
+    if (g_first_playing_ms == 0 && g_first_progress_ms == 0)
+        return;
+
+    last_progress_ms = g_last_position_advance_ms;
+    if (last_progress_ms == 0)
+        last_progress_ms = g_first_progress_ms != 0 ? g_first_progress_ms : g_first_playing_ms;
+    if (last_progress_ms == 0)
+        return;
+
+    if (now_ms - last_progress_ms < PLAYER_LIBMPV_LOCAL_PROXY_RECOVER_MS)
+        return;
+    if (g_local_proxy_last_recover_ms != 0 &&
+        now_ms - g_local_proxy_last_recover_ms < PLAYER_LIBMPV_LOCAL_PROXY_RECOVER_COOLDOWN_MS)
+    {
+        return;
+    }
+
+    if (libmpv_load_uri_locked(&g_media, g_uri, false))
+    {
+        g_local_proxy_last_recover_ms = now_ms;
+        ++g_local_proxy_recover_count;
+        g_load_in_progress = true;
+        g_stop_mode = false;
+        g_paused_for_cache = false;
+        g_playback_stall_active = false;
+        g_playback_stall_log_ms = 0;
+        log_warn("[player-libmpv] local_proxy_recover reopen count=%u stalled_ms=%llu hint=%s uri=%s\n",
+                 g_local_proxy_recover_count,
+                 (unsigned long long)(now_ms - last_progress_ms),
+                 g_media.format_hint[0] != '\0' ? g_media.format_hint : "unknown",
+                 g_uri);
     }
 }
 
@@ -1131,6 +1196,7 @@ static void libmpv_sync_properties_locked(bool emit_events)
         return;
 
     bool paused = true;
+    uint64_t now_ms = libmpv_now_ms();
     bool idle_active = false;
     bool eof_reached = false;
     bool seekable = false;
@@ -1255,6 +1321,9 @@ static void libmpv_sync_properties_locked(bool emit_events)
         }
     }
 
+    if (g_position_ms > prev_position_ms)
+        g_last_position_advance_ms = now_ms;
+
     libmpv_track_hls_startup_locked(prev_state);
     libmpv_maybe_log_diagnostics_locked("refresh", false);
 
@@ -1358,9 +1427,12 @@ static bool libmpv_init(void)
     g_last_hls_stall_log_ms = 0;
     g_last_progress_wall_ms = 0;
     g_last_progress_position_ms = 0;
+    g_last_position_advance_ms = 0;
     g_playback_stall_active = false;
     g_playback_stall_log_ms = 0;
     g_hls_startup_reported = false;
+    g_local_proxy_last_recover_ms = 0;
+    g_local_proxy_recover_count = 0;
     g_render_update_pending = false;
     g_hwdec_explicit_nvtegra = false;
     memset(g_requested_ao, 0, sizeof(g_requested_ao));
@@ -1516,7 +1588,14 @@ static void libmpv_deinit(void)
     g_first_progress_ms = 0;
     g_first_playing_ms = 0;
     g_last_hls_stall_log_ms = 0;
+    g_last_progress_wall_ms = 0;
+    g_last_progress_position_ms = 0;
+    g_last_position_advance_ms = 0;
+    g_playback_stall_active = false;
+    g_playback_stall_log_ms = 0;
     g_hls_startup_reported = false;
+    g_local_proxy_last_recover_ms = 0;
+    g_local_proxy_recover_count = 0;
     g_render_update_pending = false;
     g_event_sink = NULL;
     memset(g_requested_ao, 0, sizeof(g_requested_ao));
@@ -1587,9 +1666,16 @@ static bool libmpv_set_media(const PlayerMedia *media)
     g_first_progress_ms = 0;
     g_first_playing_ms = 0;
     g_last_hls_stall_log_ms = 0;
+    g_last_progress_wall_ms = 0;
+    g_last_progress_position_ms = 0;
+    g_last_position_advance_ms = 0;
+    g_playback_stall_active = false;
+    g_playback_stall_log_ms = 0;
     g_hls_startup_reported = false;
     g_last_diag_valid = false;
     g_last_diag_hls_kind = LIBMPV_HLS_RUNTIME_UNKNOWN;
+    g_local_proxy_last_recover_ms = 0;
+    g_local_proxy_recover_count = 0;
     g_state = PLAYER_STATE_LOADING;
     libmpv_sync_properties_locked(false);
 
@@ -1777,9 +1863,12 @@ static bool libmpv_stop(void)
     g_last_hls_stall_log_ms = 0;
     g_last_progress_wall_ms = 0;
     g_last_progress_position_ms = 0;
+    g_last_position_advance_ms = 0;
     g_playback_stall_active = false;
     g_playback_stall_log_ms = 0;
     g_hls_startup_reported = false;
+    g_local_proxy_last_recover_ms = 0;
+    g_local_proxy_recover_count = 0;
     g_hls_kind = LIBMPV_HLS_RUNTIME_UNKNOWN;
     g_state = PLAYER_STATE_STOPPED;
 

@@ -12,9 +12,14 @@ static const uint16_t g_dlnaHttpPort = 49152;
 static const char g_dlnaDeviceType[] = "urn:schemas-upnp-org:device:MediaRenderer:1";
 static const char g_dlnaFriendlyName[] = "NX-Cast";
 static const char g_dlnaManufacturer[] = "Ode1l";
+static const char g_dlnaManufacturerUrl[] = "";
+static const char g_dlnaModelDescription[] = "Nintendo Switch DLNA Media Renderer";
 static const char g_dlnaModelName[] = "NX-Cast Virtual Renderer";
+static const char g_dlnaModelNumber[] = "0.1.0";
+static const char g_dlnaModelUrl[] = "";
+static const char g_dlnaSerialNumber[] = "00000001";
 static const char g_dlnaUuid[] = "uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001";
-static const char g_dlnaLocationPath[] = "/device.xml";
+static const char g_dlnaLocationPath[] = "/Description.xml";
 
 static bool dlna_http_dispatch(const HttpRequestContext *ctx,
                                char *response,
@@ -66,8 +71,15 @@ bool dlna_control_start(void)
     const ScpdConfig scpdConfig = {
         .friendly_name = g_dlnaFriendlyName,
         .manufacturer = g_dlnaManufacturer,
+        .manufacturer_url = g_dlnaManufacturerUrl,
+        .model_description = g_dlnaModelDescription,
         .model_name = g_dlnaModelName,
-        .uuid = g_dlnaUuid
+        .model_number = g_dlnaModelNumber,
+        .model_url = g_dlnaModelUrl,
+        .serial_number = g_dlnaSerialNumber,
+        .uuid = g_dlnaUuid,
+        .header_extra = "",
+        .service_extra = ""
     };
 
     const SsdpConfig ssdpConfig = {

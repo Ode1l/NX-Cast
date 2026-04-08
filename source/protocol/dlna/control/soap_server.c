@@ -18,6 +18,22 @@ static bool starts_with(const char *value, const char *prefix)
     return value && prefix && strncmp(value, prefix, strlen(prefix)) == 0;
 }
 
+static bool is_macast_control_path(const char *path)
+{
+    const char *name;
+    const char *suffix;
+
+    if (!path || path[0] != '/')
+        return false;
+
+    name = path + 1;
+    suffix = strchr(name, '/');
+    if (!suffix || suffix == name)
+        return false;
+
+    return strcmp(suffix, "/action") == 0;
+}
+
 static void trim_whitespace(char *value)
 {
     if (!value)
@@ -134,13 +150,28 @@ static bool parse_action_name(const char *soap_action_header, char *action_name,
 
 static bool parse_service_name_from_path(const char *path, char *service_name, size_t service_name_size)
 {
-    if (!starts_with(path, "/upnp/control/") || !service_name || service_name_size == 0)
+    const char *name;
+    size_t len;
+
+    if (!path || !service_name || service_name_size == 0)
         return false;
 
-    const char *name = path + strlen("/upnp/control/");
-    size_t len = strcspn(name, " ?\r\n");
-    if (len == 0)
+    if (starts_with(path, "/upnp/control/"))
+    {
+        name = path + strlen("/upnp/control/");
+        len = strcspn(name, " ?\r\n");
+        if (len == 0)
+            return false;
+    }
+    else if (is_macast_control_path(path))
+    {
+        name = path + 1;
+        len = (size_t)(strchr(name, '/') - name);
+    }
+    else
+    {
         return false;
+    }
 
     if (len >= service_name_size)
         len = service_name_size - 1;
@@ -544,7 +575,7 @@ bool soap_server_try_handle_http(const char *method,
 
     *response_len = 0;
 
-    if (!starts_with(path, "/upnp/control/"))
+    if (!starts_with(path, "/upnp/control/") && !is_macast_control_path(path))
         return false;
 
     if (!g_running)

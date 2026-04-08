@@ -209,6 +209,12 @@ int main(int argc, char* argv[])
     log_set_level(LOG_LEVEL_DEBUG);
     log_info("[log] level=DEBUG\n");
 
+    bool romfsReady = R_SUCCEEDED(romfsInit());
+    if (romfsReady)
+        log_info("[romfs] romfs initialized.\n");
+    else
+        log_warn("[romfs] romfsInit failed; description templates may be unavailable.\n");
+
     bool networkReady = initialize_network();
     enable_nxlink_stdio(networkReady);
     bool dlnaRunning = false;
@@ -355,6 +361,9 @@ int main(int argc, char* argv[])
 
     if (networkReady)
         socketExit();
+
+    if (romfsReady)
+        romfsExit();
 
     render_log_view(0);
     consoleUpdate(NULL);

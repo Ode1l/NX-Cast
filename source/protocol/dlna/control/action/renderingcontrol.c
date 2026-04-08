@@ -11,7 +11,7 @@ bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput 
 {
     char instance_id[32];
     char channel[32];
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
@@ -71,7 +71,7 @@ bool renderingcontrol_get_mute(const SoapActionContext *ctx, SoapActionOutput *o
 {
     char instance_id[32];
     char channel[32];
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;

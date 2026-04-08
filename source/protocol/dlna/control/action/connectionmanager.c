@@ -27,7 +27,7 @@ static char *connectionmanager_escape_dup(const char *value)
 bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     (void)ctx;
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
@@ -61,13 +61,13 @@ bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActio
 bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     (void)ctx;
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
 
     soap_writer_clear(out);
-    if (!soap_writer_element_text(out, "ConnectionIDs", state->connection_ids))
+    if (!soap_writer_element_text(out, "ConnectionIDs", state->current_connection_ids))
     {
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
@@ -80,7 +80,7 @@ bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, 
 bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char connection_id[32];
-    const DlnaProtocolState *state = dlna_protocol_state_view();
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
@@ -108,7 +108,7 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
         !soap_writer_element_raw(out, "ProtocolInfo", escaped_protocol_info) ||
         !soap_writer_element_text(out, "PeerConnectionManager", "") ||
         !soap_writer_element_int(out, "PeerConnectionID", -1) ||
-        !soap_writer_element_text(out, "Direction", "Input") ||
+        !soap_writer_element_text(out, "Direction", state->a_arg_type_direction) ||
         !soap_writer_element_text(out, "Status", "OK"))
     {
         free(escaped_protocol_info);

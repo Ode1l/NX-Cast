@@ -2,272 +2,47 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "log/log.h"
+#include "template_resource.h"
+
+#define SCPD_RENDER_BUFFER_SIZE 65536
 
 typedef struct
 {
-    const char *path;
-    const char *body;
-    size_t body_len;
-} XmlResource;
-
-#define DEVICE_XML_BUFFER_SIZE 4096
-
-static const char g_deviceXmlTemplate[] =
-    "<?xml version=\"1.0\"?>\n"
-    "<root xmlns=\"urn:schemas-upnp-org:device-1-0\">\n"
-    "  <specVersion>\n"
-    "    <major>1</major>\n"
-    "    <minor>0</minor>\n"
-    "  </specVersion>\n"
-    "  <device>\n"
-    "    <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>\n"
-    "    <friendlyName>%s</friendlyName>\n"
-    "    <manufacturer>%s</manufacturer>\n"
-    "    <modelName>%s</modelName>\n"
-    "    <UDN>%s</UDN>\n"
-    "    <serviceList>\n"
-    "      <service>\n"
-    "        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>\n"
-    "        <serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>\n"
-    "        <SCPDURL>/scpd/AVTransport.xml</SCPDURL>\n"
-    "        <controlURL>/upnp/control/AVTransport</controlURL>\n"
-    "        <eventSubURL>/upnp/event/AVTransport</eventSubURL>\n"
-    "      </service>\n"
-    "      <service>\n"
-    "        <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>\n"
-    "        <serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>\n"
-    "        <SCPDURL>/scpd/RenderingControl.xml</SCPDURL>\n"
-    "        <controlURL>/upnp/control/RenderingControl</controlURL>\n"
-    "        <eventSubURL>/upnp/event/RenderingControl</eventSubURL>\n"
-    "      </service>\n"
-    "      <service>\n"
-    "        <serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>\n"
-    "        <serviceId>urn:upnp-org:serviceId:ConnectionManager</serviceId>\n"
-    "        <SCPDURL>/scpd/ConnectionManager.xml</SCPDURL>\n"
-    "        <controlURL>/upnp/control/ConnectionManager</controlURL>\n"
-    "        <eventSubURL>/upnp/event/ConnectionManager</eventSubURL>\n"
-    "      </service>\n"
-    "    </serviceList>\n"
-    "  </device>\n"
-    "</root>\n";
+    const char *request_path;
+    const char *template_path;
+    const char *content_type;
+    bool use_template_values;
+} ScpdRoute;
 
 static const char g_defaultFriendlyName[] = "NX-Cast";
 static const char g_defaultManufacturer[] = "Ode1l";
+static const char g_defaultManufacturerUrl[] = "";
+static const char g_defaultModelDescription[] = "Nintendo Switch DLNA Media Renderer";
 static const char g_defaultModelName[] = "NX-Cast Virtual Renderer";
-static const char g_defaultUuid[] = "uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001";
-static char g_deviceXmlBuffer[DEVICE_XML_BUFFER_SIZE];
+static const char g_defaultModelNumber[] = "0.1.0";
+static const char g_defaultModelUrl[] = "";
+static const char g_defaultSerialNumber[] = "00000001";
+static const char g_defaultUuid[] = "6b0d3c60-3d96-41f4-986c-0a4bb12b0001";
+static const char g_defaultHeaderExtra[] = "";
+static const char g_defaultServiceExtra[] = "";
 
-static const char g_avTransportScpd[] =
-    "<?xml version=\"1.0\"?>\n"
-    "<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">\n"
-    "  <specVersion><major>1</major><minor>0</minor></specVersion>\n"
-    "  <actionList>\n"
-    "    <action>\n"
-    "      <name>SetAVTransportURI</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentURI</name><direction>in</direction><relatedStateVariable>AVTransportURI</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentURIMetaData</name><direction>in</direction><relatedStateVariable>AVTransportURIMetaData</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>Play</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Speed</name><direction>in</direction><relatedStateVariable>TransportPlaySpeed</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action><name>Pause</name><argumentList><argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument></argumentList></action>\n"
-    "    <action><name>Stop</name><argumentList><argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument></argumentList></action>\n"
-    "    <action>\n"
-    "      <name>GetTransportInfo</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentTransportState</name><direction>out</direction><relatedStateVariable>TransportState</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentTransportStatus</name><direction>out</direction><relatedStateVariable>TransportStatus</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentSpeed</name><direction>out</direction><relatedStateVariable>TransportPlaySpeed</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>GetCurrentTransportActions</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Actions</name><direction>out</direction><relatedStateVariable>CurrentTransportActions</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>GetMediaInfo</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>NrTracks</name><direction>out</direction><relatedStateVariable>NumberOfTracks</relatedStateVariable></argument>\n"
-    "        <argument><name>MediaDuration</name><direction>out</direction><relatedStateVariable>CurrentMediaDuration</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentURI</name><direction>out</direction><relatedStateVariable>AVTransportURI</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentURIMetaData</name><direction>out</direction><relatedStateVariable>AVTransportURIMetaData</relatedStateVariable></argument>\n"
-    "        <argument><name>NextURI</name><direction>out</direction><relatedStateVariable>NextAVTransportURI</relatedStateVariable></argument>\n"
-    "        <argument><name>NextURIMetaData</name><direction>out</direction><relatedStateVariable>NextAVTransportURIMetaData</relatedStateVariable></argument>\n"
-    "        <argument><name>PlayMedium</name><direction>out</direction><relatedStateVariable>PlaybackStorageMedium</relatedStateVariable></argument>\n"
-    "        <argument><name>RecordMedium</name><direction>out</direction><relatedStateVariable>RecordStorageMedium</relatedStateVariable></argument>\n"
-    "        <argument><name>WriteStatus</name><direction>out</direction><relatedStateVariable>RecordMediumWriteStatus</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>GetPositionInfo</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Track</name><direction>out</direction><relatedStateVariable>CurrentTrack</relatedStateVariable></argument>\n"
-    "        <argument><name>TrackDuration</name><direction>out</direction><relatedStateVariable>CurrentTrackDuration</relatedStateVariable></argument>\n"
-    "        <argument><name>TrackMetaData</name><direction>out</direction><relatedStateVariable>CurrentTrackMetaData</relatedStateVariable></argument>\n"
-    "        <argument><name>TrackURI</name><direction>out</direction><relatedStateVariable>CurrentTrackURI</relatedStateVariable></argument>\n"
-    "        <argument><name>RelTime</name><direction>out</direction><relatedStateVariable>RelativeTimePosition</relatedStateVariable></argument>\n"
-    "        <argument><name>AbsTime</name><direction>out</direction><relatedStateVariable>AbsoluteTimePosition</relatedStateVariable></argument>\n"
-    "        <argument><name>RelCount</name><direction>out</direction><relatedStateVariable>RelativeCounterPosition</relatedStateVariable></argument>\n"
-    "        <argument><name>AbsCount</name><direction>out</direction><relatedStateVariable>AbsoluteCounterPosition</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>Seek</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Unit</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_SeekMode</relatedStateVariable></argument>\n"
-    "        <argument><name>Target</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_SeekTarget</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "  </actionList>\n"
-    "  <serviceStateTable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_InstanceID</name><dataType>ui4</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_SeekMode</name><dataType>string</dataType><allowedValueList><allowedValue>REL_TIME</allowedValue></allowedValueList></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_SeekTarget</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"yes\"><name>LastChange</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"yes\"><name>TransportState</name><dataType>string</dataType>\n"
-    "      <allowedValueList><allowedValue>STOPPED</allowedValue><allowedValue>PLAYING</allowedValue><allowedValue>PAUSED_PLAYBACK</allowedValue><allowedValue>TRANSITIONING</allowedValue><allowedValue>NO_MEDIA_PRESENT</allowedValue></allowedValueList>\n"
-    "    </stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>TransportStatus</name><dataType>string</dataType><defaultValue>OK</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>TransportPlaySpeed</name><dataType>string</dataType><defaultValue>1</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>CurrentTransportActions</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>NumberOfTracks</name><dataType>ui4</dataType><defaultValue>1</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>CurrentTrack</name><dataType>ui4</dataType><defaultValue>1</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>CurrentMediaDuration</name><dataType>string</dataType><defaultValue>00:00:00</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>CurrentTrackDuration</name><dataType>string</dataType><defaultValue>00:00:00</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>CurrentTrackMetaData</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>CurrentTrackURI</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>RelativeTimePosition</name><dataType>string</dataType><defaultValue>00:00:00</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>AbsoluteTimePosition</name><dataType>string</dataType><defaultValue>00:00:00</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>RelativeCounterPosition</name><dataType>i4</dataType><defaultValue>0</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>AbsoluteCounterPosition</name><dataType>i4</dataType><defaultValue>0</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"yes\"><name>AVTransportURI</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"yes\"><name>AVTransportURIMetaData</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>NextAVTransportURI</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>NextAVTransportURIMetaData</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>PlaybackStorageMedium</name><dataType>string</dataType><defaultValue>NETWORK</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>RecordStorageMedium</name><dataType>string</dataType><defaultValue>NOT_IMPLEMENTED</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>RecordMediumWriteStatus</name><dataType>string</dataType><defaultValue>NOT_IMPLEMENTED</defaultValue></stateVariable>\n"
-    "  </serviceStateTable>\n"
-    "</scpd>\n";
-
-static const char g_renderingControlScpd[] =
-    "<?xml version=\"1.0\"?>\n"
-    "<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">\n"
-    "  <specVersion><major>1</major><minor>0</minor></specVersion>\n"
-    "  <actionList>\n"
-    "    <action>\n"
-    "      <name>GetVolume</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Channel</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentVolume</name><direction>out</direction><relatedStateVariable>Volume</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>SetVolume</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Channel</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable></argument>\n"
-    "        <argument><name>DesiredVolume</name><direction>in</direction><relatedStateVariable>Volume</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>GetMute</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Channel</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable></argument>\n"
-    "        <argument><name>CurrentMute</name><direction>out</direction><relatedStateVariable>Mute</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>SetMute</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>InstanceID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>\n"
-    "        <argument><name>Channel</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable></argument>\n"
-    "        <argument><name>DesiredMute</name><direction>in</direction><relatedStateVariable>Mute</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "  </actionList>\n"
-    "  <serviceStateTable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_InstanceID</name><dataType>ui4</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_Channel</name><dataType>string</dataType><allowedValueList><allowedValue>Master</allowedValue></allowedValueList></stateVariable>\n"
-    "    <stateVariable sendEvents=\"yes\"><name>LastChange</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"yes\"><name>Volume</name><dataType>ui2</dataType><defaultValue>20</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"yes\"><name>Mute</name><dataType>boolean</dataType><defaultValue>0</defaultValue></stateVariable>\n"
-    "  </serviceStateTable>\n"
-    "</scpd>\n";
-
-static const char g_connectionManagerScpd[] =
-    "<?xml version=\"1.0\"?>\n"
-    "<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">\n"
-    "  <specVersion><major>1</major><minor>0</minor></specVersion>\n"
-    "  <actionList>\n"
-    "    <action>\n"
-    "      <name>GetProtocolInfo</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>Source</name><direction>out</direction><relatedStateVariable>SourceProtocolInfo</relatedStateVariable></argument>\n"
-    "        <argument><name>Sink</name><direction>out</direction><relatedStateVariable>SinkProtocolInfo</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>GetCurrentConnectionIDs</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>ConnectionIDs</name><direction>out</direction><relatedStateVariable>CurrentConnectionIDs</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "    <action>\n"
-    "      <name>GetCurrentConnectionInfo</name>\n"
-    "      <argumentList>\n"
-    "        <argument><name>ConnectionID</name><direction>in</direction><relatedStateVariable>A_ARG_TYPE_ConnectionID</relatedStateVariable></argument>\n"
-    "        <argument><name>RcsID</name><direction>out</direction><relatedStateVariable>A_ARG_TYPE_RcsID</relatedStateVariable></argument>\n"
-    "        <argument><name>AVTransportID</name><direction>out</direction><relatedStateVariable>A_ARG_TYPE_AVTransportID</relatedStateVariable></argument>\n"
-    "        <argument><name>ProtocolInfo</name><direction>out</direction><relatedStateVariable>A_ARG_TYPE_ProtocolInfo</relatedStateVariable></argument>\n"
-    "        <argument><name>PeerConnectionManager</name><direction>out</direction><relatedStateVariable>A_ARG_TYPE_ConnectionManager</relatedStateVariable></argument>\n"
-    "        <argument><name>PeerConnectionID</name><direction>out</direction><relatedStateVariable>A_ARG_TYPE_ConnectionID</relatedStateVariable></argument>\n"
-    "        <argument><name>Direction</name><direction>out</direction><relatedStateVariable>A_ARG_TYPE_Direction</relatedStateVariable></argument>\n"
-    "        <argument><name>Status</name><direction>out</direction><relatedStateVariable>A_ARG_TYPE_ConnectionStatus</relatedStateVariable></argument>\n"
-    "      </argumentList>\n"
-    "    </action>\n"
-    "  </actionList>\n"
-    "  <serviceStateTable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_ConnectionID</name><dataType>i4</dataType><defaultValue>0</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_AVTransportID</name><dataType>i4</dataType><defaultValue>0</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_RcsID</name><dataType>i4</dataType><defaultValue>0</defaultValue></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_ProtocolInfo</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_ConnectionManager</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_Direction</name><dataType>string</dataType><allowedValueList><allowedValue>Input</allowedValue><allowedValue>Output</allowedValue></allowedValueList></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_ConnectionStatus</name><dataType>string</dataType><allowedValueList><allowedValue>OK</allowedValue><allowedValue>ContentFormatMismatch</allowedValue><allowedValue>InsufficientBandwidth</allowedValue><allowedValue>UnreliableChannel</allowedValue><allowedValue>Unknown</allowedValue></allowedValueList></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>SourceProtocolInfo</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>SinkProtocolInfo</name><dataType>string</dataType></stateVariable>\n"
-    "    <stateVariable sendEvents=\"no\"><name>CurrentConnectionIDs</name><dataType>string</dataType><defaultValue>0</defaultValue></stateVariable>\n"
-    "  </serviceStateTable>\n"
-    "</scpd>\n";
-
-static XmlResource g_resources[] = {
-    {"/device.xml", NULL, 0},
-    {"/scpd/AVTransport.xml", g_avTransportScpd, sizeof(g_avTransportScpd) - 1},
-    {"/scpd/RenderingControl.xml", g_renderingControlScpd, sizeof(g_renderingControlScpd) - 1},
-    {"/scpd/ConnectionManager.xml", g_connectionManagerScpd, sizeof(g_connectionManagerScpd) - 1},
+static const ScpdRoute g_scpd_routes[] = {
+    {"/Description.xml", "Description.xml", "application/xml; charset=\"utf-8\"", true},
+    {"/device.xml", "Description.xml", "application/xml; charset=\"utf-8\"", true},
+    {"/dlna/AVTransport.xml", "AVTransport.xml", "application/xml; charset=\"utf-8\"", false},
+    {"/scpd/AVTransport.xml", "AVTransport.xml", "application/xml; charset=\"utf-8\"", false},
+    {"/dlna/RenderingControl.xml", "RenderingControl.xml", "application/xml; charset=\"utf-8\"", false},
+    {"/scpd/RenderingControl.xml", "RenderingControl.xml", "application/xml; charset=\"utf-8\"", false},
+    {"/dlna/ConnectionManager.xml", "ConnectionManager.xml", "application/xml; charset=\"utf-8\"", false},
+    {"/scpd/ConnectionManager.xml", "ConnectionManager.xml", "application/xml; charset=\"utf-8\"", false},
 };
 
 static bool g_running = false;
+static DlnaTemplateValues g_template_values = {0};
 
 static const char *coalesce_string(const char *value, const char *fallback)
 {
@@ -276,42 +51,86 @@ static const char *coalesce_string(const char *value, const char *fallback)
     return value;
 }
 
-static bool build_device_xml(const ScpdConfig *config)
+static bool scpd_dup_string(char **slot, const char *value)
 {
-    const char *friendly_name = g_defaultFriendlyName;
-    const char *manufacturer = g_defaultManufacturer;
-    const char *model_name = g_defaultModelName;
-    const char *uuid = g_defaultUuid;
+    char *copy;
 
-    if (config)
-    {
-        friendly_name = coalesce_string(config->friendly_name, g_defaultFriendlyName);
-        manufacturer = coalesce_string(config->manufacturer, g_defaultManufacturer);
-        model_name = coalesce_string(config->model_name, g_defaultModelName);
-        uuid = coalesce_string(config->uuid, g_defaultUuid);
-    }
-
-    int written = snprintf(g_deviceXmlBuffer, sizeof(g_deviceXmlBuffer), g_deviceXmlTemplate,
-                           friendly_name, manufacturer, model_name, uuid);
-    if (written < 0 || (size_t)written >= sizeof(g_deviceXmlBuffer))
-    {
-        log_error("[scpd] device.xml generation failed, buffer too small.\n");
+    if (!slot)
         return false;
-    }
 
-    g_resources[0].body = g_deviceXmlBuffer;
-    g_resources[0].body_len = (size_t)written;
+    copy = strdup(value ? value : "");
+    if (!copy)
+        return false;
+
+    free(*slot);
+    *slot = copy;
     return true;
 }
 
-static const XmlResource *find_resource(const char *path)
+static bool scpd_dup_uuid_without_prefix(char **slot, const char *value)
 {
-    size_t resource_count = sizeof(g_resources) / sizeof(g_resources[0]);
-    for (size_t i = 0; i < resource_count; ++i)
+    const char *normalized = value ? value : "";
+    if (strncmp(normalized, "uuid:", 5) == 0)
+        normalized += 5;
+    return scpd_dup_string(slot, normalized);
+}
+
+static void scpd_clear_template_values(void)
+{
+    free((char *)g_template_values.friendly_name);
+    free((char *)g_template_values.manufacturer);
+    free((char *)g_template_values.manufacturer_url);
+    free((char *)g_template_values.model_description);
+    free((char *)g_template_values.model_name);
+    free((char *)g_template_values.model_number);
+    free((char *)g_template_values.model_url);
+    free((char *)g_template_values.serial_number);
+    free((char *)g_template_values.uuid);
+    free((char *)g_template_values.header_extra);
+    free((char *)g_template_values.service_extra);
+    memset(&g_template_values, 0, sizeof(g_template_values));
+}
+
+static bool scpd_apply_config(const ScpdConfig *config)
+{
+    const char *friendly_name = coalesce_string(config ? config->friendly_name : NULL, g_defaultFriendlyName);
+    const char *manufacturer = coalesce_string(config ? config->manufacturer : NULL, g_defaultManufacturer);
+    const char *manufacturer_url = coalesce_string(config ? config->manufacturer_url : NULL, g_defaultManufacturerUrl);
+    const char *model_description = coalesce_string(config ? config->model_description : NULL, g_defaultModelDescription);
+    const char *model_name = coalesce_string(config ? config->model_name : NULL, g_defaultModelName);
+    const char *model_number = coalesce_string(config ? config->model_number : NULL, g_defaultModelNumber);
+    const char *model_url = coalesce_string(config ? config->model_url : NULL, g_defaultModelUrl);
+    const char *serial_number = coalesce_string(config ? config->serial_number : NULL, g_defaultSerialNumber);
+    const char *uuid = coalesce_string(config ? config->uuid : NULL, g_defaultUuid);
+    const char *header_extra = coalesce_string(config ? config->header_extra : NULL, g_defaultHeaderExtra);
+    const char *service_extra = coalesce_string(config ? config->service_extra : NULL, g_defaultServiceExtra);
+
+    scpd_clear_template_values();
+
+    return scpd_dup_string((char **)&g_template_values.friendly_name, friendly_name) &&
+           scpd_dup_string((char **)&g_template_values.manufacturer, manufacturer) &&
+           scpd_dup_string((char **)&g_template_values.manufacturer_url, manufacturer_url) &&
+           scpd_dup_string((char **)&g_template_values.model_description, model_description) &&
+           scpd_dup_string((char **)&g_template_values.model_name, model_name) &&
+           scpd_dup_string((char **)&g_template_values.model_number, model_number) &&
+           scpd_dup_string((char **)&g_template_values.model_url, model_url) &&
+           scpd_dup_string((char **)&g_template_values.serial_number, serial_number) &&
+           scpd_dup_uuid_without_prefix((char **)&g_template_values.uuid, uuid) &&
+           scpd_dup_string((char **)&g_template_values.header_extra, header_extra) &&
+           scpd_dup_string((char **)&g_template_values.service_extra, service_extra);
+}
+
+static const ScpdRoute *scpd_find_route(const char *path)
+{
+    if (!path)
+        return NULL;
+
+    for (size_t i = 0; i < sizeof(g_scpd_routes) / sizeof(g_scpd_routes[0]); ++i)
     {
-        if (strcmp(path, g_resources[i].path) == 0)
-            return &g_resources[i];
+        if (strcmp(path, g_scpd_routes[i].request_path) == 0)
+            return &g_scpd_routes[i];
     }
+
     return NULL;
 }
 
@@ -320,31 +139,39 @@ static bool build_http_response(int status,
                                 const char *content_type,
                                 const char *body,
                                 size_t body_len,
+                                bool include_body,
                                 char *response,
                                 size_t response_size,
                                 size_t *response_len)
 {
-    if (!status_text || !content_type || !body || !response || response_size == 0 || !response_len)
+    int written;
+
+    if (!status_text || !content_type || !response || response_size == 0 || !response_len)
         return false;
 
-    int written = snprintf(response, response_size,
-                           "HTTP/1.1 %d %s\r\n"
-                           "Content-Type: %s\r\n"
-                           "Content-Length: %zu\r\n"
-                           "Connection: close\r\n"
-                           "\r\n"
-                           "%.*s",
-                           status,
-                           status_text,
-                           content_type,
-                           body_len,
-                           (int)body_len,
-                           body);
-
+    written = snprintf(response, response_size,
+                       "HTTP/1.1 %d %s\r\n"
+                       "Content-Type: %s\r\n"
+                       "Content-Length: %zu\r\n"
+                       "Connection: close\r\n"
+                       "\r\n",
+                       status,
+                       status_text,
+                       content_type,
+                       body_len);
     if (written < 0 || (size_t)written >= response_size)
         return false;
 
     *response_len = (size_t)written;
+    if (!include_body || !body || body_len == 0)
+        return true;
+
+    if (*response_len + body_len >= response_size)
+        return false;
+
+    memcpy(response + *response_len, body, body_len);
+    *response_len += body_len;
+    response[*response_len] = '\0';
     return true;
 }
 
@@ -355,11 +182,13 @@ static bool build_text_response(int status,
                                 size_t response_size,
                                 size_t *response_len)
 {
+    size_t body_len = body ? strlen(body) : 0;
     return build_http_response(status,
                                status_text,
                                "text/plain; charset=\"utf-8\"",
-                               body,
-                               strlen(body),
+                               body ? body : "",
+                               body_len,
+                               true,
                                response,
                                response_size,
                                response_len);
@@ -370,11 +199,14 @@ bool scpd_start(const ScpdConfig *config)
     if (g_running)
         return true;
 
-    if (!build_device_xml(config))
+    if (!scpd_apply_config(config))
+    {
+        scpd_clear_template_values();
         return false;
+    }
 
     g_running = true;
-    log_info("[scpd] description resources ready.\n");
+    log_info("[scpd] description templates ready.\n");
     return true;
 }
 
@@ -383,8 +215,9 @@ void scpd_stop(void)
     if (!g_running)
         return;
 
+    scpd_clear_template_values();
     g_running = false;
-    log_info("[scpd] description resources stopped.\n");
+    log_info("[scpd] description templates stopped.\n");
 }
 
 bool scpd_try_handle_http(const char *method,
@@ -393,14 +226,18 @@ bool scpd_try_handle_http(const char *method,
                           size_t response_size,
                           size_t *response_len)
 {
+    char rendered[SCPD_RENDER_BUFFER_SIZE];
+    size_t rendered_len = 0;
+    const ScpdRoute *route;
+    bool include_body;
+
     if (!path || !response || !response_len)
         return false;
 
     *response_len = 0;
 
-    bool is_device_desc = strcmp(path, "/device.xml") == 0;
-    bool is_service_desc = strncmp(path, "/scpd/", strlen("/scpd/")) == 0;
-    if (!is_device_desc && !is_service_desc)
+    route = scpd_find_route(path);
+    if (!route)
         return false;
 
     if (!g_running)
@@ -413,42 +250,48 @@ bool scpd_try_handle_http(const char *method,
                                    response_len);
     }
 
-    if (!method || strcmp(method, "GET") != 0)
+    include_body = method && strcmp(method, "HEAD") != 0;
+    if (!method || (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0))
     {
         return build_text_response(405,
                                    "Method Not Allowed",
-                                   "SCPD endpoint requires GET",
+                                   "SCPD endpoint requires GET or HEAD",
                                    response,
                                    response_size,
                                    response_len);
     }
 
-    const XmlResource *resource = find_resource(path);
-    if (!resource || !resource->body)
+    if (!dlna_template_render_file_to_buffer(route->template_path,
+                                             route->use_template_values ? &g_template_values : NULL,
+                                             rendered,
+                                             sizeof(rendered),
+                                             &rendered_len))
     {
-        log_warn("[scpd] unknown path=%s\n", path);
-        return build_text_response(404,
-                                   "Not Found",
-                                   "Not Found",
+        log_error("[scpd] failed to render template path=%s request=%s\n",
+                  route->template_path, path);
+        return build_text_response(500,
+                                   "Internal Server Error",
+                                   "Failed to render description template",
                                    response,
                                    response_size,
                                    response_len);
     }
 
-    bool built = build_http_response(200,
-                                     "OK",
-                                     "application/xml; charset=\"utf-8\"",
-                                     resource->body,
-                                     resource->body_len,
-                                     response,
-                                     response_size,
-                                     response_len);
-    if (!built)
+    if (!build_http_response(200,
+                             "OK",
+                             route->content_type,
+                             rendered,
+                             rendered_len,
+                             include_body,
+                             response,
+                             response_size,
+                             response_len))
     {
         log_error("[scpd] failed to build response for path=%s\n", path);
         return false;
     }
 
-    log_info("[scpd] served path=%s send_bytes=%zu\n", path, *response_len);
+    log_info("[scpd] served path=%s bytes=%zu template=%s\n",
+             path, rendered_len, route->template_path);
     return true;
 }

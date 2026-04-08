@@ -63,7 +63,7 @@ SOURCES		:=	source \
 			source/protocol/airplay/discovery
 DATA		:=	data
 INCLUDES	:=	include source
-#ROMFS	:=	romfs
+ROMFS	:=	romfs
 
 #---------------------------------------------------------------------------------
 # options for code generation
