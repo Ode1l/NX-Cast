@@ -63,6 +63,8 @@ static bool g_seekable = false;
 static bool g_pause = true;
 static bool g_paused_for_cache = false;
 static bool g_seeking = false;
+static bool g_pending_seek = false;
+static int g_pending_seek_ms = 0;
 static bool g_idle_active = true;
 static bool g_file_loaded = false;
 static int g_last_error = 0;
@@ -227,6 +229,12 @@ static void libmpv_set_seekable_locked(bool value)
     g_seekable = value;
 }
 
+static void libmpv_clear_pending_seek_locked(void)
+{
+    g_pending_seek = false;
+    g_pending_seek_ms = 0;
+}
+
 static void libmpv_reset_locked(void)
 {
     free(g_uri);
@@ -241,10 +249,74 @@ static void libmpv_reset_locked(void)
     g_pause = true;
     g_paused_for_cache = false;
     g_seeking = false;
+    g_pending_seek = false;
+    g_pending_seek_ms = 0;
     g_idle_active = true;
     g_file_loaded = false;
     g_last_error = 0;
     g_render_update_pending = false;
+}
+
+static bool libmpv_send_seek_locked(int position_ms, LibmpvPendingEvents *pending)
+{
+    const char *args[4];
+    char *target = NULL;
+    int rc;
+
+    if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0' || g_state == PLAYER_STATE_STOPPED || g_idle_active)
+        return false;
+
+    target = libmpv_format_seek_target(position_ms);
+    if (!target)
+        return false;
+
+    args[0] = "seek";
+    args[1] = target;
+    args[2] = "absolute+exact";
+    args[3] = NULL;
+
+    rc = mpv_command_async(g_mpv, LIBMPV_REPLY_SEEK, args);
+    free(target);
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] seek failed: %s\n", mpv_error_string(rc));
+        return false;
+    }
+
+    g_last_error = 0;
+    g_seeking = true;
+    libmpv_set_position_locked(position_ms, pending);
+    libmpv_refresh_state_locked(pending);
+    return true;
+}
+
+static void libmpv_maybe_issue_pending_seek_locked(LibmpvPendingEvents *pending)
+{
+    int target_ms;
+
+    if (!g_pending_seek || !g_file_loaded)
+        return;
+
+    if (g_pending_seek_ms <= 0 && g_position_ms == 0)
+    {
+        log_info("[player-libmpv] deferred seek satisfied without command target_ms=%d\n",
+                 g_pending_seek_ms);
+        libmpv_clear_pending_seek_locked();
+        return;
+    }
+
+    if (!g_seekable)
+        return;
+
+    target_ms = g_pending_seek_ms;
+    libmpv_clear_pending_seek_locked();
+    if (libmpv_send_seek_locked(target_ms, pending))
+    {
+        log_info("[player-libmpv] issue deferred seek target_ms=%d loaded=%d seekable=%d\n",
+                 target_ms,
+                 g_file_loaded ? 1 : 0,
+                 g_seekable ? 1 : 0);
+    }
 }
 
 static bool libmpv_async_load_current(bool paused)
@@ -282,6 +354,7 @@ static bool libmpv_async_load_current(bool paused)
     g_file_loaded = false;
     g_seeking = false;
     g_paused_for_cache = false;
+    libmpv_clear_pending_seek_locked();
     libmpv_set_position_locked(0, &pending);
     libmpv_set_duration_locked(0, &pending);
     libmpv_refresh_state_locked(&pending);
@@ -374,6 +447,7 @@ static void libmpv_handle_property_change(const mpv_event_property *prop, uint64
     case LIBMPV_OBS_SEEKABLE:
         if (prop->format == MPV_FORMAT_FLAG && prop->data)
             libmpv_set_seekable_locked((*(int *)prop->data) != 0);
+        libmpv_maybe_issue_pending_seek_locked(&pending);
         break;
     case LIBMPV_OBS_IDLE_ACTIVE:
         if (prop->format == MPV_FORMAT_FLAG && prop->data)
@@ -408,6 +482,7 @@ static void libmpv_handle_event(mpv_event *event)
     switch (event->event_id)
     {
     case MPV_EVENT_START_FILE:
+        log_info("[player-libmpv] start-file uri=%s\n", g_uri ? g_uri : "(null)");
         mutexLock(&g_mutex);
         g_last_error = 0;
         g_idle_active = false;
@@ -418,10 +493,12 @@ static void libmpv_handle_event(mpv_event *event)
         libmpv_flush_events(&pending);
         break;
     case MPV_EVENT_FILE_LOADED:
+        log_info("[player-libmpv] file-loaded uri=%s\n", g_uri ? g_uri : "(null)");
         mutexLock(&g_mutex);
         g_last_error = 0;
         g_idle_active = false;
         g_file_loaded = true;
+        libmpv_maybe_issue_pending_seek_locked(&pending);
         libmpv_refresh_state_locked(&pending);
         mutexUnlock(&g_mutex);
         libmpv_flush_events(&pending);
@@ -438,6 +515,7 @@ static void libmpv_handle_event(mpv_event *event)
         g_file_loaded = true;
         g_idle_active = false;
         g_seeking = false;
+        libmpv_maybe_issue_pending_seek_locked(&pending);
         libmpv_refresh_state_locked(&pending);
         mutexUnlock(&g_mutex);
         libmpv_flush_events(&pending);
@@ -445,11 +523,41 @@ static void libmpv_handle_event(mpv_event *event)
     case MPV_EVENT_END_FILE:
     {
         mpv_event_end_file *end = (mpv_event_end_file *)event->data;
+        const char *reason = "unknown";
+
+        if (end)
+        {
+            switch (end->reason)
+            {
+            case MPV_END_FILE_REASON_EOF:
+                reason = "eof";
+                break;
+            case MPV_END_FILE_REASON_STOP:
+                reason = "stop";
+                break;
+            case MPV_END_FILE_REASON_QUIT:
+                reason = "quit";
+                break;
+            case MPV_END_FILE_REASON_ERROR:
+                reason = "error";
+                break;
+            case MPV_END_FILE_REASON_REDIRECT:
+                reason = "redirect";
+                break;
+            default:
+                break;
+            }
+        }
+        log_info("[player-libmpv] end-file uri=%s reason=%s error=%s\n",
+                 g_uri ? g_uri : "(null)",
+                 reason,
+                 end ? mpv_error_string(end->error) : "success");
 
         mutexLock(&g_mutex);
         g_idle_active = true;
         g_file_loaded = false;
         g_seeking = false;
+        libmpv_clear_pending_seek_locked();
         g_paused_for_cache = false;
         g_pause = true;
 
@@ -481,9 +589,9 @@ static void libmpv_handle_event(mpv_event *event)
         if (event->error < 0)
         {
             mutexLock(&g_mutex);
-            g_last_error = event->error;
+            if (event->reply_userdata == LIBMPV_REPLY_SEEK)
+                g_seeking = false;
             libmpv_refresh_state_locked(&pending);
-            libmpv_queue_event_locked(&pending, PLAYER_EVENT_ERROR);
             mutexUnlock(&g_mutex);
             libmpv_log_reply_error(event->reply_userdata, event->error);
             libmpv_flush_events(&pending);
@@ -496,6 +604,7 @@ static void libmpv_handle_event(mpv_event *event)
         g_idle_active = true;
         g_file_loaded = false;
         g_seeking = false;
+        libmpv_clear_pending_seek_locked();
         libmpv_refresh_state_locked(&pending);
         mutexUnlock(&g_mutex);
         libmpv_flush_events(&pending);
@@ -730,48 +839,38 @@ static bool libmpv_stop(void)
 
 static bool libmpv_seek_ms(int position_ms)
 {
-    const char *args[4];
-    char *target = NULL;
-    int rc;
     LibmpvPendingEvents pending = {0};
 
     if (position_ms < 0)
         position_ms = 0;
 
-    target = libmpv_format_seek_target(position_ms);
-    if (!target)
-        return false;
-
     mutexLock(&g_mutex);
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0' || g_state == PLAYER_STATE_STOPPED || g_idle_active)
     {
         mutexUnlock(&g_mutex);
-        free(target);
         return false;
     }
 
-    args[0] = "seek";
-    args[1] = target;
-    args[2] = "absolute+exact";
-    args[3] = NULL;
-
-    rc = mpv_command_async(g_mpv, LIBMPV_REPLY_SEEK, args);
-    if (rc < 0)
+    if (!g_file_loaded)
     {
-        log_warn("[player-libmpv] seek failed: %s\n", mpv_error_string(rc));
+        g_pending_seek = true;
+        g_pending_seek_ms = position_ms;
+        log_info("[player-libmpv] defer seek target_ms=%d loaded=%d seekable=%d\n",
+                 position_ms,
+                 g_file_loaded ? 1 : 0,
+                 g_seekable ? 1 : 0);
         mutexUnlock(&g_mutex);
-        free(target);
-        return false;
+        return true;
     }
 
-    g_last_error = 0;
-    g_seeking = true;
-    libmpv_set_position_locked(position_ms, &pending);
-    libmpv_refresh_state_locked(&pending);
+    if (!libmpv_send_seek_locked(position_ms, &pending))
+    {
+        mutexUnlock(&g_mutex);
+        return false;
+    }
     mutexUnlock(&g_mutex);
 
     libmpv_flush_events(&pending);
-    free(target);
     return true;
 }
 

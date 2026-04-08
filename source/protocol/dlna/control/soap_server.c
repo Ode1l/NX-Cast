@@ -12,6 +12,8 @@
 #include "soap_writer.h"
 #include "log/log.h"
 
+#define DLNA_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
+
 static bool g_running = false;
 
 static bool starts_with(const char *value, const char *prefix)
@@ -387,6 +389,7 @@ static bool build_http_response(int status,
                            "HTTP/1.1 %d %s\r\n"
                            "Content-Type: %s\r\n"
                            "Content-Length: %zu\r\n"
+                           "Server: %s\r\n"
                            "Connection: close\r\n"
                            "\r\n"
                            "%s",
@@ -394,6 +397,7 @@ static bool build_http_response(int status,
                            status_text,
                            content_type,
                            body_len,
+                           DLNA_SERVER_INFO,
                            body);
 
     if (written < 0 || (size_t)written >= response_size)

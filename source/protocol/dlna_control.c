@@ -19,7 +19,7 @@ static const char g_dlnaModelNumber[] = "0.1.0";
 static const char g_dlnaModelUrl[] = "";
 static const char g_dlnaSerialNumber[] = "00000001";
 static const char g_dlnaUuid[] = "uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001";
-static const char g_dlnaLocationPath[] = "/Description.xml";
+static const char g_dlnaLocationPath[] = "/description.xml";
 
 static bool dlna_http_dispatch(const HttpRequestContext *ctx,
                                char *response,

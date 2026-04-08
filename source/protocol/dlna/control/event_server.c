@@ -28,6 +28,7 @@
 #define EVENT_MAX_TIMEOUT_SECONDS 3600
 #define EVENT_NOTIFY_RETRY_SLEEP_MS 100
 #define EVENT_NOTIFY_IO_TIMEOUT_SEC 1
+#define DLNA_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
 
 typedef enum
 {
@@ -421,6 +422,7 @@ static bool event_build_response(int status,
                        "HTTP/1.1 %d %s\r\n"
                        "Content-Type: text/xml; charset=\"utf-8\"\r\n"
                        "Content-Length: %zu\r\n"
+                       "Server: %s\r\n"
                        "%s"
                        "Connection: close\r\n"
                        "\r\n"
@@ -428,6 +430,7 @@ static bool event_build_response(int status,
                        status,
                        status_text,
                        body_len,
+                       DLNA_SERVER_INFO,
                        headers,
                        payload);
     if (written < 0 || (size_t)written >= response_size)
@@ -661,6 +664,7 @@ static bool event_send_notify(const EventNotifyTarget *target, EventService serv
                            "HOST: %s:%u\r\n"
                            "CONTENT-TYPE: text/xml; charset=\"utf-8\"\r\n"
                            "CONTENT-LENGTH: %zu\r\n"
+                           "SERVER: %s\r\n"
                            "NT: upnp:event\r\n"
                            "NTS: upnp:propchange\r\n"
                            "SID: %s\r\n"
@@ -672,6 +676,7 @@ static bool event_send_notify(const EventNotifyTarget *target, EventService serv
                            target->callback_host,
                            (unsigned)target->callback_port,
                            body.output_len,
+                           DLNA_SERVER_INFO,
                            target->sid,
                            target->seq,
                            body.output_xml ? body.output_xml : "");

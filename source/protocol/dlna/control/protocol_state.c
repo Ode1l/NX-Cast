@@ -101,6 +101,24 @@ static DlnaProtocolStateView g_state_view = {0};
 static bool g_state_initialized = false;
 static const char g_empty_string[] = "";
 
+static bool should_apply_transport_state_from_renderer(RendererState state)
+{
+    switch (state)
+    {
+    case PLAYER_STATE_PLAYING:
+    case PLAYER_STATE_PAUSED:
+    case PLAYER_STATE_STOPPED:
+    case PLAYER_STATE_IDLE:
+    case PLAYER_STATE_ERROR:
+        return true;
+    case PLAYER_STATE_LOADING:
+    case PLAYER_STATE_BUFFERING:
+    case PLAYER_STATE_SEEKING:
+    default:
+        return false;
+    }
+}
+
 static char *protocol_strdup_printf(const char *fmt, ...)
 {
     va_list args;
@@ -1107,10 +1125,13 @@ void dlna_protocol_state_sync_from_renderer(void)
         return;
     }
 
-    set_state_string_by_name("TransportState",
-                             dlna_protocol_transport_state_from_renderer_state(snapshot.state));
-    set_state_string_by_name("TransportStatus",
-                             dlna_protocol_transport_status_from_renderer_state(snapshot.state));
+    if (should_apply_transport_state_from_renderer(snapshot.state))
+    {
+        set_state_string_by_name("TransportState",
+                                 dlna_protocol_transport_state_from_renderer_state(snapshot.state));
+        set_state_string_by_name("TransportStatus",
+                                 dlna_protocol_transport_status_from_renderer_state(snapshot.state));
+    }
     renderer_snapshot_clear(&snapshot);
 }
 
@@ -1124,10 +1145,13 @@ void dlna_protocol_state_on_renderer_event(const RendererEvent *event)
     switch (event->type)
     {
     case PLAYER_EVENT_STATE_CHANGED:
-        set_state_string_by_name("TransportState",
-                                 dlna_protocol_transport_state_from_renderer_state(event->state));
-        set_state_string_by_name("TransportStatus",
-                                 dlna_protocol_transport_status_from_renderer_state(event->state));
+        if (should_apply_transport_state_from_renderer(event->state))
+        {
+            set_state_string_by_name("TransportState",
+                                     dlna_protocol_transport_state_from_renderer_state(event->state));
+            set_state_string_by_name("TransportStatus",
+                                     dlna_protocol_transport_status_from_renderer_state(event->state));
+        }
         break;
     case PLAYER_EVENT_POSITION_CHANGED:
         hhmmss = dlna_protocol_format_hhmmss_alloc(event->position_ms);

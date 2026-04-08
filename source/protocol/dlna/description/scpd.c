@@ -8,6 +8,9 @@
 #include "log/log.h"
 #include "template_resource.h"
 
+#define DLNA_HTTP_XML_CONTENT_TYPE "text/xml; charset=\"utf-8\""
+#define DLNA_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
+
 typedef struct
 {
     const char *request_path;
@@ -29,14 +32,15 @@ static const char g_defaultHeaderExtra[] = "";
 static const char g_defaultServiceExtra[] = "";
 
 static const ScpdRoute g_scpd_routes[] = {
-    {"/Description.xml", "Description.xml", "application/xml; charset=\"utf-8\"", true},
-    {"/device.xml", "Description.xml", "application/xml; charset=\"utf-8\"", true},
-    {"/dlna/AVTransport.xml", "AVTransport.xml", "application/xml; charset=\"utf-8\"", false},
-    {"/scpd/AVTransport.xml", "AVTransport.xml", "application/xml; charset=\"utf-8\"", false},
-    {"/dlna/RenderingControl.xml", "RenderingControl.xml", "application/xml; charset=\"utf-8\"", false},
-    {"/scpd/RenderingControl.xml", "RenderingControl.xml", "application/xml; charset=\"utf-8\"", false},
-    {"/dlna/ConnectionManager.xml", "ConnectionManager.xml", "application/xml; charset=\"utf-8\"", false},
-    {"/scpd/ConnectionManager.xml", "ConnectionManager.xml", "application/xml; charset=\"utf-8\"", false},
+    {"/description.xml", "Description.xml", DLNA_HTTP_XML_CONTENT_TYPE, true},
+    {"/Description.xml", "Description.xml", DLNA_HTTP_XML_CONTENT_TYPE, true},
+    {"/device.xml", "Description.xml", DLNA_HTTP_XML_CONTENT_TYPE, true},
+    {"/dlna/AVTransport.xml", "AVTransport.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
+    {"/scpd/AVTransport.xml", "AVTransport.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
+    {"/dlna/RenderingControl.xml", "RenderingControl.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
+    {"/scpd/RenderingControl.xml", "RenderingControl.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
+    {"/dlna/ConnectionManager.xml", "ConnectionManager.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
+    {"/scpd/ConnectionManager.xml", "ConnectionManager.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
 };
 
 static bool g_running = false;
@@ -151,12 +155,14 @@ static bool build_http_response(int status,
                        "HTTP/1.1 %d %s\r\n"
                        "Content-Type: %s\r\n"
                        "Content-Length: %zu\r\n"
+                       "Server: %s\r\n"
                        "Connection: close\r\n"
                        "\r\n",
                        status,
                        status_text,
                        content_type,
-                       body_len);
+                       body_len,
+                       DLNA_SERVER_INFO);
     if (written < 0 || (size_t)written >= response_size)
         return false;
 

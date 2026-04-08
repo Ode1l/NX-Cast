@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -20,6 +21,9 @@
 
 #define SSDP_PORT 1900
 #define SSDP_MULTICAST "239.255.255.250"
+#define SSDP_NOTIFY_INTERVAL_MS 30000ULL
+#define SSDP_CACHE_MAX_AGE 66
+#define SSDP_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
 // Keep a conservative stack budget here too. SSDP itself is simple, but
 // repeated logging and response formatting make 0x10000 a safer floor.
 #define SSDP_THREAD_STACK_SIZE 0x10000
@@ -82,6 +86,29 @@ static void ssdp_clear_cached_strings(void)
     free(g_ssdp.location);
     g_ssdp.local_ip = NULL;
     g_ssdp.location = NULL;
+}
+
+static uint64_t ssdp_now_ms(void)
+{
+    return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
+
+static char *ssdp_format_date_alloc(void)
+{
+    time_t now;
+    struct tm tm_utc;
+    char buffer[32];
+    size_t written;
+
+    now = time(NULL);
+    if (gmtime_r(&now, &tm_utc) == NULL)
+        return NULL;
+
+    written = strftime(buffer, sizeof(buffer), "%a, %d %b %Y %H:%M:%S GMT", &tm_utc);
+    if (written == 0)
+        return NULL;
+
+    return strdup(buffer);
 }
 
 // Determine the outbound IPv4 address by connecting a dummy UDP socket.
@@ -174,6 +201,18 @@ static bool create_socket(SsdpState *state)
         return false;
     }
 
+    if (state->local_ip && state->local_ip[0] != '\0')
+    {
+        struct in_addr iface;
+        iface.s_addr = inet_addr(state->local_ip);
+        (void)setsockopt(state->socket_fd, IPPROTO_IP, IP_MULTICAST_IF, &iface, sizeof(iface));
+    }
+
+    {
+        int loop = 0;
+        (void)setsockopt(state->socket_fd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+    }
+
     return true;
 }
 
@@ -221,6 +260,7 @@ static bool get_header_value_alloc(const char *packet, const char *header, char 
 // Build and send a 200 OK response for an incoming M-SEARCH.
 static void send_msearch_response(const char *st, const char *usn, const struct sockaddr_in *from)
 {
+    char *date = NULL;
     char *response;
     size_t response_len;
 
@@ -230,18 +270,30 @@ static void send_msearch_response(const char *st, const char *usn, const struct 
     if (!st || st[0] == '\0' || !usn || usn[0] == '\0')
         return;
 
+    date = ssdp_format_date_alloc();
+    if (!date)
+        return;
+
     response = ssdp_strdup_printf("HTTP/1.1 200 OK\r\n"
-                                  "CACHE-CONTROL: max-age=1800\r\n"
-                                  "DATE: Sat, 01 Jan 2000 00:00:00 GMT\r\n"
+                                  "CACHE-CONTROL: max-age=%d\r\n"
+                                  "DATE: %s\r\n"
                                   "EXT:\r\n"
                                   "LOCATION: %s\r\n"
-                                  "SERVER: NintendoSwitch/1.0 UPnP/1.1 NX-Cast/0.1\r\n"
+                                  "SERVER: %s\r\n"
                                   "ST: %s\r\n"
                                   "USN: %s\r\n"
                                   "\r\n",
-                                  g_ssdp.location, st, usn);
+                                  SSDP_CACHE_MAX_AGE,
+                                  date,
+                                  g_ssdp.location,
+                                  SSDP_SERVER_INFO,
+                                  st,
+                                  usn);
     if (!response)
+    {
+        free(date);
         return;
+    }
     response_len = strlen(response);
 
     ssize_t sent = sendto(g_ssdp.socket_fd, response, response_len, 0,
@@ -249,13 +301,101 @@ static void send_msearch_response(const char *st, const char *usn, const struct 
     if (sent < 0)
     {
         log_warn("[ssdp] sendto failed: %s (%d)\n", strerror(errno), errno);
+        free(date);
         free(response);
         return;
     }
 
     log_info("[ssdp] send packet to %s:%d st=%s bytes=%zd\n",
              inet_ntoa(from->sin_addr), ntohs(from->sin_port), st, sent);
+    free(date);
     free(response);
+}
+
+static void send_notify_packet(const char *nt, const char *usn)
+{
+    struct sockaddr_in addr;
+    char *date = NULL;
+    char *payload = NULL;
+
+    if (g_ssdp.socket_fd < 0 || !nt || nt[0] == '\0' || !usn || usn[0] == '\0')
+        return;
+
+    date = ssdp_format_date_alloc();
+    if (!date)
+        return;
+
+    payload = ssdp_strdup_printf("NOTIFY * HTTP/1.1\r\n"
+                                 "HOST: %s:%d\r\n"
+                                 "CACHE-CONTROL: max-age=%d\r\n"
+                                 "LOCATION: %s\r\n"
+                                 "NT: %s\r\n"
+                                 "NTS: ssdp:alive\r\n"
+                                 "SERVER: %s\r\n"
+                                 "USN: %s\r\n"
+                                 "DATE: %s\r\n"
+                                 "\r\n",
+                                 SSDP_MULTICAST,
+                                 SSDP_PORT,
+                                 SSDP_CACHE_MAX_AGE,
+                                 g_ssdp.location,
+                                 nt,
+                                 SSDP_SERVER_INFO,
+                                 usn,
+                                 date);
+    free(date);
+    if (!payload)
+        return;
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(SSDP_PORT);
+    addr.sin_addr.s_addr = inet_addr(SSDP_MULTICAST);
+
+    for (int i = 0; i < 2; ++i)
+    {
+        ssize_t sent = sendto(g_ssdp.socket_fd,
+                              payload,
+                              strlen(payload),
+                              0,
+                              (const struct sockaddr *)&addr,
+                              sizeof(addr));
+        if (sent < 0)
+            break;
+    }
+
+    free(payload);
+}
+
+static void send_alive_notifications(void)
+{
+    char *root_usn = NULL;
+    char *device_usn = NULL;
+    char *avtransport_usn = NULL;
+    char *renderingcontrol_usn = NULL;
+    char *connectionmanager_usn = NULL;
+
+    root_usn = ssdp_strdup_printf("%s::upnp:rootdevice", g_ssdp.config.uuid);
+    device_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
+    avtransport_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeAvTransport);
+    renderingcontrol_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeRenderingControl);
+    connectionmanager_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeConnectionManager);
+    if (!root_usn || !device_usn || !avtransport_usn || !renderingcontrol_usn || !connectionmanager_usn)
+        goto cleanup;
+
+    send_notify_packet("upnp:rootdevice", root_usn);
+    send_notify_packet(g_ssdp.config.uuid, g_ssdp.config.uuid);
+    send_notify_packet(g_ssdp.config.device_type, device_usn);
+    send_notify_packet(g_serviceTypeRenderingControl, renderingcontrol_usn);
+    send_notify_packet(g_serviceTypeConnectionManager, connectionmanager_usn);
+    send_notify_packet(g_serviceTypeAvTransport, avtransport_usn);
+
+cleanup:
+    free(root_usn);
+    free(device_usn);
+    free(avtransport_usn);
+    free(renderingcontrol_usn);
+    free(connectionmanager_usn);
 }
 
 static char *ssdp_recv_packet_alloc(int socket_fd, struct sockaddr_in *from, ssize_t *out_len)
@@ -409,6 +549,8 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
 static void ssdp_thread(void *arg)
 {
     (void)arg;
+    uint64_t next_notify_ms = ssdp_now_ms();
+
     while (g_ssdp.running)
     {
         fd_set readfds;
@@ -431,7 +573,15 @@ static void ssdp_thread(void *arg)
         }
 
         if (ret == 0)
+        {
+            uint64_t now_ms = ssdp_now_ms();
+            if (now_ms >= next_notify_ms)
+            {
+                send_alive_notifications();
+                next_notify_ms = now_ms + SSDP_NOTIFY_INTERVAL_MS;
+            }
             continue;
+        }
 
         if (FD_ISSET(g_ssdp.socket_fd, &readfds))
         {
@@ -502,6 +652,7 @@ bool ssdp_start(const SsdpConfig *config)
     }
 
     g_ssdp.thread_started = true;
+    send_alive_notifications();
     log_info("[ssdp] Responder ready on %s\n", g_ssdp.location);
     return true;
 }

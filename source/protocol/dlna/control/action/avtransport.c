@@ -12,23 +12,6 @@
 
 #define AVTRANSPORT_COUNTER_UNKNOWN 2147483647
 
-static RendererState sync_transport_state_from_renderer(void)
-{
-    RendererSnapshot snapshot;
-    RendererState renderer_state = PLAYER_STATE_IDLE;
-
-    if (renderer_get_snapshot(&snapshot))
-    {
-        renderer_state = snapshot.state;
-        renderer_snapshot_clear(&snapshot);
-    }
-    else
-        renderer_state = renderer_get_state();
-
-    dlna_protocol_state_sync_from_renderer();
-    return renderer_state;
-}
-
 static void avtransport_get_snapshot(RendererSnapshot *snapshot)
 {
     if (!snapshot)
@@ -402,9 +385,7 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
     if (!avtransport_try_instance_id(ctx, out, "GetTransportInfo", &instance_id))
         return false;
 
-    RendererState renderer_state = sync_transport_state_from_renderer();
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
-    (void)renderer_state;
 
     soap_writer_clear(out);
     if (!avtransport_write_text_element(out, "CurrentTransportState", state->transport_state) ||
@@ -433,7 +414,6 @@ bool avtransport_get_current_transport_actions(const SoapActionContext *ctx, Soa
         return false;
 
     avtransport_get_snapshot(&snapshot);
-    sync_transport_state_from_renderer();
     actions = avtransport_current_actions(&snapshot);
     action_list = avtransport_format_actions_alloc(actions);
     renderer_snapshot_clear(&snapshot);
