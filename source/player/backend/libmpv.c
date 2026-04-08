@@ -249,7 +249,7 @@ static void libmpv_reset_locked(void)
 
 static bool libmpv_async_load_current(bool paused)
 {
-    const char *args[5];
+    const char *args[6];
     const char *options = paused ? "pause=yes" : "pause=no";
     int rc;
     LibmpvPendingEvents pending = {0};
@@ -264,8 +264,9 @@ static bool libmpv_async_load_current(bool paused)
     args[0] = "loadfile";
     args[1] = g_uri;
     args[2] = "replace";
-    args[3] = options;
-    args[4] = NULL;
+    args[3] = "-1";
+    args[4] = options;
+    args[5] = NULL;
 
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_LOADFILE, args);
     if (rc < 0)
