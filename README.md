@@ -2,18 +2,17 @@
 
 `NX-Cast` is an open-source media receiver for Nintendo Switch homebrew on Atmosphère.
 
-The current goal is not to become a source-native app for one specific platform. The project is focused on building a **solid generic DLNA DMR foundation** first, then improving mixed transports, source compatibility, and the full Switch playback backend on top of that foundation.
+The current goal is to build a solid generic `DLNA DMR` receiver on Switch, with a direct renderer-to-`libmpv` playback path and protocol state that stays aligned with runtime playback state.
 
 ## Current State
 
 The project already has these major pieces in place:
 
 - `SSDP` discovery
-- `device.xml` and `SCPD`
+- runtime-served `Description.xml` and `SCPD`
 - `SOAP` control for `SetAVTransportURI / Play / Pause / Stop / Seek`
 - `GENA` subscriptions and `LastChange`
-- `player` owner thread, command queue, snapshot, and backend bridge
-- ingress parsing and media modeling
+- renderer snapshot and event bridge
 - `libmpv` backend
 - `ao=hos`
 - `OpenGL/libmpv render API`
@@ -21,8 +20,8 @@ The project already has these major pieces in place:
 The project is currently best described as:
 
 1. generic `DMR` foundation established
-2. standard input modeling being tightened
-3. mixed transports and transport stability still under active iteration
+2. protocol state and renderer state aligned around the same playback session
+3. direct `URL -> libmpv` playback path landed
 4. `hwdec=nvtegra` still limited by the current official toolchain
 
 ## Core Design Principles
@@ -30,15 +29,15 @@ The project is currently best described as:
 The current project direction follows these rules:
 
 1. structural refactors and behavior changes are done separately
-2. standard inputs must be modeled correctly before playback policy is applied
-3. vendor hints are additive only and must not override standard parsing results
-4. protocol code must not become a source-compatibility hack layer
-5. `player` is the single real playback state source
+2. protocol code stays protocol-focused and standards-first
+3. control actions call the renderer directly
+4. `libmpv` is used as the playback engine, demuxer, and decoder
+5. renderer observes `libmpv` properties and events, then syncs them back to protocol state
 6. `SOAP`, `LastChange`, and compatibility queries all read from one protocol-observed state
 
 In short:
 
-**first model what the source is, then decide how to open it.**
+**protocol sends commands down, renderer pushes runtime state back up.**
 
 ## Architecture
 
@@ -46,45 +45,46 @@ In short:
 main
   -> protocol/dlna
        -> discovery (SSDP)
-       -> description (device.xml / SCPD)
+       -> description (template XML / CSV)
        -> control (SOAP / GENA / protocol_state)
+            -> renderer facade
   -> player
-       -> core (owner thread / queue / snapshot)
-       -> ingress (evidence -> model -> resource_select -> http_probe -> media -> policy)
+       -> core (session / snapshot / event pump)
        -> backend (libmpv / mock)
        -> render (view / frontend)
 ```
 
 Two state lines matter:
 
-1. `player` owns the real playback state
+1. renderer owns the runtime playback session
 2. `protocol_state` owns the protocol-facing observed state
 
-## Ingress Pipeline
+## Playback Model
 
-`player/ingress` is no longer a rule pile that mutates the final media object while parsing. The current flow is:
+The current playback path is intentionally thin:
 
 ```text
-CurrentURI + CurrentURIMetaData + request headers
-  -> evidence
-  -> IngressModel
-  -> metadata resource selection
-  -> http probe / preflight
-  -> PlayerMedia
-  -> policy
+SetAVTransportURI
+  -> renderer_set_uri(...)
+  -> libmpv loadfile
+  -> libmpv probes URL / demux / decode
+  -> observed properties and events
+  -> protocol_state sync
 ```
 
-This separates two concerns:
+Current observed runtime fields include:
 
-1. parsing: what is this source
-2. policy: how should the backend open it
+- `time-pos`
+- `duration`
+- `pause`
+- `mute`
+- `seekable`
+- `idle-active`
+- `paused-for-cache`
+- `seeking`
+- end-of-file / error transitions
 
-Current explicit transport kinds:
-
-- `http-file`
-- `hls-direct`
-- `hls-local-proxy`
-- `hls-gateway`
+`NX-Cast` no longer has a separate pre-open modeling layer in the player path.
 
 ## Backend Direction
 
@@ -101,19 +101,19 @@ Important distinction:
 
 Current conclusions:
 
-1. `hos-audio + OpenGL` is already integrated
-2. `hwdec=nvtegra` is accounted for in code paths, but is not actually available as a working explicit backend under the current official `dkp` `libmpv` toolchain
-3. `deko3d` remains a future capability rather than the current default route
+1. `hos-audio + OpenGL` is integrated
+2. `hwdec=nvtegra` is not yet a dependable baseline under the current official `dkp` toolchain
+3. `deko3d` remains future work rather than the current default route
 
 ## Current Priorities
 
-The next priority is not adding more source-specific hacks. It is:
+The next priorities are:
 
-1. finishing standard input modeling
-2. finishing the generic `DMR` compatibility surface
-3. stabilizing `local_proxy` and `HLS gateway` transports
-4. improving control-point position sync and interoperability
-5. revisiting `nvtegra` and future `deko3d` once the toolchain side is ready
+1. harden generic `DMR` interoperability
+2. improve protocol state fidelity and control-point sync
+3. keep the template-driven description layer aligned with actual implementation
+4. continue stabilizing playback on real-world URLs and mixed control points
+5. revisit `nvtegra` and future `deko3d` once the toolchain side is ready
 
 ## Repository Layout
 
@@ -123,7 +123,6 @@ source/
   log/
   player/
     core/
-    ingress/
     backend/
     render/
   protocol/
@@ -132,15 +131,16 @@ source/
       description/
       control/
     http/
+romfs/
+  dlna/
 ```
 
 ## Recommended Reading Order
 
 1. [docs/Player层设计.md](docs/Player层设计.md)
 2. [docs/DMR实现细节.md](docs/DMR实现细节.md)
-3. [docs/源兼容性.md](docs/源兼容性.md)
-4. [docs/render设计.md](docs/render设计.md)
-5. [ROADMAP.md](ROADMAP.md)
+3. [docs/SCPD模块说明.md](docs/SCPD模块说明.md)
+4. [ROADMAP.md](ROADMAP.md)
 
 ## Build
 
@@ -162,4 +162,4 @@ Output:
 
 ## Documentation Note
 
-The repository docs are now written as current-state docs rather than future-plan placeholders. If code and docs ever diverge, the source tree is authoritative and the docs should be updated accordingly.
+Repository docs are current-state docs. If code and docs diverge, the source tree is authoritative and docs should be updated to match the code.

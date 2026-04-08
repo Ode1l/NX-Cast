@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #include "handler.h"
-#include "player/player.h"
+#include "player/renderer.h"
 
 typedef enum
 {
@@ -75,8 +75,8 @@ typedef struct
 // runtime values loaded from service XML templates.
 void dlna_protocol_state_init(void);
 void dlna_protocol_state_reset(void);
-void dlna_protocol_state_sync_from_player(void);
-void dlna_protocol_state_on_player_event(const PlayerEvent *event);
+void dlna_protocol_state_sync_from_renderer(void);
+void dlna_protocol_state_on_renderer_event(const RendererEvent *event);
 void dlna_protocol_state_apply_set_uri(const char *uri, const char *metadata);
 void dlna_protocol_state_apply_play(void);
 void dlna_protocol_state_apply_pause(void);
@@ -94,6 +94,6 @@ size_t dlna_protocol_state_variable_count(void);
 const DlnaStateVariableView *dlna_protocol_state_variable_at(size_t index);
 const DlnaStateVariableView *dlna_protocol_state_find_variable(const char *name);
 
-const char *dlna_protocol_transport_state_from_player_state(PlayerState state);
-const char *dlna_protocol_transport_status_from_player_state(PlayerState state);
-void dlna_protocol_format_hhmmss_from_ms(int value_ms, char *out, size_t out_size);
+const char *dlna_protocol_transport_state_from_renderer_state(RendererState state);
+const char *dlna_protocol_transport_status_from_renderer_state(RendererState state);
+char *dlna_protocol_format_hhmmss_alloc(int value_ms);

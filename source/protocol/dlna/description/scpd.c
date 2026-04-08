@@ -8,8 +8,6 @@
 #include "log/log.h"
 #include "template_resource.h"
 
-#define SCPD_RENDER_BUFFER_SIZE 65536
-
 typedef struct
 {
     const char *request_path;
@@ -226,7 +224,7 @@ bool scpd_try_handle_http(const char *method,
                           size_t response_size,
                           size_t *response_len)
 {
-    char rendered[SCPD_RENDER_BUFFER_SIZE];
+    char *rendered = NULL;
     size_t rendered_len = 0;
     const ScpdRoute *route;
     bool include_body;
@@ -261,11 +259,10 @@ bool scpd_try_handle_http(const char *method,
                                    response_len);
     }
 
-    if (!dlna_template_render_file_to_buffer(route->template_path,
-                                             route->use_template_values ? &g_template_values : NULL,
-                                             rendered,
-                                             sizeof(rendered),
-                                             &rendered_len))
+    if (!dlna_template_render_file_alloc(route->template_path,
+                                         route->use_template_values ? &g_template_values : NULL,
+                                         &rendered,
+                                         &rendered_len))
     {
         log_error("[scpd] failed to render template path=%s request=%s\n",
                   route->template_path, path);
@@ -287,11 +284,13 @@ bool scpd_try_handle_http(const char *method,
                              response_size,
                              response_len))
     {
+        free(rendered);
         log_error("[scpd] failed to build response for path=%s\n", path);
         return false;
     }
 
     log_info("[scpd] served path=%s bytes=%zu template=%s\n",
              path, rendered_len, route->template_path);
+    free(rendered);
     return true;
 }

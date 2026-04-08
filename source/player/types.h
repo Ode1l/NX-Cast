@@ -2,9 +2,13 @@
 
 #include <stdbool.h>
 
-#include "ingress.h"
-
 #define PLAYER_DEFAULT_VOLUME 100
+
+typedef struct
+{
+    char *uri;
+    char *metadata;
+} PlayerMedia;
 
 typedef enum
 {
@@ -39,7 +43,7 @@ typedef struct
     bool mute;
     bool seekable;
     int error_code;
-    const char *uri;
+    char *uri;
 } PlayerEvent;
 
 typedef void (*PlayerEventCallback)(const PlayerEvent *event, void *user);
@@ -55,3 +59,11 @@ typedef struct
     bool mute;
     bool seekable;
 } PlayerSnapshot;
+
+void player_media_clear(PlayerMedia *media);
+bool player_media_copy(PlayerMedia *out, const PlayerMedia *media);
+bool player_media_set(PlayerMedia *media, const char *uri, const char *metadata);
+void player_event_clear(PlayerEvent *event);
+bool player_event_copy(PlayerEvent *out, const PlayerEvent *event);
+void player_snapshot_clear(PlayerSnapshot *snapshot);
+bool player_snapshot_copy(PlayerSnapshot *out, const PlayerSnapshot *snapshot);

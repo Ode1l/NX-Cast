@@ -2,6 +2,7 @@
 
 #include <switch.h>
 
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,10 +17,9 @@ static int g_position_ms = 0;
 static int g_duration_ms = 0;
 static int g_volume = PLAYER_DEFAULT_VOLUME;
 static bool g_mute = false;
+static bool g_seekable = false;
 static bool g_has_media = false;
 static PlayerMedia g_media;
-static char g_uri[1024];
-static char g_metadata[2048];
 static int g_play_anchor_ms = 0;
 static int64_t g_play_anchor_monotonic_ms = 0;
 
@@ -30,40 +30,46 @@ static int64_t monotonic_time_ms(void)
     return (int64_t)ts.tv_sec * 1000LL + (int64_t)(ts.tv_nsec / 1000000LL);
 }
 
-static void emit_event(PlayerEventType type)
+static void emit_event(PlayerEventType type, int error_code)
 {
+    PlayerEvent event = {0};
+
     if (!g_event_sink)
         return;
 
-    PlayerEvent event = {
-        .type = type,
-        .state = g_state,
-        .position_ms = g_position_ms,
-        .duration_ms = g_duration_ms,
-        .volume = g_volume,
-        .mute = g_mute,
-        .seekable = g_uri[0] != '\0' && g_duration_ms > 0,
-        .error_code = 0,
-        .uri = g_uri,
-    };
+    event.type = type;
+    event.state = g_state;
+    event.position_ms = g_position_ms;
+    event.duration_ms = g_duration_ms;
+    event.volume = g_volume;
+    event.mute = g_mute;
+    event.seekable = g_seekable;
+    event.error_code = error_code;
+    if (g_has_media && g_media.uri)
+        event.uri = strdup(g_media.uri);
     g_event_sink(&event);
+    player_event_clear(&event);
 }
 
 static void refresh_position(bool emit_events)
 {
+    int new_position;
+    bool finished = false;
+    int64_t now_ms;
+    int64_t elapsed_ms;
+
     if (g_state != PLAYER_STATE_PLAYING)
         return;
 
-    int64_t now_ms = monotonic_time_ms();
+    now_ms = monotonic_time_ms();
     if (g_play_anchor_monotonic_ms <= 0)
         g_play_anchor_monotonic_ms = now_ms;
 
-    int64_t elapsed_ms = now_ms - g_play_anchor_monotonic_ms;
+    elapsed_ms = now_ms - g_play_anchor_monotonic_ms;
     if (elapsed_ms < 0)
         elapsed_ms = 0;
 
-    int new_position = g_play_anchor_ms + (int)elapsed_ms;
-    bool finished = false;
+    new_position = g_play_anchor_ms + (int)elapsed_ms;
     if (g_duration_ms > 0 && new_position >= g_duration_ms)
     {
         new_position = g_duration_ms;
@@ -74,7 +80,7 @@ static void refresh_position(bool emit_events)
     {
         g_position_ms = new_position;
         if (emit_events)
-            emit_event(PLAYER_EVENT_POSITION_CHANGED);
+            emit_event(PLAYER_EVENT_POSITION_CHANGED, 0);
     }
 
     if (finished)
@@ -83,32 +89,32 @@ static void refresh_position(bool emit_events)
         g_play_anchor_ms = g_position_ms;
         g_play_anchor_monotonic_ms = now_ms;
         if (emit_events)
-            emit_event(PLAYER_EVENT_STATE_CHANGED);
+            emit_event(PLAYER_EVENT_STATE_CHANGED, 0);
     }
 }
 
 static bool mock_init(void)
 {
-    memset(g_uri, 0, sizeof(g_uri));
-    memset(g_metadata, 0, sizeof(g_metadata));
-    ingress_reset(&g_media);
+    memset(&g_media, 0, sizeof(g_media));
     g_has_media = false;
     g_state = PLAYER_STATE_IDLE;
     g_position_ms = 0;
     g_duration_ms = 0;
     g_volume = PLAYER_DEFAULT_VOLUME;
     g_mute = false;
+    g_seekable = false;
     g_play_anchor_ms = 0;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
     log_info("[player-mock] init\n");
-    emit_event(PLAYER_EVENT_STATE_CHANGED);
-    emit_event(PLAYER_EVENT_VOLUME_CHANGED);
-    emit_event(PLAYER_EVENT_MUTE_CHANGED);
+    emit_event(PLAYER_EVENT_STATE_CHANGED, 0);
+    emit_event(PLAYER_EVENT_VOLUME_CHANGED, 0);
+    emit_event(PLAYER_EVENT_MUTE_CHANGED, 0);
     return true;
 }
 
 static void mock_deinit(void)
 {
+    player_media_clear(&g_media);
     log_info("[player-mock] deinit\n");
 }
 
@@ -119,90 +125,86 @@ static void mock_set_event_sink(void (*sink)(const PlayerEvent *event))
 
 static bool mock_set_media(const PlayerMedia *media)
 {
-    if (!media || media->uri[0] == '\0')
+    PlayerMedia copy = {0};
+
+    if (!media || !media->uri || media->uri[0] == '\0')
         return false;
 
-    g_media = *media;
-    g_has_media = true;
-    snprintf(g_uri, sizeof(g_uri), "%s", g_media.uri);
-    snprintf(g_metadata, sizeof(g_metadata), "%s", g_media.metadata);
+    if (!player_media_copy(&copy, media))
+        return false;
 
-    g_state = PLAYER_STATE_STOPPED;
+    player_media_clear(&g_media);
+    g_media = copy;
+    g_has_media = true;
+    g_state = PLAYER_STATE_PAUSED;
     g_position_ms = 0;
-    if (g_duration_ms <= 0)
-        g_duration_ms = 5 * 60 * 1000;
+    g_duration_ms = 5 * 60 * 1000;
+    g_seekable = true;
     g_play_anchor_ms = 0;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
 
-    log_info("[player-mock] set_media profile=%s uri=%s metadata_len=%zu\n",
-             ingress_profile_name(g_media.profile),
-             g_uri,
-             strlen(g_metadata));
-    emit_event(PLAYER_EVENT_URI_CHANGED);
-    emit_event(PLAYER_EVENT_DURATION_CHANGED);
-    emit_event(PLAYER_EVENT_POSITION_CHANGED);
-    emit_event(PLAYER_EVENT_STATE_CHANGED);
+    log_info("[player-mock] set_media uri=%s metadata_len=%zu\n",
+             g_media.uri,
+             g_media.metadata ? strlen(g_media.metadata) : 0u);
+    emit_event(PLAYER_EVENT_URI_CHANGED, 0);
+    emit_event(PLAYER_EVENT_DURATION_CHANGED, 0);
+    emit_event(PLAYER_EVENT_POSITION_CHANGED, 0);
+    emit_event(PLAYER_EVENT_STATE_CHANGED, 0);
     return true;
 }
 
 static bool mock_play(void)
 {
-    if (g_uri[0] == '\0')
+    if (!g_has_media)
         return false;
 
     refresh_position(false);
     g_state = PLAYER_STATE_PLAYING;
     g_play_anchor_ms = g_position_ms;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
-    log_info("[player-mock] play\n");
-    emit_event(PLAYER_EVENT_STATE_CHANGED);
+    emit_event(PLAYER_EVENT_STATE_CHANGED, 0);
     return true;
 }
 
 static bool mock_pause(void)
 {
-    if (g_state != PLAYER_STATE_PLAYING)
+    if (!g_has_media || g_state == PLAYER_STATE_STOPPED || g_state == PLAYER_STATE_IDLE)
         return false;
 
     refresh_position(true);
     g_state = PLAYER_STATE_PAUSED;
     g_play_anchor_ms = g_position_ms;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
-    log_info("[player-mock] pause\n");
-    emit_event(PLAYER_EVENT_STATE_CHANGED);
+    emit_event(PLAYER_EVENT_STATE_CHANGED, 0);
     return true;
 }
 
 static bool mock_stop(void)
 {
-    if (g_uri[0] == '\0')
+    if (!g_has_media)
         return false;
 
-    refresh_position(false);
     g_state = PLAYER_STATE_STOPPED;
     g_position_ms = 0;
     g_play_anchor_ms = 0;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
-    log_info("[player-mock] stop\n");
-    emit_event(PLAYER_EVENT_POSITION_CHANGED);
-    emit_event(PLAYER_EVENT_STATE_CHANGED);
+    emit_event(PLAYER_EVENT_POSITION_CHANGED, 0);
+    emit_event(PLAYER_EVENT_STATE_CHANGED, 0);
     return true;
 }
 
 static bool mock_seek_ms(int position_ms)
 {
-    if (g_uri[0] == '\0' || position_ms < 0)
+    if (!g_has_media || position_ms < 0)
         return false;
 
-    refresh_position(false);
     if (g_duration_ms > 0 && position_ms > g_duration_ms)
         position_ms = g_duration_ms;
 
     g_position_ms = position_ms;
     g_play_anchor_ms = g_position_ms;
     g_play_anchor_monotonic_ms = monotonic_time_ms();
-    log_info("[player-mock] seek_ms=%d\n", g_position_ms);
-    emit_event(PLAYER_EVENT_POSITION_CHANGED);
+    emit_event(PLAYER_EVENT_POSITION_CHANGED, 0);
     return true;
 }
 
@@ -214,16 +216,14 @@ static bool mock_set_volume(int volume_0_100)
         volume_0_100 = 100;
 
     g_volume = volume_0_100;
-    log_info("[player-mock] set_volume=%d\n", g_volume);
-    emit_event(PLAYER_EVENT_VOLUME_CHANGED);
+    emit_event(PLAYER_EVENT_VOLUME_CHANGED, 0);
     return true;
 }
 
 static bool mock_set_mute(bool mute)
 {
     g_mute = mute;
-    log_info("[player-mock] set_mute=%d\n", g_mute ? 1 : 0);
-    emit_event(PLAYER_EVENT_MUTE_CHANGED);
+    emit_event(PLAYER_EVENT_MUTE_CHANGED, 0);
     return true;
 }
 
@@ -290,7 +290,6 @@ static int mock_get_position_ms(void)
 
 static int mock_get_duration_ms(void)
 {
-    refresh_position(false);
     return g_duration_ms;
 }
 
@@ -306,7 +305,7 @@ static bool mock_get_mute(void)
 
 static bool mock_is_seekable(void)
 {
-    return g_uri[0] != '\0' && g_duration_ms > 0;
+    return g_seekable;
 }
 
 static PlayerState mock_get_state(void)

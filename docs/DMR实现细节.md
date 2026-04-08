@@ -1,6 +1,6 @@
 # DMR 实现细节
 
-本文档描述 `NX-Cast` 当前作为 `DLNA Digital Media Renderer` 的真实实现边界，不保留“未来计划版”写法。
+本文档描述 `NX-Cast` 当前作为 `DLNA Digital Media Renderer` 的真实实现边界。
 
 ## 1. 当前角色
 
@@ -11,7 +11,7 @@
 它当前负责：
 
 1. 被发现
-2. 提供 `device.xml` 与 `SCPD`
+2. 提供设备描述与服务描述
 3. 接收 `SOAP` 控制
 4. 订阅和发送 `GENA` 事件
 5. 拉取控制端给出的媒体 URL
@@ -28,12 +28,11 @@
 
 ```text
 SSDP
-  -> device.xml / SCPD
+  -> Description.xml / SCPD
   -> SOAP
-  -> player ingress
-  -> player core
+  -> renderer
   -> backend/libmpv
-  -> render
+  -> runtime events / properties
   -> protocol_state
   -> SOAP query / GENA notify
 ```
@@ -43,10 +42,10 @@ SSDP
 1. `source/protocol/dlna/discovery/`
 2. `source/protocol/dlna/description/`
 3. `source/protocol/dlna/control/`
-4. `source/player/ingress/`
-5. `source/player/core/`
-6. `source/player/backend/`
-7. `source/player/render/`
+4. `source/player/core/`
+5. `source/player/backend/`
+6. `source/player/render/`
+7. `romfs/dlna/`
 
 ## 3. 当前协议层原则
 
@@ -100,10 +99,10 @@ SSDP
 
 当前状态线分成两层：
 
-1. `player`
+1. renderer
    - 真实播放状态
-   - 命令执行结果
-   - 位置、时长、静音、音量、seekable
+   - 位置、时长、音量、静音、seekable
+   - 当前媒体 URI
 2. `protocol_state`
    - 协议观察状态
    - `TransportState`
@@ -114,15 +113,15 @@ SSDP
 这意味着：
 
 1. 协议层不再自己拼一份运行时状态
-2. 事件层也不再单独维护另一份状态
+2. 运行时状态主要来自 renderer 对 `libmpv` 的观察结果
 
-## 6. 当前与 player 的边界
+## 6. 当前与 renderer 的边界
 
-协议层与 `player` 之间只通过：
+协议层与 renderer 之间只通过：
 
 1. 命令
-2. `PlayerSnapshot`
-3. `PlayerEvent`
+2. `RendererSnapshot`
+3. `RendererEvent`
 
 交互。
 
@@ -130,20 +129,19 @@ SSDP
 
 1. backend 内部细节
 2. render 路径细节
-3. transport 私有策略细节
+3. `libmpv` 之外的具体实现细节
 
 ## 7. 当前工作重点
 
 当前 `DMR` 主线已不再是“能不能收 `SOAP`”，而是：
 
-1. 把标准输入建模做完整
-2. 继续补通用 `DMR` 兼容面
-3. 稳定混合源和 transport
-4. 继续改善控制端位置同步与互操作
+1. 继续补通用 `DMR` 兼容面
+2. 提高 `LastChange` 与进度同步的准确性
+3. 保持描述层和真实能力一致
+4. 在真实控制端上持续改善互操作
 
 ## 8. 相关文档
 
 1. [Player层设计.md](Player层设计.md)
 2. [SOAP模块说明.md](SOAP模块说明.md)
 3. [SCPD模块说明.md](SCPD模块说明.md)
-4. [源兼容性.md](源兼容性.md)

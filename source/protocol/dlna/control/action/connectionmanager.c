@@ -8,20 +8,7 @@
 
 static char *connectionmanager_escape_dup(const char *value)
 {
-    const char *src = value ? value : "";
-    size_t src_len = strlen(src);
-    size_t cap = src_len * 6 + 1;
-    char *escaped = malloc(cap);
-    if (!escaped)
-        return NULL;
-
-    if (!soap_handler_xml_escape(src, escaped, cap))
-    {
-        free(escaped);
-        return NULL;
-    }
-
-    return escaped;
+    return soap_handler_xml_escape_alloc(value);
 }
 
 bool connectionmanager_get_protocol_info(const SoapActionContext *ctx, SoapActionOutput *out)
@@ -79,18 +66,19 @@ bool connectionmanager_get_current_connection_ids(const SoapActionContext *ctx, 
 
 bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char connection_id[32];
+    char *connection_id = NULL;
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "ConnectionID", connection_id, sizeof(connection_id)))
+    if (!soap_handler_require_arg_alloc(ctx, out, "ConnectionID", &connection_id))
         return false;
 
     long requested_id = strtol(connection_id, NULL, 10);
     if (requested_id != 0)
     {
+        free(connection_id);
         soap_handler_set_fault(out, 706, "No Such Connection");
         return false;
     }
@@ -98,6 +86,7 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
     char *escaped_protocol_info = connectionmanager_escape_dup(state->sink_protocol_info);
     if (!escaped_protocol_info)
     {
+        free(connection_id);
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
@@ -111,11 +100,13 @@ bool connectionmanager_get_current_connection_info(const SoapActionContext *ctx,
         !soap_writer_element_text(out, "Direction", state->a_arg_type_direction) ||
         !soap_writer_element_text(out, "Status", "OK"))
     {
+        free(connection_id);
         free(escaped_protocol_info);
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
 
+    free(connection_id);
     free(escaped_protocol_info);
     soap_handler_set_success(out, NULL);
     return true;

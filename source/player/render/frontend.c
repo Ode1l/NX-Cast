@@ -271,12 +271,12 @@ void frontend_close(ViewContext *ctx, bool restore_console)
         memset(&ctx->framebuffer, 0, sizeof(ctx->framebuffer));
         ctx->framebuffer_ready = false;
     }
+    if (ctx->status.render_api_connected)
+        player_video_detach();
 #ifdef HAVE_SWITCH_EGL_GLES
     if (ctx->render_path == FRONTEND_RENDER_GL)
         frontend_gl_deinit(ctx);
 #endif
-    if (ctx->status.render_api_connected)
-        player_video_detach();
 
     ctx->status.foreground_video_active = false;
     ctx->status.render_api_connected = false;

@@ -252,7 +252,10 @@ int main(int argc, char* argv[])
         if (videoPlatformReady)
         {
             if (player_get_snapshot(&snapshot))
+            {
                 player_view_sync(&snapshot);
+                player_snapshot_clear(&snapshot);
+            }
             player_view_begin_frame();
             active_view = player_view_get_mode();
         }

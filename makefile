@@ -51,7 +51,6 @@ SOURCES		:=	source \
 			source/player/core \
 			source/player/backend \
 			source/player/render \
-			source/player/ingress \
 			source/protocol \
 			source/protocol/dlna \
 			source/protocol/dlna/control \

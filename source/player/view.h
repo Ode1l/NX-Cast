@@ -32,10 +32,11 @@ typedef struct
     uint64_t frames_presented;
     uint32_t display_width;
     uint32_t display_height;
-    char media_uri[PLAYER_MEDIA_URI_MAX];
-    char media_hint[PLAYER_MEDIA_FORMAT_HINT_MAX];
+    char *media_uri;
 } PlayerViewStatus;
 
+void player_view_status_clear(PlayerViewStatus *status);
+bool player_view_status_copy(PlayerViewStatus *out, const PlayerViewStatus *status);
 bool player_view_init(void);
 void player_view_deinit(void);
 void player_view_sync(const PlayerSnapshot *snapshot);

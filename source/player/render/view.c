@@ -1,6 +1,7 @@
 #include "player/view.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "log/log.h"
@@ -10,6 +11,57 @@
 #define PLAYER_VIEW_STOP_HOLD_MS 1500ULL
 
 static ViewContext g_view;
+
+static bool player_view_set_media_uri(PlayerViewStatus *status, const char *uri)
+{
+    char *copy = NULL;
+
+    if (!status)
+        return false;
+
+    if (uri)
+    {
+        copy = strdup(uri);
+        if (!copy)
+            return false;
+    }
+
+    free(status->media_uri);
+    status->media_uri = copy;
+    return true;
+}
+
+void player_view_status_clear(PlayerViewStatus *status)
+{
+    if (!status)
+        return;
+
+    free(status->media_uri);
+    status->media_uri = NULL;
+    memset(status, 0, sizeof(*status));
+}
+
+bool player_view_status_copy(PlayerViewStatus *out, const PlayerViewStatus *status)
+{
+    PlayerViewStatus copy;
+
+    if (!out || !status)
+        return false;
+
+    memset(&copy, 0, sizeof(copy));
+    copy = *status;
+    copy.media_uri = NULL;
+    if (status->media_uri)
+    {
+        copy.media_uri = strdup(status->media_uri);
+        if (!copy.media_uri)
+            return false;
+    }
+
+    player_view_status_clear(out);
+    *out = copy;
+    return true;
+}
 
 static uint64_t monotonic_time_ms(void)
 {
@@ -113,6 +165,7 @@ void player_view_deinit(void)
              (unsigned long long)g_view.status.frame_counter,
              (unsigned long long)g_view.status.frames_presented,
              player_view_mode_name(g_view.status.active_view));
+    player_view_status_clear(&g_view.status);
     memset(&g_view, 0, sizeof(g_view));
 }
 
@@ -159,25 +212,16 @@ void player_view_sync(const PlayerSnapshot *snapshot)
         }
     }
 
-    if (snapshot->has_media)
-    {
-        snprintf(g_view.status.media_uri, sizeof(g_view.status.media_uri), "%s", snapshot->media.uri);
-        snprintf(g_view.status.media_hint, sizeof(g_view.status.media_hint), "%s",
-                 snapshot->media.format_hint[0] != '\0' ? snapshot->media.format_hint : "unknown");
-    }
-    else
-    {
-        g_view.status.media_uri[0] = '\0';
-        g_view.status.media_hint[0] = '\0';
-    }
+    if (!player_view_set_media_uri(&g_view.status, snapshot->has_media ? snapshot->media.uri : NULL))
+        log_warn("[player-view] failed to update media uri copy\n");
 
     if (previous_desired != g_view.status.desired_view)
     {
-        log_info("[player-view] desired_view=%s state=%s has_media=%d hint=%s\n",
+        log_info("[player-view] desired_view=%s state=%s has_media=%d uri=%s\n",
                  player_view_mode_name(g_view.status.desired_view),
                  player_state_name(g_view.status.player_state),
                  g_view.status.has_media ? 1 : 0,
-                 g_view.status.media_hint[0] != '\0' ? g_view.status.media_hint : "none");
+                 g_view.status.media_uri ? g_view.status.media_uri : "none");
     }
 }
 
@@ -228,8 +272,7 @@ bool player_view_get_status(PlayerViewStatus *out)
     if (!out || !g_view.status.initialized)
         return false;
 
-    *out = g_view.status;
-    return true;
+    return player_view_status_copy(out, &g_view.status);
 }
 
 bool player_view_render_frame(void)

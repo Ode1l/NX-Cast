@@ -16,7 +16,7 @@
 
 #include "handler_internal.h"
 #include "log/log.h"
-#include "player/player.h"
+#include "player/renderer.h"
 #include "soap_writer.h"
 
 #define EVENT_MAX_SUBSCRIPTIONS 8
@@ -28,7 +28,6 @@
 #define EVENT_MAX_TIMEOUT_SECONDS 3600
 #define EVENT_NOTIFY_RETRY_SLEEP_MS 100
 #define EVENT_NOTIFY_IO_TIMEOUT_SEC 1
-#define EVENT_CALLBACK_URL_MAX 512
 
 typedef enum
 {
@@ -43,11 +42,11 @@ typedef struct
 {
     bool active;
     EventService service;
-    char sid[64];
-    char callback_url[EVENT_CALLBACK_URL_MAX];
-    char callback_host[128];
+    char *sid;
+    char *callback_url;
+    char *callback_host;
     uint16_t callback_port;
-    char callback_path[256];
+    char *callback_path;
     uint32_t seq;
     uint64_t expiry_ms;
 } EventSubscription;
@@ -56,10 +55,10 @@ typedef struct
 {
     bool in_use;
     EventService service;
-    char sid[64];
-    char callback_host[128];
+    char *sid;
+    char *callback_host;
     uint16_t callback_port;
-    char callback_path[256];
+    char *callback_path;
     uint32_t seq;
 } EventNotifyTarget;
 
@@ -76,6 +75,38 @@ static bool g_connectionmanager_dirty = false;
 static uint32_t g_next_sid = 1;
 
 static void event_thread_main(void *arg);
+
+static void event_subscription_clear(EventSubscription *subscription)
+{
+    if (!subscription)
+        return;
+
+    free(subscription->sid);
+    free(subscription->callback_url);
+    free(subscription->callback_host);
+    free(subscription->callback_path);
+    memset(subscription, 0, sizeof(*subscription));
+}
+
+static void event_notify_target_clear(EventNotifyTarget *target)
+{
+    if (!target)
+        return;
+
+    free(target->sid);
+    free(target->callback_host);
+    free(target->callback_path);
+    memset(target, 0, sizeof(*target));
+}
+
+static void event_clear_targets(EventNotifyTarget *targets, size_t count)
+{
+    if (!targets)
+        return;
+
+    for (size_t i = 0; i < count; ++i)
+        event_notify_target_clear(&targets[i]);
+}
 
 static uint64_t event_now_ms(void)
 {
@@ -111,7 +142,6 @@ static EventService event_service_from_path(const char *path)
 {
     const char *name = NULL;
     size_t len = 0;
-    char service_name[64];
 
     if (!path)
         return EVENT_SERVICE_INVALID;
@@ -132,18 +162,14 @@ static EventService event_service_from_path(const char *path)
         }
     }
 
-    if (!name || len == 0 || len >= sizeof(service_name))
+    if (!name || len == 0)
         return EVENT_SERVICE_INVALID;
 
-    memcpy(service_name, name, len);
-    service_name[len] = '\0';
-
-    name = service_name;
-    if (strcasecmp(name, "AVTransport") == 0)
+    if (len == strlen("AVTransport") && strncasecmp(name, "AVTransport", len) == 0)
         return EVENT_SERVICE_AVTRANSPORT;
-    if (strcasecmp(name, "RenderingControl") == 0)
+    if (len == strlen("RenderingControl") && strncasecmp(name, "RenderingControl", len) == 0)
         return EVENT_SERVICE_RENDERINGCONTROL;
-    if (strcasecmp(name, "ConnectionManager") == 0)
+    if (len == strlen("ConnectionManager") && strncasecmp(name, "ConnectionManager", len) == 0)
         return EVENT_SERVICE_CONNECTIONMANAGER;
     return EVENT_SERVICE_INVALID;
 }
@@ -167,15 +193,15 @@ static void event_trim_in_place(char *value)
         memmove(value, value + start, strlen(value + start) + 1);
 }
 
-static bool event_get_header_value(const char *request, const char *header, char *out, size_t out_size)
+static bool event_get_header_value_alloc(const char *request, const char *header, char **out)
 {
     size_t header_len;
     const char *cursor;
 
-    if (!request || !header || !out || out_size == 0)
+    if (!request || !header || !out)
         return false;
 
-    out[0] = '\0';
+    *out = NULL;
     header_len = strlen(header);
     cursor = request;
 
@@ -193,18 +219,27 @@ static bool event_get_header_value(const char *request, const char *header, char
         {
             const char *value_start = cursor + header_len + 1;
             size_t copy_len;
+            char *value;
 
             while (*value_start == ' ' || *value_start == '\t')
                 ++value_start;
 
             copy_len = line_end ? (size_t)(line_end - value_start) : strlen(value_start);
-            if (copy_len >= out_size)
-                copy_len = out_size - 1;
+            value = malloc(copy_len + 1);
+            if (!value)
+                return false;
 
-            memcpy(out, value_start, copy_len);
-            out[copy_len] = '\0';
-            event_trim_in_place(out);
-            return out[0] != '\0';
+            memcpy(value, value_start, copy_len);
+            value[copy_len] = '\0';
+            event_trim_in_place(value);
+            if (value[0] == '\0')
+            {
+                free(value);
+                return false;
+            }
+
+            *out = value;
+            return true;
         }
 
         if (!line_end)
@@ -217,7 +252,7 @@ static bool event_get_header_value(const char *request, const char *header, char
 
 static bool event_parse_timeout_seconds(const char *request, int *out_seconds)
 {
-    char timeout[64];
+    char *timeout = NULL;
     long seconds;
     char *value = NULL;
     char *end_ptr = NULL;
@@ -226,11 +261,12 @@ static bool event_parse_timeout_seconds(const char *request, int *out_seconds)
         return false;
 
     *out_seconds = EVENT_DEFAULT_TIMEOUT_SECONDS;
-    if (!request || !event_get_header_value(request, "TIMEOUT", timeout, sizeof(timeout)))
+    if (!request || !event_get_header_value_alloc(request, "TIMEOUT", &timeout))
         return true;
 
     if (strcasecmp(timeout, "infinite") == 0)
     {
+        free(timeout);
         *out_seconds = EVENT_MAX_TIMEOUT_SECONDS;
         return true;
     }
@@ -242,37 +278,41 @@ static bool event_parse_timeout_seconds(const char *request, int *out_seconds)
 
     seconds = strtol(value, &end_ptr, 10);
     if (!end_ptr || *end_ptr != '\0' || seconds <= 0)
+    {
+        free(timeout);
         return false;
+    }
 
     if (seconds < EVENT_MIN_TIMEOUT_SECONDS)
         seconds = EVENT_MIN_TIMEOUT_SECONDS;
     if (seconds > EVENT_MAX_TIMEOUT_SECONDS)
         seconds = EVENT_MAX_TIMEOUT_SECONDS;
     *out_seconds = (int)seconds;
+    free(timeout);
     return true;
 }
 
 static bool event_parse_callback_url(const char *header_value,
-                                     char *normalized,
-                                     size_t normalized_size,
-                                     char *host,
-                                     size_t host_size,
+                                     char **normalized,
+                                     char **host,
                                      uint16_t *port,
-                                     char *path,
-                                     size_t path_size)
+                                     char **path)
 {
-    char value[EVENT_CALLBACK_URL_MAX];
+    char *value = NULL;
     const char *url;
     const char *host_start;
     const char *path_start;
     const char *port_sep;
     size_t host_len;
-    size_t path_len;
-
-    if (!header_value || !normalized || normalized_size == 0 || !host || host_size == 0 || !port || !path || path_size == 0)
+    if (!header_value || !normalized || !host || !port || !path)
         return false;
 
-    snprintf(value, sizeof(value), "%s", header_value);
+    *normalized = NULL;
+    *host = NULL;
+    *path = NULL;
+    value = strdup(header_value);
+    if (!value)
+        return false;
     event_trim_in_place(value);
 
     if (value[0] == '<')
@@ -285,7 +325,10 @@ static bool event_parse_callback_url(const char *header_value,
     }
 
     if (strncasecmp(value, "http://", 7) != 0)
+    {
+        free(value);
         return false;
+    }
 
     url = value + 7;
     host_start = url;
@@ -298,11 +341,18 @@ static bool event_parse_callback_url(const char *header_value,
         host_len = (size_t)(port_sep - host_start);
     else
         host_len = (size_t)(path_start - host_start);
-    if (host_len == 0 || host_len >= host_size)
+    if (host_len == 0)
+    {
+        free(value);
         return false;
+    }
 
-    memcpy(host, host_start, host_len);
-    host[host_len] = '\0';
+    *host = strndup(host_start, host_len);
+    if (!*host)
+    {
+        free(value);
+        return false;
+    }
 
     if (port_sep)
     {
@@ -310,7 +360,12 @@ static bool event_parse_callback_url(const char *header_value,
         char *end_ptr = NULL;
         parsed_port = strtol(port_sep + 1, &end_ptr, 10);
         if (!end_ptr || end_ptr != path_start || parsed_port <= 0 || parsed_port > 65535)
+        {
+            free(value);
+            free(*host);
+            *host = NULL;
             return false;
+        }
         *port = (uint16_t)parsed_port;
     }
     else
@@ -319,19 +374,29 @@ static bool event_parse_callback_url(const char *header_value,
     }
 
     if (*path_start == '\0')
-    {
-        snprintf(path, path_size, "/");
-    }
+        *path = strdup("/");
     else
+        *path = strdup(path_start);
+    if (!*path)
     {
-        path_len = strlen(path_start);
-        if (path_len >= path_size)
-            path_len = path_size - 1;
-        memcpy(path, path_start, path_len);
-        path[path_len] = '\0';
+        free(value);
+        free(*host);
+        *host = NULL;
+        return false;
     }
 
-    snprintf(normalized, normalized_size, "http://%s:%u%s", host, (unsigned)*port, path);
+    *normalized = soap_handler_strdup_printf("http://%s:%u%s", *host, (unsigned)*port, *path);
+    if (!*normalized)
+    {
+        free(value);
+        free(*host);
+        free(*path);
+        *host = NULL;
+        *path = NULL;
+        return false;
+    }
+
+    free(value);
     return true;
 }
 
@@ -384,7 +449,7 @@ static void event_prune_expired_locked(uint64_t now_ms)
                      event_service_name(g_event_subscriptions[i].service),
                      g_event_subscriptions[i].sid,
                      g_event_subscriptions[i].callback_url);
-            memset(&g_event_subscriptions[i], 0, sizeof(g_event_subscriptions[i]));
+            event_subscription_clear(&g_event_subscriptions[i]);
         }
     }
 }
@@ -439,35 +504,18 @@ static bool event_append_val_element(SoapActionOutput *out, const char *tag, con
            soap_writer_append_raw(out, "\"/>");
 }
 
-static bool event_append_channel_val_element(SoapActionOutput *out,
-                                             const char *tag,
-                                             const char *channel,
-                                             const char *value)
-{
-    return soap_writer_appendf(out, "<%s channel=\"", tag) &&
-           soap_writer_append_escaped(out, channel ? channel : "") &&
-           soap_writer_append_raw(out, "\" val=\"") &&
-           soap_writer_append_escaped(out, value ? value : "") &&
-           soap_writer_append_raw(out, "\"/>");
-}
-
 static bool event_build_avtransport_last_change(SoapActionOutput *out)
 {
-    char current_track[16];
-    char number_of_tracks[16];
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
 
-    snprintf(current_track, sizeof(current_track), "%d", state->current_track);
-    snprintf(number_of_tracks, sizeof(number_of_tracks), "%d", state->number_of_tracks);
-
     return soap_writer_append_raw(out, "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT/\"><InstanceID val=\"0\">") &&
            event_append_val_element(out, "TransportState", state->transport_state) &&
            event_append_val_element(out, "TransportStatus", state->transport_status) &&
-           event_append_val_element(out, "CurrentTrack", current_track) &&
-           event_append_val_element(out, "NumberOfTracks", number_of_tracks) &&
+           soap_writer_appendf(out, "<CurrentTrack val=\"%d\"/>", state->current_track) &&
+           soap_writer_appendf(out, "<NumberOfTracks val=\"%d\"/>", state->number_of_tracks) &&
            event_append_val_element(out, "CurrentMediaDuration", state->current_media_duration) &&
            event_append_val_element(out, "CurrentTrackDuration", state->current_track_duration) &&
            soap_writer_append_raw(out, "</InstanceID></Event>");
@@ -475,19 +523,14 @@ static bool event_build_avtransport_last_change(SoapActionOutput *out)
 
 static bool event_build_renderingcontrol_last_change(SoapActionOutput *out)
 {
-    char volume[16];
-    char mute[8];
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
         return false;
 
-    snprintf(volume, sizeof(volume), "%d", state->volume);
-    snprintf(mute, sizeof(mute), "%d", state->mute ? 1 : 0);
-
     return soap_writer_append_raw(out, "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/RCS/\"><InstanceID val=\"0\">") &&
-           event_append_channel_val_element(out, "Volume", "Master", volume) &&
-           event_append_channel_val_element(out, "Mute", "Master", mute) &&
+           soap_writer_appendf(out, "<Volume channel=\"Master\" val=\"%d\"/>", state->volume) &&
+           soap_writer_appendf(out, "<Mute channel=\"Master\" val=\"%d\"/>", state->mute ? 1 : 0) &&
            soap_writer_append_raw(out, "</InstanceID></Event>");
 }
 
@@ -495,8 +538,6 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
 {
     SoapActionOutput last_change = {0};
     bool ok = false;
-    char volume[16];
-    char mute[8];
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!out)
@@ -522,13 +563,11 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
              soap_writer_append_raw(out, "</LastChange></e:property>");
         if (ok)
         {
-            snprintf(volume, sizeof(volume), "%d", state->volume);
-            snprintf(mute, sizeof(mute), "%d", state->mute ? 1 : 0);
             ok = soap_writer_append_raw(out, "<e:property><Volume>") &&
-                 soap_writer_append_escaped(out, volume) &&
+                 soap_writer_appendf(out, "%d", state->volume) &&
                  soap_writer_append_raw(out, "</Volume></e:property>") &&
                  soap_writer_append_raw(out, "<e:property><Mute>") &&
-                 soap_writer_append_escaped(out, mute) &&
+                 soap_writer_appendf(out, "%d", state->mute ? 1 : 0) &&
                  soap_writer_append_raw(out, "</Mute></e:property>");
         }
         break;
@@ -686,11 +725,18 @@ static size_t event_collect_targets_locked(EventService service, EventNotifyTarg
 
         targets[count].in_use = true;
         targets[count].service = service;
-        snprintf(targets[count].sid, sizeof(targets[count].sid), "%s", subscription->sid);
-        snprintf(targets[count].callback_host, sizeof(targets[count].callback_host), "%s", subscription->callback_host);
+        targets[count].sid = subscription->sid ? strdup(subscription->sid) : NULL;
+        targets[count].callback_host = subscription->callback_host ? strdup(subscription->callback_host) : NULL;
         targets[count].callback_port = subscription->callback_port;
-        snprintf(targets[count].callback_path, sizeof(targets[count].callback_path), "%s", subscription->callback_path);
+        targets[count].callback_path = subscription->callback_path ? strdup(subscription->callback_path) : NULL;
         targets[count].seq = subscription->seq++;
+        if ((subscription->sid && !targets[count].sid) ||
+            (subscription->callback_host && !targets[count].callback_host) ||
+            (subscription->callback_path && !targets[count].callback_path))
+        {
+            event_notify_target_clear(&targets[count]);
+            continue;
+        }
         ++count;
     }
 
@@ -770,6 +816,10 @@ static void event_thread_main(void *arg)
             (void)event_send_notify(&rc_targets[i], EVENT_SERVICE_RENDERINGCONTROL);
         for (size_t i = 0; i < cm_count; ++i)
             (void)event_send_notify(&cm_targets[i], EVENT_SERVICE_CONNECTIONMANAGER);
+
+        event_clear_targets(avt_targets, avt_count);
+        event_clear_targets(rc_targets, rc_count);
+        event_clear_targets(cm_targets, cm_count);
     }
 
     threadExit();
@@ -788,7 +838,8 @@ bool event_server_start(void)
         return true;
     }
 
-    memset(g_event_subscriptions, 0, sizeof(g_event_subscriptions));
+    for (size_t i = 0; i < EVENT_MAX_SUBSCRIPTIONS; ++i)
+        event_subscription_clear(&g_event_subscriptions[i]);
     g_event_stop_requested = false;
     g_avtransport_state_dirty = false;
     g_renderingcontrol_dirty = false;
@@ -839,7 +890,8 @@ void event_server_stop(void)
 
     mutexLock(&g_event_mutex);
     g_event_thread_started = false;
-    memset(g_event_subscriptions, 0, sizeof(g_event_subscriptions));
+    for (size_t i = 0; i < EVENT_MAX_SUBSCRIPTIONS; ++i)
+        event_subscription_clear(&g_event_subscriptions[i]);
     g_avtransport_state_dirty = false;
     g_renderingcontrol_dirty = false;
     g_connectionmanager_dirty = false;
@@ -853,13 +905,13 @@ static bool event_handle_subscribe(const HttpRequestContext *ctx,
                                    size_t response_size,
                                    size_t *response_len)
 {
-    char sid[128];
-    char callback[EVENT_CALLBACK_URL_MAX];
-    char host[128];
-    char path[256];
-    char nt[64];
+    char *sid = NULL;
+    char *callback = NULL;
+    char *host = NULL;
+    char *path = NULL;
+    char *nt = NULL;
     int timeout_seconds;
-    char headers[256];
+    char *headers = NULL;
     uint64_t expiry_ms;
     uint16_t callback_port = 0;
 
@@ -869,7 +921,7 @@ static bool event_handle_subscribe(const HttpRequestContext *ctx,
     if (!event_parse_timeout_seconds(ctx->request, &timeout_seconds))
         return event_build_response(400, "Bad Request", NULL, "", response, response_size, response_len);
 
-    if (event_get_header_value(ctx->request, "SID", sid, sizeof(sid)))
+    if (event_get_header_value_alloc(ctx->request, "SID", &sid))
     {
         ssize_t slot_index;
 
@@ -878,60 +930,86 @@ static bool event_handle_subscribe(const HttpRequestContext *ctx,
         if (slot_index < 0)
         {
             mutexUnlock(&g_event_mutex);
+            free(sid);
             return event_build_response(412, "Precondition Failed", NULL, "", response, response_size, response_len);
         }
 
         expiry_ms = event_now_ms() + (uint64_t)timeout_seconds * 1000ULL;
         g_event_subscriptions[slot_index].expiry_ms = expiry_ms;
-        snprintf(headers, sizeof(headers),
-                 "SID: %s\r\nTIMEOUT: Second-%d\r\n",
-                 g_event_subscriptions[slot_index].sid,
-                 timeout_seconds);
+        headers = soap_handler_strdup_printf("SID: %s\r\nTIMEOUT: Second-%d\r\n",
+                                             g_event_subscriptions[slot_index].sid,
+                                             timeout_seconds);
         mutexUnlock(&g_event_mutex);
 
         log_info("[event] renew service=%s sid=%s timeout=%d\n",
                  event_service_name(service), sid, timeout_seconds);
-        return event_build_response(200, "OK", headers, "", response, response_size, response_len);
+        bool built = headers && event_build_response(200, "OK", headers, "", response, response_size, response_len);
+        free(headers);
+        free(sid);
+        return built;
     }
 
-    if (!event_get_header_value(ctx->request, "CALLBACK", callback, sizeof(callback)) ||
-        !event_get_header_value(ctx->request, "NT", nt, sizeof(nt)))
+    if (!event_get_header_value_alloc(ctx->request, "CALLBACK", &callback) ||
+        !event_get_header_value_alloc(ctx->request, "NT", &nt))
     {
+        free(callback);
+        free(nt);
         return event_build_response(400, "Bad Request", NULL, "", response, response_size, response_len);
     }
 
+    char *normalized_callback = NULL;
     if (strcasecmp(nt, "upnp:event") != 0 ||
-        !event_parse_callback_url(callback, callback, sizeof(callback), host, sizeof(host), &callback_port, path, sizeof(path)))
+        !event_parse_callback_url(callback, &normalized_callback, &host, &callback_port, &path))
     {
+        free(callback);
+        free(normalized_callback);
+        free(host);
+        free(path);
+        free(nt);
         return event_build_response(412, "Precondition Failed", NULL, "", response, response_size, response_len);
     }
+    free(callback);
+    callback = normalized_callback;
 
     mutexLock(&g_event_mutex);
     ssize_t slot_index = event_find_free_subscription_locked();
     if (slot_index < 0)
     {
         mutexUnlock(&g_event_mutex);
+        free(callback);
+        free(host);
+        free(path);
+        free(nt);
         return event_build_response(503, "Service Unavailable", NULL, "", response, response_size, response_len);
     }
 
     expiry_ms = event_now_ms() + (uint64_t)timeout_seconds * 1000ULL;
     EventSubscription *subscription = &g_event_subscriptions[slot_index];
-    memset(subscription, 0, sizeof(*subscription));
+    event_subscription_clear(subscription);
     subscription->active = true;
     subscription->service = service;
-    snprintf(subscription->sid, sizeof(subscription->sid), "uuid:nxcast-evt-%08u", g_next_sid++);
-    snprintf(subscription->callback_url, sizeof(subscription->callback_url), "%s", callback);
-    snprintf(subscription->callback_host, sizeof(subscription->callback_host), "%s", host);
+    subscription->sid = soap_handler_strdup_printf("uuid:nxcast-evt-%08u", g_next_sid++);
+    subscription->callback_url = callback ? strdup(callback) : NULL;
+    subscription->callback_host = host ? strdup(host) : NULL;
     subscription->callback_port = callback_port;
-    snprintf(subscription->callback_path, sizeof(subscription->callback_path), "%s", path);
+    subscription->callback_path = path ? strdup(path) : NULL;
     subscription->seq = 0;
     subscription->expiry_ms = expiry_ms;
+    if (!subscription->sid || !subscription->callback_url || !subscription->callback_host || !subscription->callback_path)
+    {
+        event_subscription_clear(subscription);
+        mutexUnlock(&g_event_mutex);
+        free(callback);
+        free(host);
+        free(path);
+        free(nt);
+        return event_build_response(503, "Service Unavailable", NULL, "", response, response_size, response_len);
+    }
     event_mark_dirty_locked(service);
     condvarWakeOne(&g_event_cond);
-    snprintf(headers, sizeof(headers),
-             "SID: %s\r\nTIMEOUT: Second-%d\r\n",
-             subscription->sid,
-             timeout_seconds);
+    headers = soap_handler_strdup_printf("SID: %s\r\nTIMEOUT: Second-%d\r\n",
+                                         subscription->sid,
+                                         timeout_seconds);
     log_info("[event] subscribe service=%s sid=%s callback=%s timeout=%d\n",
              event_service_name(service),
              subscription->sid,
@@ -939,7 +1017,15 @@ static bool event_handle_subscribe(const HttpRequestContext *ctx,
              timeout_seconds);
     mutexUnlock(&g_event_mutex);
 
-    return event_build_response(200, "OK", headers, "", response, response_size, response_len);
+    free(callback);
+    free(host);
+    free(path);
+    free(nt);
+    if (!headers)
+        return false;
+    bool built = event_build_response(200, "OK", headers, "", response, response_size, response_len);
+    free(headers);
+    return built;
 }
 
 static bool event_handle_unsubscribe(const HttpRequestContext *ctx,
@@ -948,7 +1034,7 @@ static bool event_handle_unsubscribe(const HttpRequestContext *ctx,
                                      size_t response_size,
                                      size_t *response_len)
 {
-    char sid[128];
+    char *sid = NULL;
     ssize_t slot_index;
 
     (void)service;
@@ -956,7 +1042,7 @@ static bool event_handle_unsubscribe(const HttpRequestContext *ctx,
     if (!ctx || !ctx->request || !response || !response_len)
         return false;
 
-    if (!event_get_header_value(ctx->request, "SID", sid, sizeof(sid)))
+    if (!event_get_header_value_alloc(ctx->request, "SID", &sid))
         return event_build_response(400, "Bad Request", NULL, "", response, response_size, response_len);
 
     mutexLock(&g_event_mutex);
@@ -964,6 +1050,7 @@ static bool event_handle_unsubscribe(const HttpRequestContext *ctx,
     if (slot_index < 0)
     {
         mutexUnlock(&g_event_mutex);
+        free(sid);
         return event_build_response(412, "Precondition Failed", NULL, "", response, response_size, response_len);
     }
 
@@ -971,9 +1058,10 @@ static bool event_handle_unsubscribe(const HttpRequestContext *ctx,
              event_service_name(g_event_subscriptions[slot_index].service),
              g_event_subscriptions[slot_index].sid,
              g_event_subscriptions[slot_index].callback_url);
-    memset(&g_event_subscriptions[slot_index], 0, sizeof(g_event_subscriptions[slot_index]));
+    event_subscription_clear(&g_event_subscriptions[slot_index]);
     mutexUnlock(&g_event_mutex);
 
+    free(sid);
     return event_build_response(200, "OK", NULL, "", response, response_size, response_len);
 }
 
@@ -1000,7 +1088,7 @@ bool event_server_try_handle_http(const HttpRequestContext *ctx,
     return event_build_response(405, "Method Not Allowed", NULL, "", response, response_size, response_len);
 }
 
-void event_server_on_player_event(const PlayerEvent *event)
+void event_server_on_renderer_event(const RendererEvent *event)
 {
     if (!event)
         return;

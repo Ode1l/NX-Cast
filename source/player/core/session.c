@@ -1,44 +1,15 @@
 #include "player/player.h"
 
-#include <switch.h>
-
-#include <stddef.h>
+#include <stdio.h>
 #include <string.h>
-#include <sys/types.h>
+
+#include <switch.h>
 
 #include "log/log.h"
 #include "player/backend.h"
 
-#define PLAYER_COMMAND_SLOT_COUNT 16
-#define PLAYER_COMMAND_QUEUE_CAPACITY PLAYER_COMMAND_SLOT_COUNT
-// Keep the player owner thread on a conservative stack budget. It owns
-// backend calls plus command/event marshaling, so 0x8000 proved too tight for
-// repeated refactors.
-#define PLAYER_THREAD_STACK_SIZE 0x10000
-#define PLAYER_THREAD_POLL_TIMEOUT_MS 50
-
-typedef enum
-{
-    PLAYER_COMMAND_SET_MEDIA = 0,
-    PLAYER_COMMAND_PLAY,
-    PLAYER_COMMAND_PAUSE,
-    PLAYER_COMMAND_STOP,
-    PLAYER_COMMAND_SEEK_MS,
-    PLAYER_COMMAND_SET_VOLUME,
-    PLAYER_COMMAND_SET_MUTE
-} PlayerCommandType;
-
-typedef struct
-{
-    bool in_use;
-    bool queued;
-    bool completed;
-    bool result;
-    PlayerCommandType type;
-    PlayerMedia media;
-    int int_value;
-    bool bool_value;
-} PlayerCommandSlot;
+#define PLAYER_EVENT_THREAD_STACK_SIZE 0x8000
+#define PLAYER_EVENT_POLL_TIMEOUT_MS 100
 
 static const BackendOps *g_backend = NULL;
 static PlayerBackendType g_backend_type = PLAYER_BACKEND_AUTO;
@@ -50,45 +21,12 @@ static PlayerMedia g_current_media;
 static PlayerSnapshot g_snapshot;
 
 static Mutex g_player_mutex;
-static CondVar g_player_cond;
 static bool g_player_sync_ready = false;
 static Thread g_player_thread;
 static bool g_player_thread_started = false;
-static bool g_player_thread_running = false;
 static bool g_player_stop_requested = false;
 
-static PlayerCommandSlot g_command_slots[PLAYER_COMMAND_SLOT_COUNT];
-static size_t g_command_queue[PLAYER_COMMAND_QUEUE_CAPACITY];
-static size_t g_command_head = 0;
-static size_t g_command_tail = 0;
-static size_t g_command_count = 0;
-
 static void player_thread_main(void *arg);
-
-static const char *player_state_name(PlayerState state)
-{
-    switch (state)
-    {
-    case PLAYER_STATE_IDLE:
-        return "IDLE";
-    case PLAYER_STATE_STOPPED:
-        return "STOPPED";
-    case PLAYER_STATE_LOADING:
-        return "LOADING";
-    case PLAYER_STATE_BUFFERING:
-        return "BUFFERING";
-    case PLAYER_STATE_SEEKING:
-        return "SEEKING";
-    case PLAYER_STATE_PLAYING:
-        return "PLAYING";
-    case PLAYER_STATE_PAUSED:
-        return "PAUSED";
-    case PLAYER_STATE_ERROR:
-        return "ERROR";
-    default:
-        return "UNKNOWN";
-    }
-}
 
 static bool backend_available(const BackendOps *backend)
 {
@@ -129,40 +67,50 @@ static void player_ensure_sync_primitives(void)
         return;
 
     mutexInit(&g_player_mutex);
-    condvarInit(&g_player_cond);
     g_player_sync_ready = true;
+}
+
+static void player_reset_media(PlayerMedia *media)
+{
+    if (!media)
+        return;
+    player_media_clear(media);
+}
+
+static bool player_sync_snapshot_media_locked(void)
+{
+    player_media_clear(&g_snapshot.media);
+    if (!g_has_current_media)
+        return true;
+    return player_media_copy(&g_snapshot.media, &g_current_media);
 }
 
 static void player_reset_snapshot_locked(void)
 {
-    memset(&g_snapshot, 0, sizeof(g_snapshot));
+    player_snapshot_clear(&g_snapshot);
     g_snapshot.state = PLAYER_STATE_IDLE;
+    g_snapshot.volume = PLAYER_DEFAULT_VOLUME;
 }
 
-static void player_reset_command_queue_locked(void)
+static bool player_store_media_locked(bool has_media, const PlayerMedia *media)
 {
-    memset(g_command_slots, 0, sizeof(g_command_slots));
-    memset(g_command_queue, 0, sizeof(g_command_queue));
-    g_command_head = 0;
-    g_command_tail = 0;
-    g_command_count = 0;
-}
+    PlayerMedia current_media = {0};
 
-static void player_store_media_locked(bool has_media, const PlayerMedia *media)
-{
+    if (has_media && media && !player_media_copy(&current_media, media))
+        return false;
+
+    player_media_clear(&g_current_media);
+    g_current_media = current_media;
     g_has_current_media = has_media;
-    if (has_media && media)
+    g_snapshot.has_media = has_media;
+
+    if (!player_sync_snapshot_media_locked())
     {
-        g_current_media = *media;
-        g_snapshot.has_media = true;
-        g_snapshot.media = *media;
-    }
-    else
-    {
-        ingress_reset(&g_current_media);
         g_snapshot.has_media = false;
-        ingress_reset(&g_snapshot.media);
+        return false;
     }
+
+    return true;
 }
 
 static void player_apply_event_locked(const PlayerEvent *event)
@@ -177,15 +125,21 @@ static void player_apply_event_locked(const PlayerEvent *event)
     g_snapshot.mute = event->mute;
     g_snapshot.seekable = event->seekable;
 
+    if (event->uri && g_has_current_media)
+    {
+        if (!player_media_set(&g_current_media, event->uri, g_current_media.metadata))
+            return;
+    }
+
     if (g_has_current_media)
     {
         g_snapshot.has_media = true;
-        g_snapshot.media = g_current_media;
+        (void)player_sync_snapshot_media_locked();
     }
     else
     {
         g_snapshot.has_media = false;
-        ingress_reset(&g_snapshot.media);
+        player_reset_media(&g_snapshot.media);
         g_snapshot.state = PLAYER_STATE_IDLE;
         g_snapshot.position_ms = 0;
         g_snapshot.duration_ms = 0;
@@ -199,26 +153,21 @@ static bool player_read_backend_snapshot(PlayerSnapshot *out)
         return false;
 
     memset(out, 0, sizeof(*out));
-    if (g_backend && g_backend->get_state)
-        out->state = g_backend->get_state();
-    else
-        out->state = PLAYER_STATE_IDLE;
-
-    if (g_backend && g_backend->get_position_ms)
-        out->position_ms = g_backend->get_position_ms();
-    if (g_backend && g_backend->get_duration_ms)
-        out->duration_ms = g_backend->get_duration_ms();
-    if (g_backend && g_backend->get_volume)
-        out->volume = g_backend->get_volume();
-    if (g_backend && g_backend->get_mute)
-        out->mute = g_backend->get_mute();
-    if (g_backend && g_backend->is_seekable)
-        out->seekable = g_backend->is_seekable();
+    out->state = g_backend && g_backend->get_state ? g_backend->get_state() : PLAYER_STATE_IDLE;
+    out->position_ms = g_backend && g_backend->get_position_ms ? g_backend->get_position_ms() : 0;
+    out->duration_ms = g_backend && g_backend->get_duration_ms ? g_backend->get_duration_ms() : 0;
+    out->volume = g_backend && g_backend->get_volume ? g_backend->get_volume() : PLAYER_DEFAULT_VOLUME;
+    out->mute = g_backend && g_backend->get_mute ? g_backend->get_mute() : false;
+    out->seekable = g_backend && g_backend->is_seekable ? g_backend->is_seekable() : false;
 
     mutexLock(&g_player_mutex);
     out->has_media = g_has_current_media;
-    if (g_has_current_media)
-        out->media = g_current_media;
+    if (g_has_current_media && !player_media_copy(&out->media, &g_current_media))
+    {
+        mutexUnlock(&g_player_mutex);
+        player_snapshot_clear(out);
+        return false;
+    }
     mutexUnlock(&g_player_mutex);
 
     if (!out->has_media)
@@ -239,14 +188,14 @@ static void player_refresh_cached_snapshot_from_backend(void)
         return;
 
     mutexLock(&g_player_mutex);
+    player_snapshot_clear(&g_snapshot);
     g_snapshot = snapshot;
-    condvarWakeAll(&g_player_cond);
     mutexUnlock(&g_player_mutex);
 }
 
 static void player_emit_from_backend(const PlayerEvent *event)
 {
-    PlayerEvent forwarded;
+    PlayerEvent forwarded = {0};
     PlayerEventCallback callback = NULL;
     void *callback_user = NULL;
 
@@ -255,164 +204,66 @@ static void player_emit_from_backend(const PlayerEvent *event)
 
     mutexLock(&g_player_mutex);
     player_apply_event_locked(event);
+    forwarded = *event;
+    forwarded.uri = NULL;
+    if (event->uri && !player_event_copy(&forwarded, event))
+    {
+        forwarded = *event;
+        forwarded.uri = NULL;
+    }
     callback = g_event_callback;
     callback_user = g_event_user;
-    forwarded = *event;
-    condvarWakeAll(&g_player_cond);
     mutexUnlock(&g_player_mutex);
 
     if (callback)
         callback(&forwarded, callback_user);
+
+    player_event_clear(&forwarded);
 }
 
-static ssize_t player_find_free_slot_locked(void)
+static bool player_run_backend_bool(bool (*fn)(void))
 {
-    for (size_t i = 0; i < PLAYER_COMMAND_SLOT_COUNT; ++i)
-    {
-        if (!g_command_slots[i].in_use)
-            return (ssize_t)i;
-    }
-    return -1;
-}
+    bool ok;
 
-static ssize_t player_acquire_slot_locked(void)
-{
-    while (!g_player_stop_requested)
-    {
-        ssize_t slot_index = player_find_free_slot_locked();
-        if (slot_index >= 0)
-        {
-            memset(&g_command_slots[slot_index], 0, sizeof(g_command_slots[slot_index]));
-            g_command_slots[slot_index].in_use = true;
-            return slot_index;
-        }
-        condvarWait(&g_player_cond, &g_player_mutex);
-    }
-
-    return -1;
-}
-
-static void player_enqueue_slot_locked(size_t slot_index)
-{
-    g_command_slots[slot_index].queued = true;
-    g_command_queue[g_command_tail] = slot_index;
-    g_command_tail = (g_command_tail + 1) % PLAYER_COMMAND_QUEUE_CAPACITY;
-    g_command_count++;
-}
-
-static ssize_t player_dequeue_slot_locked(void)
-{
-    if (g_command_count == 0)
-        return -1;
-
-    size_t slot_index = g_command_queue[g_command_head];
-    g_command_head = (g_command_head + 1) % PLAYER_COMMAND_QUEUE_CAPACITY;
-    g_command_count--;
-    g_command_slots[slot_index].queued = false;
-    return (ssize_t)slot_index;
-}
-
-static bool player_execute_command(PlayerCommandSlot *slot)
-{
-    bool result = false;
-
-    if (!slot || !g_backend)
+    if (!g_initialized || !g_backend || !fn)
         return false;
 
-    switch (slot->type)
-    {
-    case PLAYER_COMMAND_SET_MEDIA:
-    {
-        bool old_has_media;
-        PlayerMedia old_media;
-
-        mutexLock(&g_player_mutex);
-        old_has_media = g_has_current_media;
-        old_media = g_current_media;
-        player_store_media_locked(true, &slot->media);
-        mutexUnlock(&g_player_mutex);
-
-        result = g_backend->set_media && g_backend->set_media(&slot->media);
-        if (!result)
-        {
-            mutexLock(&g_player_mutex);
-            player_store_media_locked(old_has_media, old_has_media ? &old_media : NULL);
-            mutexUnlock(&g_player_mutex);
-        }
-        break;
-    }
-    case PLAYER_COMMAND_PLAY:
-        result = g_backend->play && g_backend->play();
-        break;
-    case PLAYER_COMMAND_PAUSE:
-        result = g_backend->pause && g_backend->pause();
-        break;
-    case PLAYER_COMMAND_STOP:
-        result = g_backend->stop && g_backend->stop();
-        break;
-    case PLAYER_COMMAND_SEEK_MS:
-        result = g_backend->seek_ms && g_backend->seek_ms(slot->int_value);
-        break;
-    case PLAYER_COMMAND_SET_VOLUME:
-        result = g_backend->set_volume && g_backend->set_volume(slot->int_value);
-        break;
-    case PLAYER_COMMAND_SET_MUTE:
-        result = g_backend->set_mute && g_backend->set_mute(slot->bool_value);
-        break;
-    default:
-        break;
-    }
-
-    player_refresh_cached_snapshot_from_backend();
-    return result;
-}
-
-static bool player_submit_command(PlayerCommandType type,
-                                  const PlayerMedia *media,
-                                  int int_value,
-                                  bool bool_value)
-{
-    bool result = false;
-    ssize_t slot_index;
-
-    if (!g_initialized || !g_backend || !g_player_thread_running)
-        return false;
-
-    player_ensure_sync_primitives();
-    mutexLock(&g_player_mutex);
-
-    slot_index = player_acquire_slot_locked();
-    if (slot_index < 0)
-    {
-        mutexUnlock(&g_player_mutex);
-        return false;
-    }
-
-    PlayerCommandSlot *slot = &g_command_slots[slot_index];
-    slot->type = type;
-    slot->int_value = int_value;
-    slot->bool_value = bool_value;
-    if (media)
-        slot->media = *media;
-
-    player_enqueue_slot_locked((size_t)slot_index);
-    condvarWakeAll(&g_player_cond);
-    mutexUnlock(&g_player_mutex);
-
-    if (g_backend->wakeup)
+    ok = fn();
+    if (ok)
+        player_refresh_cached_snapshot_from_backend();
+    if (ok && g_backend->wakeup)
         g_backend->wakeup();
+    return ok;
+}
 
-    mutexLock(&g_player_mutex);
-    while (slot->in_use && !slot->completed && !g_player_stop_requested)
-        condvarWait(&g_player_cond, &g_player_mutex);
+static bool player_run_backend_int(bool (*fn)(int), int value)
+{
+    bool ok;
 
-    if (slot->completed)
-        result = slot->result;
+    if (!g_initialized || !g_backend || !fn)
+        return false;
 
-    memset(slot, 0, sizeof(*slot));
-    condvarWakeAll(&g_player_cond);
-    mutexUnlock(&g_player_mutex);
-    return result;
+    ok = fn(value);
+    if (ok)
+        player_refresh_cached_snapshot_from_backend();
+    if (ok && g_backend->wakeup)
+        g_backend->wakeup();
+    return ok;
+}
+
+static bool player_run_backend_flag(bool (*fn)(bool), bool value)
+{
+    bool ok;
+
+    if (!g_initialized || !g_backend || !fn)
+        return false;
+
+    ok = fn(value);
+    if (ok)
+        player_refresh_cached_snapshot_from_backend();
+    if (ok && g_backend->wakeup)
+        g_backend->wakeup();
+    return ok;
 }
 
 static void player_thread_main(void *arg)
@@ -421,39 +272,19 @@ static void player_thread_main(void *arg)
 
     while (true)
     {
-        ssize_t slot_index;
+        bool should_stop;
 
         mutexLock(&g_player_mutex);
-        slot_index = player_dequeue_slot_locked();
-        bool should_stop = g_player_stop_requested && slot_index < 0;
+        should_stop = g_player_stop_requested;
         mutexUnlock(&g_player_mutex);
-
         if (should_stop)
             break;
 
-        if (slot_index >= 0)
-        {
-            bool result = player_execute_command(&g_command_slots[slot_index]);
-
-            mutexLock(&g_player_mutex);
-            g_command_slots[slot_index].result = result;
-            g_command_slots[slot_index].completed = true;
-            condvarWakeAll(&g_player_cond);
-            mutexUnlock(&g_player_mutex);
-            continue;
-        }
-
         if (g_backend && g_backend->pump_events)
-            g_backend->pump_events(PLAYER_THREAD_POLL_TIMEOUT_MS);
+            g_backend->pump_events(PLAYER_EVENT_POLL_TIMEOUT_MS);
         else
-            svcSleepThread((int64_t)PLAYER_THREAD_POLL_TIMEOUT_MS * 1000000LL);
-
+            svcSleepThread((int64_t)PLAYER_EVENT_POLL_TIMEOUT_MS * 1000000LL);
     }
-
-    mutexLock(&g_player_mutex);
-    g_player_thread_running = false;
-    condvarWakeAll(&g_player_cond);
-    mutexUnlock(&g_player_mutex);
 }
 
 bool player_set_backend(PlayerBackendType backend)
@@ -495,16 +326,17 @@ void player_set_event_callback(PlayerEventCallback callback, void *user)
 
 bool player_init(void)
 {
+    Result rc;
+
     if (g_initialized)
         return true;
 
     player_ensure_sync_primitives();
     mutexLock(&g_player_mutex);
-    ingress_reset(&g_current_media);
-    g_has_current_media = false;
-    player_reset_snapshot_locked();
-    player_reset_command_queue_locked();
     g_player_stop_requested = false;
+    g_has_current_media = false;
+    player_reset_media(&g_current_media);
+    player_reset_snapshot_locked();
     mutexUnlock(&g_player_mutex);
 
     if (g_backend_type == PLAYER_BACKEND_AUTO)
@@ -515,22 +347,9 @@ bool player_init(void)
     }
 
     g_backend = backend_ops_from_type(g_backend_type);
-    if (!g_backend)
+    if (!g_backend || !backend_available(g_backend))
     {
-        log_error("[player] no backend selected\n");
-        return false;
-    }
-
-    if (g_backend_type != PLAYER_BACKEND_AUTO && !backend_available(g_backend))
-    {
-        log_error("[player] backend unavailable name=%s\n", player_get_backend_name());
-        g_backend = NULL;
-        return false;
-    }
-
-    if (!backend_available(g_backend))
-    {
-        log_error("[player] auto backend resolution failed\n");
+        log_error("[player] backend unavailable name=%s\n", backend_name_from_type(g_backend_type));
         g_backend = NULL;
         return false;
     }
@@ -547,13 +366,13 @@ bool player_init(void)
 
     player_refresh_cached_snapshot_from_backend();
 
-    Result rc = threadCreate(&g_player_thread,
-                             player_thread_main,
-                             NULL,
-                             NULL,
-                             PLAYER_THREAD_STACK_SIZE,
-                             0x2B,
-                             -2);
+    rc = threadCreate(&g_player_thread,
+                      player_thread_main,
+                      NULL,
+                      NULL,
+                      PLAYER_EVENT_THREAD_STACK_SIZE,
+                      0x2B,
+                      -2);
     if (R_FAILED(rc))
     {
         log_error("[player] threadCreate failed: 0x%x\n", rc);
@@ -574,15 +393,9 @@ bool player_init(void)
         return false;
     }
 
-    mutexLock(&g_player_mutex);
     g_player_thread_started = true;
-    g_player_thread_running = true;
-    mutexUnlock(&g_player_mutex);
-
     g_initialized = true;
-    log_info("[player] init backend=%s owner_thread=1 queue=%d\n",
-             player_get_backend_name(),
-             PLAYER_COMMAND_SLOT_COUNT);
+    log_info("[player] init backend=%s renderer_mode=direct\n", player_get_backend_name());
     return true;
 }
 
@@ -593,7 +406,6 @@ void player_deinit(void)
 
     mutexLock(&g_player_mutex);
     g_player_stop_requested = true;
-    condvarWakeAll(&g_player_cond);
     mutexUnlock(&g_player_mutex);
 
     if (g_backend && g_backend->wakeup)
@@ -603,18 +415,16 @@ void player_deinit(void)
     {
         threadWaitForExit(&g_player_thread);
         threadClose(&g_player_thread);
+        g_player_thread_started = false;
     }
-
-    mutexLock(&g_player_mutex);
-    g_player_thread_started = false;
-    g_player_thread_running = false;
-    player_reset_command_queue_locked();
-    player_reset_snapshot_locked();
-    player_store_media_locked(false, NULL);
-    mutexUnlock(&g_player_mutex);
 
     if (g_backend && g_backend->deinit)
         g_backend->deinit();
+
+    mutexLock(&g_player_mutex);
+    (void)player_store_media_locked(false, NULL);
+    player_reset_snapshot_locked();
+    mutexUnlock(&g_player_mutex);
 
     log_info("[player] deinit backend=%s\n", player_get_backend_name());
     g_backend = NULL;
@@ -623,76 +433,94 @@ void player_deinit(void)
 
 bool player_set_uri(const char *uri, const char *metadata)
 {
-    return player_set_uri_with_context(uri, metadata, NULL);
-}
+    PlayerMedia media;
+    bool ok;
 
-bool player_set_uri_with_context(const char *uri, const char *metadata, const PlayerOpenContext *ctx)
-{
-    PlayerMedia resolved;
-
-    (void)ctx;
-
-    if (!ingress_resolve(uri, metadata, &resolved))
+    if (!uri || uri[0] == '\0')
         return false;
 
-    log_info("[player] resolve_media profile=%s vendor=%s format=%s transport=%s hint=%s mime=%s selected_from_metadata=%d candidates=%d timeout=%d readahead_s=%d\n",
-             ingress_profile_name(resolved.profile),
-             ingress_vendor_name(resolved.vendor),
-             ingress_format_name(resolved.format),
-             ingress_transport_name(resolved.transport),
-             resolved.format_hint[0] != '\0' ? resolved.format_hint : "unknown",
-             resolved.mime_type[0] != '\0' ? resolved.mime_type : "unknown",
-             resolved.selected_from_metadata ? 1 : 0,
-             resolved.metadata_candidate_count,
-             resolved.network_timeout_seconds,
-             resolved.demuxer_readahead_seconds);
+    memset(&media, 0, sizeof(media));
+    if (!player_media_set(&media, uri, metadata))
+        return false;
 
-    if (resolved.selected_from_metadata)
-    {
-        log_info("[player] selected_resource original_uri=%s selected_uri=%s protocol_info=%s\n",
-                 resolved.original_uri[0] != '\0' ? resolved.original_uri : "<empty>",
-                 resolved.uri[0] != '\0' ? resolved.uri : "<empty>",
-                 resolved.protocol_info[0] != '\0' ? resolved.protocol_info : "<none>");
-    }
-
-    return player_set_media(&resolved);
+    ok = player_set_media(&media);
+    player_media_clear(&media);
+    return ok;
 }
 
 bool player_set_media(const PlayerMedia *media)
 {
-    if (!media)
+    PlayerMedia previous_media = {0};
+    bool previous_has_media;
+    bool ok;
+
+    if (!g_initialized || !g_backend || !g_backend->set_media || !media || !media->uri || media->uri[0] == '\0')
         return false;
-    return player_submit_command(PLAYER_COMMAND_SET_MEDIA, media, 0, false);
+
+    mutexLock(&g_player_mutex);
+    previous_has_media = g_has_current_media;
+    if (previous_has_media && !player_media_copy(&previous_media, &g_current_media))
+    {
+        mutexUnlock(&g_player_mutex);
+        return false;
+    }
+    if (!player_store_media_locked(true, media))
+    {
+        player_media_clear(&previous_media);
+        mutexUnlock(&g_player_mutex);
+        return false;
+    }
+    g_snapshot.state = PLAYER_STATE_LOADING;
+    g_snapshot.position_ms = 0;
+    g_snapshot.duration_ms = 0;
+    g_snapshot.seekable = false;
+    mutexUnlock(&g_player_mutex);
+
+    ok = g_backend->set_media(media);
+    if (!ok)
+    {
+        mutexLock(&g_player_mutex);
+        (void)player_store_media_locked(previous_has_media, previous_has_media ? &previous_media : NULL);
+        mutexUnlock(&g_player_mutex);
+        player_media_clear(&previous_media);
+        return false;
+    }
+
+    player_media_clear(&previous_media);
+    player_refresh_cached_snapshot_from_backend();
+    if (g_backend->wakeup)
+        g_backend->wakeup();
+    return true;
 }
 
 bool player_play(void)
 {
-    return player_submit_command(PLAYER_COMMAND_PLAY, NULL, 0, false);
+    return player_run_backend_bool(g_backend ? g_backend->play : NULL);
 }
 
 bool player_pause(void)
 {
-    return player_submit_command(PLAYER_COMMAND_PAUSE, NULL, 0, false);
+    return player_run_backend_bool(g_backend ? g_backend->pause : NULL);
 }
 
 bool player_stop(void)
 {
-    return player_submit_command(PLAYER_COMMAND_STOP, NULL, 0, false);
+    return player_run_backend_bool(g_backend ? g_backend->stop : NULL);
 }
 
 bool player_seek_ms(int position_ms)
 {
-    return player_submit_command(PLAYER_COMMAND_SEEK_MS, NULL, position_ms, false);
+    return player_run_backend_int(g_backend ? g_backend->seek_ms : NULL, position_ms);
 }
 
 bool player_set_volume(int volume_0_100)
 {
-    return player_submit_command(PLAYER_COMMAND_SET_VOLUME, NULL, volume_0_100, false);
+    return player_run_backend_int(g_backend ? g_backend->set_volume : NULL, volume_0_100);
 }
 
 bool player_set_mute(bool mute)
 {
-    return player_submit_command(PLAYER_COMMAND_SET_MUTE, NULL, 0, mute);
+    return player_run_backend_flag(g_backend ? g_backend->set_mute : NULL, mute);
 }
 
 bool player_video_supported(void)
@@ -746,72 +574,93 @@ bool player_video_render_sw(void *pixels, int width, int height, size_t stride)
 
 int player_get_position_ms(void)
 {
+    int value;
+
     mutexLock(&g_player_mutex);
-    int position_ms = g_snapshot.position_ms;
+    value = g_snapshot.position_ms;
     mutexUnlock(&g_player_mutex);
-    return position_ms;
+    return value;
 }
 
 int player_get_duration_ms(void)
 {
+    int value;
+
     mutexLock(&g_player_mutex);
-    int duration_ms = g_snapshot.duration_ms;
+    value = g_snapshot.duration_ms;
     mutexUnlock(&g_player_mutex);
-    return duration_ms;
+    return value;
 }
 
 int player_get_volume(void)
 {
+    int value;
+
     mutexLock(&g_player_mutex);
-    int volume = g_snapshot.volume;
+    value = g_snapshot.volume;
     mutexUnlock(&g_player_mutex);
-    return volume;
+    return value;
 }
 
 bool player_get_mute(void)
 {
+    bool value;
+
     mutexLock(&g_player_mutex);
-    bool mute = g_snapshot.mute;
+    value = g_snapshot.mute;
     mutexUnlock(&g_player_mutex);
-    return mute;
+    return value;
 }
 
 bool player_is_seekable(void)
 {
+    bool value;
+
     mutexLock(&g_player_mutex);
-    bool seekable = g_snapshot.seekable;
+    value = g_snapshot.seekable;
     mutexUnlock(&g_player_mutex);
-    return seekable;
+    return value;
 }
 
 PlayerState player_get_state(void)
 {
+    PlayerState value;
+
     mutexLock(&g_player_mutex);
-    PlayerState state = g_snapshot.state;
+    value = g_snapshot.state;
     mutexUnlock(&g_player_mutex);
-    return state;
+    return value;
 }
 
 bool player_get_current_media(PlayerMedia *out)
 {
+    bool has_media;
+
     if (!out)
         return false;
 
+    memset(out, 0, sizeof(*out));
     mutexLock(&g_player_mutex);
-    bool has_media = g_has_current_media;
-    if (has_media)
-        *out = g_current_media;
+    has_media = g_has_current_media;
+    if (has_media && !player_media_copy(out, &g_current_media))
+    {
+        mutexUnlock(&g_player_mutex);
+        return false;
+    }
     mutexUnlock(&g_player_mutex);
     return has_media;
 }
 
 bool player_get_snapshot(PlayerSnapshot *out)
 {
+    bool ok;
+
     if (!out)
         return false;
 
+    memset(out, 0, sizeof(*out));
     mutexLock(&g_player_mutex);
-    *out = g_snapshot;
+    ok = player_snapshot_copy(out, &g_snapshot);
     mutexUnlock(&g_player_mutex);
-    return true;
+    return ok;
 }

@@ -5,6 +5,8 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/select.h>
@@ -37,16 +39,57 @@ typedef struct
     Thread thread;                       // background responder thread
     bool running;
     bool thread_started;
-    char local_ip[INET_ADDRSTRLEN];      // cached local IPv4
-    char location[128];                  // http://<ip>:<port>/device.xml
+    char *local_ip;                      // cached local IPv4
+    char *location;                      // http://<ip>:<port>/device.xml
 } SsdpState;
 
 static SsdpState g_ssdp;
 
+static char *ssdp_strdup_printf(const char *fmt, ...)
+{
+    va_list args;
+    va_list args_copy;
+    int needed;
+    char *buffer;
+
+    if (!fmt)
+        return NULL;
+
+    va_start(args, fmt);
+    va_copy(args_copy, args);
+    needed = vsnprintf(NULL, 0, fmt, args_copy);
+    va_end(args_copy);
+    if (needed < 0)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    buffer = malloc((size_t)needed + 1);
+    if (!buffer)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    vsnprintf(buffer, (size_t)needed + 1, fmt, args);
+    va_end(args);
+    return buffer;
+}
+
+static void ssdp_clear_cached_strings(void)
+{
+    free(g_ssdp.local_ip);
+    free(g_ssdp.location);
+    g_ssdp.local_ip = NULL;
+    g_ssdp.location = NULL;
+}
+
 // Determine the outbound IPv4 address by connecting a dummy UDP socket.
-static bool determine_local_ip(char *out, size_t len)
+static bool determine_local_ip(char **out)
 {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    char *local_ip = NULL;
     if (sock < 0)
     {
         log_error("[ssdp] create socket failed: %s (%d)\n", strerror(errno), errno);
@@ -75,14 +118,23 @@ static bool determine_local_ip(char *out, size_t len)
         return false;
     }
 
-    if (!inet_ntop(AF_INET, &local.sin_addr, out, len))
+    local_ip = malloc(INET_ADDRSTRLEN);
+    if (!local_ip)
     {
-        log_error("[ssdp] inet_ntop failed: %s (%d)\n", strerror(errno), errno);
         close(sock);
         return false;
     }
 
+    if (!inet_ntop(AF_INET, &local.sin_addr, local_ip, INET_ADDRSTRLEN))
+    {
+        log_error("[ssdp] inet_ntop failed: %s (%d)\n", strerror(errno), errno);
+        close(sock);
+        free(local_ip);
+        return false;
+    }
+
     close(sock);
+    *out = local_ip;
     return true;
 }
 
@@ -127,10 +179,16 @@ static bool create_socket(SsdpState *state)
 }
 
 // Find a header line (case-insensitive) and copy its value.
-static bool get_header_value(const char *packet, const char *header, char *out, size_t out_len)
+static bool get_header_value_alloc(const char *packet, const char *header, char **out)
 {
     size_t header_len = strlen(header);
     const char *cursor = packet;
+    char *value = NULL;
+
+    if (!out)
+        return false;
+    *out = NULL;
+
     while (*cursor)
     {
         if (strncasecmp(cursor, header, header_len) == 0 && cursor[header_len] == ':')
@@ -138,12 +196,18 @@ static bool get_header_value(const char *packet, const char *header, char *out, 
             cursor += header_len + 1;
             while (*cursor == ' ' || *cursor == '\t')
                 ++cursor;
-            size_t i = 0;
-            while (*cursor && *cursor != '\r' && *cursor != '\n' && i + 1 < out_len)
-                out[i++] = *cursor++;
-            out[i] = '\0';
-            while (i > 0 && isspace((unsigned char)out[i - 1]))
-                out[--i] = '\0';
+            const char *start = cursor;
+            while (*cursor && *cursor != '\r' && *cursor != '\n')
+                ++cursor;
+            size_t len = (size_t)(cursor - start);
+            value = malloc(len + 1);
+            if (!value)
+                return false;
+            memcpy(value, start, len);
+            value[len] = '\0';
+            while (len > 0 && isspace((unsigned char)value[len - 1]))
+                value[--len] = '\0';
+            *out = value;
             return true;
         }
 
@@ -197,17 +261,14 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
     if (!st_value || st_value[0] == '\0')
         return;
 
-    char root_usn[256];
-    char device_usn[256];
-    char avtransport_usn[256];
-    char renderingcontrol_usn[256];
-    char connectionmanager_usn[256];
+    char *root_usn = ssdp_strdup_printf("%s::upnp:rootdevice", g_ssdp.config.uuid);
+    char *device_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
+    char *avtransport_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeAvTransport);
+    char *renderingcontrol_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeRenderingControl);
+    char *connectionmanager_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeConnectionManager);
 
-    snprintf(root_usn, sizeof(root_usn), "%s::upnp:rootdevice", g_ssdp.config.uuid);
-    snprintf(device_usn, sizeof(device_usn), "%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
-    snprintf(avtransport_usn, sizeof(avtransport_usn), "%s::%s", g_ssdp.config.uuid, g_serviceTypeAvTransport);
-    snprintf(renderingcontrol_usn, sizeof(renderingcontrol_usn), "%s::%s", g_ssdp.config.uuid, g_serviceTypeRenderingControl);
-    snprintf(connectionmanager_usn, sizeof(connectionmanager_usn), "%s::%s", g_ssdp.config.uuid, g_serviceTypeConnectionManager);
+    if (!root_usn || !device_usn || !avtransport_usn || !renderingcontrol_usn || !connectionmanager_usn)
+        goto cleanup;
 
     // Reply only to known/expected ST values.
     if (strcasecmp(st_value, "ssdp:all") == 0)
@@ -218,49 +279,59 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
         send_msearch_response(g_serviceTypeAvTransport, avtransport_usn, from);
         send_msearch_response(g_serviceTypeRenderingControl, renderingcontrol_usn, from);
         send_msearch_response(g_serviceTypeConnectionManager, connectionmanager_usn, from);
-        return;
+        goto cleanup;
     }
 
     if (strcasecmp(st_value, "upnp:rootdevice") == 0)
     {
         send_msearch_response("upnp:rootdevice", root_usn, from);
-        return;
+        goto cleanup;
     }
 
     if (strcasecmp(st_value, g_ssdp.config.device_type) == 0)
     {
         send_msearch_response(g_ssdp.config.device_type, device_usn, from);
-        return;
+        goto cleanup;
     }
 
     if (strcasecmp(st_value, g_ssdp.config.uuid) == 0)
     {
         send_msearch_response(g_ssdp.config.uuid, g_ssdp.config.uuid, from);
-        return;
+        goto cleanup;
     }
 
     if (strcasecmp(st_value, g_serviceTypeAvTransport) == 0)
     {
         send_msearch_response(g_serviceTypeAvTransport, avtransport_usn, from);
-        return;
+        goto cleanup;
     }
 
     if (strcasecmp(st_value, g_serviceTypeRenderingControl) == 0)
     {
         send_msearch_response(g_serviceTypeRenderingControl, renderingcontrol_usn, from);
-        return;
+        goto cleanup;
     }
 
     if (strcasecmp(st_value, g_serviceTypeConnectionManager) == 0)
     {
         send_msearch_response(g_serviceTypeConnectionManager, connectionmanager_usn, from);
-        return;
+        goto cleanup;
     }
+
+cleanup:
+    free(root_usn);
+    free(device_usn);
+    free(avtransport_usn);
+    free(renderingcontrol_usn);
+    free(connectionmanager_usn);
 }
 
 // Basic parser that filters for SSDP discovery packets.
 static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in *from)
 {
+    char *man = NULL;
+    char *st = NULL;
+
     if (length <= 0)
         return;
     packet[length] = '\0';
@@ -270,18 +341,24 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
     if (strncasecmp(packet, "M-SEARCH", 8) != 0)
         return;
 
-    char man[64];
-    if (!get_header_value(packet, "MAN", man, sizeof(man)))
+    if (!get_header_value_alloc(packet, "MAN", &man))
         return;
     if (strcasecmp(man, "\"ssdp:discover\"") != 0)
+    {
+        free(man);
         return;
+    }
 
-    char st[128];
-    if (!get_header_value(packet, "ST", st, sizeof(st)))
+    if (!get_header_value_alloc(packet, "ST", &st))
+    {
+        free(man);
         return;
+    }
     log_debug("[ssdp] M-SEARCH ST=%s\n", st);
 
     respond_to_msearch(st, from);
+    free(man);
+    free(st);
 }
 
 // Background thread: wait on the socket and process any packets.
@@ -340,12 +417,18 @@ bool ssdp_start(const SsdpConfig *config)
     g_ssdp.config = *config;
     g_ssdp.socket_fd = -1;
 
-    if (!determine_local_ip(g_ssdp.local_ip, sizeof(g_ssdp.local_ip)))
+    if (!determine_local_ip(&g_ssdp.local_ip))
         return false;
 
-    snprintf(g_ssdp.location, sizeof(g_ssdp.location),
-             "http://%s:%u%s",
-             g_ssdp.local_ip, g_ssdp.config.http_port, g_ssdp.config.location_path);
+    g_ssdp.location = ssdp_strdup_printf("http://%s:%u%s",
+                                         g_ssdp.local_ip,
+                                         g_ssdp.config.http_port,
+                                         g_ssdp.config.location_path);
+    if (!g_ssdp.location)
+    {
+        ssdp_clear_cached_strings();
+        return false;
+    }
 
     if (!create_socket(&g_ssdp))
         return false;
@@ -356,6 +439,7 @@ bool ssdp_start(const SsdpConfig *config)
     {
         log_error("[ssdp] threadCreate failed: 0x%08X\n", rc);
         g_ssdp.running = false;
+        ssdp_clear_cached_strings();
         close(g_ssdp.socket_fd);
         g_ssdp.socket_fd = -1;
         return false;
@@ -367,6 +451,7 @@ bool ssdp_start(const SsdpConfig *config)
         log_error("[ssdp] threadStart failed: 0x%08X\n", rc);
         g_ssdp.running = false;
         threadClose(&g_ssdp.thread);
+        ssdp_clear_cached_strings();
         close(g_ssdp.socket_fd);
         g_ssdp.socket_fd = -1;
         return false;
@@ -399,5 +484,6 @@ void ssdp_stop(void)
         g_ssdp.thread_started = false;
     }
 
+    ssdp_clear_cached_strings();
     log_info("[ssdp] Responder stopped.\n");
 }

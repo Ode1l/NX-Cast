@@ -11,8 +11,8 @@ Bootstrap and runtime foundation
 Discovery and DLNA description/control baseline
 
 - `SSDP` responder
-- `device.xml`
-- `SCPD`
+- device description
+- service `SCPD`
 - `SOAP` routing and core actions
 - status: done
 
@@ -23,19 +23,17 @@ Protocol completeness
 - `LastChange`
 - `CurrentTransportActions`
 - richer metadata return
-- expanded `SinkProtocolInfo`
 - Macast-style single protocol-observed state
 - status: largely done, still being hardened by compatibility testing
 
 ## Phase 3
-Player core and standard input modeling
+Renderer and session model
 
-- `player` owner thread and command queue
+- direct `protocol -> renderer` control path
 - snapshot and event surface
-- `IngressModel`
-- `evidence -> model -> resource_select -> http_probe -> media -> policy`
-- explicit transport kinds
-- status: in progress but already the active architecture
+- dynamic string ownership for long protocol state values
+- direct `URL -> libmpv loadfile`
+- status: active baseline
 
 ## Phase 4
 Playback backend baseline
@@ -46,32 +44,40 @@ Playback backend baseline
 - status: landed on the current baseline
 
 ## Phase 5
-Generic transport stability
+Template-driven description layer
 
-- `http-file`
-- `hls-direct`
-- `hls-local-proxy`
-- `hls-gateway`
-- mixed-source session stability
-- control-point progress/seek interoperability
-- status: main active behavior track
+- runtime-served `Description.xml`
+- runtime-served `AVTransport.xml`
+- runtime-served `RenderingControl.xml`
+- runtime-served `ConnectionManager.xml`
+- `SinkProtocolInfo.csv`
+- status: landed, still being aligned with real implementation details
 
 ## Phase 6
-Source compatibility
+Generic transport and interoperability stability
 
-- keep parsing generic and standards-first
-- vendor hints only as additive policy input
-- continue improving bilibili / mgtv-family / qq-video / youku / cctv / iqiyi behavior
-- status: ongoing, but no longer treated as the first architectural layer
+- real-world URL playback stability
+- control-point progress/seek interoperability
+- event fidelity
+- mixed control-point session behavior
+- status: main active behavior track
 
 ## Phase 7
+Source compatibility
+
+- keep compatibility work standards-first
+- add the minimum request-context handling needed by real senders
+- continue improving interoperability with common mobile and desktop control points
+- status: ongoing, but no longer treated as a separate player pipeline
+
+## Phase 8
 Hardware decode
 
 - evaluate actual `hwdec=nvtegra` activation
 - if needed, move to a custom media toolchain
 - status: blocked by current official `dkp` toolchain limits
 
-## Phase 8
+## Phase 9
 Future backend upgrade
 
 - custom `FFmpeg/mpv` toolchain
@@ -79,7 +85,7 @@ Future backend upgrade
 - `libuam`
 - status: future work, not current default path
 
-## Phase 9
+## Phase 10
 AirPlay receiver
 
 - discovery
@@ -87,7 +93,7 @@ AirPlay receiver
 - media path
 - status: not started
 
-## Phase 10
+## Phase 11
 DMP expansion
 
 - source-native browsing

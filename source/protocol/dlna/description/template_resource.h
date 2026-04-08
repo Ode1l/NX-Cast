@@ -18,11 +18,10 @@ typedef struct
     const char *service_extra;
 } DlnaTemplateValues;
 
-bool dlna_template_render_file_to_buffer(const char *relative_path,
-                                         const DlnaTemplateValues *values,
-                                         char *out,
-                                         size_t out_size,
-                                         size_t *out_len);
+bool dlna_template_render_file_alloc(const char *relative_path,
+                                     const DlnaTemplateValues *values,
+                                     char **out,
+                                     size_t *out_len);
 
 bool dlna_template_load_file_alloc(const char *relative_path,
                                    char **out,

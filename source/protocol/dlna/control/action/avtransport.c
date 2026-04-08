@@ -8,43 +8,46 @@
 
 #include "../handler_internal.h"
 #include "log/log.h"
-#include "player/player.h"
+#include "player/renderer.h"
 
 #define AVTRANSPORT_COUNTER_UNKNOWN 2147483647
 
-static PlayerState sync_transport_state_from_player(void)
+static RendererState sync_transport_state_from_renderer(void)
 {
-    PlayerSnapshot snapshot;
-    PlayerState player_state = PLAYER_STATE_IDLE;
+    RendererSnapshot snapshot;
+    RendererState renderer_state = PLAYER_STATE_IDLE;
 
-    if (player_get_snapshot(&snapshot))
-        player_state = snapshot.state;
+    if (renderer_get_snapshot(&snapshot))
+    {
+        renderer_state = snapshot.state;
+        renderer_snapshot_clear(&snapshot);
+    }
     else
-        player_state = player_get_state();
+        renderer_state = renderer_get_state();
 
-    dlna_protocol_state_sync_from_player();
-    return player_state;
+    dlna_protocol_state_sync_from_renderer();
+    return renderer_state;
 }
 
-static void avtransport_get_snapshot(PlayerSnapshot *snapshot)
+static void avtransport_get_snapshot(RendererSnapshot *snapshot)
 {
     if (!snapshot)
         return;
 
     memset(snapshot, 0, sizeof(*snapshot));
-    if (player_get_snapshot(snapshot))
+    if (renderer_get_snapshot(snapshot))
         return;
 
-    snapshot->state = player_get_state();
-    snapshot->position_ms = player_get_position_ms();
-    snapshot->duration_ms = player_get_duration_ms();
-    snapshot->volume = player_get_volume();
-    snapshot->mute = player_get_mute();
-    snapshot->seekable = player_is_seekable();
+    snapshot->state = renderer_get_state();
+    snapshot->position_ms = renderer_get_position_ms();
+    snapshot->duration_ms = renderer_get_duration_ms();
+    snapshot->volume = renderer_get_volume();
+    snapshot->mute = renderer_get_mute();
+    snapshot->seekable = renderer_is_seekable();
     snapshot->has_media = dlna_protocol_state_view()->av_transport_uri[0] != '\0';
 }
 
-static unsigned int avtransport_current_actions(const PlayerSnapshot *snapshot)
+static unsigned int avtransport_current_actions(const RendererSnapshot *snapshot)
 {
     unsigned int actions = 0;
 
@@ -80,67 +83,79 @@ static unsigned int avtransport_current_actions(const PlayerSnapshot *snapshot)
     return actions;
 }
 
-static void avtransport_format_actions(unsigned int actions, char *out, size_t out_size)
+static char *avtransport_format_actions_alloc(unsigned int actions)
 {
     bool first = true;
-    size_t used = 0;
+    char *out = strdup("");
+    char *next = NULL;
 
-    if (!out || out_size == 0)
-        return;
-
-    out[0] = '\0';
+    if (!out)
+        return NULL;
 
     if (actions & (1u << 0))
     {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPlay", first ? "" : ",");
+        next = soap_handler_strdup_printf("%s%sPlay", out, first ? "" : ",");
+        free(out);
+        out = next;
+        if (!out)
+            return NULL;
         first = false;
     }
-    if (used < out_size && (actions & (1u << 1)))
+    if (actions & (1u << 1))
     {
-        used += (size_t)snprintf(out + used, out_size - used, "%sStop", first ? "" : ",");
+        next = soap_handler_strdup_printf("%s%sStop", out, first ? "" : ",");
+        free(out);
+        out = next;
+        if (!out)
+            return NULL;
         first = false;
     }
-    if (used < out_size && (actions & (1u << 2)))
+    if (actions & (1u << 2))
     {
-        used += (size_t)snprintf(out + used, out_size - used, "%sPause", first ? "" : ",");
+        next = soap_handler_strdup_printf("%s%sPause", out, first ? "" : ",");
+        free(out);
+        out = next;
+        if (!out)
+            return NULL;
         first = false;
     }
-    if (used < out_size && (actions & (1u << 3)))
-        (void)snprintf(out + used, out_size - used, "%sSeek", first ? "" : ",");
+    if (actions & (1u << 3))
+    {
+        next = soap_handler_strdup_printf("%s%sSeek", out, first ? "" : ",");
+        free(out);
+        out = next;
+    }
+
+    return out;
 }
 
 static bool avtransport_try_instance_id(const SoapActionContext *ctx,
                                         SoapActionOutput *out,
                                         const char *action_name,
-                                        char *instance_id,
-                                        size_t instance_id_size)
+                                        char **instance_id_out)
 {
-    if (!ctx || !out || !action_name || !instance_id || instance_id_size == 0)
+    if (!ctx || !out || !action_name || !instance_id_out)
         return false;
 
-    if (soap_handler_try_arg(ctx, "InstanceID", instance_id, instance_id_size))
+    *instance_id_out = NULL;
+    if (soap_handler_try_arg_alloc(ctx, "InstanceID", instance_id_out))
         return true;
 
-    snprintf(instance_id, instance_id_size, "0");
+    *instance_id_out = strdup("0");
+    if (!*instance_id_out)
+    {
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
     log_debug("[avtransport] default InstanceID=0 for %s\n", action_name);
     return true;
 }
 
 static char *avtransport_escape_alloc(const char *value, SoapActionOutput *out)
 {
-    const char *input = value ? value : "";
-    size_t input_len = strlen(input);
-    size_t out_size = input_len * 6 + 1;
-    char *escaped = malloc(out_size);
+    char *escaped = soap_handler_xml_escape_alloc(value);
     if (!escaped)
     {
-        soap_handler_set_fault(out, 501, "Action Failed");
-        return NULL;
-    }
-
-    if (!soap_handler_xml_escape(input, escaped, out_size))
-    {
-        free(escaped);
         soap_handler_set_fault(out, 501, "Action Failed");
         return NULL;
     }
@@ -233,42 +248,37 @@ static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
 
 bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
+    char *instance_id = NULL;
     char *uri = NULL;
     char *metadata = NULL;
 
     if (!ctx || !out)
         return false;
 
-    uri = malloc(SOAP_TRANSPORT_URI_MAX);
-    metadata = malloc(SOAP_TRANSPORT_METADATA_MAX);
-    if (!uri || !metadata)
+    if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
+        return false;
+
+    if (!soap_handler_require_arg_alloc(ctx, out, "CurrentURI", &uri))
     {
-        free(uri);
-        free(metadata);
-        soap_handler_set_fault(out, 501, "Action Failed");
+        free(instance_id);
         return false;
     }
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    if (!soap_handler_try_arg_alloc(ctx, "CurrentURIMetaData", &metadata))
     {
-        free(uri);
-        free(metadata);
-        return false;
+        metadata = strdup("");
+        if (!metadata)
+        {
+            free(instance_id);
+            free(uri);
+            soap_handler_set_fault(out, 501, "Action Failed");
+            return false;
+        }
     }
 
-    if (!soap_handler_require_arg(ctx, out, "CurrentURI", uri, SOAP_TRANSPORT_URI_MAX))
+    if (!renderer_set_uri(uri, metadata))
     {
-        free(uri);
-        free(metadata);
-        return false;
-    }
-
-    metadata[0] = '\0';
-    soap_handler_extract_xml_value(ctx->body, "CurrentURIMetaData", metadata, SOAP_TRANSPORT_METADATA_MAX);
-
-    if (!player_set_uri(uri, metadata))
-    {
+        free(instance_id);
         free(uri);
         free(metadata);
         soap_handler_set_fault(out, 501, "Action Failed");
@@ -277,6 +287,7 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
 
     dlna_protocol_state_apply_set_uri(uri, metadata);
 
+    free(instance_id);
     free(uri);
     free(metadata);
     soap_handler_set_success(out, "");
@@ -285,176 +296,203 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
 
 bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
-    char speed[16];
+    char *instance_id = NULL;
+    char *speed = NULL;
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "Speed", speed, sizeof(speed)))
+    if (!soap_handler_require_arg_alloc(ctx, out, "Speed", &speed))
+    {
+        free(instance_id);
         return false;
+    }
 
     if (state->av_transport_uri[0] == '\0')
     {
+        free(instance_id);
+        free(speed);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
-    if (!player_play())
+    if (!renderer_play())
     {
+        free(instance_id);
+        free(speed);
         soap_handler_set_fault(out, 704, "Playing failed");
         return false;
     }
 
     dlna_protocol_state_set_transport_speed(speed);
     dlna_protocol_state_apply_play();
+    free(instance_id);
+    free(speed);
     soap_handler_set_success(out, "");
     return true;
 }
 
 bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
+    char *instance_id = NULL;
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
         return false;
 
     if (state->av_transport_uri[0] == '\0')
     {
+        free(instance_id);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
-    if (!player_pause())
+    if (!renderer_pause())
     {
+        free(instance_id);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
     dlna_protocol_state_apply_pause();
+    free(instance_id);
     soap_handler_set_success(out, "");
     return true;
 }
 
 bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
+    char *instance_id = NULL;
 
     if (!ctx || !out)
         return false;
 
-    if (!soap_handler_require_arg(ctx, out, "InstanceID", instance_id, sizeof(instance_id)))
+    if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
         return false;
 
-    if (!player_stop())
+    if (!renderer_stop())
     {
+        free(instance_id);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
     dlna_protocol_state_apply_stop();
+    free(instance_id);
     soap_handler_set_success(out, "");
     return true;
 }
 
 bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
+    char *instance_id = NULL;
 
     if (!ctx || !out)
         return false;
 
     // Some mobile control points omit InstanceID for read-only queries.
     // Treat missing value as "0" for compatibility.
-    if (!avtransport_try_instance_id(ctx, out, "GetTransportInfo", instance_id, sizeof(instance_id)))
+    if (!avtransport_try_instance_id(ctx, out, "GetTransportInfo", &instance_id))
         return false;
 
-    PlayerState player_state = sync_transport_state_from_player();
+    RendererState renderer_state = sync_transport_state_from_renderer();
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
-    (void)player_state;
+    (void)renderer_state;
 
     soap_writer_clear(out);
     if (!avtransport_write_text_element(out, "CurrentTransportState", state->transport_state) ||
         !avtransport_write_text_element(out, "CurrentTransportStatus", state->transport_status) ||
         !avtransport_write_text_element(out, "CurrentSpeed", state->transport_play_speed))
     {
+        free(instance_id);
         return false;
     }
 
+    free(instance_id);
     soap_handler_set_success(out, NULL);
     return true;
 }
 
 bool avtransport_get_current_transport_actions(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
-    PlayerSnapshot snapshot;
+    char *instance_id = NULL;
+    RendererSnapshot snapshot;
     unsigned int actions;
-    char action_list[64];
+    char *action_list = NULL;
     if (!ctx || !out)
         return false;
 
-    if (!avtransport_try_instance_id(ctx, out, "GetCurrentTransportActions", instance_id, sizeof(instance_id)))
+    if (!avtransport_try_instance_id(ctx, out, "GetCurrentTransportActions", &instance_id))
         return false;
 
     avtransport_get_snapshot(&snapshot);
-    sync_transport_state_from_player();
+    sync_transport_state_from_renderer();
     actions = avtransport_current_actions(&snapshot);
-    avtransport_format_actions(actions, action_list, sizeof(action_list));
+    action_list = avtransport_format_actions_alloc(actions);
+    renderer_snapshot_clear(&snapshot);
+    if (!action_list)
+    {
+        free(instance_id);
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
 
     soap_writer_clear(out);
     if (!avtransport_write_text_element(out, "Actions", action_list))
     {
+        free(instance_id);
+        free(action_list);
         return false;
     }
 
+    free(instance_id);
+    free(action_list);
     soap_handler_set_success(out, NULL);
     return true;
 }
 
 bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
+    char *instance_id = NULL;
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
 
-    if (!avtransport_try_instance_id(ctx, out, "GetMediaInfo", instance_id, sizeof(instance_id)))
+    if (!avtransport_try_instance_id(ctx, out, "GetMediaInfo", &instance_id))
         return false;
 
-    PlayerSnapshot snapshot;
+    RendererSnapshot snapshot;
     int duration_ms = 0;
     int position_ms = 0;
 
     memset(&snapshot, 0, sizeof(snapshot));
-    if (player_get_snapshot(&snapshot))
+    if (renderer_get_snapshot(&snapshot))
     {
         duration_ms = snapshot.duration_ms;
         position_ms = snapshot.position_ms;
+        renderer_snapshot_clear(&snapshot);
     }
     else
     {
-        duration_ms = player_get_duration_ms();
-        position_ms = player_get_position_ms();
+        duration_ms = renderer_get_duration_ms();
+        position_ms = renderer_get_position_ms();
     }
 
-    char duration_str[16];
-    dlna_protocol_format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
     dlna_protocol_state_set_transport_timing(duration_ms, position_ms);
 
     char *escaped_uri = avtransport_escape_alloc(state->av_transport_uri, out);
     char *escaped_metadata = avtransport_escape_alloc(state->av_transport_uri_metadata, out);
     if (!escaped_uri || !escaped_metadata)
     {
+        free(instance_id);
         free(escaped_uri);
         free(escaped_metadata);
         return false;
@@ -473,56 +511,53 @@ bool avtransport_get_media_info(const SoapActionContext *ctx, SoapActionOutput *
     free(escaped_uri);
     free(escaped_metadata);
     if (!ok)
+    {
+        free(instance_id);
         return false;
+    }
 
+    free(instance_id);
     soap_handler_set_success(out, NULL);
     return true;
 }
 
 bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
+    char *instance_id = NULL;
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
     if (!ctx || !out)
         return false;
 
-    if (!avtransport_try_instance_id(ctx, out, "GetPositionInfo", instance_id, sizeof(instance_id)))
+    if (!avtransport_try_instance_id(ctx, out, "GetPositionInfo", &instance_id))
         return false;
 
-    PlayerSnapshot snapshot;
+    RendererSnapshot snapshot;
     bool has_snapshot = false;
     int position_ms = 0;
     int duration_ms = 0;
 
     memset(&snapshot, 0, sizeof(snapshot));
-    has_snapshot = player_get_snapshot(&snapshot);
+    has_snapshot = renderer_get_snapshot(&snapshot);
     if (has_snapshot)
     {
         position_ms = snapshot.position_ms;
         duration_ms = snapshot.duration_ms;
+        renderer_snapshot_clear(&snapshot);
     }
     else
     {
-        position_ms = player_get_position_ms();
-        duration_ms = player_get_duration_ms();
+        position_ms = renderer_get_position_ms();
+        duration_ms = renderer_get_duration_ms();
     }
-
-    char duration_str[16];
-    char rel_time_str[16];
-    char abs_time_str[16];
-
-    dlna_protocol_format_hhmmss_from_ms(duration_ms, duration_str, sizeof(duration_str));
-    dlna_protocol_format_hhmmss_from_ms(position_ms, rel_time_str, sizeof(rel_time_str));
-    dlna_protocol_format_hhmmss_from_ms(position_ms, abs_time_str, sizeof(abs_time_str));
 
     dlna_protocol_state_set_transport_timing(duration_ms, position_ms);
     (void)has_snapshot;
-    (void)snapshot;
 
     char *escaped_uri = avtransport_escape_alloc(state->current_track_uri, out);
     char *escaped_metadata = avtransport_escape_alloc(state->current_track_metadata, out);
     if (!escaped_uri || !escaped_metadata)
     {
+        free(instance_id);
         free(escaped_uri);
         free(escaped_metadata);
         return false;
@@ -540,45 +575,68 @@ bool avtransport_get_position_info(const SoapActionContext *ctx, SoapActionOutpu
     free(escaped_uri);
     free(escaped_metadata);
     if (!ok)
+    {
+        free(instance_id);
         return false;
+    }
 
+    free(instance_id);
     soap_handler_set_success(out, NULL);
     return true;
 }
 
 bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
 {
-    char instance_id[32];
-    char unit[32];
-    char target[32];
+    char *instance_id = NULL;
+    char *unit = NULL;
+    char *target = NULL;
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
         return false;
 
-    if (!avtransport_try_instance_id(ctx, out, "Seek", instance_id, sizeof(instance_id)))
+    if (!avtransport_try_instance_id(ctx, out, "Seek", &instance_id))
         return false;
 
-    if (!soap_handler_try_arg(ctx, "Unit", unit, sizeof(unit)))
+    if (!soap_handler_try_arg_alloc(ctx, "Unit", &unit))
     {
-        snprintf(unit, sizeof(unit), "REL_TIME");
+        unit = strdup("REL_TIME");
+        if (!unit)
+        {
+            free(instance_id);
+            soap_handler_set_fault(out, 501, "Action Failed");
+            return false;
+        }
         log_debug("[avtransport] default Unit=REL_TIME for Seek\n");
     }
 
-    if (!soap_handler_try_arg(ctx, "Target", target, sizeof(target)))
+    if (!soap_handler_try_arg_alloc(ctx, "Target", &target))
     {
-        snprintf(target, sizeof(target), "00:00:00");
+        target = strdup("00:00:00");
+        if (!target)
+        {
+            free(instance_id);
+            free(unit);
+            soap_handler_set_fault(out, 501, "Action Failed");
+            return false;
+        }
         log_debug("[avtransport] default Target=00:00:00 for Seek\n");
     }
 
     if (strcasecmp(unit, "REL_TIME") != 0 && strcasecmp(unit, "ABS_TIME") != 0)
     {
+        free(instance_id);
+        free(unit);
+        free(target);
         soap_handler_set_fault(out, 710, "Seek mode not supported");
         return false;
     }
 
     if (state->av_transport_uri[0] == '\0')
     {
+        free(instance_id);
+        free(unit);
+        free(target);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
@@ -586,18 +644,27 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     int target_ms = 0;
     if (!parse_hhmmss_to_ms(target, &target_ms))
     {
+        free(instance_id);
+        free(unit);
+        free(target);
         soap_handler_set_fault(out, 402, "Invalid Args");
         return false;
     }
 
-    if (!player_seek_ms(target_ms))
+    if (!renderer_seek_ms(target_ms))
     {
+        free(instance_id);
+        free(unit);
+        free(target);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
     dlna_protocol_state_apply_seek_target(target);
     dlna_protocol_state_set_transport_status("OK");
+    free(instance_id);
+    free(unit);
+    free(target);
     soap_handler_set_success(out, "");
     return true;
 }

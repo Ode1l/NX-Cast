@@ -1,44 +1,76 @@
 #include "handler.h"
 
+#include <stdarg.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
 #include "event_server.h"
 #include "handler_internal.h"
 #include "log/log.h"
-#include "player/player.h"
+#include "player/renderer.h"
 
-static void clip_for_log(const char *input, char *output, size_t output_size)
+char *soap_handler_strdup_printf(const char *fmt, ...)
 {
-    if (!output || output_size == 0)
-        return;
+    va_list args;
+    va_list args_copy;
+    int needed;
+    char *buffer;
+
+    if (!fmt)
+        return NULL;
+
+    va_start(args, fmt);
+    va_copy(args_copy, args);
+    needed = vsnprintf(NULL, 0, fmt, args_copy);
+    va_end(args_copy);
+    if (needed < 0)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    buffer = malloc((size_t)needed + 1);
+    if (!buffer)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    vsnprintf(buffer, (size_t)needed + 1, fmt, args);
+    va_end(args);
+    return buffer;
+}
+
+char *soap_handler_clip_for_log_alloc(const char *input, size_t max_len)
+{
+    size_t len;
+    size_t copy_len;
+    char *output;
+
     if (!input)
-    {
-        output[0] = '\0';
-        return;
-    }
+        return strdup("");
 
-    size_t len = strlen(input);
-    if (len + 1 <= output_size)
-    {
-        snprintf(output, output_size, "%s", input);
-        return;
-    }
+    len = strlen(input);
+    if (len <= max_len)
+        return strdup(input);
 
-    if (output_size <= 4)
-    {
-        output[0] = '\0';
-        return;
-    }
+    if (max_len <= 3)
+        return strdup("");
 
-    size_t copy_len = output_size - 4;
+    copy_len = max_len - 3;
+    output = malloc(max_len + 1);
+    if (!output)
+        return NULL;
+
     memcpy(output, input, copy_len);
     output[copy_len] = '.';
     output[copy_len + 1] = '.';
     output[copy_len + 2] = '.';
     output[copy_len + 3] = '\0';
+    return output;
 }
 
 static void xml_decode_in_place(char *value)
@@ -163,14 +195,33 @@ bool soap_handler_xml_escape(const char *value, char *out, size_t out_size)
     return true;
 }
 
-static void soap_handler_on_player_event(const PlayerEvent *event, void *user)
+char *soap_handler_xml_escape_alloc(const char *value)
+{
+    const char *input = value ? value : "";
+    size_t input_len = strlen(input);
+    size_t out_size = input_len * 6 + 1;
+    char *escaped = malloc(out_size);
+
+    if (!escaped)
+        return NULL;
+
+    if (!soap_handler_xml_escape(input, escaped, out_size))
+    {
+        free(escaped);
+        return NULL;
+    }
+
+    return escaped;
+}
+
+static void soap_handler_on_renderer_event(const RendererEvent *event, void *user)
 {
     (void)user;
 
     if (!event)
         return;
-    dlna_protocol_state_on_player_event(event);
-    event_server_on_player_event(event);
+    dlna_protocol_state_on_renderer_event(event);
+    event_server_on_renderer_event(event);
 }
 
 void soap_handler_set_fault(SoapActionOutput *out, int code, const char *description)
@@ -209,10 +260,12 @@ void soap_handler_set_success(SoapActionOutput *out, const char *xml)
     }
 }
 
-bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out, size_t out_size)
+bool soap_handler_extract_xml_value_alloc(const char *xml, const char *tag, char **out)
 {
-    if (!xml || !tag || !out || out_size == 0)
+    if (!xml || !tag || !out)
         return false;
+
+    *out = NULL;
 
     size_t tag_len = strlen(tag);
     const char *cursor = xml;
@@ -292,21 +345,15 @@ bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out,
             if (close_local_len == tag_len && strncasecmp(close_local_start, tag, tag_len) == 0)
             {
                 size_t value_len = (size_t)(close - value_start);
-                if (value_len >= out_size)
-                    value_len = out_size - 1;
-                memcpy(out, value_start, value_len);
-                out[value_len] = '\0';
-                xml_decode_in_place(out);
+                char *value = malloc(value_len + 1);
+                if (!value)
+                    return false;
 
-                size_t begin = 0;
-                while (out[begin] && isspace((unsigned char)out[begin]))
-                    ++begin;
-                if (begin > 0)
-                    memmove(out, out + begin, strlen(out + begin) + 1);
-
-                size_t end = strlen(out);
-                while (end > 0 && isspace((unsigned char)out[end - 1]))
-                    out[--end] = '\0';
+                memcpy(value, value_start, value_len);
+                value[value_len] = '\0';
+                xml_decode_in_place(value);
+                trim_whitespace_in_place(value);
+                *out = value;
                 return true;
             }
 
@@ -319,43 +366,51 @@ bool soap_handler_extract_xml_value(const char *xml, const char *tag, char *out,
     return false;
 }
 
-bool soap_handler_require_arg(const SoapActionContext *ctx, SoapActionOutput *out, const char *arg_name,
-                              char *buf, size_t buf_size)
+bool soap_handler_require_arg_alloc(const SoapActionContext *ctx, SoapActionOutput *out, const char *arg_name,
+                                    char **value_out)
 {
-    if (!ctx || !out || !arg_name || !buf || buf_size == 0)
+    char *body_short = NULL;
+    char *clipped = NULL;
+    size_t body_len;
+
+    if (!ctx || !out || !arg_name || !value_out)
         return false;
 
-    if (!soap_handler_extract_xml_value(ctx->body, arg_name, buf, buf_size))
+    *value_out = NULL;
+    if (!soap_handler_extract_xml_value_alloc(ctx->body, arg_name, value_out))
     {
-        char body_short[192];
-        size_t body_len = ctx->body ? strlen(ctx->body) : 0;
-        clip_for_log(ctx->body ? ctx->body : "", body_short, sizeof(body_short));
+        body_len = ctx->body ? strlen(ctx->body) : 0;
+        body_short = soap_handler_clip_for_log_alloc(ctx->body ? ctx->body : "", 191);
         log_warn("[soap-arg] missing required arg service=%s action=%s arg=%s\n",
                  ctx->service_name ? ctx->service_name : "(null)",
                  ctx->action_name ? ctx->action_name : "(null)",
                  arg_name);
         log_warn("[soap-arg] request body_bytes=%zu body=%s\n", body_len,
-                 body_len > 0 ? body_short : "<empty>");
+                 body_len > 0 ? (body_short ? body_short : "<oom>") : "<empty>");
+        free(body_short);
         soap_handler_set_fault(out, 402, "Invalid Args");
         return false;
     }
 
-    char clipped[96];
-    clip_for_log(buf, clipped, sizeof(clipped));
+    clipped = soap_handler_clip_for_log_alloc(*value_out, 95);
     log_debug("[soap-arg] required arg service=%s action=%s arg=%s value=%s\n",
               ctx->service_name ? ctx->service_name : "(null)",
               ctx->action_name ? ctx->action_name : "(null)",
               arg_name,
-              clipped);
+              clipped ? clipped : "<oom>");
+    free(clipped);
     return true;
 }
 
-bool soap_handler_try_arg(const SoapActionContext *ctx, const char *arg_name, char *buf, size_t buf_size)
+bool soap_handler_try_arg_alloc(const SoapActionContext *ctx, const char *arg_name, char **value_out)
 {
-    if (!ctx || !arg_name || !buf || buf_size == 0)
+    char *clipped = NULL;
+
+    if (!ctx || !arg_name || !value_out)
         return false;
 
-    bool ok = soap_handler_extract_xml_value(ctx->body, arg_name, buf, buf_size);
+    *value_out = NULL;
+    bool ok = soap_handler_extract_xml_value_alloc(ctx->body, arg_name, value_out);
     if (!ok)
     {
         log_debug("[soap-arg] optional arg missing service=%s action=%s arg=%s\n",
@@ -365,25 +420,25 @@ bool soap_handler_try_arg(const SoapActionContext *ctx, const char *arg_name, ch
         return false;
     }
 
-    char clipped[96];
-    clip_for_log(buf, clipped, sizeof(clipped));
+    clipped = soap_handler_clip_for_log_alloc(*value_out, 95);
     log_debug("[soap-arg] optional arg service=%s action=%s arg=%s value=%s\n",
               ctx->service_name ? ctx->service_name : "(null)",
               ctx->action_name ? ctx->action_name : "(null)",
               arg_name,
-              clipped);
+              clipped ? clipped : "<oom>");
+    free(clipped);
     return true;
 }
 
-bool soap_handler_try_http_header(const SoapActionContext *ctx, const char *header_name, char *buf, size_t buf_size)
+bool soap_handler_try_http_header_alloc(const SoapActionContext *ctx, const char *header_name, char **value_out)
 {
     size_t header_len;
     const char *cursor;
 
-    if (!ctx || !ctx->request || !header_name || !buf || buf_size == 0)
+    if (!ctx || !ctx->request || !header_name || !value_out)
         return false;
 
-    buf[0] = '\0';
+    *value_out = NULL;
     header_len = strlen(header_name);
     cursor = ctx->request;
 
@@ -401,18 +456,27 @@ bool soap_handler_try_http_header(const SoapActionContext *ctx, const char *head
         {
             const char *value_start = cursor + header_len + 1;
             size_t copy_len;
+            char *value;
 
             while (*value_start == ' ' || *value_start == '\t')
                 ++value_start;
 
             copy_len = line_end ? (size_t)(line_end - value_start) : strlen(value_start);
-            if (copy_len >= buf_size)
-                copy_len = buf_size - 1;
+            value = malloc(copy_len + 1);
+            if (!value)
+                return false;
 
-            memcpy(buf, value_start, copy_len);
-            buf[copy_len] = '\0';
-            trim_whitespace_in_place(buf);
-            return buf[0] != '\0';
+            memcpy(value, value_start, copy_len);
+            value[copy_len] = '\0';
+            trim_whitespace_in_place(value);
+            if (value[0] == '\0')
+            {
+                free(value);
+                return false;
+            }
+
+            *value_out = value;
+            return true;
         }
 
         if (!line_end)
@@ -427,18 +491,18 @@ void soap_handler_init(void)
 {
     dlna_protocol_state_init();
 
-    player_set_event_callback(soap_handler_on_player_event, NULL);
-    if (!player_init())
+    renderer_set_event_callback(soap_handler_on_renderer_event, NULL);
+    if (!renderer_init())
     {
-        log_warn("[soap-handler] player init failed, actions may not work.\n");
+        log_warn("[soap-handler] renderer init failed, actions may not work.\n");
         return;
     }
-    dlna_protocol_state_sync_from_player();
+    dlna_protocol_state_sync_from_renderer();
 }
 
 void soap_handler_shutdown(void)
 {
-    player_set_event_callback(NULL, NULL);
-    player_deinit();
+    renderer_set_event_callback(NULL, NULL);
+    renderer_deinit();
     dlna_protocol_state_reset();
 }

@@ -1,6 +1,7 @@
 #include "template_resource.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,20 +40,57 @@ static const char *template_lookup_placeholder(const DlnaTemplateValues *values,
     return NULL;
 }
 
-static FILE *template_open_file(const char *relative_path, char *resolved_path, size_t resolved_path_size)
+static char *template_strdup_printf(const char *fmt, ...)
+{
+    va_list args;
+    va_list args_copy;
+    int needed;
+    char *buffer;
+
+    if (!fmt)
+        return NULL;
+
+    va_start(args, fmt);
+    va_copy(args_copy, args);
+    needed = vsnprintf(NULL, 0, fmt, args_copy);
+    va_end(args_copy);
+    if (needed < 0)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    buffer = malloc((size_t)needed + 1);
+    if (!buffer)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    vsnprintf(buffer, (size_t)needed + 1, fmt, args);
+    va_end(args);
+    return buffer;
+}
+
+static FILE *template_open_file(const char *relative_path)
 {
     static const char *const roots[] = {
         DLNA_TEMPLATE_PRIMARY_ROOT,
         DLNA_TEMPLATE_FALLBACK_ROOT
     };
 
-    if (!relative_path || !resolved_path || resolved_path_size == 0)
+    if (!relative_path)
         return NULL;
 
     for (size_t i = 0; i < sizeof(roots) / sizeof(roots[0]); ++i)
     {
-        snprintf(resolved_path, resolved_path_size, "%s%s", roots[i], relative_path);
-        FILE *file = fopen(resolved_path, "rb");
+        char *resolved_path = template_strdup_printf("%s%s", roots[i], relative_path);
+        FILE *file = NULL;
+        if (!resolved_path)
+            return NULL;
+
+        file = fopen(resolved_path, "rb");
+        free(resolved_path);
         if (file)
             return file;
     }
@@ -60,38 +98,59 @@ static FILE *template_open_file(const char *relative_path, char *resolved_path, 
     return NULL;
 }
 
-static bool append_bytes(char *out, size_t out_size, size_t *used, const char *data, size_t data_len)
+static bool append_bytes_alloc(char **out, size_t *used, size_t *capacity, const char *data, size_t data_len)
 {
-    if (!out || !used || !data)
+    char *next;
+    size_t next_capacity;
+
+    if (!out || !used || !capacity || !data)
         return false;
 
-    if (*used + data_len >= out_size)
+    if (*used + data_len + 1 <= *capacity)
+    {
+        memcpy(*out + *used, data, data_len);
+        *used += data_len;
+        (*out)[*used] = '\0';
+        return true;
+    }
+
+    next_capacity = *capacity == 0 ? 512 : *capacity * 2;
+    while (*used + data_len + 1 > next_capacity)
+        next_capacity *= 2;
+
+    next = realloc(*out, next_capacity);
+    if (!next)
         return false;
 
-    memcpy(out + *used, data, data_len);
+    *out = next;
+    *capacity = next_capacity;
+    memcpy(*out + *used, data, data_len);
     *used += data_len;
-    out[*used] = '\0';
+    (*out)[*used] = '\0';
     return true;
 }
 
-bool dlna_template_render_file_to_buffer(const char *relative_path,
-                                         const DlnaTemplateValues *values,
-                                         char *out,
-                                         size_t out_size,
-                                         size_t *out_len)
+bool dlna_template_render_file_alloc(const char *relative_path,
+                                     const DlnaTemplateValues *values,
+                                     char **out,
+                                     size_t *out_len)
 {
-    char resolved_path[256];
-    char token[128];
     FILE *file;
-    size_t used = 0;
+    char *rendered = NULL;
+    char *token = NULL;
+    size_t rendered_used = 0;
+    size_t rendered_capacity = 0;
+    size_t token_used = 0;
+    size_t token_capacity = 0;
 
-    if (!relative_path || !out || out_size == 0 || !out_len)
+    if (!relative_path || !out)
         return false;
 
-    out[0] = '\0';
-    *out_len = 0;
+    *out = NULL;
+    if (out_len)
+        *out_len = 0;
 
-    file = template_open_file(relative_path, resolved_path, sizeof(resolved_path));
+    file = template_open_file(relative_path);
     if (!file)
     {
         log_error("[template] failed to open %s\n", relative_path);
@@ -106,60 +165,70 @@ bool dlna_template_render_file_to_buffer(const char *relative_path,
 
         if (ch != '{')
         {
-            char single[2] = {(char)ch, '\0'};
-            if (!append_bytes(out, out_size, &used, single, 1))
-                goto fail_too_large;
+            char single = (char)ch;
+            if (!append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, &single, 1))
+                goto fail;
             continue;
         }
 
-        size_t token_len = 0;
-        bool closed = false;
-        while (token_len + 1 < sizeof(token))
+        token_used = 0;
+        if (!append_bytes_alloc(&token, &token_used, &token_capacity, "", 0))
+            goto fail;
+
+        for (;;)
         {
             ch = fgetc(file);
-            if (ch == EOF)
+            if (ch == EOF || ch == '}')
                 break;
-            if (ch == '}')
-            {
-                closed = true;
-                break;
-            }
-            token[token_len++] = (char)ch;
-        }
-        token[token_len] = '\0';
 
-        if (!closed)
+            char single = (char)ch;
+            if (!append_bytes_alloc(&token, &token_used, &token_capacity, &single, 1))
+                goto fail;
+        }
+
+        if (ch != '}')
         {
-            if (!append_bytes(out, out_size, &used, "{", 1))
-                goto fail_too_large;
-            if (token_len > 0 && !append_bytes(out, out_size, &used, token, token_len))
-                goto fail_too_large;
+            if (!append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, "{", 1))
+                goto fail;
+            if (token_used > 0 && !append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, token, token_used))
+                goto fail;
             break;
         }
 
-        const char *replacement = template_lookup_placeholder(values, token);
+        const char *replacement = template_lookup_placeholder(values, token ? token : "");
         if (replacement)
         {
-            if (!append_bytes(out, out_size, &used, replacement, strlen(replacement)))
-                goto fail_too_large;
+            if (!append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, replacement, strlen(replacement)))
+                goto fail;
             continue;
         }
 
-        if (!append_bytes(out, out_size, &used, "{", 1) ||
-            (token_len > 0 && !append_bytes(out, out_size, &used, token, token_len)) ||
-            !append_bytes(out, out_size, &used, "}", 1))
+        if (!append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, "{", 1) ||
+            (token_used > 0 && !append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, token, token_used)) ||
+            !append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, "}", 1))
         {
-            goto fail_too_large;
+            goto fail;
         }
     }
 
     fclose(file);
-    *out_len = used;
+    free(token);
+    if (!rendered)
+    {
+        rendered = strdup("");
+        if (!rendered)
+            return false;
+    }
+
+    *out = rendered;
+    if (out_len)
+        *out_len = rendered_used;
     return true;
 
-fail_too_large:
+fail:
     fclose(file);
-    log_error("[template] rendered %s exceeds buffer size=%zu\n", relative_path, out_size);
+    free(token);
+    free(rendered);
     return false;
 }
 
@@ -167,7 +236,6 @@ bool dlna_template_load_file_alloc(const char *relative_path,
                                    char **out,
                                    size_t *out_len)
 {
-    char resolved_path[256];
     FILE *file;
     char *buffer = NULL;
     size_t used = 0;
@@ -180,7 +248,7 @@ bool dlna_template_load_file_alloc(const char *relative_path,
     if (out_len)
         *out_len = 0;
 
-    file = template_open_file(relative_path, resolved_path, sizeof(resolved_path));
+    file = template_open_file(relative_path);
     if (!file)
     {
         log_error("[template] failed to open %s\n", relative_path);

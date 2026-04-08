@@ -1,5 +1,6 @@
 #include "protocol_state.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,6 +101,38 @@ static DlnaProtocolStateView g_state_view = {0};
 static bool g_state_initialized = false;
 static const char g_empty_string[] = "";
 
+static char *protocol_strdup_printf(const char *fmt, ...)
+{
+    va_list args;
+    va_list args_copy;
+    int needed;
+    char *buffer;
+
+    if (!fmt)
+        return NULL;
+
+    va_start(args, fmt);
+    va_copy(args_copy, args);
+    needed = vsnprintf(NULL, 0, fmt, args_copy);
+    va_end(args_copy);
+    if (needed < 0)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    buffer = malloc((size_t)needed + 1);
+    if (!buffer)
+    {
+        va_end(args);
+        return NULL;
+    }
+
+    vsnprintf(buffer, (size_t)needed + 1, fmt, args);
+    va_end(args);
+    return buffer;
+}
+
 static void reset_state_view_defaults(void)
 {
     memset(&g_state_view, 0, sizeof(g_state_view));
@@ -167,8 +200,8 @@ static bool extract_tag_text_dup(const char *scope_start,
                                  const char *tag,
                                  char **out)
 {
-    char open_tag[64];
-    char close_tag[64];
+    char *open_tag;
+    char *close_tag;
     const char *start;
     const char *end;
 
@@ -176,19 +209,35 @@ static bool extract_tag_text_dup(const char *scope_start,
         return false;
 
     *out = NULL;
-    snprintf(open_tag, sizeof(open_tag), "<%s>", tag);
-    snprintf(close_tag, sizeof(close_tag), "</%s>", tag);
+    open_tag = protocol_strdup_printf("<%s>", tag);
+    close_tag = protocol_strdup_printf("</%s>", tag);
+    if (!open_tag || !close_tag)
+    {
+        free(open_tag);
+        free(close_tag);
+        return false;
+    }
 
     start = strstr(scope_start, open_tag);
     if (!start || start >= scope_end)
+    {
+        free(open_tag);
+        free(close_tag);
         return false;
+    }
     start += strlen(open_tag);
 
     end = strstr(start, close_tag);
     if (!end || end > scope_end)
+    {
+        free(open_tag);
+        free(close_tag);
         return false;
+    }
 
     *out = dup_range(start, end);
+    free(open_tag);
+    free(close_tag);
     if (!*out)
         return false;
     trim_in_place(*out);
@@ -756,12 +805,12 @@ static bool apply_macast_defaults(void)
     return true;
 }
 
-static bool protocol_extract_title(const char *metadata, char *out, size_t out_size)
+static char *protocol_extract_title_alloc(const char *metadata)
 {
     const char *cursor;
 
-    if (!metadata || !out || out_size == 0)
-        return false;
+    if (!metadata)
+        return NULL;
 
     cursor = metadata;
     while ((cursor = strchr(cursor, '<')) != NULL)
@@ -810,17 +859,18 @@ static bool protocol_extract_title(const char *metadata, char *out, size_t out_s
             return false;
 
         value_len = (size_t)(close - value_start);
-        if (value_len >= out_size)
-            value_len = out_size - 1;
-        memcpy(out, value_start, value_len);
-        out[value_len] = '\0';
-        return out[0] != '\0';
+        char *title = malloc(value_len + 1);
+        if (!title)
+            return NULL;
+        memcpy(title, value_start, value_len);
+        title[value_len] = '\0';
+        return title[0] != '\0' ? title : (free(title), NULL);
     }
 
-    return false;
+    return NULL;
 }
 
-const char *dlna_protocol_transport_state_from_player_state(PlayerState state)
+const char *dlna_protocol_transport_state_from_renderer_state(RendererState state)
 {
     switch (state)
     {
@@ -841,20 +891,17 @@ const char *dlna_protocol_transport_state_from_player_state(PlayerState state)
     }
 }
 
-const char *dlna_protocol_transport_status_from_player_state(PlayerState state)
+const char *dlna_protocol_transport_status_from_renderer_state(RendererState state)
 {
     return state == PLAYER_STATE_ERROR ? "ERROR_OCCURRED" : "OK";
 }
 
-void dlna_protocol_format_hhmmss_from_ms(int value_ms, char *out, size_t out_size)
+char *dlna_protocol_format_hhmmss_alloc(int value_ms)
 {
     int total_seconds;
     int hour;
     int minute;
     int second;
-
-    if (!out || out_size == 0)
-        return;
 
     if (value_ms < 0)
         value_ms = 0;
@@ -863,7 +910,7 @@ void dlna_protocol_format_hhmmss_from_ms(int value_ms, char *out, size_t out_siz
     hour = total_seconds / 3600;
     minute = (total_seconds % 3600) / 60;
     second = total_seconds % 60;
-    snprintf(out, out_size, "%02d:%02d:%02d", hour, minute, second);
+    return protocol_strdup_printf("%02d:%02d:%02d", hour, minute, second);
 }
 
 void dlna_protocol_state_init(void)
@@ -924,7 +971,7 @@ const DlnaStateVariableView *dlna_protocol_state_find_variable(const char *name)
 
 void dlna_protocol_state_apply_set_uri(const char *uri, const char *metadata)
 {
-    char title[256];
+    char *title = NULL;
 
     if (!g_state_initialized)
         return;
@@ -934,9 +981,12 @@ void dlna_protocol_state_apply_set_uri(const char *uri, const char *metadata)
     set_state_string_by_name("CurrentTrackURI", uri);
     set_state_string_by_name("CurrentTrackMetaData", metadata);
 
-    title[0] = '\0';
-    if (protocol_extract_title(metadata, title, sizeof(title)))
+    title = protocol_extract_title_alloc(metadata);
+    if (title)
+    {
         set_state_string_by_name("CurrentTrackTitle", title);
+        free(title);
+    }
     else
         set_state_string_by_name("CurrentTrackTitle", "");
 
@@ -996,18 +1046,27 @@ void dlna_protocol_state_set_transport_speed(const char *speed)
 
 void dlna_protocol_state_set_transport_timing(int duration_ms, int position_ms)
 {
-    char duration[16];
-    char position[16];
+    char *duration = NULL;
+    char *position = NULL;
 
     if (!g_state_initialized)
         return;
 
-    dlna_protocol_format_hhmmss_from_ms(duration_ms, duration, sizeof(duration));
-    dlna_protocol_format_hhmmss_from_ms(position_ms, position, sizeof(position));
+    duration = dlna_protocol_format_hhmmss_alloc(duration_ms);
+    position = dlna_protocol_format_hhmmss_alloc(position_ms);
+    if (!duration || !position)
+    {
+        free(duration);
+        free(position);
+        return;
+    }
+
     set_state_string_by_name("CurrentMediaDuration", duration);
     set_state_string_by_name("CurrentTrackDuration", duration);
     set_state_string_by_name("RelativeTimePosition", position);
     set_state_string_by_name("AbsoluteTimePosition", position);
+    free(duration);
+    free(position);
 }
 
 void dlna_protocol_state_set_source_protocol_info(const char *value)
@@ -1031,11 +1090,11 @@ void dlna_protocol_state_set_connection_ids(const char *value)
     set_state_string_by_name("CurrentConnectionIDs", value);
 }
 
-void dlna_protocol_state_sync_from_player(void)
+void dlna_protocol_state_sync_from_renderer(void)
 {
-    PlayerSnapshot snapshot;
+    RendererSnapshot snapshot;
 
-    if (!g_state_initialized || !player_get_snapshot(&snapshot))
+    if (!g_state_initialized || !renderer_get_snapshot(&snapshot))
         return;
 
     dlna_protocol_state_set_transport_timing(snapshot.duration_ms, snapshot.position_ms);
@@ -1043,17 +1102,21 @@ void dlna_protocol_state_sync_from_player(void)
     set_state_bool_by_name("Mute", snapshot.mute);
 
     if (!snapshot.has_media)
+    {
+        renderer_snapshot_clear(&snapshot);
         return;
+    }
 
     set_state_string_by_name("TransportState",
-                             dlna_protocol_transport_state_from_player_state(snapshot.state));
+                             dlna_protocol_transport_state_from_renderer_state(snapshot.state));
     set_state_string_by_name("TransportStatus",
-                             dlna_protocol_transport_status_from_player_state(snapshot.state));
+                             dlna_protocol_transport_status_from_renderer_state(snapshot.state));
+    renderer_snapshot_clear(&snapshot);
 }
 
-void dlna_protocol_state_on_player_event(const PlayerEvent *event)
+void dlna_protocol_state_on_renderer_event(const RendererEvent *event)
 {
-    char hhmmss[16];
+    char *hhmmss = NULL;
 
     if (!g_state_initialized || !event)
         return;
@@ -1062,19 +1125,25 @@ void dlna_protocol_state_on_player_event(const PlayerEvent *event)
     {
     case PLAYER_EVENT_STATE_CHANGED:
         set_state_string_by_name("TransportState",
-                                 dlna_protocol_transport_state_from_player_state(event->state));
+                                 dlna_protocol_transport_state_from_renderer_state(event->state));
         set_state_string_by_name("TransportStatus",
-                                 dlna_protocol_transport_status_from_player_state(event->state));
+                                 dlna_protocol_transport_status_from_renderer_state(event->state));
         break;
     case PLAYER_EVENT_POSITION_CHANGED:
-        dlna_protocol_format_hhmmss_from_ms(event->position_ms, hhmmss, sizeof(hhmmss));
+        hhmmss = dlna_protocol_format_hhmmss_alloc(event->position_ms);
+        if (!hhmmss)
+            break;
         set_state_string_by_name("RelativeTimePosition", hhmmss);
         set_state_string_by_name("AbsoluteTimePosition", hhmmss);
+        free(hhmmss);
         break;
     case PLAYER_EVENT_DURATION_CHANGED:
-        dlna_protocol_format_hhmmss_from_ms(event->duration_ms, hhmmss, sizeof(hhmmss));
+        hhmmss = dlna_protocol_format_hhmmss_alloc(event->duration_ms);
+        if (!hhmmss)
+            break;
         set_state_string_by_name("CurrentMediaDuration", hhmmss);
         set_state_string_by_name("CurrentTrackDuration", hhmmss);
+        free(hhmmss);
         break;
     case PLAYER_EVENT_VOLUME_CHANGED:
         set_state_int_by_name("Volume", event->volume);

@@ -4,12 +4,13 @@
 
 ## 1. 模块定位
 
-`SCPD` 层负责：
+描述层当前负责：
 
-1. `device.xml`
+1. `Description.xml`
 2. `AVTransport.xml`
 3. `RenderingControl.xml`
 4. `ConnectionManager.xml`
+5. `SinkProtocolInfo.csv`
 
 它不负责：
 
@@ -20,11 +21,27 @@
 
 一句话：
 
-`SCPD` 负责把当前设备能力说清楚。
+描述层负责把当前设备能力以模板化资源对外输出清楚。
 
-## 2. 当前设备描述
+## 2. 当前实现方式
 
-当前 `device.xml` 已声明：
+当前描述层不是写死在代码里的长字符串，而是：
+
+1. 本地模板文件放在 `romfs/dlna/`
+2. 软件运行时按请求流式读取模板
+3. 在输出过程中替换设备信息和 URL
+
+这套资源当前包括：
+
+1. `Description.xml`
+2. `AVTransport.xml`
+3. `RenderingControl.xml`
+4. `ConnectionManager.xml`
+5. `SinkProtocolInfo.csv`
+
+## 3. 当前设备描述
+
+当前设备描述已声明：
 
 1. `MediaRenderer:1`
 2. `AVTransport`
@@ -32,9 +49,9 @@
 4. `ConnectionManager`
 5. 三个服务的 `SCPDURL / controlURL / eventSubURL`
 
-## 3. 当前服务描述
+## 4. 当前服务描述
 
-### 3.1 AVTransport
+### 4.1 AVTransport
 
 当前宣告：
 
@@ -46,7 +63,7 @@
 6. `GetCurrentTransportActions`
 7. `LastChange`
 
-### 3.2 RenderingControl
+### 4.2 RenderingControl
 
 当前宣告：
 
@@ -55,7 +72,7 @@
 3. `GetBrightness`
 4. `LastChange`
 
-### 3.3 ConnectionManager
+### 4.3 ConnectionManager
 
 当前宣告：
 
@@ -63,33 +80,33 @@
 2. `GetCurrentConnectionIDs`
 3. `GetCurrentConnectionInfo`
 
-## 4. 当前原则
+## 5. 当前原则
 
-`SCPD` 当前保持这些原则：
+描述层当前保持这些原则：
 
 1. 能力描述尽量完整
 2. 与真实实现保持一致
-3. 静态结构尽量简单
-4. 运行时动态值只保留必要字段
+3. 模板资源尽量简单可维护
+4. 运行时动态值只在输出时替换
 
-## 5. SinkProtocolInfo
+## 6. SinkProtocolInfo
 
-`SinkProtocolInfo` 当前已经不再是极窄声明。
+`SinkProtocolInfo` 当前来自独立 CSV 模板资源。
 
 当前目标不是一次性伪装“全能设备”，而是：
 
 1. 对外声明当前实际能力面
-2. 逐步扩充常见音视频类型
-3. 与真实 `ingress + backend` 能力保持一致
+2. 与当前 `libmpv` 播放能力保持一致
+3. 随真实兼容能力逐步扩充
 
-## 6. 当前文档位置
+## 7. 当前文档位置
 
-如果要看：
+如果要继续看：
 
-1. 为什么 `SinkProtocolInfo` 要逐步扩表
-2. 为什么 metadata 与事件面会影响控制端兼容
+1. renderer 如何同步真实播放状态
+2. 为什么 `LastChange` 和查询动作都依赖同一份协议状态
 
 请继续阅读：
 
 1. [DMR实现细节.md](DMR实现细节.md)
-2. [源兼容性.md](源兼容性.md)
+2. [Player层设计.md](Player层设计.md)
