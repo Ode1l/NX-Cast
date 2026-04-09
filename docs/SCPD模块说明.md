@@ -1,98 +1,112 @@
-# NX-Cast SCPD 模块说明
+# SCPD 模块说明
 
-本文档说明当前 `source/protocol/dlna/description/scpd.c` 与 `scpd.h` 的实现，以及它和 `dlna_control` 的联动方式。
+本文档描述 `source/protocol/dlna/description/` 当前的职责和边界。
 
-注：目录名使用 `scpd`，协议术语仍是 `SCPD`（Service Control Protocol Description）。
+## 1. 模块定位
 
-## 1. 模块职责
+描述层当前负责：
 
-`scpd` 模块负责描述层资源本身（不负责 socket 监听），向控制端提供：
+1. `Description.xml`
+2. `AVTransport.xml`
+3. `RenderingControl.xml`
+4. `ConnectionManager.xml`
+5. `SinkProtocolInfo.csv`
 
-1. `/device.xml`（设备描述）
-2. `/scpd/AVTransport.xml`
-3. `/scpd/RenderingControl.xml`
-4. `/scpd/ConnectionManager.xml`
+它不负责：
 
-该模块仅负责描述层输出，不处理 SOAP 行为控制，也不负责 HTTP 线程。
+1. 发现
+2. 播放
+3. 动作执行
+4. 运行时状态维护
 
-## 2. 对外接口
+一句话：
 
-头文件：`source/protocol/dlna/description/scpd.h`
+描述层负责把当前设备能力以模板化资源对外输出清楚。
 
-1. `bool scpd_start(const ScpdConfig *config);`
-2. `void scpd_stop(void);`
-3. `bool scpd_try_handle_http(const char *method, const char *path, char *response, size_t response_size, size_t *response_len);`
+## 2. 当前实现方式
 
-`ScpdConfig` 字段：
+当前描述层不是写死在代码里的长字符串，而是：
 
-1. `friendly_name`
-2. `manufacturer`
-3. `model_name`
-4. `uuid`
+1. 本地模板文件放在 `romfs/dlna/`
+2. 软件运行时按请求流式读取模板
+3. 在输出过程中替换设备信息和 URL
 
-行为：
+这套资源当前包括：
 
-1. `scpd_start()` 初始化描述资源，并根据 `ScpdConfig` 动态生成 `device.xml`。
-2. `scpd_try_handle_http()` 只处理 `/device.xml` 与 `/scpd/*.xml` 请求并构造 HTTP 响应。
-3. `scpd_stop()` 释放描述模块运行态。
+1. `Description.xml`
+2. `AVTransport.xml`
+3. `RenderingControl.xml`
+4. `ConnectionManager.xml`
+5. `SinkProtocolInfo.csv`
 
-## 3. 动态与静态边界
+## 3. 当前设备描述
 
-当前设计按“设备信息动态、服务定义静态”执行：
+当前设备描述已声明：
 
-1. 动态生成：`device.xml` 中的 `friendlyName`、`manufacturer`、`modelName`、`UDN(uuid)`。
-2. 静态内嵌：三个服务的 SCPD XML 内容（动作列表、状态变量、URL 路径）。
-3. 静态路径：`/device.xml` 与 `/scpd/*.xml` 路径固定。
+1. `MediaRenderer:1`
+2. `AVTransport`
+3. `RenderingControl`
+4. `ConnectionManager`
+5. 三个服务的 `SCPDURL / controlURL / eventSubURL`
 
-说明：
+## 4. 当前服务描述
 
-1. `uuid` 建议对同一逻辑设备保持稳定；变更后控制端通常会把它当作“新设备”。
-2. `deviceType` 与三服务结构通常不需要频繁改动，适合静态内嵌。
+### 4.1 AVTransport
 
-## 4. 运行模型
+当前宣告：
 
-当前采用“公共 HTTP 层 + SCPD 处理器”：
+1. `SetAVTransportURI`
+2. `Play / Pause / Stop / Seek`
+3. `GetTransportInfo`
+4. `GetMediaInfo`
+5. `GetPositionInfo`
+6. `GetCurrentTransportActions`
+7. `LastChange`
 
-1. `http_server` 模块维护监听 socket 和后台线程（`select` + `accept`）。
-2. `scpd` 不起线程，只作为 HTTP 分发中的一个 handler。
-3. `scpd` 仅处理 `GET` 的描述请求，其他方法返回 `405 Method Not Allowed`。
+### 4.2 RenderingControl
 
-## 5. 与 DLNA Control 联动
+当前宣告：
 
-`source/protocol/dlna_control.c` 已启用 SCPD，启动流程为：
+1. `GetVolume / SetVolume`
+2. `GetMute / SetMute`
+3. `GetBrightness`
+4. `LastChange`
 
-1. 构建统一设备元数据（friendly/manufacturer/model/uuid）。
-2. 先调用 `scpd_start(&scpdConfig)` 初始化描述资源。
-3. 再调用 `soap_server_start()` 初始化 SOAP 控制。
-4. 再启动 `http_server_start()`，HTTP 分发顺序是 `SOAP -> SCPD`。
-5. 最后调用 `ssdp_start(&ssdpConfig)` 对外发布发现信息。
-6. 任一步失败都按逆序回滚。
+### 4.3 ConnectionManager
 
-停止流程：
+当前宣告：
 
-1. `ssdp_stop()`
-2. `http_server_stop()`
-3. `soap_server_stop()`
-4. `scpd_stop()`
+1. `GetProtocolInfo`
+2. `GetCurrentConnectionIDs`
+3. `GetCurrentConnectionInfo`
 
-这样可保证 SSDP `LOCATION` 指向的 `device.xml` 始终由同一 HTTP 层对外提供。
+## 5. 当前原则
 
-## 6. XML 文件放置说明
+描述层当前保持这些原则：
 
-目录 `xml/` 下保留了：
+1. 能力描述尽量完整
+2. 与真实实现保持一致
+3. 模板资源尽量简单可维护
+4. 运行时动态值只在输出时替换
 
-1. `AVTransport.xml`
-2. `RenderingControl.xml`
-3. `ConnectionManager.xml`
-4. `device.xml`
+## 6. SinkProtocolInfo
 
-这些文件当前作为参考/备份模板；运行时不会从文件系统读取 XML。  
-实际由 `source/protocol/dlna/description/scpd.c` 内嵌字符串与动态模板对外提供：
+`SinkProtocolInfo` 当前来自独立 CSV 模板资源。
 
-1. `GET /device.xml`：动态生成
-2. `GET /scpd/*.xml`：内嵌字符串
+当前目标不是一次性伪装“全能设备”，而是：
 
-## 7. 后续建议
+1. 对外声明当前实际能力面
+2. 与当前 `libmpv` 播放能力保持一致
+3. 随真实兼容能力逐步扩充
 
-1. SOAP 接入后，用同一份“服务描述表”同时驱动 SCPD 输出和 action 路由，避免定义漂移。
-2. 需要更高可配置性时，再考虑把 SCPD 改为外部文件加载（当前阶段内嵌更稳、更易部署）。
+## 7. 当前文档位置
+
+如果要继续看：
+
+1. renderer 如何同步真实播放状态
+2. 为什么 `LastChange` 和查询动作都依赖同一份协议状态
+
+请继续阅读：
+
+1. [DMR实现细节.md](DMR实现细节.md)
+2. [Player层设计.md](Player层设计.md)

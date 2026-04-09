@@ -17,8 +17,10 @@
 #include "log/log.h"
 
 #define HTTP_SERVER_REQUEST_BUFFER_SIZE 16384
-#define HTTP_SERVER_RESPONSE_BUFFER_SIZE 12288
-#define HTTP_SERVER_THREAD_STACK_SIZE 0x8000
+#define HTTP_SERVER_RESPONSE_BUFFER_SIZE 131072
+// The HTTP thread can traverse SOAP parsing and action handlers. Use a more
+// conservative stack than the old 0x8000 baseline to reduce crash risk.
+#define HTTP_SERVER_THREAD_STACK_SIZE 0x10000
 #define HTTP_SERVER_RECV_IDLE_TIMEOUT_SEC 1
 
 typedef struct
@@ -118,7 +120,17 @@ static bool parse_request_line(const char *request,
     if (!request || !method || method_size == 0 || !raw_path || raw_path_size == 0)
         return false;
 
-    return sscanf(request, "%7s %255s", method, raw_path) == 2;
+    if (method_size == 0 || raw_path_size == 0)
+        return false;
+
+    char method_fmt[16];
+    char path_fmt[16];
+    snprintf(method_fmt, sizeof(method_fmt), "%%%zus", method_size - 1);
+    snprintf(path_fmt, sizeof(path_fmt), "%%%zus", raw_path_size - 1);
+
+    char format[40];
+    snprintf(format, sizeof(format), "%s %s", method_fmt, path_fmt);
+    return sscanf(request, format, method, raw_path) == 2;
 }
 
 static const char *find_header_end(const char *request, size_t request_len)
@@ -279,7 +291,7 @@ static void handle_client(int client_sock, const struct sockaddr_in *client_addr
     }
     request_buffer[request_size] = '\0';
 
-    char method[8];
+    char method[16];
     char raw_path[256];
     if (!parse_request_line(request_buffer, method, sizeof(method), raw_path, sizeof(raw_path)))
     {
@@ -488,21 +500,28 @@ void http_server_stop(void)
     if (!g_http_server.running)
         return;
 
+    log_info("[http-server] stop begin listen_sock=%d thread_started=%d port=%u\n",
+             g_http_server.listen_sock,
+             g_http_server.thread_started ? 1 : 0,
+             g_http_server.port);
     g_http_server.running = false;
 
     if (g_http_server.listen_sock >= 0)
     {
         int sock = g_http_server.listen_sock;
         g_http_server.listen_sock = -1;
+        log_info("[http-server] stop closing listen socket fd=%d\n", sock);
         shutdown(sock, SHUT_RDWR);
         close(sock);
     }
 
     if (g_http_server.thread_started)
     {
+        log_info("[http-server] stop waiting for thread exit\n");
         threadWaitForExit(&g_http_server.thread);
         threadClose(&g_http_server.thread);
         g_http_server.thread_started = false;
+        log_info("[http-server] stop thread closed\n");
     }
 
     g_http_server.port = 0;

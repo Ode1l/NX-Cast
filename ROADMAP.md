@@ -1,44 +1,102 @@
 # NX-Cast Roadmap
 
-## Milestone 0
-Project bootstrap
+## Phase 0
+Bootstrap and runtime foundation
 
-- Repository setup
-- Basic app framework
-- Switch homebrew launch
-- Network initialization
+- repository, build system, `.nro/.nacp`
+- logging, input, network bootstrap
+- status: done
 
-## Milestone 1
-Device discovery
+## Phase 1
+Discovery and DLNA description/control baseline
 
-- `[MVP]` Ship `_airplay._tcp.local` mDNS probe so controllers can locate NX-Cast without Linux.
-- `[MVP]` Add an SSDP responder that listens on 239.255.255.250:1900, parses `M-SEARCH` (MAN/ST/MX) and returns `HTTP/1.1 200 OK` with `CACHE-CONTROL/LOCATION/ST/USN`.
-- `[Optional]` Emit `NOTIFY ssdp:alive/byebye` on startup/interval/exit to advertise presence proactively.
+- `SSDP` responder
+- device description
+- service `SCPD`
+- `SOAP` routing and core actions
+- status: done
 
-## Milestone 2
-DLNA receiver
+## Phase 2
+Protocol completeness
 
-- `[MVP]` Serve `/device.xml` describing the MediaRenderer profile and exposing AVTransport/ConnectionManager/RenderingControl services.
-- `[MVP]` Implement minimal SCPD + SOAP handlers (`SetAVTransportURI`, `Play`) so controllers can push URLs and initiate playback.
-- `[MVP]` Add an HTTP client pipeline (H264 software path initially) that pulls the provided media URL and feeds the renderer.
-- `[Optional]` Add eventing (`SUBSCRIBE/NOTIFY`) and richer actions once the core DMR loop is stable.
+- `GENA`
+- `LastChange`
+- `CurrentTransportActions`
+- richer metadata return
+- Macast-style single protocol-observed state
+- status: largely done, still being hardened by compatibility testing
 
-## Milestone 3
+## Phase 3
+Renderer and session model
+
+- direct `protocol -> renderer` control path
+- snapshot and event surface
+- dynamic string ownership for long protocol state values
+- direct `URL -> libmpv loadfile`
+- status: active baseline
+
+## Phase 4
+Playback backend baseline
+
+- `libmpv` backend
+- `ao=hos`
+- `OpenGL/libmpv render API`
+- status: landed on the current baseline
+
+## Phase 5
+Template-driven description layer
+
+- runtime-served `Description.xml`
+- runtime-served `AVTransport.xml`
+- runtime-served `RenderingControl.xml`
+- runtime-served `ConnectionManager.xml`
+- `SinkProtocolInfo.csv`
+- status: landed, still being aligned with real implementation details
+
+## Phase 6
+Generic transport and interoperability stability
+
+- real-world URL playback stability
+- control-point progress/seek interoperability
+- event fidelity
+- mixed control-point session behavior
+- status: main active behavior track
+
+## Phase 7
+Source compatibility
+
+- keep compatibility work standards-first
+- add the minimum request-context handling needed by real senders
+- continue improving interoperability with common mobile and desktop control points
+- status: ongoing, but no longer treated as a separate player pipeline
+
+## Phase 8
+Hardware decode
+
+- evaluate actual `hwdec=nvtegra` activation
+- if needed, move to a custom media toolchain
+- status: blocked by current official `dkp` toolchain limits
+
+## Phase 9
+Future backend upgrade
+
+- custom `FFmpeg/mpv` toolchain
+- optional `deko3d` / `render_dk3d`
+- `libuam`
+- status: future work, not current default path
+
+## Phase 10
 AirPlay receiver
 
-- mDNS discovery
-- RTSP session
-- Video streaming
+- discovery
+- session control
+- media path
+- status: not started
 
-## Milestone 4
-Performance optimization
+## Phase 11
+DMP expansion
 
-- Hardware decode
-- Reduced latency
-
-## Milestone 5
-User interface
-
-- Settings
-- Device name
-- Protocol toggles
+- source-native browsing
+- VOD program lists and detail pages
+- optional source adapters
+- status: planned

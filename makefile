@@ -48,6 +48,9 @@ BUILD		:=	build
 SOURCES		:=	source \
 			source/log \
 			source/player \
+			source/player/core \
+			source/player/backend \
+			source/player/render \
 			source/protocol \
 			source/protocol/dlna \
 			source/protocol/dlna/control \
@@ -59,7 +62,7 @@ SOURCES		:=	source \
 			source/protocol/airplay/discovery
 DATA		:=	data
 INCLUDES	:=	include source
-#ROMFS	:=	romfs
+ROMFS	:=	romfs
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -77,6 +80,36 @@ ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
 LIBS	:= -lnx
+
+PKG_CONFIG	?= pkg-config
+MPV_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
+MPV_FOUND := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exists mpv >/dev/null 2>&1 && echo 1)
+MPV_RENDER_DK3D_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_dk3d.h" && echo 1)
+FFMPEG_NVTEGRA_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/libavutil/hwcontext_nvtegra.h" && echo 1)
+SWITCH_EGL_GLES_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/EGL/egl.h" && test -f "$(PORTLIBS_PREFIX)/include/GLES2/gl2.h" && echo 1)
+MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND := $(shell strings "$(PORTLIBS_PREFIX)/lib/libmpv.a" 2>/dev/null | grep -q nvtegra && echo 1)
+
+ifeq ($(MPV_FOUND),1)
+CFLAGS	+=	-DHAVE_LIBMPV
+LIBS	+= $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs mpv)
+endif
+
+ifeq ($(MPV_RENDER_DK3D_HEADER_FOUND),1)
+CFLAGS	+=	-DHAVE_MPV_RENDER_DK3D
+endif
+
+ifeq ($(FFMPEG_NVTEGRA_HEADER_FOUND),1)
+CFLAGS	+=	-DHAVE_NVTEGRA_HWCONTEXT
+endif
+
+ifeq ($(MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND),1)
+CFLAGS	+=	-DHAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
+endif
+
+ifeq ($(SWITCH_EGL_GLES_FOUND),1)
+CFLAGS	+=	-DHAVE_SWITCH_EGL_GLES
+LIBS	+=	-lEGL -lGLESv2 -lglapi
+endif
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing

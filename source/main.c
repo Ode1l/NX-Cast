@@ -1,11 +1,15 @@
 #include <switch.h>
+#include <arpa/inet.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "log/log.h"
+#include "player/player.h"
+#include "player/view.h"
 #include "protocol/dlna_control.h"
 // #include "protocol/airplay/discovery/mdns.h"
 
@@ -23,7 +27,13 @@ typedef struct
 #define ANSI_TEXT  "\x1b[37;1m"
 
 static int g_nxlinkSock = -1;
-static bool g_nxlinkDebugEnabled = false;
+
+typedef enum
+{
+    EXIT_REASON_UNKNOWN = 0,
+    EXIT_REASON_PLUS_BUTTON,
+    EXIT_REASON_APPLET_LOOP_ENDED
+} ExitReason;
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -61,6 +71,33 @@ static const char *color_for_log_line(const char *line)
     if (strncmp(line, "[DEBUG]", 7) == 0)
         return ANSI_DEBUG;
     return ANSI_TEXT;
+}
+
+static const char *exit_reason_name(ExitReason reason)
+{
+    switch (reason)
+    {
+    case EXIT_REASON_PLUS_BUTTON:
+        return "plus-button";
+    case EXIT_REASON_APPLET_LOOP_ENDED:
+        return "applet-loop-ended";
+    case EXIT_REASON_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
+static void shutdown_stdio_trace(const char *fmt, ...)
+{
+    va_list args;
+
+    if (!fmt)
+        return;
+
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fflush(stderr);
 }
 
 static size_t compute_total_visual_lines(int width)
@@ -173,29 +210,50 @@ static void enable_nxlink_stdio(bool network_ready)
     if (!network_ready)
         return;
 
-    // Redirect only stderr to nxlink so on-device console UI (stdout) keeps working.
+    if (__nxlink_host.s_addr == 0)
+    {
+        log_set_stdio_mirror(false);
+        log_warn("[log] nxlink host unavailable; local console only.\n");
+        return;
+    }
+
     g_nxlinkSock = nxlinkStdioForDebug();
     if (g_nxlinkSock >= 0)
     {
-        g_nxlinkDebugEnabled = true;
         log_set_stdio_mirror(true);
-        log_info("[log] nxlink debug stderr enabled.\n");
+        log_info("[log] nxlink stderr connected host=%s port=%d fd=%d stdout=local\n",
+                 inet_ntoa(__nxlink_host),
+                 NXLINK_CLIENT_PORT,
+                 g_nxlinkSock);
+        return;
     }
-    else
-    {
-        log_warn("[log] nxlink debug stderr not connected, using local console only.\n");
-    }
+
+    log_set_stdio_mirror(false);
+    log_warn("[log] nxlink stderr connect failed host=%s port=%d\n",
+             inet_ntoa(__nxlink_host),
+             NXLINK_CLIENT_PORT);
 }
 
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
+    if (!log_runtime_init())
+    {
+        printf("[ERROR] [log] log_runtime_init failed\n");
+    }
     log_set_level(LOG_LEVEL_DEBUG);
     log_info("[log] level=DEBUG\n");
+
+    bool romfsReady = R_SUCCEEDED(romfsInit());
+    if (romfsReady)
+        log_info("[romfs] romfs initialized.\n");
+    else
+        log_warn("[romfs] romfsInit failed; description templates may be unavailable.\n");
 
     bool networkReady = initialize_network();
     enable_nxlink_stdio(networkReady);
     bool dlnaRunning = false;
+    bool videoPlatformReady = player_view_init();
 
     if (networkReady)
     {
@@ -214,110 +272,199 @@ int main(int argc, char* argv[])
     int scroll_from_bottom = 0;
     int stick_repeat_cooldown = 0;
     TouchScrollState touch_scroll = {0};
+    ExitReason exit_reason = EXIT_REASON_UNKNOWN;
 
     log_info("[ui] NX-Cast starting. Press + to exit.\n");
     log_info("[ui] Use Up/Down, sticks, or touch drag to scroll logs.\n");
+    if (videoPlatformReady)
+        log_info("[ui] Video view auto-activates while playback is active.\n");
 
     while (appletMainLoop())
     {
         padUpdate(&pad);
-        log_flush();
+
+        PlayerSnapshot snapshot;
+        PlayerViewMode active_view = PLAYER_VIEW_LOG;
+        if (videoPlatformReady)
+        {
+            if (player_get_snapshot(&snapshot))
+            {
+                player_view_sync(&snapshot);
+                player_snapshot_clear(&snapshot);
+            }
+            player_view_begin_frame();
+            active_view = player_view_get_mode();
+        }
 
         u64 kDown = padGetButtonsDown(&pad);
         u64 kHeld = padGetButtons(&pad);
 
         if (kDown & HidNpadButton_Plus)
+        {
+            exit_reason = EXIT_REASON_PLUS_BUTTON;
+            log_info("[shutdown] requested reason=%s\n", exit_reason_name(exit_reason));
             break;
-
-        PrintConsole *con = consoleGetDefault();
-        int width = con ? con->windowWidth : 80;
-        int visible_lines = (con ? con->windowHeight : 45) - 3;
-        if (visible_lines < 1)
-            visible_lines = 1;
-        size_t total_visual_lines = compute_total_visual_lines(width);
-        int max_scroll = 0;
-        if (total_visual_lines > (size_t)visible_lines)
-            max_scroll = (int)(total_visual_lines - (size_t)visible_lines);
-
-        padRepeaterUpdate(&repeater, kHeld & (HidNpadButton_Up | HidNpadButton_Down));
-        u64 repeated = padRepeaterGetButtons(&repeater);
-        u64 nav_buttons = kDown | repeated;
-        if (nav_buttons & HidNpadButton_Up)
-            scroll_from_bottom = clamp_int(scroll_from_bottom + 1, 0, max_scroll);
-        if (nav_buttons & HidNpadButton_Down)
-            scroll_from_bottom = clamp_int(scroll_from_bottom - 1, 0, max_scroll);
-
-        HidAnalogStickState l = padGetStickPos(&pad, 0);
-        HidAnalogStickState r = padGetStickPos(&pad, 1);
-        int stick_y = l.y;
-        if (abs(r.y) > abs(stick_y))
-            stick_y = r.y;
-
-        if (stick_repeat_cooldown > 0)
-            --stick_repeat_cooldown;
-        else if (stick_y > 12000)
-        {
-            int step = stick_y > 24000 ? 2 : 1;
-            scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
-            stick_repeat_cooldown = 3;
-        }
-        else if (stick_y < -12000)
-        {
-            int step = stick_y < -24000 ? 2 : 1;
-            scroll_from_bottom = clamp_int(scroll_from_bottom - step, 0, max_scroll);
-            stick_repeat_cooldown = 3;
         }
 
-        HidTouchScreenState touch_state;
-        size_t touch_total = hidGetTouchScreenStates(&touch_state, 1);
-        if (touch_total > 0 && touch_state.count > 0)
+        if (active_view == PLAYER_VIEW_LOG)
         {
-            s32 y = (s32)touch_state.touches[0].y;
-            if (!touch_scroll.active)
+            PrintConsole *con = consoleGetDefault();
+            int width = con ? con->windowWidth : 80;
+            int visible_lines = (con ? con->windowHeight : 45) - 3;
+            if (visible_lines < 1)
+                visible_lines = 1;
+            size_t total_visual_lines = compute_total_visual_lines(width);
+            int max_scroll = 0;
+            if (total_visual_lines > (size_t)visible_lines)
+                max_scroll = (int)(total_visual_lines - (size_t)visible_lines);
+
+            padRepeaterUpdate(&repeater, kHeld & (HidNpadButton_Up | HidNpadButton_Down));
+            u64 repeated = padRepeaterGetButtons(&repeater);
+            u64 nav_buttons = kDown | repeated;
+            if (nav_buttons & HidNpadButton_Up)
+                scroll_from_bottom = clamp_int(scroll_from_bottom + 1, 0, max_scroll);
+            if (nav_buttons & HidNpadButton_Down)
+                scroll_from_bottom = clamp_int(scroll_from_bottom - 1, 0, max_scroll);
+
+            HidAnalogStickState l = padGetStickPos(&pad, 0);
+            HidAnalogStickState r = padGetStickPos(&pad, 1);
+            int stick_y = l.y;
+            if (abs(r.y) > abs(stick_y))
+                stick_y = r.y;
+
+            if (stick_repeat_cooldown > 0)
+                --stick_repeat_cooldown;
+            else if (stick_y > 12000)
             {
-                touch_scroll.active = true;
-                touch_scroll.last_y = y;
+                int step = stick_y > 24000 ? 2 : 1;
+                scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
+                stick_repeat_cooldown = 3;
+            }
+            else if (stick_y < -12000)
+            {
+                int step = stick_y < -24000 ? 2 : 1;
+                scroll_from_bottom = clamp_int(scroll_from_bottom - step, 0, max_scroll);
+                stick_repeat_cooldown = 3;
+            }
+
+            HidTouchScreenState touch_state;
+            size_t touch_total = hidGetTouchScreenStates(&touch_state, 1);
+            if (touch_total > 0 && touch_state.count > 0)
+            {
+                s32 y = (s32)touch_state.touches[0].y;
+                if (!touch_scroll.active)
+                {
+                    touch_scroll.active = true;
+                    touch_scroll.last_y = y;
+                }
+                else
+                {
+                    s32 dy = y - touch_scroll.last_y;
+                    const int pixels_per_line = 18;
+                    if (dy >= pixels_per_line || dy <= -pixels_per_line)
+                    {
+                        int step = dy / pixels_per_line;
+                        scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
+                        touch_scroll.last_y = y;
+                    }
+                }
             }
             else
             {
-                s32 dy = y - touch_scroll.last_y;
-                const int pixels_per_line = 18;
-                if (dy >= pixels_per_line || dy <= -pixels_per_line)
-                {
-                    int step = dy / pixels_per_line;
-                    scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
-                    touch_scroll.last_y = y;
-                }
+                touch_scroll.active = false;
             }
+
+            scroll_from_bottom = clamp_int(scroll_from_bottom, 0, max_scroll);
+            render_log_view(scroll_from_bottom);
+            consoleUpdate(NULL);
         }
         else
         {
             touch_scroll.active = false;
+            player_view_render_frame();
         }
-
-        scroll_from_bottom = clamp_int(scroll_from_bottom, 0, max_scroll);
-        render_log_view(scroll_from_bottom);
-        consoleUpdate(NULL);
     }
 
-    bool had_nxlink_debug = g_nxlinkDebugEnabled;
+    if (exit_reason == EXIT_REASON_UNKNOWN)
+        exit_reason = EXIT_REASON_APPLET_LOOP_ENDED;
+
+    log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d romfs_ready=%d\n",
+             exit_reason_name(exit_reason),
+             networkReady ? 1 : 0,
+             dlnaRunning ? 1 : 0,
+             videoPlatformReady ? 1 : 0,
+             g_nxlinkSock,
+             romfsReady ? 1 : 0);
 
     if (networkReady)
     {
         if (dlnaRunning)
+        {
+            log_info("[shutdown] step=dlna_control_stop begin\n");
             dlna_control_stop();
-        log_set_stdio_mirror(false);
-        g_nxlinkSock = -1;
-        g_nxlinkDebugEnabled = false;
-        socketExit();
+            log_info("[shutdown] step=dlna_control_stop done\n");
+        }
+        else
+        {
+            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
+        }
+    }
+    else
+    {
+        log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
     }
 
-    log_flush();
-    if (!had_nxlink_debug)
+    if (videoPlatformReady)
     {
-        render_log_view(0);
-        consoleUpdate(NULL);
+        log_info("[shutdown] step=player_view_deinit begin\n");
+        player_view_deinit();
+        log_info("[shutdown] step=player_view_deinit done\n");
     }
+    else
+    {
+        log_info("[shutdown] step=player_view_deinit skip reason=not-initialized\n");
+    }
+
+    log_info("[shutdown] step=log_runtime_shutdown begin\n");
+    log_runtime_shutdown();
+
+    if (g_nxlinkSock >= 0)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close begin fd=%d\n", g_nxlinkSock);
+        close(g_nxlinkSock);
+        g_nxlinkSock = -1;
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close done\n");
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close skip reason=no-fd\n");
+    }
+
+    if (networkReady)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit begin\n");
+        socketExit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit skip reason=network-disabled\n");
+    }
+
+    if (romfsReady)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit begin\n");
+        romfsExit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit done\n");
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit skip reason=not-initialized\n");
+    }
+
+    render_log_view(0);
+    consoleUpdate(NULL);
+    shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");
     consoleExit(NULL);
     return 0;
 }

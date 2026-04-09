@@ -6,10 +6,18 @@
 
 typedef struct
 {
+    const char *url_base;
     const char *friendly_name;
     const char *manufacturer;
+    const char *manufacturer_url;
+    const char *model_description;
     const char *model_name;
+    const char *model_number;
+    const char *model_url;
+    const char *serial_number;
     const char *uuid;
+    const char *header_extra;
+    const char *service_extra;
 } ScpdConfig;
 
 // Initialize SCPD resources (device.xml + service SCPD files).

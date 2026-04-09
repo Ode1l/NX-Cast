@@ -1,255 +1,166 @@
 # NX-Cast
 
-NX-Cast 是一个运行在 Atmosphère 环境下的 Nintendo Switch 开源无线投屏接收程序。
+`NX-Cast` 是运行在 Atmosphère Homebrew 环境下的 Nintendo Switch 开源媒体接收器。
 
-该项目的目标是在 **不安装 Linux 的情况下**，通过 Switch 原生 Homebrew 环境实现无线媒体接收功能，例如 **DLNA 和 AirPlay 类似协议的视频接收**。
-
-NX-Cast 基于 **devkitPro + libnx** 开发，并运行在 Atmosphère 的 homebrew 上。
-
----
-
-## 项目目标
-
-NX-Cast 的目标是：
-
-- Atmosphère 实现
-- 支持无线媒体接收
-- 模块化协议架构
-- 利用 Switch 硬件解码能力
-- 构建可维护的开源社区项目
-
-长期目标是为 Switch Homebrew 生态提供一个 **通用媒体接收框架**。
-
----
+当前主线目标是把 Switch 上的通用 `DLNA DMR` 接收器做扎实，并采用直接的 `protocol -> renderer -> libmpv` 播放路径，而不是继续维护一套独立的入口建模和策略流水线。
 
 ## 当前状态
 
-项目处于早期开发阶段。
+项目已经完成并验证过这些基础能力：
 
-首个里程碑目标：
+- `SSDP` 发现
+- 运行时输出的 `Description.xml` 与各服务 `SCPD`
+- `SOAP` 控制链：`SetAVTransportURI / Play / Pause / Stop / Seek`
+- `GENA` 事件订阅与 `LastChange`
+- renderer 的 snapshot/event 状态桥
+- `libmpv` 后端
+- `ao=hos`
+- `OpenGL/libmpv render API`
 
-- 应用框架
-- 网络初始化
-- 设备发现
-- DLNA 接收原型
+当前更准确的阶段是：
 
----
+1. 通用 `DMR` 底座已成立
+2. 协议状态与运行时播放状态已经围绕同一播放会话收口
+3. 直接 `URL -> libmpv` 的播放链已经落地
+4. `hwdec=nvtegra` 仍受当前官方工具链限制
 
-## 里程碑 0 启动
+## 当前设计原则
 
-本阶段的目标是让 NX-Cast 能在 Atmosphère 中稳定启动，并完成后续协议开发需要的基础网络准备。
+项目当前按这几条原则推进：
 
-已完成内容：
+1. 结构重构与行为变化分开做
+2. 协议层只做协议职责，不变成站点兼容 hack 层
+3. 协议动作直接调用 renderer
+4. `libmpv` 负责 URL 探测、拉流、demux、decode 与播放
+5. renderer 订阅 `libmpv` 属性和事件，再把运行时状态同步回协议层
+6. `SOAP`、`LastChange`、兼容查询都读取同一份协议观察状态
 
-- 建立基于 devkitPro/libnx 的仓库与构建脚本
-- Homebrew 入口程序：初始化控制台输出和手柄输入
-- 生成可部署的 `.nro/.nacp` 文件
-- 通过 `socketInitializeDefault()` 启动网络栈，并输出运行时诊断信息
+一句话说：
 
-本地验证步骤：
+**协议层向下发命令，renderer 把真实运行时状态再向上同步。**
 
-1. 安装 devkitPro（含 devkitA64 与 libnx），执行 `make`。
-2. 将生成的 `NX-Cast.nro` 拷贝到 SD 卡的 `/switch/nx-cast/`。
-3. 保证 Switch 已连接 Wi-Fi，从 Homebrew Menu 启动 NX-Cast，查看控制台中的 `[net]` 初始化日志。
-4. 看到网络初始化成功提示后，按 `+` 退出。
-
----
-
-## 里程碑 1 设备发现
-
-该里程碑增加了基于 SSDP 的 DLNA/UPnP 设备发现能力。
-
-实现内容：
-
-- 通过向 `239.255.255.250:1900` 发送 `M-SEARCH` 探测请求获取同局域网中的服务。
-- 在控制台打印响应设备的 IP/端口以及原始响应头，并缓存 USN/ST 等元数据，方便确认兼容设备。
-- 新增基础 SSDP 响应端，使 NX-Cast 可以回复来自手机/电脑的 `M-SEARCH` 请求（周期性 `NOTIFY` 广播暂未实现）。
-- 引入 `network/discovery` 模块，为后续的 mDNS/AirPlay 发现逻辑提供统一入口。
-- 实现基于 `_airplay._tcp.local` 的 mDNS 查询，多播请求并输出 PTR 应答结果。
-- 明确目标是实现 DLNA 的 DMR 角色，播放控制与内容由第三方 DMC/DMS 提供。
-- 新增 DLNA 控制占位模块，读取缓存结果并记录后续将建立控制会话的设备。
-
-验证步骤：
-
-1. 与里程碑 0 相同方式构建并部署最新 `.nro`。
-2. 确保 Switch 与 DLNA/UPnP 发送端处于同一 Wi-Fi 网络。
-3. 启动 NX-Cast，观察控制台中的 `[ssdp]` 日志，确认出现响应后按 `+` 退出。
-
----
-
-## 计划功能
-
-### Phase 1
-- 应用框架
-- 网络模块
-- 设备发现
-
-### Phase 2
-- DLNA Digital Media Renderer（DMR）实现（控制流程已与 SSDP 发现逻辑串联）
-- 基础播放管线
-
-### Phase 3
-- AirPlay 类视频投屏
-
-### Phase 4
-- 硬件解码支持
-
-### Phase 5
-- UI 与配置界面
-- 添加到桌面（快捷入口）
-
----
-
-## 系统架构
-
-NX-Cast 采用分层架构：
+## 当前架构
 
 ```text
-应用层
-│
-协议层
-(AirPlay / DLNA)
-│
-媒体处理
-│
-解码层
-│
-渲染层
-│
-平台层 (libnx)
+main
+  -> protocol/dlna
+       -> discovery (SSDP)
+       -> description (template XML / CSV)
+       -> control (SOAP / GENA / protocol_state)
+            -> renderer facade
+  -> player
+       -> core (session / snapshot / event pump)
+       -> backend (libmpv / mock)
+       -> render (view / frontend)
 ```
 
----
+当前两条关键状态线：
 
-## 项目目录结构
+1. renderer 维护真实播放会话
+2. `protocol_state` 维护协议观察状态
+
+## 当前播放模型
+
+当前播放路径刻意保持很薄：
 
 ```text
-nx-cast
-│
-├── docs
-│
-├── src
-│ ├── app
-│ ├── network
-│ ├── protocol
-│ ├── media
-│ ├── decoder
-│ └── render
-│
-├── include
-│
-├── examples
-│
-└── tests
+SetAVTransportURI
+  -> renderer_set_uri(...)
+  -> libmpv loadfile
+  -> libmpv 自动探测 URL / demux / decode
+  -> 属性与事件回调
+  -> protocol_state 同步
 ```
 
----
+当前回收并同步的运行时字段包括：
 
-## 构建环境
+- `time-pos`
+- `duration`
+- `pause`
+- `mute`
+- `seekable`
+- `idle-active`
+- `paused-for-cache`
+- `seeking`
+- EOF / error 状态
 
-需要安装 Switch Homebrew 开发工具链：
+项目当前已经不再保留独立的预处理播放层。
 
-- devkitPro
-- devkitA64
-- libnx
+## 当前后端路线
 
-编译：
+当前正式后端路线是：
+
+1. `ao=hos`
+2. `OpenGL/libmpv render API`
+3. `libmpv` 继续作为播放器核心
+
+需要特别区分：
+
+- `OpenGL` / `deko3d` 是渲染路径
+- `hwdec=nvtegra` 是解码路径
+
+当前结论：
+
+1. `hos-audio + OpenGL` 已接通
+2. `hwdec=nvtegra` 当前还不能作为官方 `dkp` 工具链下的稳定基线
+3. `deko3d` 仍然保留为未来能力，不是当前默认路线
+
+## 当前工作重点
+
+当前优先级是：
+
+1. 继续补通用 `DMR` 兼容面
+2. 提高协议状态与控制端进度同步的准确性
+3. 保持模板化描述层与真实实现一致
+4. 在真实 URL 和真实控制端上继续加固播放稳定性
+5. 在工具链成熟后再推进 `nvtegra` 和未来 `deko3d`
+
+## 目录
 
 ```text
+source/
+  main.c
+  log/
+  player/
+    core/
+    backend/
+    render/
+  protocol/
+    dlna/
+      discovery/
+      description/
+      control/
+    http/
+romfs/
+  dlna/
+```
+
+## 推荐阅读顺序
+
+1. [docs/Player层设计.md](docs/Player层设计.md)
+2. [docs/DMR实现细节.md](docs/DMR实现细节.md)
+3. [docs/SCPD模块说明.md](docs/SCPD模块说明.md)
+4. [ROADMAP.md](ROADMAP.md)
+
+## 构建
+
+需要：
+
+- `devkitPro`
+- `devkitA64`
+- `libnx`
+
+构建：
+
+```bash
 make
- 生成 `.nro` 文件。
 ```
 
-### Docker 构建（可选）
+输出：
 
-如果你不想在本机安装 devkitPro，可用 Docker 进行可复现构建：
+- `NX-Cast.nro`
 
-```text
-./scripts/docker_build.sh
-```
+## 当前文档说明
 
-等价的 docker compose 命令：
-
-```text
-docker compose build nx-cast-build
-docker compose run --rm nx-cast-build
-```
-
-说明：
-
-- 设置 `NO_CLEAN=1` 可跳过 clean（`NO_CLEAN=1 ./scripts/docker_build.sh`）。
-- Docker 仅负责编译；运行与投屏联调仍需要真实 Switch 设备。
-
----
-
-## 运行
-
-将 `.nro` 放入：
-
-```text
-/switch/nx-cast/
-通过 Homebrew Menu 启动。
-```
-
----
-
-## 贡献
-
-欢迎贡献代码。
-
-提交 PR 前请阅读 `CONTRIBUTING.md`。
-
-当前需要帮助的方向：
-
-- 协议实现
-- 媒体处理优化
-- 硬件解码
-- UI 改进
-- 文档完善
-
----
-
-## 发布准备
-
-为了将 NX-Cast 正式发布到 switchbrew，除了核心功能外还需要补齐以下内容：
-
-- 许可证信息：保持 GPLv3 LICENSE，并在 `README`、发布页面和 `.nro/.nacp` 元数据中注明，同时列出依赖库和素材的授权情况。
-- 文档集合：开发环境搭建、模块/协议设计文档、编码规范、贡献流程、可复现的构建与测试指引。
-- 发布元数据：语义化版本号、更新日志、Release Note、`.nro/.nacp` 的应用名称/作者/描述，以及可选的截图或演示视频。
-- 合规说明：声明不包含受版权保护的固件/密钥，列出运行时依赖与安全注意事项。
-- 社区支持：Issue/PR 模板、贡献者行为准则、维护者联系方式以及必要的审核流程说明。
-
----
-
-## CI/CD 期望
-
-为了提高可信度，建议提供最基本的自动化流程：
-
-- 持续集成：在每个 PR 上运行格式检查、静态分析、`make` 构建 `.nro` 和现有测试。
-- 可选的许可证扫描与安全检查，避免引入不符合要求的依赖。
-- 发布流程自动化：在 CI 中打包产物并生成 release note，减少人工步骤。
-
-当前工作流：
-
-- `CI`：`.github/workflows/ci.yml`（push/PR 自动构建并上传产物）。
-- `Release`：`.github/workflows/release.yml`（推送 `v*` 标签时自动创建 GitHub Release，并上传 `NX-Cast.nro`）。
-
-标签发布示例：
-
-```text
-git tag v0.1.0
-git push origin v0.1.0
-```
-
----
-
-## License
-
-NX-Cast 采用 GNU GPLv3 许可证。完整条款见 `LICENSE`。
-Copyright (c) 2026 Ode1l。
-
----
-
-## 免责声明
-
-NX-Cast 为独立开源项目，与 Nintendo 无任何官方关系。
+仓库文档按当前实现维护，不再保留已经删除的旧设计表述。  
+如果文档和代码冲突，以 `source/` 当前实现为准，并应继续更新文档而不是保留过时描述。
