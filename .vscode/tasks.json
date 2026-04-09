@@ -25,7 +25,7 @@
     {
       "label": "NX-Cast: Upload",
       "type": "shell",
-      "command": "LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; if [ -n \"${input:switchIp}\" ]; then echo \"[run-nxlink] target=${input:switchIp} mode=upload\"; \"${NXLINK_PREFIX[@]}\" nxlink -a \"${input:switchIp}\" \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; else \"${NXLINK_PREFIX[@]}\" nxlink \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; fi; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"",
+      "command": "NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; set +e; if [ -n \"${input:switchIp}\" ]; then echo \"[run-nxlink] target=${input:switchIp} mode=upload\"; \"${NXLINK_PREFIX[@]}\" nxlink -a \"${input:switchIp}\" \"$NRO_PATH\"; else \"${NXLINK_PREFIX[@]}\" nxlink \"$NRO_PATH\"; fi; nxlink_status=$?; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
