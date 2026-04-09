@@ -804,7 +804,7 @@ static bool apply_macast_defaults(void)
         !set_state_string_by_name("AbsoluteTimePosition", "00:00:00") ||
         !set_state_string_by_name("A_ARG_TYPE_Direction", "Output") ||
         !set_state_string_by_name("CurrentConnectionIDs", "0") ||
-        !set_state_string_by_name("PlaybackStorageMedium", "None") ||
+        !set_state_string_by_name("PlaybackStorageMedium", "NONE") ||
         !set_state_string_by_name("SourceProtocolInfo", "") ||
         !set_state_string_by_name("SinkProtocolInfo", sink_protocol_info))
     {
@@ -998,6 +998,7 @@ void dlna_protocol_state_apply_set_uri(const char *uri, const char *metadata)
     set_state_string_by_name("AVTransportURIMetaData", metadata);
     set_state_string_by_name("CurrentTrackURI", uri);
     set_state_string_by_name("CurrentTrackMetaData", metadata);
+    set_state_string_by_name("PlaybackStorageMedium", uri && uri[0] != '\0' ? "NETWORK" : "NONE");
 
     title = protocol_extract_title_alloc(metadata);
     if (title)
@@ -1060,6 +1061,13 @@ void dlna_protocol_state_set_transport_speed(const char *speed)
     if (!g_state_initialized)
         return;
     set_state_string_by_name("TransportPlaySpeed", speed);
+}
+
+void dlna_protocol_state_set_current_play_mode(const char *play_mode)
+{
+    if (!g_state_initialized)
+        return;
+    set_state_string_by_name("CurrentPlayMode", play_mode);
 }
 
 void dlna_protocol_state_set_transport_timing(int duration_ms, int position_ms)

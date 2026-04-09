@@ -264,18 +264,33 @@ void frontend_close(ViewContext *ctx, bool restore_console)
         return;
 
     bool had_video_foreground = ctx->status.foreground_video_active || ctx->framebuffer_ready;
+    log_info("[player-view] frontend_close begin restore_console=%d had_video=%d render_path=%d render_api_connected=%d framebuffer_ready=%d\n",
+             restore_console ? 1 : 0,
+             had_video_foreground ? 1 : 0,
+             (int)ctx->render_path,
+             ctx->status.render_api_connected ? 1 : 0,
+             ctx->framebuffer_ready ? 1 : 0);
 
     if (ctx->framebuffer_ready)
     {
         framebufferClose(&ctx->framebuffer);
         memset(&ctx->framebuffer, 0, sizeof(ctx->framebuffer));
         ctx->framebuffer_ready = false;
+        log_info("[player-view] frontend_close framebuffer closed\n");
     }
     if (ctx->status.render_api_connected)
+    {
+        log_info("[player-view] frontend_close step=player_video_detach begin\n");
         player_video_detach();
+        log_info("[player-view] frontend_close step=player_video_detach done\n");
+    }
 #ifdef HAVE_SWITCH_EGL_GLES
     if (ctx->render_path == FRONTEND_RENDER_GL)
+    {
+        log_info("[player-view] frontend_close step=frontend_gl_deinit begin\n");
         frontend_gl_deinit(ctx);
+        log_info("[player-view] frontend_close step=frontend_gl_deinit done\n");
+    }
 #endif
 
     ctx->status.foreground_video_active = false;
@@ -286,8 +301,10 @@ void frontend_close(ViewContext *ctx, bool restore_console)
 
     if (restore_console && had_video_foreground)
     {
+        log_info("[player-view] frontend_close step=console_restore begin\n");
         consoleInit(NULL);
         consoleClear();
+        log_info("[player-view] frontend_close step=console_restore done\n");
     }
 }
 

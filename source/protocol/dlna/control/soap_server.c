@@ -518,6 +518,7 @@ void soap_server_stop(void)
     if (!g_running)
         return;
 
+    log_info("[soap] stop begin\n");
     soap_handler_shutdown();
     g_running = false;
     log_info("[soap] SOAP control module stopped.\n");

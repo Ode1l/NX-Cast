@@ -1,6 +1,7 @@
 #include <switch.h>
 #include <arpa/inet.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,13 @@ typedef struct
 #define ANSI_TEXT  "\x1b[37;1m"
 
 static int g_nxlinkSock = -1;
+
+typedef enum
+{
+    EXIT_REASON_UNKNOWN = 0,
+    EXIT_REASON_PLUS_BUTTON,
+    EXIT_REASON_APPLET_LOOP_ENDED
+} ExitReason;
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -63,6 +71,33 @@ static const char *color_for_log_line(const char *line)
     if (strncmp(line, "[DEBUG]", 7) == 0)
         return ANSI_DEBUG;
     return ANSI_TEXT;
+}
+
+static const char *exit_reason_name(ExitReason reason)
+{
+    switch (reason)
+    {
+    case EXIT_REASON_PLUS_BUTTON:
+        return "plus-button";
+    case EXIT_REASON_APPLET_LOOP_ENDED:
+        return "applet-loop-ended";
+    case EXIT_REASON_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
+static void shutdown_stdio_trace(const char *fmt, ...)
+{
+    va_list args;
+
+    if (!fmt)
+        return;
+
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fflush(stderr);
 }
 
 static size_t compute_total_visual_lines(int width)
@@ -237,6 +272,7 @@ int main(int argc, char* argv[])
     int scroll_from_bottom = 0;
     int stick_repeat_cooldown = 0;
     TouchScrollState touch_scroll = {0};
+    ExitReason exit_reason = EXIT_REASON_UNKNOWN;
 
     log_info("[ui] NX-Cast starting. Press + to exit.\n");
     log_info("[ui] Use Up/Down, sticks, or touch drag to scroll logs.\n");
@@ -264,7 +300,11 @@ int main(int argc, char* argv[])
         u64 kHeld = padGetButtons(&pad);
 
         if (kDown & HidNpadButton_Plus)
+        {
+            exit_reason = EXIT_REASON_PLUS_BUTTON;
+            log_info("[shutdown] requested reason=%s\n", exit_reason_name(exit_reason));
             break;
+        }
 
         if (active_view == PLAYER_VIEW_LOG)
         {
@@ -345,31 +385,86 @@ int main(int argc, char* argv[])
         }
     }
 
+    if (exit_reason == EXIT_REASON_UNKNOWN)
+        exit_reason = EXIT_REASON_APPLET_LOOP_ENDED;
+
+    log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d romfs_ready=%d\n",
+             exit_reason_name(exit_reason),
+             networkReady ? 1 : 0,
+             dlnaRunning ? 1 : 0,
+             videoPlatformReady ? 1 : 0,
+             g_nxlinkSock,
+             romfsReady ? 1 : 0);
+
     if (networkReady)
     {
         if (dlnaRunning)
+        {
+            log_info("[shutdown] step=dlna_control_stop begin\n");
             dlna_control_stop();
+            log_info("[shutdown] step=dlna_control_stop done\n");
+        }
+        else
+        {
+            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
+        }
+    }
+    else
+    {
+        log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
     }
 
     if (videoPlatformReady)
+    {
+        log_info("[shutdown] step=player_view_deinit begin\n");
         player_view_deinit();
+        log_info("[shutdown] step=player_view_deinit done\n");
+    }
+    else
+    {
+        log_info("[shutdown] step=player_view_deinit skip reason=not-initialized\n");
+    }
 
+    log_info("[shutdown] step=log_runtime_shutdown begin\n");
     log_runtime_shutdown();
 
     if (g_nxlinkSock >= 0)
     {
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close begin fd=%d\n", g_nxlinkSock);
         close(g_nxlinkSock);
         g_nxlinkSock = -1;
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close done\n");
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close skip reason=no-fd\n");
     }
 
     if (networkReady)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit begin\n");
         socketExit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit skip reason=network-disabled\n");
+    }
 
     if (romfsReady)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit begin\n");
         romfsExit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit done\n");
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit skip reason=not-initialized\n");
+    }
 
     render_log_view(0);
     consoleUpdate(NULL);
+    shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");
     consoleExit(NULL);
     return 0;
 }

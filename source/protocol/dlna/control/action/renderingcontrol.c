@@ -87,6 +87,68 @@ bool renderingcontrol_set_volume(const SoapActionContext *ctx, SoapActionOutput 
     return true;
 }
 
+bool renderingcontrol_list_presets(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    char *instance_id = NULL;
+
+    if (!ctx || !out)
+        return false;
+
+    if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
+        return false;
+
+    soap_writer_clear(out);
+    if (!soap_writer_element_text(out, "CurrentPresetNameList", "FactoryDefaults"))
+    {
+        free(instance_id);
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
+    free(instance_id);
+    soap_handler_set_success(out, NULL);
+    return true;
+}
+
+bool renderingcontrol_select_preset(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    char *instance_id = NULL;
+    char *preset_name = NULL;
+
+    if (!ctx || !out)
+        return false;
+
+    if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
+        return false;
+
+    if (!soap_handler_require_arg_alloc(ctx, out, "PresetName", &preset_name))
+    {
+        free(instance_id);
+        return false;
+    }
+
+    if (strcasecmp(preset_name, "FactoryDefaults") != 0)
+    {
+        free(instance_id);
+        free(preset_name);
+        soap_handler_set_fault(out, 402, "Invalid Args");
+        return false;
+    }
+
+    if (!renderer_set_volume(PLAYER_DEFAULT_VOLUME) || !renderer_set_mute(false))
+    {
+        free(instance_id);
+        free(preset_name);
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
+    free(instance_id);
+    free(preset_name);
+    soap_handler_set_success(out, "");
+    return true;
+}
+
 bool renderingcontrol_get_mute(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char *instance_id = NULL;

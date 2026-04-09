@@ -502,7 +502,11 @@ void soap_handler_init(void)
 
 void soap_handler_shutdown(void)
 {
+    log_info("[soap-handler] shutdown begin\n");
     renderer_set_event_callback(NULL, NULL);
+    log_info("[soap-handler] shutdown step=renderer_deinit begin\n");
     renderer_deinit();
+    log_info("[soap-handler] shutdown step=renderer_deinit done\n");
     dlna_protocol_state_reset();
+    log_info("[soap-handler] shutdown step=protocol_state_reset done\n");
 }

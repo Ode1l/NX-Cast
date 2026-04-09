@@ -662,21 +662,27 @@ void ssdp_stop(void)
     if (!g_ssdp.running)
         return;
 
+    log_info("[ssdp] stop begin socket_fd=%d thread_started=%d\n",
+             g_ssdp.socket_fd,
+             g_ssdp.thread_started ? 1 : 0);
     g_ssdp.running = false;
 
     if (g_ssdp.socket_fd >= 0)
     {
         int fd = g_ssdp.socket_fd;
         g_ssdp.socket_fd = -1;
+        log_info("[ssdp] stop closing socket fd=%d\n", fd);
         shutdown(fd, SHUT_RDWR);
         close(fd);
     }
 
     if (g_ssdp.thread_started)
     {
+        log_info("[ssdp] stop waiting for thread exit\n");
         threadWaitForExit(&g_ssdp.thread);
         threadClose(&g_ssdp.thread);
         g_ssdp.thread_started = false;
+        log_info("[ssdp] stop thread closed\n");
     }
 
     ssdp_clear_cached_strings();

@@ -404,22 +404,34 @@ void player_deinit(void)
     if (!g_initialized)
         return;
 
+    log_info("[player] deinit begin backend=%s thread_started=%d\n",
+             player_get_backend_name(),
+             g_player_thread_started ? 1 : 0);
     mutexLock(&g_player_mutex);
     g_player_stop_requested = true;
     mutexUnlock(&g_player_mutex);
 
     if (g_backend && g_backend->wakeup)
+    {
+        log_info("[player] deinit step=backend_wakeup\n");
         g_backend->wakeup();
+    }
 
     if (g_player_thread_started)
     {
+        log_info("[player] deinit waiting for event thread exit\n");
         threadWaitForExit(&g_player_thread);
         threadClose(&g_player_thread);
         g_player_thread_started = false;
+        log_info("[player] deinit event thread closed\n");
     }
 
     if (g_backend && g_backend->deinit)
+    {
+        log_info("[player] deinit step=backend_deinit begin\n");
         g_backend->deinit();
+        log_info("[player] deinit step=backend_deinit done\n");
+    }
 
     mutexLock(&g_player_mutex);
     (void)player_store_media_locked(false, NULL);

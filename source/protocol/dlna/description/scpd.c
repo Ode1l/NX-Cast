@@ -20,6 +20,7 @@ typedef struct
 } ScpdRoute;
 
 static const char g_defaultFriendlyName[] = "NX-Cast";
+static const char g_defaultUrlBase[] = "";
 static const char g_defaultManufacturer[] = "Ode1l";
 static const char g_defaultManufacturerUrl[] = "";
 static const char g_defaultModelDescription[] = "Nintendo Switch DLNA Media Renderer";
@@ -80,6 +81,7 @@ static bool scpd_dup_uuid_without_prefix(char **slot, const char *value)
 static void scpd_clear_template_values(void)
 {
     free((char *)g_template_values.friendly_name);
+    free((char *)g_template_values.url_base);
     free((char *)g_template_values.manufacturer);
     free((char *)g_template_values.manufacturer_url);
     free((char *)g_template_values.model_description);
@@ -96,6 +98,7 @@ static void scpd_clear_template_values(void)
 static bool scpd_apply_config(const ScpdConfig *config)
 {
     const char *friendly_name = coalesce_string(config ? config->friendly_name : NULL, g_defaultFriendlyName);
+    const char *url_base = coalesce_string(config ? config->url_base : NULL, g_defaultUrlBase);
     const char *manufacturer = coalesce_string(config ? config->manufacturer : NULL, g_defaultManufacturer);
     const char *manufacturer_url = coalesce_string(config ? config->manufacturer_url : NULL, g_defaultManufacturerUrl);
     const char *model_description = coalesce_string(config ? config->model_description : NULL, g_defaultModelDescription);
@@ -109,7 +112,8 @@ static bool scpd_apply_config(const ScpdConfig *config)
 
     scpd_clear_template_values();
 
-    return scpd_dup_string((char **)&g_template_values.friendly_name, friendly_name) &&
+    return scpd_dup_string((char **)&g_template_values.url_base, url_base) &&
+           scpd_dup_string((char **)&g_template_values.friendly_name, friendly_name) &&
            scpd_dup_string((char **)&g_template_values.manufacturer, manufacturer) &&
            scpd_dup_string((char **)&g_template_values.manufacturer_url, manufacturer_url) &&
            scpd_dup_string((char **)&g_template_values.model_description, model_description) &&
@@ -219,6 +223,7 @@ void scpd_stop(void)
     if (!g_running)
         return;
 
+    log_info("[scpd] stop begin\n");
     scpd_clear_template_values();
     g_running = false;
     log_info("[scpd] description templates stopped.\n");

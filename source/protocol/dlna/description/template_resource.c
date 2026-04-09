@@ -15,6 +15,8 @@ static const char *template_lookup_placeholder(const DlnaTemplateValues *values,
     if (!name)
         return "";
 
+    if (strcmp(name, "url_base") == 0)
+        return values && values->url_base ? values->url_base : "";
     if (strcmp(name, "friendly_name") == 0)
         return values && values->friendly_name ? values->friendly_name : "";
     if (strcmp(name, "manufacturer") == 0)
@@ -38,6 +40,61 @@ static const char *template_lookup_placeholder(const DlnaTemplateValues *values,
     if (strcmp(name, "service_extra") == 0)
         return values && values->service_extra ? values->service_extra : "";
     return NULL;
+}
+
+static bool template_placeholder_is_raw(const char *name)
+{
+    if (!name)
+        return false;
+    return strcmp(name, "header_extra") == 0 || strcmp(name, "service_extra") == 0;
+}
+
+static char *template_xml_escape_alloc(const char *value)
+{
+    const char *input = value ? value : "";
+    size_t input_len = strlen(input);
+    size_t out_capacity = input_len * 6 + 1;
+    char *escaped = malloc(out_capacity);
+    size_t used = 0;
+
+    if (!escaped)
+        return NULL;
+
+    for (const char *cursor = input; *cursor; ++cursor)
+    {
+        const char *replacement = NULL;
+        char literal[2] = {0};
+
+        switch (*cursor)
+        {
+        case '&':
+            replacement = "&amp;";
+            break;
+        case '<':
+            replacement = "&lt;";
+            break;
+        case '>':
+            replacement = "&gt;";
+            break;
+        case '\"':
+            replacement = "&quot;";
+            break;
+        case '\'':
+            replacement = "&apos;";
+            break;
+        default:
+            literal[0] = *cursor;
+            replacement = literal;
+            break;
+        }
+
+        size_t replacement_len = strlen(replacement);
+        memcpy(escaped + used, replacement, replacement_len);
+        used += replacement_len;
+    }
+
+    escaped[used] = '\0';
+    return escaped;
 }
 
 static char *template_strdup_printf(const char *fmt, ...)
@@ -198,8 +255,23 @@ bool dlna_template_render_file_alloc(const char *relative_path,
         const char *replacement = template_lookup_placeholder(values, token ? token : "");
         if (replacement)
         {
-            if (!append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, replacement, strlen(replacement)))
+            const char *replacement_to_append = replacement;
+            char *escaped = NULL;
+
+            if (!template_placeholder_is_raw(token ? token : ""))
+            {
+                escaped = template_xml_escape_alloc(replacement);
+                if (!escaped)
+                    goto fail;
+                replacement_to_append = escaped;
+            }
+
+            if (!append_bytes_alloc(&rendered, &rendered_used, &rendered_capacity, replacement_to_append, strlen(replacement_to_append)))
+            {
+                free(escaped);
                 goto fail;
+            }
+            free(escaped);
             continue;
         }
 

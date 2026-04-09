@@ -47,51 +47,6 @@
             </argumentList>
         </action>
         <action>
-            <name>GetVolumeDB</name>
-            <argumentList>
-                <argument>
-                    <name>InstanceID</name>
-                    <direction>in</direction>
-                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
-                </argument>
-                <argument>
-                    <name>Channel</name>
-                    <direction>in</direction>
-                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
-                </argument>
-                <argument>
-                    <name>CurrentVolume</name>
-                    <direction>out</direction>
-                    <relatedStateVariable>VolumeDB</relatedStateVariable>
-                </argument>
-            </argumentList>
-        </action>
-        <action>
-            <name>GetVolumeDBRange</name>
-            <argumentList>
-                <argument>
-                    <name>InstanceID</name>
-                    <direction>in</direction>
-                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
-                </argument>
-                <argument>
-                    <name>Channel</name>
-                    <direction>in</direction>
-                    <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>
-                </argument>
-                <argument>
-                    <name>MinValue</name>
-                    <direction>out</direction>
-                    <relatedStateVariable>VolumeDB</relatedStateVariable>
-                </argument>
-                <argument>
-                    <name>MaxValue</name>
-                    <direction>out</direction>
-                    <relatedStateVariable>VolumeDB</relatedStateVariable>
-                </argument>
-            </argumentList>
-        </action>
-        <action>
             <name>ListPresets</name>
             <argumentList>
                 <argument>
@@ -204,14 +159,6 @@
             <allowedValueList>
                 <allowedValue>FactoryDefaults</allowedValue>
             </allowedValueList>
-        </stateVariable>
-        <stateVariable sendEvents="no">
-            <name>VolumeDB</name>
-            <dataType>i2</dataType>
-            <allowedValueRange>
-                <minimum>-32767</minimum>
-                <maximum>32767</maximum>
-            </allowedValueRange>
         </stateVariable>
     </serviceStateTable>
 </scpd>

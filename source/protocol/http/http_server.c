@@ -500,21 +500,28 @@ void http_server_stop(void)
     if (!g_http_server.running)
         return;
 
+    log_info("[http-server] stop begin listen_sock=%d thread_started=%d port=%u\n",
+             g_http_server.listen_sock,
+             g_http_server.thread_started ? 1 : 0,
+             g_http_server.port);
     g_http_server.running = false;
 
     if (g_http_server.listen_sock >= 0)
     {
         int sock = g_http_server.listen_sock;
         g_http_server.listen_sock = -1;
+        log_info("[http-server] stop closing listen socket fd=%d\n", sock);
         shutdown(sock, SHUT_RDWR);
         close(sock);
     }
 
     if (g_http_server.thread_started)
     {
+        log_info("[http-server] stop waiting for thread exit\n");
         threadWaitForExit(&g_http_server.thread);
         threadClose(&g_http_server.thread);
         g_http_server.thread_started = false;
+        log_info("[http-server] stop thread closed\n");
     }
 
     g_http_server.port = 0;

@@ -5,6 +5,7 @@
 
 typedef struct
 {
+    const char *url_base;
     const char *friendly_name;
     const char *manufacturer;
     const char *manufacturer_url;

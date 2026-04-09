@@ -229,6 +229,93 @@ static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
     return true;
 }
 
+static bool parse_track_number(const char *value, int *out_track)
+{
+    char *end = NULL;
+    long track;
+
+    if (!value || !out_track)
+        return false;
+
+    track = strtol(value, &end, 10);
+    if (!end || *end != '\0' || track < 1 || track > 2147483647L)
+        return false;
+
+    *out_track = (int)track;
+    return true;
+}
+
+static bool avtransport_seek_track_number(const DlnaProtocolStateView *state, SoapActionOutput *out, const char *target)
+{
+    int track = 0;
+
+    if (!state || !out || !target)
+        return false;
+
+    if (!parse_track_number(target, &track))
+    {
+        soap_handler_set_fault(out, 711, "Illegal seek target");
+        return false;
+    }
+
+    if (state->number_of_tracks <= 0 || track > state->number_of_tracks)
+    {
+        soap_handler_set_fault(out, 711, "Illegal seek target");
+        return false;
+    }
+
+    if (track != state->current_track)
+    {
+        soap_handler_set_fault(out, 711, "Illegal seek target");
+        return false;
+    }
+
+    if (!renderer_seek_ms(0))
+    {
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
+    dlna_protocol_state_apply_seek_target("00:00:00");
+    dlna_protocol_state_set_transport_status("OK");
+    return true;
+}
+
+static bool avtransport_track_nav(const SoapActionContext *ctx,
+                                  SoapActionOutput *out,
+                                  const char *action_name,
+                                  int delta)
+{
+    char *instance_id = NULL;
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
+    int target_track;
+
+    if (!ctx || !out || !action_name)
+        return false;
+
+    if (!avtransport_try_instance_id(ctx, out, action_name, &instance_id))
+        return false;
+
+    if (state->av_transport_uri[0] == '\0')
+    {
+        free(instance_id);
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
+    target_track = state->current_track + delta;
+    if (state->number_of_tracks <= 0 || target_track < 1 || target_track > state->number_of_tracks)
+    {
+        free(instance_id);
+        soap_handler_set_fault(out, 711, "Illegal seek target");
+        return false;
+    }
+
+    free(instance_id);
+    soap_handler_set_fault(out, 701, "Transition not available");
+    return false;
+}
+
 bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char *instance_id = NULL;
@@ -391,6 +478,54 @@ bool avtransport_get_transport_info(const SoapActionContext *ctx, SoapActionOutp
     if (!avtransport_write_text_element(out, "CurrentTransportState", state->transport_state) ||
         !avtransport_write_text_element(out, "CurrentTransportStatus", state->transport_status) ||
         !avtransport_write_text_element(out, "CurrentSpeed", state->transport_play_speed))
+    {
+        free(instance_id);
+        return false;
+    }
+
+    free(instance_id);
+    soap_handler_set_success(out, NULL);
+    return true;
+}
+
+bool avtransport_get_device_capabilities(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    char *instance_id = NULL;
+
+    if (!ctx || !out)
+        return false;
+
+    if (!avtransport_try_instance_id(ctx, out, "GetDeviceCapabilities", &instance_id))
+        return false;
+
+    soap_writer_clear(out);
+    if (!avtransport_write_text_element(out, "PlayMedia", "NETWORK") ||
+        !avtransport_write_text_element(out, "RecMedia", "NOT_IMPLEMENTED") ||
+        !avtransport_write_text_element(out, "RecQualityModes", "NOT_IMPLEMENTED"))
+    {
+        free(instance_id);
+        return false;
+    }
+
+    free(instance_id);
+    soap_handler_set_success(out, NULL);
+    return true;
+}
+
+bool avtransport_get_transport_settings(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    char *instance_id = NULL;
+    const DlnaProtocolStateView *state = dlna_protocol_state_view();
+
+    if (!ctx || !out)
+        return false;
+
+    if (!avtransport_try_instance_id(ctx, out, "GetTransportSettings", &instance_id))
+        return false;
+
+    soap_writer_clear(out);
+    if (!avtransport_write_text_element(out, "PlayMode", state->current_play_mode) ||
+        !avtransport_write_text_element(out, "RecQualityMode", "NOT_IMPLEMENTED"))
     {
         free(instance_id);
         return false;
@@ -603,7 +738,9 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         log_debug("[avtransport] default Target=00:00:00 for Seek\n");
     }
 
-    if (strcasecmp(unit, "REL_TIME") != 0 && strcasecmp(unit, "ABS_TIME") != 0)
+    if (strcasecmp(unit, "REL_TIME") != 0 &&
+        strcasecmp(unit, "ABS_TIME") != 0 &&
+        strcasecmp(unit, "TRACK_NR") != 0)
     {
         free(instance_id);
         free(unit);
@@ -619,6 +756,18 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         free(target);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
+    }
+
+    if (strcasecmp(unit, "TRACK_NR") == 0)
+    {
+        bool ok = avtransport_seek_track_number(state, out, target);
+        free(instance_id);
+        free(unit);
+        free(target);
+        if (!ok)
+            return false;
+        soap_handler_set_success(out, "");
+        return true;
     }
 
     int target_ms = 0;
@@ -645,6 +794,48 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     free(instance_id);
     free(unit);
     free(target);
+    soap_handler_set_success(out, "");
+    return true;
+}
+
+bool avtransport_next(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    return avtransport_track_nav(ctx, out, "Next", +1);
+}
+
+bool avtransport_previous(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    return avtransport_track_nav(ctx, out, "Previous", -1);
+}
+
+bool avtransport_set_play_mode(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    char *instance_id = NULL;
+    char *play_mode = NULL;
+
+    if (!ctx || !out)
+        return false;
+
+    if (!avtransport_try_instance_id(ctx, out, "SetPlayMode", &instance_id))
+        return false;
+
+    if (!soap_handler_require_arg_alloc(ctx, out, "NewPlayMode", &play_mode))
+    {
+        free(instance_id);
+        return false;
+    }
+
+    if (strcasecmp(play_mode, "NORMAL") != 0)
+    {
+        free(instance_id);
+        free(play_mode);
+        soap_handler_set_fault(out, 712, "Play mode not supported");
+        return false;
+    }
+
+    dlna_protocol_state_set_current_play_mode("NORMAL");
+    free(instance_id);
+    free(play_mode);
     soap_handler_set_success(out, "");
     return true;
 }

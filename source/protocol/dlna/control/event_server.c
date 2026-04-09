@@ -564,15 +564,6 @@ static bool event_build_propertyset(EventService service, SoapActionOutput *out)
              soap_writer_append_raw(out, "<e:property><LastChange>") &&
              soap_writer_append_escaped(out, last_change.output_xml) &&
              soap_writer_append_raw(out, "</LastChange></e:property>");
-        if (ok)
-        {
-            ok = soap_writer_append_raw(out, "<e:property><Volume>") &&
-                 soap_writer_appendf(out, "%d", state->volume) &&
-                 soap_writer_append_raw(out, "</Volume></e:property>") &&
-                 soap_writer_append_raw(out, "<e:property><Mute>") &&
-                 soap_writer_appendf(out, "%d", state->mute ? 1 : 0) &&
-                 soap_writer_append_raw(out, "</Mute></e:property>");
-        }
         break;
     case EVENT_SERVICE_CONNECTIONMANAGER:
         ok = soap_writer_append_raw(out, "<e:property><CurrentConnectionIDs>") &&
@@ -877,12 +868,14 @@ bool event_server_start(void)
 
 void event_server_stop(void)
 {
+    log_info("[event] stop begin sync_pending=1\n");
     event_ensure_sync();
 
     mutexLock(&g_event_mutex);
     if (!g_event_thread_started)
     {
         mutexUnlock(&g_event_mutex);
+        log_info("[event] stop skip reason=not-started\n");
         return;
     }
 
@@ -890,6 +883,7 @@ void event_server_stop(void)
     condvarWakeAll(&g_event_cond);
     mutexUnlock(&g_event_mutex);
 
+    log_info("[event] stop waiting for thread exit\n");
     threadWaitForExit(&g_event_thread);
     threadClose(&g_event_thread);
 
@@ -901,6 +895,7 @@ void event_server_stop(void)
     g_renderingcontrol_dirty = false;
     g_connectionmanager_dirty = false;
     mutexUnlock(&g_event_mutex);
+    log_info("[event] stop thread closed and subscriptions cleared\n");
     log_info("[event] DLNA event server stopped.\n");
 }
 

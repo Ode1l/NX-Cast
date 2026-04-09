@@ -84,6 +84,7 @@ void dlna_protocol_state_apply_stop(void);
 void dlna_protocol_state_apply_seek_target(const char *target);
 void dlna_protocol_state_set_transport_status(const char *status);
 void dlna_protocol_state_set_transport_speed(const char *speed);
+void dlna_protocol_state_set_current_play_mode(const char *play_mode);
 void dlna_protocol_state_set_transport_timing(int duration_ms, int position_ms);
 void dlna_protocol_state_set_source_protocol_info(const char *value);
 void dlna_protocol_state_set_sink_protocol_info(const char *value);
