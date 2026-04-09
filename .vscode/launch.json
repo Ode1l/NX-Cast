@@ -2,18 +2,37 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "NX-Cast: Upload (nxlink)",
+      "name": "NX-Cast: Build (clean & make)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "nxlink -a ${input:switchIp} ${workspaceFolder}/NX-Cast.nro",
-      "preLaunchTask": "Build NX-Cast"
+      "command": "echo \"[launch] build completed\"",
+      "preLaunchTask": "NX-Cast: Build"
     },
     {
-      "name": "NX-Cast: Upload + nxlink server (requires nxlinkStdio)",
+      "name": "NX-Cast: Build & Upload",
       "type": "node-terminal",
       "request": "launch",
-      "command": "nxlink -a ${input:switchIp} -s ${workspaceFolder}/NX-Cast.nro",
-      "preLaunchTask": "Build NX-Cast"
+      "command": "bash -lc 'LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; if [ -n \"${input:switchIp}\" ]; then echo \"[run-nxlink] target=${input:switchIp} mode=upload\"; \"${NXLINK_PREFIX[@]}\" nxlink -a \"${input:switchIp}\" \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; else \"${NXLINK_PREFIX[@]}\" nxlink \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; fi; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'",
+      "preLaunchTask": "NX-Cast: Build"
+    },
+    {
+      "name": "NX-Cast: Build & Upload & nxlink server",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "bash -lc 'LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; if [ -n \"${input:switchIp}\" ]; then echo \"[run-nxlink] target=${input:switchIp} mode=server\"; \"${NXLINK_PREFIX[@]}\" nxlink -a \"${input:switchIp}\" -s \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; else \"${NXLINK_PREFIX[@]}\" nxlink -s \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; fi; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'",
+      "preLaunchTask": "NX-Cast: Build"
+    },
+    {
+      "name": "NX-Cast: Upload",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "bash -lc 'LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; if [ -n \"${input:switchIp}\" ]; then echo \"[run-nxlink] target=${input:switchIp} mode=upload\"; \"${NXLINK_PREFIX[@]}\" nxlink -a \"${input:switchIp}\" \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; else \"${NXLINK_PREFIX[@]}\" nxlink \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; fi; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'"
+    },
+    {
+      "name": "NX-Cast: Upload & nxlink server",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "bash -lc 'LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; if [ -n \"${input:switchIp}\" ]; then echo \"[run-nxlink] target=${input:switchIp} mode=server\"; \"${NXLINK_PREFIX[@]}\" nxlink -a \"${input:switchIp}\" -s \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; else \"${NXLINK_PREFIX[@]}\" nxlink -s \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; fi; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'"
     },
     {
       "name": "NX-Cast: Attach Remote GDB (optional)",
@@ -26,15 +45,21 @@
       "miDebuggerServerAddress": "${input:gdbServer}",
       "stopAtEntry": false,
       "externalConsole": false,
-      "preLaunchTask": "Build NX-Cast"
+      "preLaunchTask": "NX-Cast: Build"
     }
   ],
   "inputs": [
     {
       "id": "switchIp",
       "type": "promptString",
-      "description": "Nintendo Switch IP address",
-      "default": "192.168.1.100"
+      "description": "Nintendo Switch IP address (leave empty to omit -a)",
+      "default": ""
+    },
+    {
+      "id": "buildJobs",
+      "type": "promptString",
+      "description": "Parallel build jobs passed to make -j",
+      "default": "4"
     },
     {
       "id": "gdbServer",
