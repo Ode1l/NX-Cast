@@ -9,6 +9,8 @@
 #include "template_resource.h"
 
 #define DLNA_HTTP_XML_CONTENT_TYPE "text/xml; charset=\"utf-8\""
+#define DLNA_HTTP_HTML_CONTENT_TYPE "text/html; charset=\"utf-8\""
+#define DLNA_HTTP_JPEG_CONTENT_TYPE "image/jpeg"
 #define DLNA_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
 
 typedef struct
@@ -36,6 +38,8 @@ static const ScpdRoute g_scpd_routes[] = {
     {"/description.xml", "Description.xml", DLNA_HTTP_XML_CONTENT_TYPE, true},
     {"/Description.xml", "Description.xml", DLNA_HTTP_XML_CONTENT_TYPE, true},
     {"/device.xml", "Description.xml", DLNA_HTTP_XML_CONTENT_TYPE, true},
+    {"/presentation.html", "Presentation.html", DLNA_HTTP_HTML_CONTENT_TYPE, true},
+    {"/dlna/icon.jpg", "icon.jpg", DLNA_HTTP_JPEG_CONTENT_TYPE, false},
     {"/dlna/AVTransport.xml", "AVTransport.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
     {"/scpd/AVTransport.xml", "AVTransport.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
     {"/dlna/RenderingControl.xml", "RenderingControl.xml", DLNA_HTTP_XML_CONTENT_TYPE, false},
@@ -270,16 +274,32 @@ bool scpd_try_handle_http(const char *method,
                                    response_len);
     }
 
-    if (!dlna_template_render_file_alloc(route->template_path,
-                                         route->use_template_values ? &g_template_values : NULL,
-                                         &rendered,
-                                         &rendered_len))
+    if (route->use_template_values)
     {
-        log_error("[scpd] failed to render template path=%s request=%s\n",
+        if (!dlna_template_render_file_alloc(route->template_path,
+                                             &g_template_values,
+                                             &rendered,
+                                             &rendered_len))
+        {
+            log_error("[scpd] failed to render template path=%s request=%s\n",
+                      route->template_path, path);
+            return build_text_response(500,
+                                       "Internal Server Error",
+                                       "Failed to render description template",
+                                       response,
+                                       response_size,
+                                       response_len);
+        }
+    }
+    else if (!dlna_template_load_file_alloc(route->template_path,
+                                            &rendered,
+                                            &rendered_len))
+    {
+        log_error("[scpd] failed to load resource path=%s request=%s\n",
                   route->template_path, path);
         return build_text_response(500,
                                    "Internal Server Error",
-                                   "Failed to render description template",
+                                   "Failed to load description resource",
                                    response,
                                    response_size,
                                    response_len);

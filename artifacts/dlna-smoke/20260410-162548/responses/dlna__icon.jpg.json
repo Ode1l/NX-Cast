@@ -1,0 +1,12 @@
+{
+  "url": "http://127.0.0.1:50137/dlna/icon.jpg",
+  "status": 200,
+  "headers": {
+    "Server": "BaseHTTP/0.6 Python/3.14.3",
+    "Date": "Fri, 10 Apr 2026 08:25:48 GMT",
+    "Content-Type": "image/jpeg",
+    "Content-Length": "9243",
+    "Connection": "close"
+  },
+  "bytes": 9243
+}

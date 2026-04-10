@@ -1,0 +1,11 @@
+{
+  "url": "http://192.168.1.7:49152/Description.xml",
+  "status": 200,
+  "headers": {
+    "Content-Type": "text/xml; charset=\"utf-8\"",
+    "Content-Length": "2697",
+    "Server": "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1",
+    "Connection": "close"
+  },
+  "bytes": 2697
+}

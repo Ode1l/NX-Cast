@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NX-Cast Smoke Test</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #00c3e3;
+      --accent-2: #ff4554;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #1f2937, var(--bg) 55%);
+      color: var(--text);
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    .badge {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(0, 195, 227, 0.15);
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+      line-height: 1.15;
+    }
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    section {
+      margin-top: 24px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 8px 16px;
+      margin: 0;
+    }
+    dt {
+      color: var(--muted);
+    }
+    dd {
+      margin: 0;
+      word-break: break-all;
+    }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    a {
+      color: var(--accent);
+    }
+    .accent {
+      color: var(--accent-2);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="badge">DLNA Media Renderer</div>
+    <h1>NX-Cast Smoke Test</h1>
+    <p>Nintendo Switch DLNA Media Renderer</p>
+
+    <section>
+      <h2>Device Identity</h2>
+      <dl>
+        <dt>Manufacturer</dt>
+        <dd>Ode1l</dd>
+        <dt>Model</dt>
+        <dd>NX-Cast Virtual Renderer 0.1.0</dd>
+        <dt>Serial Number</dt>
+        <dd>123456789012</dd>
+        <dt>UDN</dt>
+        <dd>uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001</dd>
+        <dt>Base URL</dt>
+        <dd>http://127.0.0.1:50137/</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Services</h2>
+      <ul>
+        <li><a href="http://127.0.0.1:50137/description.xml">Description.xml</a></li>
+        <li><a href="http://127.0.0.1:50137/dlna/AVTransport.xml">AVTransport SCPD</a></li>
+        <li><a href="http://127.0.0.1:50137/dlna/RenderingControl.xml">RenderingControl SCPD</a></li>
+        <li><a href="http://127.0.0.1:50137/dlna/ConnectionManager.xml">ConnectionManager SCPD</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Status</h2>
+      <p>This page is a lightweight local presentation endpoint for control points that expect a non-empty <span class="accent">presentationURL</span>.</p>
+    </section>
+  </main>
+</body>
+</html>

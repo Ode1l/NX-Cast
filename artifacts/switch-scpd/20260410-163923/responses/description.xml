@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root
+        xmlns:dlna="urn:schemas-dlna-org:device-1-0"
+        xmlns="urn:schemas-upnp-org:device-1-0">
+    <specVersion>
+        <major>1</major>
+        <minor>0</minor>
+    </specVersion>
+    <URLBase>http://192.168.1.7:49152/</URLBase>
+    <device>
+        <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+        <UDN>uuid:7269c278-6076-4cf8-b7a4-518d7439dcb8</UDN>
+        <friendlyName>NX-Cast</friendlyName>
+        <manufacturer>Ode1l</manufacturer>
+        <manufacturerURL>http://192.168.1.7:49152/</manufacturerURL>
+        <modelDescription>Nintendo Switch DLNA Media Renderer</modelDescription>
+        <modelName>NX-Cast Virtual Renderer</modelName>
+        <modelNumber>0.1.0</modelNumber>
+        <modelURL>http://192.168.1.7:49152/</modelURL>
+        <serialNumber>149096819871</serialNumber>
+        <UPC>149096819871</UPC>
+        
+        <dlna:X_DLNADOC xmlns:dlna="urn:schemas-dlna-org:device-1-0">DMR-1.50</dlna:X_DLNADOC>
+        <iconList>
+            <icon>
+                <mimetype>image/jpeg</mimetype>
+                <width>256</width>
+                <height>256</height>
+                <depth>24</depth>
+                <url>http://192.168.1.7:49152/dlna/icon.jpg</url>
+            </icon>
+        </iconList>
+        <serviceList>
+            <service>
+                <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+                <serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+                <controlURL>AVTransport/action</controlURL>
+                <eventSubURL>AVTransport/event</eventSubURL>
+                <SCPDURL>dlna/AVTransport.xml</SCPDURL>
+            </service>
+            <service>
+                <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+                <serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>
+                <controlURL>RenderingControl/action</controlURL>
+                <eventSubURL>RenderingControl/event</eventSubURL>
+                <SCPDURL>dlna/RenderingControl.xml</SCPDURL>
+            </service>
+            <service>
+                <serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>
+                <serviceId>urn:upnp-org:serviceId:ConnectionManager</serviceId>
+                <controlURL>ConnectionManager/action</controlURL>
+                <eventSubURL>ConnectionManager/event</eventSubURL>
+                <SCPDURL>dlna/ConnectionManager.xml</SCPDURL>
+            </service>
+            
+        </serviceList>
+        <deviceList/>
+        <presentationURL>http://192.168.1.7:49152/presentation.html</presentationURL>
+    </device>
+</root>

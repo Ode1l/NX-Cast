@@ -170,65 +170,6 @@ static bool avtransport_write_int_element(SoapActionOutput *out, const char *tag
     return false;
 }
 
-static bool parse_hhmmss_to_ms(const char *value, int *out_ms)
-{
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    int millis = 0;
-    int parsed_chars = 0;
-    const char *cursor = value;
-
-    if (!value || !out_ms)
-        return false;
-
-    while (*cursor && isspace((unsigned char)*cursor))
-        ++cursor;
-    if (*cursor == '\0')
-        return false;
-
-    if (sscanf(cursor, "%d:%d:%d%n", &hour, &minute, &second, &parsed_chars) != 3)
-        return false;
-    if (hour < 0 || minute < 0 || minute > 59 || second < 0 || second > 59)
-        return false;
-
-    if (cursor[parsed_chars] == '.')
-    {
-        const char *fraction = cursor + parsed_chars + 1;
-        size_t frac_len = strlen(fraction);
-        if (frac_len == 0 || frac_len > 3)
-            return false;
-
-        for (size_t i = 0; i < frac_len; ++i)
-        {
-            if (!isdigit((unsigned char)fraction[i]))
-                return false;
-            millis = millis * 10 + (fraction[i] - '0');
-        }
-
-        size_t pad_len = frac_len;
-        while (pad_len < 3)
-        {
-            millis *= 10;
-            ++pad_len;
-        }
-    }
-    else if (cursor[parsed_chars] != '\0')
-    {
-        while (cursor[parsed_chars] && isspace((unsigned char)cursor[parsed_chars]))
-            ++parsed_chars;
-        if (cursor[parsed_chars] == '\0')
-        {
-            *out_ms = (hour * 3600 + minute * 60 + second) * 1000;
-            return true;
-        }
-        return false;
-    }
-
-    *out_ms = (hour * 3600 + minute * 60 + second) * 1000 + millis;
-    return true;
-}
-
 static bool parse_track_number(const char *value, int *out_track)
 {
     char *end = NULL;
@@ -770,17 +711,7 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         return true;
     }
 
-    int target_ms = 0;
-    if (!parse_hhmmss_to_ms(target, &target_ms))
-    {
-        free(instance_id);
-        free(unit);
-        free(target);
-        soap_handler_set_fault(out, 402, "Invalid Args");
-        return false;
-    }
-
-    if (!renderer_seek_ms(target_ms))
+    if (!renderer_seek_target(target))
     {
         free(instance_id);
         free(unit);

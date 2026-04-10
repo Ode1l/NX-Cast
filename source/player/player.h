@@ -26,6 +26,7 @@ bool player_set_uri(const char *uri, const char *metadata);
 bool player_play(void);
 bool player_pause(void);
 bool player_stop(void);
+bool player_seek_target(const char *target);
 bool player_seek_ms(int position_ms);
 bool player_set_volume(int volume_0_100);
 bool player_set_mute(bool mute);

@@ -523,18 +523,28 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
               inet_ntoa(from->sin_addr), ntohs(from->sin_port), length);
 
     if (strncasecmp(packet, "M-SEARCH", 8) != 0)
+    {
+        log_debug("[ssdp] packet not M-SEARCH, ignoring\n");
         return;
+    }
 
     if (!get_header_value_alloc(packet, "MAN", &man))
-        return;
-    if (strcasecmp(man, "\"ssdp:discover\"") != 0)
     {
+        log_debug("[ssdp] M-SEARCH without MAN header, ignoring\n");
+        return;
+    }
+    
+    // Accept both "ssdp:discover" with quotes and ssdp:discover without quotes
+    if (strcasecmp(man, "\"ssdp:discover\"") != 0 && strcasecmp(man, "ssdp:discover") != 0)
+    {
+        log_debug("[ssdp] M-SEARCH invalid MAN value: %s, ignoring\n", man);
         free(man);
         return;
     }
 
     if (!get_header_value_alloc(packet, "ST", &st))
     {
+        log_debug("[ssdp] M-SEARCH without ST header, ignoring\n");
         free(man);
         return;
     }

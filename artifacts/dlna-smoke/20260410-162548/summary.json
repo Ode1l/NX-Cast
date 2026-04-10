@@ -1,0 +1,14 @@
+{
+  "output_dir": "/Users/ode1l/Documents/VSCode/NX-Cast/artifacts/dlna-smoke/20260410-162548",
+  "endpoints": [
+    "/description.xml",
+    "/Description.xml",
+    "/device.xml",
+    "/dlna/AVTransport.xml",
+    "/dlna/RenderingControl.xml",
+    "/dlna/ConnectionManager.xml",
+    "/presentation.html",
+    "/dlna/icon.jpg"
+  ],
+  "template_root": "/Users/ode1l/Documents/VSCode/NX-Cast/romfs/dlna"
+}

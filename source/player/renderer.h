@@ -25,6 +25,7 @@ static inline bool renderer_set_uri(const char *uri, const char *metadata) { ret
 static inline bool renderer_play(void) { return player_play(); }
 static inline bool renderer_pause(void) { return player_pause(); }
 static inline bool renderer_stop(void) { return player_stop(); }
+static inline bool renderer_seek_target(const char *target) { return player_seek_target(target); }
 static inline bool renderer_seek_ms(int position_ms) { return player_seek_ms(position_ms); }
 static inline bool renderer_set_volume(int volume_0_100) { return player_set_volume(volume_0_100); }
 static inline bool renderer_set_mute(bool mute) { return player_set_mute(mute); }

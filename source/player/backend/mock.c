@@ -2,6 +2,7 @@
 
 #include <switch.h>
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -193,6 +194,72 @@ static bool mock_stop(void)
     return true;
 }
 
+static bool mock_parse_seek_target_ms(const char *target, int *out_ms)
+{
+    long long hour = 0;
+    long long minute = 0;
+    long long second = 0;
+    int millis = 0;
+    int parsed_chars = 0;
+    const char *cursor = target;
+    const char *tail = NULL;
+    long long total_ms = 0;
+
+    if (!target || !out_ms)
+        return false;
+
+    while (*cursor && isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor == '\0')
+        return false;
+
+    if (sscanf(cursor, "%lld:%lld:%lld%n", &hour, &minute, &second, &parsed_chars) != 3)
+        return false;
+    if (hour < 0 || minute < 0 || second < 0)
+        return false;
+
+    tail = cursor + parsed_chars;
+    if (*tail == '.')
+    {
+        const char *fraction = tail + 1;
+        size_t frac_len = 0;
+        size_t pad_len;
+
+        while (fraction[frac_len] && !isspace((unsigned char)fraction[frac_len]))
+            ++frac_len;
+        if (frac_len == 0 || frac_len > 3)
+            return false;
+
+        for (size_t i = 0; i < frac_len; ++i)
+        {
+            if (!isdigit((unsigned char)fraction[i]))
+                return false;
+            millis = millis * 10 + (fraction[i] - '0');
+        }
+
+        pad_len = frac_len;
+        while (pad_len < 3)
+        {
+            millis *= 10;
+            ++pad_len;
+        }
+
+        tail = fraction + frac_len;
+    }
+
+    while (*tail && isspace((unsigned char)*tail))
+        ++tail;
+    if (*tail != '\0')
+        return false;
+
+    total_ms = ((hour * 3600LL) + (minute * 60LL) + second) * 1000LL + millis;
+    if (total_ms < 0 || total_ms > INT32_MAX)
+        return false;
+
+    *out_ms = (int)total_ms;
+    return true;
+}
+
 static bool mock_seek_ms(int position_ms)
 {
     if (!g_has_media || position_ms < 0)
@@ -206,6 +273,15 @@ static bool mock_seek_ms(int position_ms)
     g_play_anchor_monotonic_ms = monotonic_time_ms();
     emit_event(PLAYER_EVENT_POSITION_CHANGED, 0);
     return true;
+}
+
+static bool mock_seek_target(const char *target)
+{
+    int position_ms = 0;
+
+    if (!mock_parse_seek_target_ms(target, &position_ms))
+        return false;
+    return mock_seek_ms(position_ms);
 }
 
 static bool mock_set_volume(int volume_0_100)
@@ -324,6 +400,7 @@ const BackendOps g_mock_ops = {
     .play = mock_play,
     .pause = mock_pause,
     .stop = mock_stop,
+    .seek_target = mock_seek_target,
     .seek_ms = mock_seek_ms,
     .set_volume = mock_set_volume,
     .set_mute = mock_set_mute,

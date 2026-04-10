@@ -17,6 +17,7 @@ typedef struct
     bool (*play)(void);
     bool (*pause)(void);
     bool (*stop)(void);
+    bool (*seek_target)(const char *target);
     bool (*seek_ms)(int position_ms);
     bool (*set_volume)(int volume_0_100);
     bool (*set_mute)(bool mute);

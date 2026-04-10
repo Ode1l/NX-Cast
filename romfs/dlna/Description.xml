@@ -18,10 +18,18 @@
         <modelNumber>{model_number}</modelNumber>
         <modelURL>{model_url}</modelURL>
         <serialNumber>{serial_num}</serialNumber>
-        <UPC></UPC>
+        <UPC>{serial_num}</UPC>
         {header_extra}
         <dlna:X_DLNADOC xmlns:dlna="urn:schemas-dlna-org:device-1-0">DMR-1.50</dlna:X_DLNADOC>
-        <iconList/>
+        <iconList>
+            <icon>
+                <mimetype>image/jpeg</mimetype>
+                <width>256</width>
+                <height>256</height>
+                <depth>24</depth>
+                <url>{url_base}dlna/icon.jpg</url>
+            </icon>
+        </iconList>
         <serviceList>
             <service>
                 <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
@@ -47,6 +55,6 @@
             {service_extra}
         </serviceList>
         <deviceList/>
-        <presentationURL></presentationURL>
+        <presentationURL>{url_base}presentation.html</presentationURL>
     </device>
 </root>

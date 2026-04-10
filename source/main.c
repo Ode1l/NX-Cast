@@ -1,10 +1,12 @@
 #include <switch.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "log/log.h"
@@ -27,6 +29,9 @@ typedef struct
 #define ANSI_TEXT  "\x1b[37;1m"
 
 static int g_nxlinkSock = -1;
+static const char g_shutdownTraceDirParent[] = "sdmc:/switch";
+static const char g_shutdownTraceDir[] = "sdmc:/switch/NX-Cast";
+static const char g_shutdownTracePath[] = "sdmc:/switch/NX-Cast/shutdown_trace.log";
 
 typedef enum
 {
@@ -90,14 +95,34 @@ static const char *exit_reason_name(ExitReason reason)
 static void shutdown_stdio_trace(const char *fmt, ...)
 {
     va_list args;
+    FILE *file = NULL;
+    char line[512];
+    int written = 0;
 
     if (!fmt)
         return;
 
+    if (mkdir(g_shutdownTraceDirParent, 0777) != 0 && errno != EEXIST)
+        return;
+    if (mkdir(g_shutdownTraceDir, 0777) != 0 && errno != EEXIST)
+        return;
+
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    written = vsnprintf(line, sizeof(line), fmt, args);
     va_end(args);
-    fflush(stderr);
+
+    if (written <= 0)
+        return;
+
+    file = fopen(g_shutdownTracePath, "ab");
+    if (file)
+    {
+        fwrite(line, 1, (size_t)written < sizeof(line) ? (size_t)written : strlen(line), file);
+        fflush(file);
+        fsync(fileno(file));
+        fclose(file);
+    }
+
 }
 
 static size_t compute_total_visual_lines(int width)
@@ -237,6 +262,9 @@ static void enable_nxlink_stdio(bool network_ready)
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
+    // File I/O operations disabled to prevent system freeze
+    // Shutdown trace file logging is skipped
+    
     if (!log_runtime_init())
     {
         printf("[ERROR] [log] log_runtime_init failed\n");
@@ -302,7 +330,8 @@ int main(int argc, char* argv[])
         if (kDown & HidNpadButton_Plus)
         {
             exit_reason = EXIT_REASON_PLUS_BUTTON;
-            log_info("[shutdown] requested reason=%s\n", exit_reason_name(exit_reason));
+            log_set_stdio_mirror(false);
+            shutdown_stdio_trace("[INFO] [shutdown] requested reason=%s\n", exit_reason_name(exit_reason));
             break;
         }
 
@@ -388,6 +417,14 @@ int main(int argc, char* argv[])
     if (exit_reason == EXIT_REASON_UNKNOWN)
         exit_reason = EXIT_REASON_APPLET_LOOP_ENDED;
 
+    log_set_stdio_mirror(false);
+    shutdown_stdio_trace("[INFO] [shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d romfs_ready=%d\n",
+                         exit_reason_name(exit_reason),
+                         networkReady ? 1 : 0,
+                         dlnaRunning ? 1 : 0,
+                         videoPlatformReady ? 1 : 0,
+                         g_nxlinkSock,
+                         romfsReady ? 1 : 0);
     log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d romfs_ready=%d\n",
              exit_reason_name(exit_reason),
              networkReady ? 1 : 0,
@@ -400,8 +437,10 @@ int main(int argc, char* argv[])
     {
         if (dlnaRunning)
         {
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop begin\n");
             log_info("[shutdown] step=dlna_control_stop begin\n");
             dlna_control_stop();
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop done\n");
             log_info("[shutdown] step=dlna_control_stop done\n");
         }
         else
@@ -416,8 +455,10 @@ int main(int argc, char* argv[])
 
     if (videoPlatformReady)
     {
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit begin\n");
         log_info("[shutdown] step=player_view_deinit begin\n");
         player_view_deinit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit done\n");
         log_info("[shutdown] step=player_view_deinit done\n");
     }
     else
@@ -425,15 +466,14 @@ int main(int argc, char* argv[])
         log_info("[shutdown] step=player_view_deinit skip reason=not-initialized\n");
     }
 
+    shutdown_stdio_trace("[INFO] [shutdown] step=log_runtime_shutdown begin\n");
     log_info("[shutdown] step=log_runtime_shutdown begin\n");
     log_runtime_shutdown();
+    shutdown_stdio_trace("[INFO] [shutdown] step=log_runtime_shutdown done\n");
 
     if (g_nxlinkSock >= 0)
     {
-        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close begin fd=%d\n", g_nxlinkSock);
-        close(g_nxlinkSock);
-        g_nxlinkSock = -1;
-        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close done\n");
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close skip reason=leave-to-runtime fd=%d\n", g_nxlinkSock);
     }
     else
     {
@@ -442,13 +482,16 @@ int main(int argc, char* argv[])
 
     if (networkReady)
     {
-        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit begin\n");
-        socketExit();
-        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
-    }
-    else
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit skip reason=network-disabled\n");
+        if (g_nxlinkSock >= 0)
+        {
+            shutdown_stdio_trace("[INFO] [shutdown] step=socketExit skip reason=nxlink-stdio-active\n");
+        }
+        else
+        {
+            shutdown_stdio_trace("[INFO] [shutdown] step=socketExit begin\n");
+            socketExit();
+            shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
+        }
     }
 
     if (romfsReady)
@@ -457,13 +500,7 @@ int main(int argc, char* argv[])
         romfsExit();
         shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit done\n");
     }
-    else
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit skip reason=not-initialized\n");
-    }
 
-    render_log_view(0);
-    consoleUpdate(NULL);
     shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");
     consoleExit(NULL);
     return 0;

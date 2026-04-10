@@ -253,6 +253,10 @@ static ssize_t recv_full_http_request(int client_sock, char *request_buffer, siz
 
 static void normalize_path(const char *raw_path, char *path, size_t path_size)
 {
+    size_t read_index = 0;
+    size_t write_index = 0;
+    bool previous_was_slash = false;
+
     if (!path || path_size == 0)
         return;
 
@@ -262,10 +266,25 @@ static void normalize_path(const char *raw_path, char *path, size_t path_size)
         return;
     }
 
-    snprintf(path, path_size, "%s", raw_path);
-    char *query = strchr(path, '?');
-    if (query)
-        *query = '\0';
+    while (raw_path[read_index] != '\0' && raw_path[read_index] != '?' && write_index + 1 < path_size)
+    {
+        char ch = raw_path[read_index++];
+        if (ch == '/')
+        {
+            if (previous_was_slash)
+                continue;
+            previous_was_slash = true;
+        }
+        else
+            previous_was_slash = false;
+
+        path[write_index++] = ch;
+    }
+
+    if (write_index == 0)
+        path[write_index++] = '/';
+
+    path[write_index] = '\0';
 }
 
 static void handle_client(int client_sock, const struct sockaddr_in *client_addr)
@@ -316,6 +335,11 @@ static void handle_client(int client_sock, const struct sockaddr_in *client_addr
     if (!get_header_value(request_buffer, "Host", host, sizeof(host)))
         snprintf(host, sizeof(host), "localhost:%u", g_http_server.port);
 
+    char user_agent[256];
+    user_agent[0] = '\0';
+    if (!get_header_value(request_buffer, "User-Agent", user_agent, sizeof(user_agent)))
+        snprintf(user_agent, sizeof(user_agent), "(none)");
+
     char client_ip[32];
     client_ip[0] = '\0';
     uint16_t client_port = 0;
@@ -327,8 +351,8 @@ static void handle_client(int client_sock, const struct sockaddr_in *client_addr
     if (client_ip[0] == '\0')
         snprintf(client_ip, sizeof(client_ip), "unknown");
 
-    log_debug("[http-server] recv %s:%u -> %s http://%s%s bytes=%zd\n",
-              client_ip, client_port, method, host, raw_path, request_size);
+    log_debug("[http-server] recv %s:%u -> %s http://%s%s bytes=%zd ua=%s\n",
+              client_ip, client_port, method, host, raw_path, request_size, user_agent);
 
     size_t response_len = 0;
     bool handled = false;

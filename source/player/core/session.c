@@ -251,6 +251,21 @@ static bool player_run_backend_int(bool (*fn)(int), int value)
     return ok;
 }
 
+static bool player_run_backend_string(bool (*fn)(const char *), const char *value)
+{
+    bool ok;
+
+    if (!g_initialized || !g_backend || !fn || !value)
+        return false;
+
+    ok = fn(value);
+    if (ok)
+        player_refresh_cached_snapshot_from_backend();
+    if (ok && g_backend->wakeup)
+        g_backend->wakeup();
+    return ok;
+}
+
 static bool player_run_backend_flag(bool (*fn)(bool), bool value)
 {
     bool ok;
@@ -518,6 +533,11 @@ bool player_pause(void)
 bool player_stop(void)
 {
     return player_run_backend_bool(g_backend ? g_backend->stop : NULL);
+}
+
+bool player_seek_target(const char *target)
+{
+    return player_run_backend_string(g_backend ? g_backend->seek_target : NULL, target);
 }
 
 bool player_seek_ms(int position_ms)
