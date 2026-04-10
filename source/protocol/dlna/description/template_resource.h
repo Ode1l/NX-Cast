@@ -27,3 +27,5 @@ bool dlna_template_render_file_alloc(const char *relative_path,
 bool dlna_template_load_file_alloc(const char *relative_path,
                                    char **out,
                                    size_t *out_len);
+
+bool dlna_template_init(void);
