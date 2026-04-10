@@ -166,12 +166,6 @@ bool dlna_control_start(void)
     if (g_dlnaRunning)
         return true;
 
-    // Initialize template files on SD card
-    if (!dlna_template_init())
-    {
-        log_warn("[dlna] template initialization failed, will use embedded fallbacks\n");
-    }
-
     // dlna_identity_ensure_loaded();
     identity_uuid = dlna_identity_uuid();
     identity_serial = dlna_identity_serial_number();

@@ -4,143 +4,10 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <errno.h>
 
 #include "log/log.h"
 
 #define DLNA_TEMPLATE_PRIMARY_ROOT "sdmc:/switch/NX-Cast/dlna/"
-#define DLNA_TEMPLATE_ROMFS_ROOT "romfs:/dlna/"
-
-// Embedded fallback templates for safety
-static const char *template_get_fallback_content(const char *relative_path)
-{
-    if (!relative_path)
-        return NULL;
-    
-    if (strcmp(relative_path, "Description.xml") == 0)
-    {
-        return "<?xml version=\"1.0\"?>"
-               "<root xmlns=\"urn:schemas-upnp-org:device-1-0\">"
-               "<specVersion><major>1</major><minor>0</minor></specVersion>"
-               "<device>"
-               "<deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>"
-               "<friendlyName>{friendly_name}</friendlyName>"
-               "<manufacturer>{manufacturer}</manufacturer>"
-               "<manufacturerURL>{manufacturer_url}</manufacturerURL>"
-               "<modelDescription>{model_description}</modelDescription>"
-               "<modelName>{model_name}</modelName>"
-               "<modelNumber>{model_number}</modelNumber>"
-               "<modelURL>{model_url}</modelURL>"
-               "<serialNumber>{serial_num}</serialNumber>"
-               "<UDN>{uuid}</UDN>"
-               "{header_extra}"
-               "<serviceList>"
-               "<service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>"
-               "<serviceId>urn:schemas-upnp-org:serviceId:AVTransport</serviceId>"
-               "<SCPDURL>/AVTransport.xml</SCPDURL>"
-               "<controlURL>/upnp/control/AVTransport1</controlURL>"
-               "<eventSubURL>/upnp/control/AVTransport1</eventSubURL></service>"
-               "<service><serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>"
-               "<serviceId>urn:schemas-upnp-org:serviceId:RenderingControl</serviceId>"
-               "<SCPDURL>/RenderingControl.xml</SCPDURL>"
-               "<controlURL>/upnp/control/RenderingControl1</controlURL>"
-               "<eventSubURL>/upnp/control/RenderingControl1</eventSubURL></service>"
-               "<service><serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>"
-               "<serviceId>urn:schemas-upnp-org:serviceId:ConnectionManager</serviceId>"
-               "<SCPDURL>/ConnectionManager.xml</SCPDURL>"
-               "<controlURL>/upnp/control/ConnectionManager1</controlURL>"
-               "<eventSubURL>/upnp/control/ConnectionManager1</eventSubURL></service>"
-               "{service_extra}</serviceList></device></root>";
-    }
-    else if (strcmp(relative_path, "AVTransport.xml") == 0 || 
-             strcmp(relative_path, "RenderingControl.xml") == 0 ||
-             strcmp(relative_path, "ConnectionManager.xml") == 0)
-    {
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-               "<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">"
-               "<specVersion><major>1</major><minor>0</minor></specVersion>"
-               "<actionList></actionList>"
-               "<serviceStateTable></serviceStateTable></scpd>";
-    }
-    
-    return NULL;
-}
-
-// Safe copy file from source to destination
-static bool template_copy_file(const char *src_path, const char *dst_path)
-{
-    FILE *src = NULL;
-    FILE *dst = NULL;
-    char buffer[4096];
-    size_t read_size;
-    bool success = false;
-
-    src = fopen(src_path, "rb");
-    if (!src)
-    {
-        log_warn("[template] source file not found: %s\n", src_path);
-        return false;
-    }
-
-    dst = fopen(dst_path, "wb");
-    if (!dst)
-    {
-        log_warn("[template] failed to open destination: %s (errno=%d)\n", dst_path, errno);
-        fclose(src);
-        return false;
-    }
-
-    while ((read_size = fread(buffer, 1, sizeof(buffer), src)) > 0)
-    {
-        if (fwrite(buffer, 1, read_size, dst) != read_size)
-        {
-            log_warn("[template] write failed to %s (errno=%d)\n", dst_path, errno);
-            break;
-        }
-    }
-
-    if (!ferror(src) && !ferror(dst))
-    {
-        success = true;
-        log_info("[template] copied %s to %s\n", src_path, dst_path);
-    }
-
-    fclose(src);
-    fclose(dst);
-    return success;
-}
-
-// Initialize template directory and files on SD card
-bool dlna_template_init(void)
-{
-    // Ensure directory exists
-    if (mkdir(DLNA_TEMPLATE_PRIMARY_ROOT, 0777) != 0 && errno != EEXIST)
-    {
-        log_warn("[template] failed to create %s (errno=%d)\n", DLNA_TEMPLATE_PRIMARY_ROOT, errno);
-        return false;
-    }
-
-    log_info("[template] initialized directory: %s\n", DLNA_TEMPLATE_PRIMARY_ROOT);
-    
-    // Copy XML files from romfs to sdmc
-    const char *files[] = {"Description.xml", "AVTransport.xml", "RenderingControl.xml", "ConnectionManager.xml"};
-    for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); ++i)
-    {
-        char src[256];
-        char dst[256];
-        snprintf(src, sizeof(src), "%s%s", DLNA_TEMPLATE_ROMFS_ROOT, files[i]);
-        snprintf(dst, sizeof(dst), "%s%s", DLNA_TEMPLATE_PRIMARY_ROOT, files[i]);
-        
-        // Try to copy, but don't fail if it doesn't work - we have fallbacks
-        if (!template_copy_file(src, dst))
-        {
-            log_warn("[template] copy failed for %s, will use embedded fallback if needed\n", files[i]);
-        }
-    }
-
-    return true;
-}
 
 
 static const char *template_lookup_placeholder(const DlnaTemplateValues *values, const char *name)
@@ -284,8 +151,6 @@ static FILE *template_open_file(const char *relative_path)
             return file;
     }
 
-    // File not found in SD card - will use embedded fallback
-    log_warn("[template] file not found: %s (will use embedded fallback)\n", relative_path);
     return NULL;
 }
 
@@ -327,15 +192,12 @@ bool dlna_template_render_file_alloc(const char *relative_path,
                                      size_t *out_len)
 {
     FILE *file;
-    const char *embedded_content = NULL;
     char *rendered = NULL;
     char *token = NULL;
     size_t rendered_used = 0;
     size_t rendered_capacity = 0;
     size_t token_used = 0;
     size_t token_capacity = 0;
-    bool use_embedded = false;
-    const char *content_cursor = NULL;
 
     if (!relative_path || !out)
         return false;
@@ -347,31 +209,13 @@ bool dlna_template_render_file_alloc(const char *relative_path,
     file = template_open_file(relative_path);
     if (!file)
     {
-        // Try embedded fallback
-        embedded_content = template_get_fallback_content(relative_path);
-        if (!embedded_content)
-        {
-            log_error("[template] failed to open %s and no fallback available\n", relative_path);
-            return false;
-        }
-        use_embedded = true;
-        content_cursor = embedded_content;
-        log_warn("[template] using embedded fallback for %s\n", relative_path);
+        log_error("[template] failed to open %s\n", relative_path);
+        return false;
     }
 
-    // Process content (from file or embedded)
     for (;;)
     {
-        int ch;
-        if (use_embedded)
-        {
-            ch = *content_cursor ? (unsigned char)*content_cursor++ : EOF;
-        }
-        else
-        {
-            ch = fgetc(file);
-        }
-        
+        int ch = fgetc(file);
         if (ch == EOF)
             break;
 
@@ -389,15 +233,7 @@ bool dlna_template_render_file_alloc(const char *relative_path,
 
         for (;;)
         {
-            if (use_embedded)
-            {
-                ch = *content_cursor ? (unsigned char)*content_cursor++ : EOF;
-            }
-            else
-            {
-                ch = fgetc(file);
-            }
-            
+            ch = fgetc(file);
             if (ch == EOF || ch == '}')
                 break;
 
@@ -446,8 +282,7 @@ bool dlna_template_render_file_alloc(const char *relative_path,
         }
     }
 
-    if (!use_embedded && file)
-        fclose(file);
+    fclose(file);
     free(token);
     if (!rendered)
     {
@@ -462,8 +297,7 @@ bool dlna_template_render_file_alloc(const char *relative_path,
     return true;
 
 fail:
-    if (!use_embedded && file)
-        fclose(file);
+    fclose(file);
     free(token);
     free(rendered);
     return false;
@@ -474,11 +308,9 @@ bool dlna_template_load_file_alloc(const char *relative_path,
                                    size_t *out_len)
 {
     FILE *file;
-    const char *embedded_content = NULL;
     char *buffer = NULL;
     size_t used = 0;
     size_t capacity = 0;
-    bool use_embedded = false;
 
     if (!relative_path || !out)
         return false;
@@ -490,67 +322,45 @@ bool dlna_template_load_file_alloc(const char *relative_path,
     file = template_open_file(relative_path);
     if (!file)
     {
-        // Try embedded fallback
-        embedded_content = template_get_fallback_content(relative_path);
-        if (!embedded_content)
-        {
-            log_error("[template] failed to open %s and no fallback available\n", relative_path);
-            return false;
-        }
-        use_embedded = true;
-        log_warn("[template] using embedded fallback for %s\n", relative_path);
+        log_error("[template] failed to open %s\n", relative_path);
+        return false;
     }
 
-    if (use_embedded)
+    while (!feof(file))
     {
-        // Copy embedded content into buffer
-        size_t embedded_len = strlen(embedded_content);
-        buffer = malloc(embedded_len + 1);
-        if (!buffer)
-            return false;
-        
-        strcpy(buffer, embedded_content);
-        used = embedded_len;
-    }
-    else
-    {
-        // Read from file
-        while (!feof(file))
+        if (used + 256 + 1 > capacity)
         {
-            if (used + 256 + 1 > capacity)
-            {
-                size_t next_capacity = capacity == 0 ? 512 : capacity * 2;
-                while (used + 256 + 1 > next_capacity)
-                    next_capacity *= 2;
+            size_t next_capacity = capacity == 0 ? 512 : capacity * 2;
+            while (used + 256 + 1 > next_capacity)
+                next_capacity *= 2;
 
-                char *next_buffer = realloc(buffer, next_capacity);
-                if (!next_buffer)
-                {
-                    free(buffer);
-                    fclose(file);
-                    return false;
-                }
-
-                buffer = next_buffer;
-                capacity = next_capacity;
-            }
-
-            size_t chunk = fread(buffer + used, 1, capacity - used - 1, file);
-            used += chunk;
-
-            if (ferror(file))
+            char *next_buffer = realloc(buffer, next_capacity);
+            if (!next_buffer)
             {
                 free(buffer);
                 fclose(file);
                 return false;
             }
 
-            if (chunk == 0)
-                break;
+            buffer = next_buffer;
+            capacity = next_capacity;
         }
 
-        fclose(file);
+        size_t chunk = fread(buffer + used, 1, capacity - used - 1, file);
+        used += chunk;
+
+        if (ferror(file))
+        {
+            free(buffer);
+            fclose(file);
+            return false;
+        }
+
+        if (chunk == 0)
+            break;
     }
+
+    fclose(file);
 
     if (!buffer)
     {
