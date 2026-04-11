@@ -84,3 +84,9 @@ make
 ```
 
 如果后续切换自定义媒体工具链，再单独维护对应脚本与安装文档。
+
+## 8. 进一步阅读
+
+如果你准备自己编 `FFmpeg/mpv` 来补 `nvtegra` 或 `deko3d`，直接看：
+
+1. [FFmpeg与mpv自编工具链教程.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/FFmpeg与mpv自编工具链教程.md)
