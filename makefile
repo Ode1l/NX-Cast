@@ -18,8 +18,6 @@ include $(DEVKITPRO)/libnx/switch_rules
 # SOURCES is a list of directories containing source code
 # DATA is a list of directories containing data files
 # INCLUDES is a list of directories containing header files
-# ROMFS is the directory containing data to be added to RomFS, relative to the makefile (Optional)
-#
 # NO_ICON: if set to anything, do not use icon.
 # NO_NACP: if set to anything, no .nacp file is generated.
 # APP_TITLE is the name of the app stored in the .nacp file (Optional)
@@ -62,7 +60,6 @@ SOURCES		:=	source \
 			source/protocol/airplay/discovery
 DATA		:=	data
 INCLUDES	:=	include source
-ROMFS	:=	romfs
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -72,7 +69,7 @@ ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS	:=	-g -Wall -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
-CFLAGS	+=	$(INCLUDE) -D__SWITCH__
+CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DNXCAST_APP_VERSION=\"$(APP_VERSION)\"
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
@@ -199,10 +196,6 @@ endif
 
 ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
-endif
-
-ifneq ($(ROMFS),)
-	export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
 endif
 
 .PHONY: $(BUILD) clean all

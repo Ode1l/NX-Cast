@@ -17,6 +17,7 @@
 #include "handler_internal.h"
 #include "log/log.h"
 #include "player/renderer.h"
+#include "protocol/dlna/server_info.h"
 #include "soap_writer.h"
 
 #define EVENT_MAX_SUBSCRIPTIONS 8
@@ -28,8 +29,6 @@
 #define EVENT_MAX_TIMEOUT_SECONDS 3600
 #define EVENT_NOTIFY_RETRY_SLEEP_MS 100
 #define EVENT_NOTIFY_IO_TIMEOUT_SEC 1
-#define DLNA_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
-
 typedef enum
 {
     EVENT_SERVICE_INVALID = -1,
@@ -430,7 +429,7 @@ static bool event_build_response(int status,
                        status,
                        status_text,
                        body_len,
-                       DLNA_SERVER_INFO,
+                       dlna_server_info_get(),
                        headers,
                        payload);
     if (written < 0 || (size_t)written >= response_size)
@@ -667,7 +666,7 @@ static bool event_send_notify(const EventNotifyTarget *target, EventService serv
                            target->callback_host,
                            (unsigned)target->callback_port,
                            body.output_len,
-                           DLNA_SERVER_INFO,
+                           dlna_server_info_get(),
                            target->sid,
                            target->seq,
                            body.output_xml ? body.output_xml : "");

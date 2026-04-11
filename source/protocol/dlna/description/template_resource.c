@@ -1,4 +1,5 @@
 #include "template_resource.h"
+#include "resource_store.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -7,8 +8,7 @@
 
 #include "log/log.h"
 
-#define DLNA_TEMPLATE_PRIMARY_ROOT "romfs:/dlna/"
-#define DLNA_TEMPLATE_FALLBACK_ROOT "./romfs/dlna/"
+#define DLNA_TEMPLATE_FALLBACK_ROOT "./assets/dlna/"
 
 static const char *template_lookup_placeholder(const DlnaTemplateValues *values, const char *name)
 {
@@ -131,11 +131,10 @@ static char *template_strdup_printf(const char *fmt, ...)
 
 static FILE *template_open_file(const char *relative_path)
 {
-    static const char *const roots[] = {
-        DLNA_TEMPLATE_PRIMARY_ROOT,
+    const char *const roots[] = {
+        DLNA_STORAGE_DLNA_DIR "/",
         DLNA_TEMPLATE_FALLBACK_ROOT
     };
-
     if (!relative_path)
         return NULL;
 

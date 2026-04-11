@@ -7,6 +7,21 @@
     </specVersion>
     <actionList>
         <action>
+            <name>GetBrightness</name>
+            <argumentList>
+                <argument>
+                    <name>InstanceID</name>
+                    <direction>in</direction>
+                    <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+                </argument>
+                <argument>
+                    <name>CurrentBrightness</name>
+                    <direction>out</direction>
+                    <relatedStateVariable>Brightness</relatedStateVariable>
+                </argument>
+            </argumentList>
+        </action>
+        <action>
             <name>GetMute</name>
             <argumentList>
                 <argument>
@@ -132,6 +147,15 @@
         <stateVariable sendEvents="no">
             <name>A_ARG_TYPE_InstanceID</name>
             <dataType>ui4</dataType>
+        </stateVariable>
+        <stateVariable sendEvents="no">
+            <name>Brightness</name>
+            <dataType>ui2</dataType>
+            <allowedValueRange>
+                <minimum>0</minimum>
+                <maximum>100</maximum>
+                <step>1</step>
+            </allowedValueRange>
         </stateVariable>
         <stateVariable sendEvents="no">
             <name>Volume</name>

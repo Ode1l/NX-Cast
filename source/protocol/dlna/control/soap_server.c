@@ -11,8 +11,7 @@
 #include "handler_internal.h"
 #include "soap_writer.h"
 #include "log/log.h"
-
-#define DLNA_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
+#include "protocol/dlna/server_info.h"
 
 static bool g_running = false;
 
@@ -397,7 +396,7 @@ static bool build_http_response(int status,
                            status_text,
                            content_type,
                            body_len,
-                           DLNA_SERVER_INFO,
+                           dlna_server_info_get(),
                            body);
 
     if (written < 0 || (size_t)written >= response_size)

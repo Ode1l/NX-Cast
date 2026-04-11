@@ -8,6 +8,7 @@
 #include <switch.h>
 
 #include "log/log.h"
+#include "player/seek_target.h"
 
 #ifdef HAVE_LIBMPV
 #include <mpv/client.h>
@@ -130,6 +131,17 @@ static char *libmpv_format_seek_target(int position_ms)
 
     snprintf(target, (size_t)needed + 1, "%.3f", position_ms / 1000.0);
     return target;
+}
+
+static char *libmpv_normalize_seek_target_alloc(const char *target)
+{
+    int position_ms = 0;
+
+    if (!target)
+        return NULL;
+    if (player_seek_target_parse_ms(target, &position_ms))
+        return libmpv_format_seek_target(position_ms);
+    return strdup(target);
 }
 
 static bool libmpv_set_uri_locked(const char *uri)
@@ -293,17 +305,23 @@ static void libmpv_reset_locked(void)
 static bool libmpv_send_seek_target_locked(const char *target, LibmpvPendingEvents *pending)
 {
     const char *args[4];
+    char *normalized = NULL;
     int rc;
 
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0' || g_state == PLAYER_STATE_STOPPED || !target || target[0] == '\0')
         return false;
 
+    normalized = libmpv_normalize_seek_target_alloc(target);
+    if (normalized && strcmp(normalized, target) != 0)
+        log_debug("[player-libmpv] normalize seek target raw=%s normalized=%s\n", target, normalized);
+
     args[0] = "seek";
-    args[1] = target;
+    args[1] = normalized ? normalized : target;
     args[2] = "absolute";
     args[3] = NULL;
 
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_SEEK, args);
+    free(normalized);
     if (rc < 0)
     {
         log_warn("[player-libmpv] seek failed: %s\n", mpv_error_string(rc));

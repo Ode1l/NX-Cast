@@ -125,12 +125,6 @@ static void player_apply_event_locked(const PlayerEvent *event)
     g_snapshot.mute = event->mute;
     g_snapshot.seekable = event->seekable;
 
-    if (event->uri && g_has_current_media)
-    {
-        if (!player_media_set(&g_current_media, event->uri, g_current_media.metadata))
-            return;
-    }
-
     if (g_has_current_media)
     {
         g_snapshot.has_media = true;

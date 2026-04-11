@@ -45,7 +45,7 @@ SSDP
 4. `source/player/core/`
 5. `source/player/backend/`
 6. `source/player/render/`
-7. `romfs/dlna/`
+7. `assets/dlna/` -> `sdmc:/switch/NX-Cast/dlna/`
 
 ## 3. 当前协议层原则
 

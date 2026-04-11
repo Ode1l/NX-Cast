@@ -13,6 +13,7 @@
 #include "player/player.h"
 #include "player/view.h"
 #include "protocol/dlna_control.h"
+#include "protocol/dlna/description/resource_store.h"
 // #include "protocol/airplay/discovery/mdns.h"
 
 typedef struct
@@ -33,12 +34,41 @@ static const char g_shutdownTraceDirParent[] = "sdmc:/switch";
 static const char g_shutdownTraceDir[] = "sdmc:/switch/NX-Cast";
 static const char g_shutdownTracePath[] = "sdmc:/switch/NX-Cast/shutdown_trace.log";
 
+static void shutdown_stdio_trace(const char *fmt, ...);
+
 typedef enum
 {
     EXIT_REASON_UNKNOWN = 0,
     EXIT_REASON_PLUS_BUTTON,
     EXIT_REASON_APPLET_LOOP_ENDED
 } ExitReason;
+
+static void set_power_policy(bool active, bool use_logger)
+{
+    Result media_rc = appletSetMediaPlaybackState(active);
+    Result sleep_rc = appletSetAutoSleepDisabled(active);
+
+    if (use_logger)
+    {
+        if (R_FAILED(media_rc))
+            log_warn("[power] appletSetMediaPlaybackState(%d) failed: 0x%x\n", active ? 1 : 0, media_rc);
+        else
+            log_info("[power] media playback state=%d\n", active ? 1 : 0);
+
+        if (R_FAILED(sleep_rc))
+            log_warn("[power] appletSetAutoSleepDisabled(%d) failed: 0x%x\n", active ? 1 : 0, sleep_rc);
+        else
+            log_info("[power] auto sleep disabled=%d\n", active ? 1 : 0);
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=power_policy media_playback=%d rc=0x%x auto_sleep_disabled=%d rc=0x%x\n",
+                             active ? 1 : 0,
+                             media_rc,
+                             active ? 1 : 0,
+                             sleep_rc);
+    }
+}
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -262,8 +292,6 @@ static void enable_nxlink_stdio(bool network_ready)
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
-    // File I/O operations disabled to prevent system freeze
-    // Shutdown trace file logging is skipped
     
     if (!log_runtime_init())
     {
@@ -271,12 +299,13 @@ int main(int argc, char* argv[])
     }
     log_set_level(LOG_LEVEL_DEBUG);
     log_info("[log] level=DEBUG\n");
+    set_power_policy(true, true);
 
-    bool romfsReady = R_SUCCEEDED(romfsInit());
-    if (romfsReady)
-        log_info("[romfs] romfs initialized.\n");
+    bool storageReady = dlna_resource_store_ensure_defaults();
+    if (storageReady)
+        log_info("[storage] DLNA resources ready on SD.\n");
     else
-        log_warn("[romfs] romfsInit failed; description templates may be unavailable.\n");
+        log_warn("[storage] failed to prepare DLNA resources on SD.\n");
 
     bool networkReady = initialize_network();
     enable_nxlink_stdio(networkReady);
@@ -418,20 +447,20 @@ int main(int argc, char* argv[])
         exit_reason = EXIT_REASON_APPLET_LOOP_ENDED;
 
     log_set_stdio_mirror(false);
-    shutdown_stdio_trace("[INFO] [shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d romfs_ready=%d\n",
+    shutdown_stdio_trace("[INFO] [shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
                          exit_reason_name(exit_reason),
                          networkReady ? 1 : 0,
                          dlnaRunning ? 1 : 0,
                          videoPlatformReady ? 1 : 0,
                          g_nxlinkSock,
-                         romfsReady ? 1 : 0);
-    log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d romfs_ready=%d\n",
+                         storageReady ? 1 : 0);
+    log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
              exit_reason_name(exit_reason),
              networkReady ? 1 : 0,
              dlnaRunning ? 1 : 0,
              videoPlatformReady ? 1 : 0,
              g_nxlinkSock,
-             romfsReady ? 1 : 0);
+             storageReady ? 1 : 0);
 
     if (networkReady)
     {
@@ -470,10 +499,17 @@ int main(int argc, char* argv[])
     log_info("[shutdown] step=log_runtime_shutdown begin\n");
     log_runtime_shutdown();
     shutdown_stdio_trace("[INFO] [shutdown] step=log_runtime_shutdown done\n");
+    set_power_policy(false, false);
 
     if (g_nxlinkSock >= 0)
     {
-        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close skip reason=leave-to-runtime fd=%d\n", g_nxlinkSock);
+        int nxlink_fd = g_nxlinkSock;
+        g_nxlinkSock = -1;
+        fflush(stdout);
+        fflush(stderr);
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close begin fd=%d\n", nxlink_fd);
+        close(nxlink_fd);
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close done\n");
     }
     else
     {
@@ -482,23 +518,9 @@ int main(int argc, char* argv[])
 
     if (networkReady)
     {
-        if (g_nxlinkSock >= 0)
-        {
-            shutdown_stdio_trace("[INFO] [shutdown] step=socketExit skip reason=nxlink-stdio-active\n");
-        }
-        else
-        {
-            shutdown_stdio_trace("[INFO] [shutdown] step=socketExit begin\n");
-            socketExit();
-            shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
-        }
-    }
-
-    if (romfsReady)
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit begin\n");
-        romfsExit();
-        shutdown_stdio_trace("[INFO] [shutdown] step=romfsExit done\n");
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit begin\n");
+        socketExit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
     }
 
     shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");

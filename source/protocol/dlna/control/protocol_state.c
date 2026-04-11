@@ -1184,7 +1184,6 @@ void dlna_protocol_state_on_renderer_event(const RendererEvent *event)
         set_state_bool_by_name("Mute", event->mute);
         break;
     case PLAYER_EVENT_URI_CHANGED:
-        set_state_string_by_name("CurrentTrackURI", event->uri);
         break;
     case PLAYER_EVENT_ERROR:
         set_state_string_by_name("TransportState", "STOPPED");

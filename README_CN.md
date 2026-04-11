@@ -131,8 +131,11 @@ source/
       description/
       control/
     http/
-romfs/
+assets/
   dlna/
+
+Switch 运行时资源目录：
+  sdmc:/switch/NX-Cast/dlna/
 ```
 
 ## 推荐阅读顺序

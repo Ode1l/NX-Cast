@@ -15,8 +15,10 @@
 #include "log/log.h"
 #include "protocol/dlna/control/event_server.h"
 #include "protocol/dlna/control/soap_server.h"
+#include "protocol/dlna/description/resource_store.h"
 #include "protocol/dlna/description/scpd.h"
 #include "protocol/dlna/discovery/ssdp.h"
+#include "protocol/dlna/hls_gateway.h"
 #include "protocol/http/http_server.h"
 
 static bool g_dlnaRunning = false;
@@ -24,16 +26,15 @@ static const uint16_t g_dlnaHttpPort = 49152;
 static const char g_dlnaDeviceType[] = "urn:schemas-upnp-org:device:MediaRenderer:1";
 static const char g_dlnaFriendlyName[] = "NX-Cast";
 static const char g_dlnaManufacturer[] = "Ode1l";
-static const char g_dlnaModelDescription[] = "Nintendo Switch DLNA Media Renderer";
-static const char g_dlnaModelName[] = "NX-Cast Virtual Renderer";
+static const char g_dlnaManufacturerUrl[] = "https://github.com/Ode1l";
+static const char g_dlnaModelDescription[] = "DLNA Media Renderer for Nintendo Switch";
+static const char g_dlnaModelName[] = "NX-Cast";
 static const char g_dlnaModelNumber[] = "0.1.0";
+static const char g_dlnaModelUrl[] = "https://github.com/Ode1l/NX-Cast";
 static const char g_dlnaFallbackSerialNumber[] = "000000000001";
 static const char g_dlnaFallbackUuid[] = "uuid:6b0d3c60-3d96-41f4-986c-0a4bb12b0001";
 static const char g_dlnaLocationPath[] = "/description.xml";
-// File identity disabled - commenting out unused directory paths
-// static const char g_dlnaIdentityDirParent[] = "sdmc:/switch";
-// static const char g_dlnaIdentityDir[] = "sdmc:/switch/NX-Cast";
-// static const char g_dlnaIdentityPath[] = "sdmc:/switch/NX-Cast/device_identity.txt";
+static const char g_dlnaIdentityPath[] = DLNA_STORAGE_DIR "/device_identity.txt";
 static char *g_dlnaRuntimeSerialNumber = NULL;
 static char *g_dlnaRuntimeUuid = NULL;
 
@@ -47,128 +48,165 @@ static const char *dlna_identity_uuid(void)
     return g_dlnaRuntimeUuid ? g_dlnaRuntimeUuid : g_dlnaFallbackUuid;
 }
 
-// static char *dlna_strdup_printf(const char *fmt, ...)
-// {
-//     va_list args;
-//     va_list args_copy;
-//     int needed;
-//     char *buffer;
+static char *dlna_strdup_printf(const char *fmt, ...)
+{
+    va_list args;
+    va_list args_copy;
+    int needed;
+    char *buffer;
 
-//     if (!fmt)
-//         return NULL;
+    if (!fmt)
+        return NULL;
 
-//     va_start(args, fmt);
-//     va_copy(args_copy, args);
-//     needed = vsnprintf(NULL, 0, fmt, args_copy);
-//     va_end(args_copy);
-//     if (needed < 0)
-//     {
-//         va_end(args);
-//         return NULL;
-//     }
+    va_start(args, fmt);
+    va_copy(args_copy, args);
+    needed = vsnprintf(NULL, 0, fmt, args_copy);
+    va_end(args_copy);
+    if (needed < 0)
+    {
+        va_end(args);
+        return NULL;
+    }
 
-//     buffer = malloc((size_t)needed + 1);
-//     if (!buffer)
-//     {
-//         va_end(args);
-//         return NULL;
-//     }
+    buffer = malloc((size_t)needed + 1);
+    if (!buffer)
+    {
+        va_end(args);
+        return NULL;
+    }
 
-//     vsnprintf(buffer, (size_t)needed + 1, fmt, args);
-//     va_end(args);
-//     return buffer;
-// }
+    vsnprintf(buffer, (size_t)needed + 1, fmt, args);
+    va_end(args);
+    return buffer;
+}
 
-// static bool dlna_ensure_directory(const char *path)
-// {
-//     if (!path || path[0] == '\0')
-//         return false;
-//
-//     if (mkdir(path, 0777) == 0 || errno == EEXIST)
-//         return true;
-//
-//     log_warn("[dlna] mkdir failed path=%s errno=%d\n", path, errno);
-//     return false;
-// }
+static char *dlna_generate_uuid_alloc(void)
+{
+    unsigned char raw[16];
 
-// static char *dlna_generate_uuid_alloc(void)
-// {
-//     unsigned char raw[16];
+    randomGet(raw, sizeof(raw));
+    raw[6] = (unsigned char)((raw[6] & 0x0f) | 0x40);
+    raw[8] = (unsigned char)((raw[8] & 0x3f) | 0x80);
 
-//     randomGet(raw, sizeof(raw));
-//     raw[6] = (unsigned char)((raw[6] & 0x0f) | 0x40);
-//     raw[8] = (unsigned char)((raw[8] & 0x3f) | 0x80);
+    return dlna_strdup_printf("uuid:%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                              raw[0], raw[1], raw[2], raw[3],
+                              raw[4], raw[5],
+                              raw[6], raw[7],
+                              raw[8], raw[9],
+                              raw[10], raw[11], raw[12], raw[13], raw[14], raw[15]);
+}
 
-//     return dlna_strdup_printf("uuid:%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-//                               raw[0], raw[1], raw[2], raw[3],
-//                               raw[4], raw[5],
-//                               raw[6], raw[7],
-//                               raw[8], raw[9],
-//                               raw[10], raw[11], raw[12], raw[13], raw[14], raw[15]);
-// }
+static char *dlna_generate_serial_alloc(void)
+{
+    unsigned long long value = randomGet64() % 1000000000000ULL;
+    if (value == 0ULL)
+        value = 1ULL;
+    return dlna_strdup_printf("%012llu", value);
+}
 
-// static char *dlna_generate_serial_alloc(void)
-// {
-//     unsigned long long value = randomGet64() % 1000000000000ULL;
-//     if (value == 0ULL)
-//         value = 1ULL;
-//     return dlna_strdup_printf("%012llu", value);
-// }
+static bool dlna_store_identity_file(const char *uuid, const char *serial_number)
+{
+    FILE *file;
 
-// static bool dlna_store_identity_file(const char *uuid, const char *serial_number)
-// {
-//     (void)uuid;
-//     (void)serial_number;
-//     // File identity storage disabled to prevent system crashes
-//     log_warn("[dlna] identity file storage disabled\n");
-//     return true;
-// }
+    if (!uuid || !serial_number)
+        return false;
 
-// static bool dlna_parse_identity_file(char **uuid_out, char **serial_out)
-// {
-//     (void)uuid_out;
-//     (void)serial_out;
-//     // File identity parsing disabled to prevent system crashes
-//     log_warn("[dlna] identity file parsing disabled\n");
-//     return false;
-// }
+    file = fopen(g_dlnaIdentityPath, "wb");
+    if (!file)
+    {
+        log_warn("[dlna] identity fopen failed path=%s errno=%d\n", g_dlnaIdentityPath, errno);
+        return false;
+    }
 
-// static void dlna_identity_ensure_loaded(void)
-// {
-//     char *uuid = NULL;
-//     char *serial = NULL;
+    fprintf(file, "uuid=%s\nserial=%s\n", uuid, serial_number);
+    fclose(file);
+    return true;
+}
 
-//     if (g_dlnaRuntimeUuid && g_dlnaRuntimeSerialNumber)
-//         return;
+static bool dlna_parse_identity_file(char **uuid_out, char **serial_out)
+{
+    FILE *file;
+    char line[128];
+    char *uuid = NULL;
+    char *serial = NULL;
 
-//     if (!dlna_parse_identity_file(&uuid, &serial))
-//     {
-//         uuid = dlna_generate_uuid_alloc();
-//         serial = dlna_generate_serial_alloc();
-//         if (uuid && serial)
-//         {
-//             if (dlna_store_identity_file(uuid, serial))
-//                 log_info("[dlna] generated persistent device identity.\n");
-//             else
-//                 log_warn("[dlna] generated device identity but could not persist it.\n");
-//         }
-//     }
-//     else
-//         log_info("[dlna] loaded persistent device identity.\n");
+    if (!uuid_out || !serial_out)
+        return false;
 
-//     if (uuid && serial)
-//     {
-//         free(g_dlnaRuntimeUuid);
-//         free(g_dlnaRuntimeSerialNumber);
-//         g_dlnaRuntimeUuid = uuid;
-//         g_dlnaRuntimeSerialNumber = serial;
-//         return;
-//     }
+    *uuid_out = NULL;
+    *serial_out = NULL;
 
-//     free(uuid);
-//     free(serial);
-//     log_warn("[dlna] using fallback static device identity.\n");
-// }
+    file = fopen(g_dlnaIdentityPath, "rb");
+    if (!file)
+        return false;
+
+    while (fgets(line, sizeof(line), file))
+    {
+        char *newline = strchr(line, '\n');
+        if (newline)
+            *newline = '\0';
+
+        if (strncmp(line, "uuid=", 5) == 0)
+        {
+            free(uuid);
+            uuid = strdup(line + 5);
+        }
+        else if (strncmp(line, "serial=", 7) == 0)
+        {
+            free(serial);
+            serial = strdup(line + 7);
+        }
+    }
+
+    fclose(file);
+    if (!uuid || !serial || uuid[0] == '\0' || serial[0] == '\0')
+    {
+        free(uuid);
+        free(serial);
+        return false;
+    }
+
+    *uuid_out = uuid;
+    *serial_out = serial;
+    return true;
+}
+
+static void dlna_identity_ensure_loaded(void)
+{
+    char *uuid = NULL;
+    char *serial = NULL;
+
+    if (g_dlnaRuntimeUuid && g_dlnaRuntimeSerialNumber)
+        return;
+
+    if (!dlna_parse_identity_file(&uuid, &serial))
+    {
+        uuid = dlna_generate_uuid_alloc();
+        serial = dlna_generate_serial_alloc();
+        if (uuid && serial)
+        {
+            if (dlna_store_identity_file(uuid, serial))
+                log_info("[dlna] generated persistent device identity.\n");
+            else
+                log_warn("[dlna] generated device identity but could not persist it.\n");
+        }
+    }
+    else
+        log_info("[dlna] loaded persistent device identity.\n");
+
+    if (uuid && serial)
+    {
+        free(g_dlnaRuntimeUuid);
+        free(g_dlnaRuntimeSerialNumber);
+        g_dlnaRuntimeUuid = uuid;
+        g_dlnaRuntimeSerialNumber = serial;
+        return;
+    }
+
+    free(uuid);
+    free(serial);
+    log_warn("[dlna] using fallback static device identity.\n");
+}
 
 static char *dlna_determine_local_ip_alloc(void)
 {
@@ -268,6 +306,15 @@ static bool dlna_http_dispatch(const HttpRequestContext *ctx,
         return true;
     }
 
+    if (hls_gateway_try_handle_http(ctx->method,
+                                    ctx->path,
+                                    response,
+                                    response_size,
+                                    response_len))
+    {
+        return true;
+    }
+
     if (scpd_try_handle_http(ctx->method,
                              ctx->path,
                              response,
@@ -291,14 +338,14 @@ bool dlna_control_start(void)
     if (g_dlnaRunning)
         return true;
 
-    // dlna_identity_ensure_loaded();
+    dlna_identity_ensure_loaded();
     identity_uuid = dlna_identity_uuid();
     identity_serial = dlna_identity_serial_number();
     url_base = dlna_build_url_base_alloc(g_dlnaHttpPort);
     if (!url_base)
         log_warn("[dlna] unable to determine URLBase, Description.xml will use empty URLBase.\n");
-    manufacturer_url = url_base ? url_base : "";
-    model_url = url_base ? url_base : "";
+    manufacturer_url = g_dlnaManufacturerUrl;
+    model_url = g_dlnaModelUrl;
 
     const ScpdConfig scpdConfig = {
         .url_base = url_base ? url_base : "",
@@ -331,10 +378,10 @@ bool dlna_control_start(void)
         log_error("[dlna] SCPD module failed to start.\n");
         return false;
     }
-    free(url_base);
 
     if (!soap_server_start())
     {
+        free(url_base);
         log_error("[dlna] SOAP control module failed to start.\n");
         scpd_stop();
         return false;
@@ -342,11 +389,23 @@ bool dlna_control_start(void)
 
     if (!event_server_start())
     {
+        free(url_base);
         log_error("[dlna] Event control module failed to start.\n");
         soap_server_stop();
         scpd_stop();
         return false;
     }
+
+    if (!hls_gateway_start(url_base ? url_base : ""))
+    {
+        log_error("[dlna] HLS gateway failed to start.\n");
+        event_server_stop();
+        soap_server_stop();
+        scpd_stop();
+        free(url_base);
+        return false;
+    }
+    free(url_base);
 
     const HttpServerConfig httpConfig = {
         .port = g_dlnaHttpPort,
@@ -357,6 +416,7 @@ bool dlna_control_start(void)
     if (!http_server_start(&httpConfig))
     {
         log_error("[dlna] HTTP server failed to start.\n");
+        hls_gateway_stop();
         event_server_stop();
         soap_server_stop();
         scpd_stop();
@@ -367,6 +427,7 @@ bool dlna_control_start(void)
     {
         log_error("[dlna] SSDP responder failed to start.\n");
         http_server_stop();
+        hls_gateway_stop();
         event_server_stop();
         soap_server_stop();
         scpd_stop();
@@ -390,6 +451,9 @@ void dlna_control_stop(void)
     log_info("[dlna] stop step=http_server_stop begin\n");
     http_server_stop();
     log_info("[dlna] stop step=http_server_stop done\n");
+    log_info("[dlna] stop step=hls_gateway_stop begin\n");
+    hls_gateway_stop();
+    log_info("[dlna] stop step=hls_gateway_stop done\n");
     log_info("[dlna] stop step=event_server_stop begin\n");
     event_server_stop();
     log_info("[dlna] stop step=event_server_stop done\n");
