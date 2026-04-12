@@ -752,6 +752,10 @@ static bool libmpv_init(void)
     mpv_set_option_string(g_mpv, "audio-display", "no");
     mpv_set_option_string(g_mpv, "image-display-duration", "inf");
     mpv_set_option_string(g_mpv, "idle", "yes");
+    // Switch libass builds often lack fontconfig/coretext providers.
+    // Disable provider probing to avoid startup warnings for an OSD path we do not use.
+    mpv_set_option_string(g_mpv, "sub-font-provider", "none");
+    mpv_set_option_string(g_mpv, "demuxer-lavf-o", "http_persistent=0,http_multiple=0");
     
     // Prefer hardware decode on Switch. If the libmpv package exposes the
     // explicit nvtegra backend, use it directly; otherwise fall back to mpv's

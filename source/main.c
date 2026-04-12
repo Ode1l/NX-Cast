@@ -31,11 +31,14 @@ typedef struct
 
 static int g_nxlinkSock = -1;
 static bool g_nxlinkWasActive = false;
+static bool g_networkInitialized = false;
+static bool g_consoleInitialized = false;
 static const char g_shutdownTraceDirParent[] = "sdmc:/switch";
 static const char g_shutdownTraceDir[] = "sdmc:/switch/NX-Cast";
 static const char g_shutdownTracePath[] = "sdmc:/switch/NX-Cast/shutdown_trace.log";
 
 static void shutdown_stdio_trace(const char *fmt, ...);
+static void shutdown_trace_reset(void);
 
 typedef enum
 {
@@ -154,6 +157,21 @@ static void shutdown_stdio_trace(const char *fmt, ...)
         fclose(file);
     }
 
+}
+
+static void shutdown_trace_reset(void)
+{
+    FILE *file;
+
+    if (mkdir(g_shutdownTraceDirParent, 0777) != 0 && errno != EEXIST)
+        return;
+    if (mkdir(g_shutdownTraceDir, 0777) != 0 && errno != EEXIST)
+        return;
+
+    file = fopen(g_shutdownTracePath, "wb");
+    if (!file)
+        return;
+    fclose(file);
 }
 
 static size_t compute_total_visual_lines(int width)
@@ -291,9 +309,47 @@ static void enable_nxlink_stdio(bool network_ready)
              NXLINK_CLIENT_PORT);
 }
 
+void userAppExit(void)
+{
+    shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit begin network_initialized=%d nxlink_fd=%d console_initialized=%d\n",
+                         g_networkInitialized ? 1 : 0,
+                         g_nxlinkSock,
+                         g_consoleInitialized ? 1 : 0);
+
+    if (g_nxlinkSock >= 0)
+    {
+        int nxlink_fd = g_nxlinkSock;
+        g_nxlinkSock = -1;
+        fflush(stdout);
+        fflush(stderr);
+        consoleDebugInit(debugDevice_NULL);
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit nxlink_close begin fd=%d\n", nxlink_fd);
+        close(nxlink_fd);
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit nxlink_close done\n");
+    }
+
+    if (g_networkInitialized)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit socketExit begin\n");
+        socketExit();
+        g_networkInitialized = false;
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit socketExit done\n");
+    }
+
+    if (g_consoleInitialized)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit consoleExit begin\n");
+        consoleExit(NULL);
+        g_consoleInitialized = false;
+    }
+}
+
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
+    g_consoleInitialized = true;
+    shutdown_trace_reset();
+    shutdown_stdio_trace("[INFO] [shutdown] trace_build=exit-userAppExit-v1\n");
     
     if (!log_runtime_init())
     {
@@ -310,6 +366,7 @@ int main(int argc, char* argv[])
         log_warn("[storage] failed to prepare DLNA resources on SD.\n");
 
     bool networkReady = initialize_network();
+    g_networkInitialized = networkReady;
     enable_nxlink_stdio(networkReady);
     bool dlnaRunning = false;
     bool videoPlatformReady = player_view_init();
@@ -469,6 +526,19 @@ int main(int argc, char* argv[])
              g_nxlinkSock,
              storageReady ? 1 : 0);
 
+    if (videoPlatformReady)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit begin\n");
+        log_info("[shutdown] step=player_view_deinit begin\n");
+        player_view_deinit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit done\n");
+        log_info("[shutdown] step=player_view_deinit done\n");
+    }
+    else
+    {
+        log_info("[shutdown] step=player_view_deinit skip reason=not-initialized\n");
+    }
+
     if (networkReady)
     {
         if (dlnaRunning)
@@ -489,19 +559,6 @@ int main(int argc, char* argv[])
         log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
     }
 
-    if (videoPlatformReady)
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit begin\n");
-        log_info("[shutdown] step=player_view_deinit begin\n");
-        player_view_deinit();
-        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit done\n");
-        log_info("[shutdown] step=player_view_deinit done\n");
-    }
-    else
-    {
-        log_info("[shutdown] step=player_view_deinit skip reason=not-initialized\n");
-    }
-
     shutdown_stdio_trace("[INFO] [shutdown] step=log_runtime_shutdown begin\n");
     log_info("[shutdown] step=log_runtime_shutdown begin\n");
     log_runtime_shutdown();
@@ -509,46 +566,16 @@ int main(int argc, char* argv[])
     set_power_policy(false, false);
 
     if (g_nxlinkSock >= 0)
-    {
-        int nxlink_fd = g_nxlinkSock;
-        g_nxlinkSock = -1;
-        shutdown_stdio_trace("[INFO] [shutdown] step=stderr_detach begin device=null\n");
-        fflush(stdout);
-        fflush(stderr);
-        consoleDebugInit(debugDevice_NULL);
-        shutdown_stdio_trace("[INFO] [shutdown] step=stderr_detach done\n");
-        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close begin fd=%d\n", nxlink_fd);
-        close(nxlink_fd);
-        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close done\n");
-    }
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close defer reason=userAppExit fd=%d\n", g_nxlinkSock);
     else
-    {
         shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close skip reason=no-fd\n");
-    }
 
     if (networkReady)
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit begin\n");
-        socketExit();
-        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
-    }
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit defer reason=userAppExit\n");
 
-    if (g_nxlinkWasActive)
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit skip reason=nxlink-session\n");
-    }
-    else if (videoPlatformReady)
-    {
-        // Video platform was initialized, which calls consoleExit during frontend_open
-        // and consoleInit during frontend_close. Skip the final consoleExit to avoid
-        // interfering with deko3d resource cleanup
-        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit skip reason=video-platform-handled-console\n");
-    }
-    else
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");
-        consoleExit(NULL);
-        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit done\n");
-    }
+    if (g_consoleInitialized)
+        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit defer reason=userAppExit\n");
+
+    shutdown_stdio_trace("[INFO] [shutdown] step=main return begin\n");
     return 0;
 }

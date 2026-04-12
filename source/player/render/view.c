@@ -169,13 +169,24 @@ bool player_view_prepare_video(void)
 
 void player_view_deinit(void)
 {
+    bool restore_console = false;
+
     if (!g_view.status.initialized)
         return;
 
-    // Close frontend with console restoration
-    // frontend_close will handle console properly based on render_path
-    frontend_close(&g_view, true);
+    restore_console = g_view.status.foreground_video_active ||
+                      g_view.framebuffer_ready ||
+                      g_view.render_path != FRONTEND_RENDER_NONE;
+
+    // Tear down the active frontend first, but delay console restoration
+    // until after any render backend/device objects are fully destroyed.
+    frontend_close(&g_view, false);
     frontend_shutdown(&g_view);
+    if (restore_console)
+    {
+        consoleInit(NULL);
+        consoleClear();
+    }
 
     log_info("[player-view] deinit frame_counter=%llu frames_presented=%llu active_view=%s\n",
              (unsigned long long)g_view.status.frame_counter,
