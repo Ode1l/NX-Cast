@@ -30,6 +30,7 @@ typedef struct
 #define ANSI_TEXT  "\x1b[37;1m"
 
 static int g_nxlinkSock = -1;
+static bool g_nxlinkWasActive = false;
 static const char g_shutdownTraceDirParent[] = "sdmc:/switch";
 static const char g_shutdownTraceDir[] = "sdmc:/switch/NX-Cast";
 static const char g_shutdownTracePath[] = "sdmc:/switch/NX-Cast/shutdown_trace.log";
@@ -275,6 +276,7 @@ static void enable_nxlink_stdio(bool network_ready)
     g_nxlinkSock = nxlinkStdioForDebug();
     if (g_nxlinkSock >= 0)
     {
+        g_nxlinkWasActive = true;
         log_set_stdio_mirror(true);
         log_info("[log] nxlink stderr connected host=%s port=%d fd=%d stdout=local\n",
                  inet_ntoa(__nxlink_host),
@@ -505,8 +507,11 @@ int main(int argc, char* argv[])
     {
         int nxlink_fd = g_nxlinkSock;
         g_nxlinkSock = -1;
+        shutdown_stdio_trace("[INFO] [shutdown] step=stderr_detach begin device=null\n");
         fflush(stdout);
         fflush(stderr);
+        consoleDebugInit(debugDevice_NULL);
+        shutdown_stdio_trace("[INFO] [shutdown] step=stderr_detach done\n");
         shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close begin fd=%d\n", nxlink_fd);
         close(nxlink_fd);
         shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close done\n");
@@ -523,7 +528,14 @@ int main(int argc, char* argv[])
         shutdown_stdio_trace("[INFO] [shutdown] step=socketExit done\n");
     }
 
-    shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");
-    consoleExit(NULL);
+    if (g_nxlinkWasActive)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit skip reason=nxlink-session\n");
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");
+        consoleExit(NULL);
+    }
     return 0;
 }

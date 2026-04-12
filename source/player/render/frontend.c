@@ -2,9 +2,15 @@
 
 #include <string.h>
 
+#ifndef HAVE_MPV_RENDER_DK3D
 #ifdef HAVE_SWITCH_EGL_GLES
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#endif
+#endif
+
+#ifdef HAVE_MPV_RENDER_DK3D
+#include <deko3d.h>
 #endif
 
 #include "log/log.h"
@@ -15,7 +21,7 @@
 
 static void frontend_query_display_size(u32 *out_width, u32 *out_height);
 
-#ifdef HAVE_SWITCH_EGL_GLES
+#if defined(HAVE_SWITCH_EGL_GLES) && !defined(HAVE_MPV_RENDER_DK3D)
 static void *frontend_gl_get_proc_address(void *ctx, const char *name)
 {
     (void)ctx;
@@ -157,6 +163,32 @@ static bool frontend_open_gl(ViewContext *ctx)
     log_info("[player-view] render_api_connected=1 backend=gl\n");
     return true;
 }
+#endif  // HAVE_SWITCH_EGL_GLES && !HAVE_MPV_RENDER_DK3D
+
+#ifdef HAVE_MPV_RENDER_DK3D
+static bool frontend_open_dk3d(ViewContext *ctx)
+{
+    u32 width = VIEW_DEFAULT_WIDTH;
+    u32 height = VIEW_DEFAULT_HEIGHT;
+
+    frontend_query_display_size(&width, &height);
+    consoleExit(NULL);
+
+    if (!player_video_attach_dk3d())
+    {
+        consoleInit(NULL);
+        log_warn("[player-view] player_video_attach_dk3d rejected\n");
+        return false;
+    }
+
+    ctx->status.render_api_connected = true;
+    ctx->status.foreground_video_active = true;
+    ctx->status.display_width = width;
+    ctx->status.display_height = height;
+    ctx->render_path = FRONTEND_RENDER_DK3D;
+    log_info("[player-view] render_api_connected=1 backend=dk3d\n");
+    return true;
+}
 #endif
 
 static bool frontend_open_sw(ViewContext *ctx)
@@ -250,7 +282,12 @@ bool frontend_open(ViewContext *ctx)
     if (!frontend_connect(ctx))
         return false;
 
-#ifdef HAVE_SWITCH_EGL_GLES
+#ifdef HAVE_MPV_RENDER_DK3D
+    if (frontend_open_dk3d(ctx))
+        return true;
+    log_warn("[player-view] dk3d path unavailable; fallback to next render\n");
+#endif
+#if defined(HAVE_SWITCH_EGL_GLES) && !defined(HAVE_MPV_RENDER_DK3D)
     if (frontend_open_gl(ctx))
         return true;
     log_warn("[player-view] gl path unavailable; fallback to software render\n");
@@ -284,7 +321,7 @@ void frontend_close(ViewContext *ctx, bool restore_console)
         player_video_detach();
         log_info("[player-view] frontend_close step=player_video_detach done\n");
     }
-#ifdef HAVE_SWITCH_EGL_GLES
+#if defined(HAVE_SWITCH_EGL_GLES) && !defined(HAVE_MPV_RENDER_DK3D)
     if (ctx->render_path == FRONTEND_RENDER_GL)
     {
         log_info("[player-view] frontend_close step=frontend_gl_deinit begin\n");
@@ -317,9 +354,24 @@ bool frontend_render(ViewContext *ctx)
         return false;
     }
 
+    if (ctx->render_path == FRONTEND_RENDER_DK3D)
+    {
+#ifdef HAVE_MPV_RENDER_DK3D
+        bool rendered = player_video_render_dk3d(
+            (int)ctx->status.display_width,
+            (int)ctx->status.display_height
+        );
+        if (rendered)
+            ++ctx->status.frames_presented;
+        return rendered;
+#else
+        return false;
+#endif
+    }
+
     if (ctx->render_path == FRONTEND_RENDER_GL)
     {
-#ifdef HAVE_SWITCH_EGL_GLES
+#if defined(HAVE_SWITCH_EGL_GLES) && !defined(HAVE_MPV_RENDER_DK3D)
         if (ctx->egl_display == EGL_NO_DISPLAY ||
             ctx->egl_surface == EGL_NO_SURFACE ||
             ctx->egl_context == EGL_NO_CONTEXT)

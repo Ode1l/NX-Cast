@@ -33,9 +33,11 @@ bool player_set_mute(bool mute);
 bool player_video_supported(void);
 bool player_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
 bool player_video_attach_sw(void);
+bool player_video_attach_dk3d(void);
 void player_video_detach(void);
 bool player_video_render_gl(int fbo, int width, int height, bool flip_y);
 bool player_video_render_sw(void *pixels, int width, int height, size_t stride);
+bool player_video_render_dk3d(int width, int height);
 
 int player_get_position_ms(void);
 int player_get_duration_ms(void);

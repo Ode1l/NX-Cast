@@ -554,7 +554,8 @@ bool player_video_supported(void)
     if (!g_initialized || !g_backend)
         return false;
     if ((!g_backend->render_attach_gl || !g_backend->render_frame_gl) &&
-        (!g_backend->render_attach_sw || !g_backend->render_frame_sw))
+        (!g_backend->render_attach_sw || !g_backend->render_frame_sw) &&
+        (!g_backend->render_attach_dk3d || !g_backend->render_frame_dk3d))
     {
         return false;
     }
@@ -577,6 +578,13 @@ bool player_video_attach_sw(void)
     return g_backend->render_attach_sw();
 }
 
+bool player_video_attach_dk3d(void)
+{
+    if (!player_video_supported() || !g_backend->render_attach_dk3d)
+        return false;
+    return g_backend->render_attach_dk3d();
+}
+
 void player_video_detach(void)
 {
     if (!g_initialized || !g_backend || !g_backend->render_detach)
@@ -596,6 +604,13 @@ bool player_video_render_sw(void *pixels, int width, int height, size_t stride)
     if (!player_video_supported() || !g_backend->render_frame_sw)
         return false;
     return g_backend->render_frame_sw(pixels, width, height, stride);
+}
+
+bool player_video_render_dk3d(int width, int height)
+{
+    if (!player_video_supported() || !g_backend->render_frame_dk3d)
+        return false;
+    return g_backend->render_frame_dk3d(width, height);
 }
 
 int player_get_position_ms(void)

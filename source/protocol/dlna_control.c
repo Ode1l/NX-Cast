@@ -18,7 +18,6 @@
 #include "protocol/dlna/description/resource_store.h"
 #include "protocol/dlna/description/scpd.h"
 #include "protocol/dlna/discovery/ssdp.h"
-#include "protocol/dlna/hls_gateway.h"
 #include "protocol/http/http_server.h"
 
 static bool g_dlnaRunning = false;
@@ -306,15 +305,6 @@ static bool dlna_http_dispatch(const HttpRequestContext *ctx,
         return true;
     }
 
-    if (hls_gateway_try_handle_http(ctx->method,
-                                    ctx->path,
-                                    response,
-                                    response_size,
-                                    response_len))
-    {
-        return true;
-    }
-
     if (scpd_try_handle_http(ctx->method,
                              ctx->path,
                              response,
@@ -396,15 +386,6 @@ bool dlna_control_start(void)
         return false;
     }
 
-    if (!hls_gateway_start(url_base ? url_base : ""))
-    {
-        log_error("[dlna] HLS gateway failed to start.\n");
-        event_server_stop();
-        soap_server_stop();
-        scpd_stop();
-        free(url_base);
-        return false;
-    }
     free(url_base);
 
     const HttpServerConfig httpConfig = {
@@ -416,7 +397,6 @@ bool dlna_control_start(void)
     if (!http_server_start(&httpConfig))
     {
         log_error("[dlna] HTTP server failed to start.\n");
-        hls_gateway_stop();
         event_server_stop();
         soap_server_stop();
         scpd_stop();
@@ -427,7 +407,6 @@ bool dlna_control_start(void)
     {
         log_error("[dlna] SSDP responder failed to start.\n");
         http_server_stop();
-        hls_gateway_stop();
         event_server_stop();
         soap_server_stop();
         scpd_stop();
@@ -451,9 +430,6 @@ void dlna_control_stop(void)
     log_info("[dlna] stop step=http_server_stop begin\n");
     http_server_stop();
     log_info("[dlna] stop step=http_server_stop done\n");
-    log_info("[dlna] stop step=hls_gateway_stop begin\n");
-    hls_gateway_stop();
-    log_info("[dlna] stop step=hls_gateway_stop done\n");
     log_info("[dlna] stop step=event_server_stop begin\n");
     event_server_stop();
     log_info("[dlna] stop step=event_server_stop done\n");

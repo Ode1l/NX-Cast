@@ -372,6 +372,35 @@ static bool hls_gateway_path_matches(const char *path)
     return path && g_gateway.gateway_path && strcmp(path, g_gateway.gateway_path) == 0;
 }
 
+static bool parsed_http_url_host_is_private_ipv4(const ParsedHttpUrl *url)
+{
+    struct in_addr addr;
+    uint32_t host_order;
+    uint8_t a;
+    uint8_t b;
+
+    if (!url || !url->host)
+        return false;
+    if (inet_pton(AF_INET, url->host, &addr) != 1)
+        return false;
+
+    host_order = ntohl(addr.s_addr);
+    a = (uint8_t)((host_order >> 24) & 0xffu);
+    b = (uint8_t)((host_order >> 16) & 0xffu);
+
+    if (a == 10u || a == 127u)
+        return true;
+    if (a == 192u && b == 168u)
+        return true;
+    if (a == 172u && b >= 16u && b <= 31u)
+        return true;
+    if (a == 169u && b == 254u)
+        return true;
+    if (a == 100u && b >= 64u && b <= 127u)
+        return true;
+    return false;
+}
+
 static bool uri_is_http_hls(const char *uri, ParsedHttpUrl *parsed)
 {
     ParsedHttpUrl local = {0};
@@ -383,12 +412,62 @@ static bool uri_is_http_hls(const char *uri, ParsedHttpUrl *parsed)
         parsed_http_url_clear(&local);
         return false;
     }
+    if (!parsed_http_url_host_is_private_ipv4(&local))
+    {
+        parsed_http_url_clear(&local);
+        return false;
+    }
 
     if (parsed)
         *parsed = local;
     else
         parsed_http_url_clear(&local);
     return true;
+}
+
+static void extract_gateway_request_path(const HttpRequestContext *ctx, char *out, size_t out_size)
+{
+    const char *source = NULL;
+    size_t write_index = 0;
+    bool previous_was_slash = false;
+
+    if (!out || out_size == 0)
+        return;
+    out[0] = '\0';
+
+    if (ctx && ctx->path && ctx->path[0] == '/')
+        source = ctx->path;
+    else if (ctx && ctx->raw_path)
+        source = ctx->raw_path;
+
+    if (!source)
+        return;
+
+    if (strncasecmp(source, "http://", 7) == 0 || strncasecmp(source, "https://", 8) == 0)
+    {
+        const char *scheme_sep = strstr(source, "://");
+        const char *first_slash = scheme_sep ? strchr(scheme_sep + 3, '/') : NULL;
+        source = first_slash ? first_slash : "/";
+    }
+
+    while (*source != '\0' && *source != '?' && write_index + 1 < out_size)
+    {
+        char ch = *source++;
+        if (ch == '/')
+        {
+            if (previous_was_slash)
+                continue;
+            previous_was_slash = true;
+        }
+        else
+            previous_was_slash = false;
+
+        out[write_index++] = ch;
+    }
+
+    if (write_index == 0)
+        out[write_index++] = '/';
+    out[write_index] = '\0';
 }
 
 static char *join_url_simple_alloc(const char *prefix, const char *suffix)
@@ -974,24 +1053,27 @@ fail:
     return false;
 }
 
-bool hls_gateway_try_handle_http(const char *method,
-                                 const char *path,
+bool hls_gateway_try_handle_http(const HttpRequestContext *ctx,
                                  char *response,
                                  size_t response_size,
                                  size_t *response_len)
 {
+    char path[256];
     char *playlist = NULL;
     size_t playlist_len = 0;
     char *rewritten = NULL;
     size_t rewritten_len = 0;
     bool include_body;
+    const char *method;
 
-    if (!path || !response || !response_len)
+    if (!ctx || !response || !response_len)
         return false;
 
     *response_len = 0;
+    extract_gateway_request_path(ctx, path, sizeof(path));
     if (strncmp(path, "/hls-gateway/", 13) != 0)
         return false;
+    method = ctx->method ? ctx->method : "";
 
     if (!g_gateway.running)
     {
@@ -1003,7 +1085,7 @@ bool hls_gateway_try_handle_http(const char *method,
                                    response_len);
     }
 
-    if (!method || (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0))
+    if (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0)
     {
         return build_text_response(405,
                                    "Method Not Allowed",
@@ -1015,6 +1097,10 @@ bool hls_gateway_try_handle_http(const char *method,
 
     if (!hls_gateway_path_matches(path))
     {
+        log_warn("[hls-gateway] path mismatch request=%s expected=%s raw=%s\n",
+                 path,
+                 g_gateway.gateway_path ? g_gateway.gateway_path : "(null)",
+                 ctx->raw_path ? ctx->raw_path : "(null)");
         return build_text_response(404,
                                    "Not Found",
                                    "Unknown HLS gateway path",
@@ -1047,7 +1133,7 @@ bool hls_gateway_try_handle_http(const char *method,
     }
     free(playlist);
 
-    include_body = method && strcmp(method, "HEAD") != 0;
+    include_body = strcmp(method, "HEAD") != 0;
     if (!build_http_response(200,
                              "OK",
                              "text/plain; charset=\"utf-8\"",

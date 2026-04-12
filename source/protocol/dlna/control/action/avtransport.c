@@ -10,7 +10,6 @@
 #include "log/log.h"
 #include "player/renderer.h"
 #include "player/seek_target.h"
-#include "protocol/dlna/hls_gateway.h"
 
 #define AVTRANSPORT_COUNTER_UNKNOWN 2147483647
 
@@ -275,7 +274,6 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     char *instance_id = NULL;
     char *uri = NULL;
     char *metadata = NULL;
-    char *playback_uri = NULL;
 
     if (!ctx || !out)
         return false;
@@ -301,21 +299,11 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
         }
     }
 
-    if (!hls_gateway_prepare_media_uri(uri, &playback_uri))
+    if (!renderer_set_uri(uri, metadata))
     {
         free(instance_id);
         free(uri);
         free(metadata);
-        soap_handler_set_fault(out, 501, "Action Failed");
-        return false;
-    }
-
-    if (!renderer_set_uri(playback_uri ? playback_uri : uri, metadata))
-    {
-        free(instance_id);
-        free(uri);
-        free(metadata);
-        free(playback_uri);
         soap_handler_set_fault(out, 501, "Action Failed");
         return false;
     }
@@ -325,7 +313,6 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     free(instance_id);
     free(uri);
     free(metadata);
-    free(playback_uri);
     soap_handler_set_success(out, "");
     return true;
 }

@@ -276,6 +276,11 @@ static bool mock_render_attach_sw(void)
     return false;
 }
 
+static bool mock_render_attach_dk3d(void)
+{
+    return false;
+}
+
 static void mock_render_detach(void)
 {
 }
@@ -295,6 +300,13 @@ static bool mock_render_frame_sw(void *pixels, int width, int height, size_t str
     (void)width;
     (void)height;
     (void)stride;
+    return false;
+}
+
+static bool mock_render_frame_dk3d(int width, int height)
+{
+    (void)width;
+    (void)height;
     return false;
 }
 
@@ -349,9 +361,11 @@ const BackendOps g_mock_ops = {
     .render_supported = mock_render_supported,
     .render_attach_gl = mock_render_attach_gl,
     .render_attach_sw = mock_render_attach_sw,
+    .render_attach_dk3d = mock_render_attach_dk3d,
     .render_detach = mock_render_detach,
     .render_frame_gl = mock_render_frame_gl,
     .render_frame_sw = mock_render_frame_sw,
+    .render_frame_dk3d = mock_render_frame_dk3d,
     .get_position_ms = mock_get_position_ms,
     .get_duration_ms = mock_get_duration_ms,
     .get_volume = mock_get_volume,

@@ -8,13 +8,18 @@
 #include <EGL/egl.h>
 #endif
 
+#ifdef HAVE_MPV_RENDER_DK3D
+#include <mpv/render_dk3d.h>
+#endif
+
 #include "player/view.h"
 
 typedef enum
 {
     FRONTEND_RENDER_NONE = 0,
     FRONTEND_RENDER_SW,
-    FRONTEND_RENDER_GL
+    FRONTEND_RENDER_GL,
+    FRONTEND_RENDER_DK3D
 } FrontendRenderPath;
 
 typedef struct
