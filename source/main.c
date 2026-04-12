@@ -532,10 +532,18 @@ int main(int argc, char* argv[])
     {
         shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit skip reason=nxlink-session\n");
     }
+    else if (videoPlatformReady)
+    {
+        // Video platform was initialized, which calls consoleExit during frontend_open
+        // and consoleInit during frontend_close. Skip the final consoleExit to avoid
+        // interfering with deko3d resource cleanup
+        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit skip reason=video-platform-handled-console\n");
+    }
     else
     {
         shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit begin\n");
         consoleExit(NULL);
+        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit done\n");
     }
     return 0;
 }

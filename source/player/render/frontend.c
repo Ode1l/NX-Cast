@@ -301,6 +301,8 @@ void frontend_close(ViewContext *ctx, bool restore_console)
         return;
 
     bool had_video_foreground = ctx->status.foreground_video_active || ctx->framebuffer_ready;
+    bool was_dk3d_mode = (ctx->render_path == FRONTEND_RENDER_DK3D);
+    
     log_info("[player-view] frontend_close begin restore_console=%d had_video=%d render_path=%d render_api_connected=%d framebuffer_ready=%d\n",
              restore_console ? 1 : 0,
              had_video_foreground ? 1 : 0,
@@ -308,19 +310,15 @@ void frontend_close(ViewContext *ctx, bool restore_console)
              ctx->status.render_api_connected ? 1 : 0,
              ctx->framebuffer_ready ? 1 : 0);
 
-    if (ctx->framebuffer_ready)
-    {
-        framebufferClose(&ctx->framebuffer);
-        memset(&ctx->framebuffer, 0, sizeof(ctx->framebuffer));
-        ctx->framebuffer_ready = false;
-        log_info("[player-view] frontend_close framebuffer closed\n");
-    }
+    // Order matters: detach video BEFORE framebuffer cleanup
     if (ctx->status.render_api_connected)
     {
         log_info("[player-view] frontend_close step=player_video_detach begin\n");
         player_video_detach();
         log_info("[player-view] frontend_close step=player_video_detach done\n");
     }
+
+    // Cleanup render path specific resources
 #if defined(HAVE_SWITCH_EGL_GLES) && !defined(HAVE_MPV_RENDER_DK3D)
     if (ctx->render_path == FRONTEND_RENDER_GL)
     {
@@ -330,15 +328,27 @@ void frontend_close(ViewContext *ctx, bool restore_console)
     }
 #endif
 
+    // Last: cleanup framebuffer (only for software rendering)
+    if (ctx->framebuffer_ready)
+    {
+        framebufferClose(&ctx->framebuffer);
+        memset(&ctx->framebuffer, 0, sizeof(ctx->framebuffer));
+        ctx->framebuffer_ready = false;
+        log_info("[player-view] frontend_close framebuffer closed\n");
+    }
+
     ctx->status.foreground_video_active = false;
     ctx->status.render_api_connected = false;
     ctx->status.display_width = 0;
     ctx->status.display_height = 0;
     ctx->render_path = FRONTEND_RENDER_NONE;
 
+    // Restore console for all video modes if requested
+    // This ensures we always have symmetric consoleExit/consoleInit calls
     if (restore_console && had_video_foreground)
     {
-        log_info("[player-view] frontend_close step=console_restore begin\n");
+        log_info("[player-view] frontend_close step=console_restore begin render_mode=%s\n", 
+                 was_dk3d_mode ? "dk3d" : "other");
         consoleInit(NULL);
         consoleClear();
         log_info("[player-view] frontend_close step=console_restore done\n");

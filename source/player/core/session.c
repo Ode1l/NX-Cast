@@ -422,17 +422,19 @@ void player_deinit(void)
 
     if (g_backend && g_backend->wakeup)
     {
-        log_info("[player] deinit step=backend_wakeup\n");
+        log_info("[player] deinit step=backend_wakeup begin\n");
         g_backend->wakeup();
+        log_info("[player] deinit step=backend_wakeup done\n");
     }
 
     if (g_player_thread_started)
     {
-        log_info("[player] deinit waiting for event thread exit\n");
+        log_info("[player] deinit step=thread_wait_for_exit begin\n");
         threadWaitForExit(&g_player_thread);
+        log_info("[player] deinit step=thread_wait_for_exit done\n");
         threadClose(&g_player_thread);
         g_player_thread_started = false;
-        log_info("[player] deinit event thread closed\n");
+        log_info("[player] deinit step=thread_closed\n");
     }
 
     if (g_backend && g_backend->deinit)
@@ -447,7 +449,7 @@ void player_deinit(void)
     player_reset_snapshot_locked();
     mutexUnlock(&g_player_mutex);
 
-    log_info("[player] deinit backend=%s\n", player_get_backend_name());
+    log_info("[player] deinit end backend=%s\n", player_get_backend_name());
     g_backend = NULL;
     g_initialized = false;
 }

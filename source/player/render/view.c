@@ -157,9 +157,9 @@ void player_view_deinit(void)
     if (!g_view.status.initialized)
         return;
 
+    // Close frontend with console restoration
+    // frontend_close will handle console properly based on render_path
     frontend_close(&g_view, true);
-    if (g_view.status.render_api_connected)
-        player_video_detach();
 
     log_info("[player-view] deinit frame_counter=%llu frames_presented=%llu active_view=%s\n",
              (unsigned long long)g_view.status.frame_counter,
