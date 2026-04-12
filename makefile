@@ -83,11 +83,13 @@ MPV_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
 EGL_GLES_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
 MPV_FOUND := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exists mpv >/dev/null 2>&1 && echo 1)
 MPV_STATIC_LIBS := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs mpv 2>/dev/null)
+MPV_RENDER_GL_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_gl.h" && echo 1)
 MPV_RENDER_DK3D_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_dk3d.h" && echo 1)
 FFMPEG_NVTEGRA_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/libavutil/hwcontext_nvtegra.h" && echo 1)
 SWITCH_EGL_GLES_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/EGL/egl.h" && test -f "$(PORTLIBS_PREFIX)/include/GLES2/gl2.h" && echo 1)
 MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND := $(shell strings "$(PORTLIBS_PREFIX)/lib/libmpv.a" 2>/dev/null | grep -q nvtegra && echo 1)
 MPV_USES_UAM := $(shell printf '%s\n' "$(MPV_STATIC_LIBS)" | grep -q -- ' -luam' && echo 1)
+MPV_USES_DEKO3D := $(shell printf '%s\n' "$(MPV_STATIC_LIBS)" | grep -q -- ' -ldeko3d' && echo 1)
 EGL_GLES_LIBS := $(shell PKG_CONFIG_PATH="$(EGL_GLES_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs egl glesv2)
 
 ifeq ($(MPV_FOUND),1)
@@ -95,29 +97,35 @@ CFLAGS	+=	-DHAVE_LIBMPV
 LIBS	+= $(MPV_STATIC_LIBS)
 endif
 
-ifeq ($(MPV_RENDER_DK3D_HEADER_FOUND),1)
+ifeq ($(MPV_USES_UAM)$(MPV_USES_DEKO3D),11)
+CFLAGS	+=	-DHAVE_MPV_RENDER_DK3D
+else ifeq ($(MPV_RENDER_DK3D_HEADER_FOUND),1)
 CFLAGS	+=	-DHAVE_MPV_RENDER_DK3D
 endif
 
-ifeq ($(FFMPEG_NVTEGRA_HEADER_FOUND),1)
-CFLAGS	+=	-DHAVE_NVTEGRA_HWCONTEXT
+ifeq ($(MPV_RENDER_DK3D_HEADER_FOUND),1)
+ifeq ($(MPV_USES_UAM)$(MPV_USES_DEKO3D),11)
+DEKO3D_RENDER_ACTIVE := 1
+endif
+endif
+
+ifeq ($(DEKO3D_RENDER_ACTIVE),)
+ifeq ($(MPV_RENDER_GL_HEADER_FOUND),1)
+CFLAGS	+=	-DHAVE_MPV_RENDER_GL
+endif
 endif
 
 ifeq ($(MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND),1)
 CFLAGS	+=	-DHAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
 endif
 
-ifeq ($(SWITCH_EGL_GLES_FOUND),1)
-CFLAGS	+=	-DHAVE_SWITCH_EGL_GLES
+ifeq ($(FFMPEG_NVTEGRA_HEADER_FOUND),1)
+CFLAGS	+=	-DHAVE_NVTEGRA_HWCONTEXT
 endif
 
-ifeq ($(MPV_USES_UAM),1)
-# For deko3d: use deko3d instead of EGL/GLES
-CFLAGS	+=	-DHAVE_DEKO3D_LIBMPV
-LIBS	+=	-ldeko3d -luam -lstdc++
-else
-# For standard OpenGL: link with EGL/GLES
+ifeq ($(DEKO3D_RENDER_ACTIVE),)
 ifeq ($(SWITCH_EGL_GLES_FOUND),1)
+CFLAGS	+=	-DHAVE_SWITCH_EGL_GLES
 LIBS	+=	$(EGL_GLES_LIBS)
 endif
 endif
@@ -154,7 +162,11 @@ BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 #---------------------------------------------------------------------------------
 ifeq ($(strip $(CPPFILES)),)
 #---------------------------------------------------------------------------------
+ifeq ($(DEKO3D_RENDER_ACTIVE),1)
+	export LD	:=	$(CXX)
+else
 	export LD	:=	$(CC)
+endif
 #---------------------------------------------------------------------------------
 else
 #---------------------------------------------------------------------------------

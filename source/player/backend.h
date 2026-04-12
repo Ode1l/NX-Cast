@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "types.h"
+#include "player.h"
 
 typedef struct
 {
@@ -26,11 +26,11 @@ typedef struct
     bool (*render_supported)(void);
     bool (*render_attach_gl)(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
     bool (*render_attach_sw)(void);
-    bool (*render_attach_dk3d)(void);
+    bool (*render_attach_dk3d)(const PlayerVideoDk3dInit *init);
     void (*render_detach)(void);
     bool (*render_frame_gl)(int fbo, int width, int height, bool flip_y);
     bool (*render_frame_sw)(void *pixels, int width, int height, size_t stride);
-    bool (*render_frame_dk3d)(int width, int height);
+    bool (*render_frame_dk3d)(const PlayerVideoDk3dFrame *frame);
 
     int (*get_position_ms)(void);
     int (*get_duration_ms)(void);

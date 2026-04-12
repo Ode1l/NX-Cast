@@ -317,6 +317,11 @@ int main(int argc, char* argv[])
     if (networkReady)
     {
         dlnaRunning = dlna_control_start();
+        if (dlnaRunning && videoPlatformReady)
+        {
+            bool prepared = player_view_prepare_video();
+            log_info("[ui] video render prepare=%d\n", prepared ? 1 : 0);
+        }
         // mdns_discover_airplay();
     }
 

@@ -152,6 +152,21 @@ bool player_view_init(void)
     return true;
 }
 
+bool player_view_prepare_video(void)
+{
+    bool ok;
+
+    if (!g_view.status.initialized)
+        return false;
+
+    ok = frontend_connect(&g_view);
+    log_info("[player-view] prepare_video ok=%d render_api_connected=%d render_path=%d\n",
+             ok ? 1 : 0,
+             g_view.status.render_api_connected ? 1 : 0,
+             (int)g_view.render_path);
+    return ok;
+}
+
 void player_view_deinit(void)
 {
     if (!g_view.status.initialized)
@@ -160,6 +175,7 @@ void player_view_deinit(void)
     // Close frontend with console restoration
     // frontend_close will handle console properly based on render_path
     frontend_close(&g_view, true);
+    frontend_shutdown(&g_view);
 
     log_info("[player-view] deinit frame_counter=%llu frames_presented=%llu active_view=%s\n",
              (unsigned long long)g_view.status.frame_counter,

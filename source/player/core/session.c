@@ -580,11 +580,11 @@ bool player_video_attach_sw(void)
     return g_backend->render_attach_sw();
 }
 
-bool player_video_attach_dk3d(void)
+bool player_video_attach_dk3d(const PlayerVideoDk3dInit *init)
 {
     if (!player_video_supported() || !g_backend->render_attach_dk3d)
         return false;
-    return g_backend->render_attach_dk3d();
+    return g_backend->render_attach_dk3d(init);
 }
 
 void player_video_detach(void)
@@ -608,11 +608,11 @@ bool player_video_render_sw(void *pixels, int width, int height, size_t stride)
     return g_backend->render_frame_sw(pixels, width, height, stride);
 }
 
-bool player_video_render_dk3d(int width, int height)
+bool player_video_render_dk3d(const PlayerVideoDk3dFrame *frame)
 {
     if (!player_video_supported() || !g_backend->render_frame_dk3d)
         return false;
-    return g_backend->render_frame_dk3d(width, height);
+    return g_backend->render_frame_dk3d(frame);
 }
 
 int player_get_position_ms(void)

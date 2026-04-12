@@ -39,6 +39,7 @@ void player_view_status_clear(PlayerViewStatus *status);
 bool player_view_status_copy(PlayerViewStatus *out, const PlayerViewStatus *status);
 bool player_view_init(void);
 void player_view_deinit(void);
+bool player_view_prepare_video(void);
 void player_view_sync(const PlayerSnapshot *snapshot);
 void player_view_begin_frame(void);
 PlayerViewMode player_view_get_mode(void);

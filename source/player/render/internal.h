@@ -9,7 +9,7 @@
 #endif
 
 #ifdef HAVE_MPV_RENDER_DK3D
-#include <mpv/render_dk3d.h>
+#include <deko3d.h>
 #endif
 
 #include "player/view.h"
@@ -35,9 +35,19 @@ typedef struct
     EGLSurface egl_surface;
     EGLContext egl_context;
 #endif
+#ifdef HAVE_MPV_RENDER_DK3D
+    bool dk3d_device_ready;
+    bool dk3d_swapchain_ready;
+    DkDevice dk3d_device;
+    DkQueue dk3d_queue;
+    DkMemBlock dk3d_framebuffer_mem;
+    DkImage dk3d_framebuffers[2];
+    DkSwapchain dk3d_swapchain;
+#endif
 } ViewContext;
 
 bool frontend_connect(ViewContext *ctx);
 bool frontend_open(ViewContext *ctx);
 void frontend_close(ViewContext *ctx, bool restore_console);
+void frontend_shutdown(ViewContext *ctx);
 bool frontend_render(ViewContext *ctx);

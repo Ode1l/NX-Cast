@@ -276,8 +276,9 @@ static bool mock_render_attach_sw(void)
     return false;
 }
 
-static bool mock_render_attach_dk3d(void)
+static bool mock_render_attach_dk3d(const PlayerVideoDk3dInit *init)
 {
+    (void)init;
     return false;
 }
 
@@ -303,10 +304,9 @@ static bool mock_render_frame_sw(void *pixels, int width, int height, size_t str
     return false;
 }
 
-static bool mock_render_frame_dk3d(int width, int height)
+static bool mock_render_frame_dk3d(const PlayerVideoDk3dFrame *frame)
 {
-    (void)width;
-    (void)height;
+    (void)frame;
     return false;
 }
 

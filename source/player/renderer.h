@@ -32,9 +32,11 @@ static inline bool renderer_set_mute(bool mute) { return player_set_mute(mute); 
 static inline bool renderer_video_supported(void) { return player_video_supported(); }
 static inline bool renderer_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx) { return player_video_attach_gl(get_proc_address, get_proc_address_ctx); }
 static inline bool renderer_video_attach_sw(void) { return player_video_attach_sw(); }
-static inline void renderer_video_detach(void) { player_video_detach(); }
+static inline bool renderer_video_attach_dk3d(const PlayerVideoDk3dInit *init) { return player_video_attach_dk3d(init); }
+static inline void renderer_video_detach(void) { return player_video_detach(); }
 static inline bool renderer_video_render_gl(int fbo, int width, int height, bool flip_y) { return player_video_render_gl(fbo, width, height, flip_y); }
 static inline bool renderer_video_render_sw(void *pixels, int width, int height, size_t stride) { return player_video_render_sw(pixels, width, height, stride); }
+static inline bool renderer_video_render_dk3d(const PlayerVideoDk3dFrame *frame) { return player_video_render_dk3d(frame); }
 static inline int renderer_get_position_ms(void) { return player_get_position_ms(); }
 static inline int renderer_get_duration_ms(void) { return player_get_duration_ms(); }
 static inline int renderer_get_volume(void) { return player_get_volume(); }
