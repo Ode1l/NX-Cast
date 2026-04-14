@@ -355,8 +355,6 @@ int main(int argc, char* argv[])
     {
         printf("[ERROR] [log] log_runtime_init failed\n");
     }
-    log_set_level(LOG_LEVEL_DEBUG);
-    log_info("[log] level=DEBUG\n");
     set_power_policy(true, true);
 
     bool storageReady = dlna_resource_store_ensure_defaults();

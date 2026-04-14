@@ -85,6 +85,8 @@ static char *g_pending_seek_target = NULL;
 static bool g_stopped = false;
 static bool g_file_loaded = false;
 static int g_last_error = 0;
+static bool g_process_volume_active = false;
+static u64 g_process_volume_pid = 0;
 
 static void libmpv_on_render_update(void *ctx);
 
@@ -101,6 +103,67 @@ static int libmpv_double_to_ms(double value)
     if (value <= 0.0)
         return 0;
     return (int)(value * 1000.0 + 0.5);
+}
+
+static void libmpv_process_volume_shutdown(void)
+{
+    if (!g_process_volume_active)
+        return;
+
+    audaExit();
+    g_process_volume_active = false;
+    g_process_volume_pid = 0;
+}
+
+static bool libmpv_process_volume_init(void)
+{
+    Result rc;
+    u64 pid = 0;
+
+    libmpv_process_volume_shutdown();
+
+    if (!hosversionAtLeast(11, 0, 0))
+        return false;
+
+    rc = audaInitialize();
+    if (R_FAILED(rc))
+        return false;
+
+    rc = svcGetProcessId(&pid, CUR_PROCESS_HANDLE);
+    if (R_FAILED(rc))
+    {
+        audaExit();
+        return false;
+    }
+
+    g_process_volume_active = true;
+    g_process_volume_pid = pid;
+    return true;
+}
+
+static bool libmpv_process_volume_apply(int volume_0_100, bool mute)
+{
+    Result rc;
+    float volume;
+
+    if (!g_process_volume_active)
+        return false;
+
+    if (volume_0_100 < 0)
+        volume_0_100 = 0;
+    if (volume_0_100 > 100)
+        volume_0_100 = 100;
+
+    volume = mute ? 0.0f : (float)volume_0_100 / 100.0f;
+    rc = audaSetAudioOutputProcessMasterVolume(g_process_volume_pid, 0, volume);
+    if (R_FAILED(rc))
+    {
+        log_warn("[player-libmpv] aud:a set output volume failed: 0x%x\n", rc);
+        libmpv_process_volume_shutdown();
+        return false;
+    }
+
+    return true;
 }
 
 static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
@@ -730,8 +793,12 @@ static bool libmpv_available(void)
 static bool libmpv_init(void)
 {
     int rc;
+    bool process_volume = false;
+    double neutral_volume = 100.0;
+    int neutral_mute = 0;
 
     libmpv_ensure_sync();
+    libmpv_process_volume_shutdown();
     mutexLock(&g_mutex);
     libmpv_reset_locked();
     mutexUnlock(&g_mutex);
@@ -778,16 +845,29 @@ static bool libmpv_init(void)
         return false;
     }
 
-    mpv_request_log_messages(g_mpv, "info");
-    mpv_observe_property(g_mpv, LIBMPV_OBS_VOLUME, "volume", MPV_FORMAT_DOUBLE);
+    process_volume = libmpv_process_volume_init();
+    if (process_volume)
+    {
+        (void)mpv_set_property(g_mpv, "volume", MPV_FORMAT_DOUBLE, &neutral_volume);
+        (void)mpv_set_property(g_mpv, "mute", MPV_FORMAT_FLAG, &neutral_mute);
+        if (!libmpv_process_volume_apply(PLAYER_DEFAULT_VOLUME, false))
+            process_volume = false;
+    }
+
+    mpv_request_log_messages(g_mpv, log_get_mpv_level());
+    if (!process_volume)
+        mpv_observe_property(g_mpv, LIBMPV_OBS_VOLUME, "volume", MPV_FORMAT_DOUBLE);
     mpv_observe_property(g_mpv, LIBMPV_OBS_TIME_POS, "time-pos", MPV_FORMAT_DOUBLE);
     mpv_observe_property(g_mpv, LIBMPV_OBS_PAUSE, "pause", MPV_FORMAT_FLAG);
-    mpv_observe_property(g_mpv, LIBMPV_OBS_MUTE, "mute", MPV_FORMAT_FLAG);
+    if (!process_volume)
+        mpv_observe_property(g_mpv, LIBMPV_OBS_MUTE, "mute", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_DURATION, "duration", MPV_FORMAT_DOUBLE);
     mpv_observe_property(g_mpv, LIBMPV_OBS_SEEKABLE, "seekable", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_PAUSED_FOR_CACHE, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_SEEKING, "seeking", MPV_FORMAT_FLAG);
 
+    if (process_volume)
+        log_info("[player-libmpv] init volume_backend=aud:a-process\n");
     log_info("[player-libmpv] init\n");
     return true;
 }
@@ -820,6 +900,8 @@ static void libmpv_deinit(void)
         mpv_terminate_destroy(mpv);
         log_info("[player-libmpv] deinit step=terminate_destroy done\n");
     }
+
+    libmpv_process_volume_shutdown();
 
     log_info("[player-libmpv] deinit done\n");
 }
@@ -1048,6 +1130,14 @@ static bool libmpv_set_volume(int volume_0_100)
         return false;
     }
 
+    if (g_process_volume_active && libmpv_process_volume_apply(volume_0_100, g_mute))
+    {
+        libmpv_set_volume_locked(volume_0_100, &pending);
+        mutexUnlock(&g_mutex);
+        libmpv_flush_events(&pending);
+        return true;
+    }
+
     rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_SET_VOLUME, "volume", MPV_FORMAT_DOUBLE, &volume);
     if (rc < 0)
     {
@@ -1074,6 +1164,14 @@ static bool libmpv_set_mute(bool mute)
     {
         mutexUnlock(&g_mutex);
         return false;
+    }
+
+    if (g_process_volume_active && libmpv_process_volume_apply(g_volume, mute))
+    {
+        libmpv_set_mute_locked(mute, &pending);
+        mutexUnlock(&g_mutex);
+        libmpv_flush_events(&pending);
+        return true;
     }
 
     rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_SET_MUTE, "mute", MPV_FORMAT_FLAG, &mute_flag);

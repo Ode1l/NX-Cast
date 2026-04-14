@@ -23,7 +23,7 @@ static Thread g_logThread;
 static bool g_logThreadStarted = false;
 static bool g_logStopRequested = false;
 static bool g_logEnabled = true;
-static LogLevel g_logMinLevel = LOG_LEVEL_INFO;
+static LogLevel g_logMinLevel = NXCAST_LOG_LEVEL_DEFAULT;
 static bool g_logMirrorToStdio = false;
 
 static LogEntry g_logQueue[LOG_QUEUE_CAPACITY];
@@ -402,6 +402,22 @@ LogLevel log_get_level(void)
     LogLevel level = g_logMinLevel;
     mutexUnlock(&g_logMutex);
     return level;
+}
+
+const char *log_get_mpv_level(void)
+{
+    switch (log_get_level())
+    {
+    case LOG_LEVEL_DEBUG:
+        return "debug";
+    case LOG_LEVEL_INFO:
+        return "info";
+    case LOG_LEVEL_WARN:
+        return "warn";
+    case LOG_LEVEL_ERROR:
+    default:
+        return "error";
+    }
 }
 
 void log_set_stdio_mirror(bool enabled)

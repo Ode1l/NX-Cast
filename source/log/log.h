@@ -13,6 +13,8 @@ typedef enum
     LOG_LEVEL_ERROR
 } LogLevel;
 
+#define NXCAST_LOG_LEVEL_DEFAULT LOG_LEVEL_WARN
+
 bool log_runtime_init(void);
 void log_runtime_shutdown(void);
 
@@ -27,6 +29,7 @@ void log_flush(void);
 void log_set_enabled(bool enabled);
 void log_set_level(LogLevel level);
 LogLevel log_get_level(void);
+const char *log_get_mpv_level(void);
 void log_set_stdio_mirror(bool enabled);
 
 size_t log_history_count(void);
