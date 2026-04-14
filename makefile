@@ -227,7 +227,13 @@ endif
 .PHONY: $(BUILD) clean all
 
 #---------------------------------------------------------------------------------
-all: $(BUILD)
+all: sdmc_init $(BUILD)
+
+sdmc_init:
+	@echo "Preparing SDMC directory structure..."
+	@mkdir -p $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna
+	@if [ -d "$(CURDIR)/romfs/dlna" ]; then cp -v $(CURDIR)/romfs/dlna/*.xml $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna/; else echo "Warning: romfs/dlna not found"; fi
+	@ls -la $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@

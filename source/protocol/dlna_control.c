@@ -17,6 +17,7 @@
 #include "protocol/dlna/control/soap_server.h"
 #include "protocol/dlna/description/resource_store.h"
 #include "protocol/dlna/description/scpd.h"
+#include "protocol/dlna/description/template_resource.h"
 #include "protocol/dlna/discovery/ssdp.h"
 #include "protocol/http/http_server.h"
 

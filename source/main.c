@@ -422,7 +422,6 @@ int main(int argc, char* argv[])
         {
             exit_reason = EXIT_REASON_PLUS_BUTTON;
             log_set_stdio_mirror(false);
-            shutdown_stdio_trace("[INFO] [shutdown] requested reason=%s\n", exit_reason_name(exit_reason));
             break;
         }
 
@@ -541,15 +540,7 @@ int main(int argc, char* argv[])
     {
         if (dlnaRunning)
         {
-            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop begin\n");
-            log_info("[shutdown] step=dlna_control_stop begin\n");
             dlna_control_stop();
-            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop done\n");
-            log_info("[shutdown] step=dlna_control_stop done\n");
-        }
-        else
-        {
-            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
         }
     }
     else
