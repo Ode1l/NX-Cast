@@ -152,14 +152,41 @@ bool player_view_init(void)
     return true;
 }
 
+bool player_view_prepare_video(void)
+{
+    bool ok;
+
+    if (!g_view.status.initialized)
+        return false;
+
+    ok = frontend_connect(&g_view);
+    log_info("[player-view] prepare_video ok=%d render_api_connected=%d render_path=%d\n",
+             ok ? 1 : 0,
+             g_view.status.render_api_connected ? 1 : 0,
+             (int)g_view.render_path);
+    return ok;
+}
+
 void player_view_deinit(void)
 {
+    bool restore_console = false;
+
     if (!g_view.status.initialized)
         return;
 
-    frontend_close(&g_view, true);
-    if (g_view.status.render_api_connected)
-        player_video_detach();
+    restore_console = g_view.status.foreground_video_active ||
+                      g_view.framebuffer_ready ||
+                      g_view.render_path != FRONTEND_RENDER_NONE;
+
+    // Tear down the active frontend first, but delay console restoration
+    // until after any render backend/device objects are fully destroyed.
+    frontend_close(&g_view, false);
+    frontend_shutdown(&g_view);
+    if (restore_console)
+    {
+        consoleInit(NULL);
+        consoleClear();
+    }
 
     log_info("[player-view] deinit frame_counter=%llu frames_presented=%llu active_view=%s\n",
              (unsigned long long)g_view.status.frame_counter,

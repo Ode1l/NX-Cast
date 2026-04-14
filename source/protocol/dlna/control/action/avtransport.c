@@ -9,6 +9,7 @@
 #include "../handler_internal.h"
 #include "log/log.h"
 #include "player/renderer.h"
+#include "player/seek_target.h"
 
 #define AVTRANSPORT_COUNTER_UNKNOWN 2147483647
 
@@ -110,6 +111,17 @@ static char *avtransport_format_actions_alloc(unsigned int actions)
     }
 
     return out;
+}
+
+static char *avtransport_normalize_seek_target_alloc(const char *target)
+{
+    int position_ms = 0;
+
+    if (!target)
+        return NULL;
+    if (player_seek_target_parse_ms(target, &position_ms))
+        return player_seek_target_format_hhmmss_alloc(position_ms);
+    return strdup(target);
 }
 
 static bool avtransport_try_instance_id(const SoapActionContext *ctx,
@@ -646,6 +658,8 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     char *instance_id = NULL;
     char *unit = NULL;
     char *target = NULL;
+    char *normalized_target = NULL;
+    const char *effective_target = NULL;
     const DlnaProtocolStateView *state = dlna_protocol_state_view();
 
     if (!ctx || !out)
@@ -711,20 +725,27 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
         return true;
     }
 
-    if (!renderer_seek_target(target))
+    normalized_target = avtransport_normalize_seek_target_alloc(target);
+    effective_target = normalized_target ? normalized_target : target;
+    if (normalized_target && strcmp(normalized_target, target) != 0)
+        log_debug("[avtransport] normalize seek target raw=%s normalized=%s\n", target, normalized_target);
+
+    if (!renderer_seek_target(effective_target))
     {
         free(instance_id);
         free(unit);
         free(target);
+        free(normalized_target);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
-    dlna_protocol_state_apply_seek_target(target);
+    dlna_protocol_state_apply_seek_target(effective_target);
     dlna_protocol_state_set_transport_status("OK");
     free(instance_id);
     free(unit);
     free(target);
+    free(normalized_target);
     soap_handler_set_success(out, "");
     return true;
 }

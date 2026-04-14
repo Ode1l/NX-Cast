@@ -8,11 +8,20 @@
 #include <switch.h>
 
 #include "log/log.h"
+#include "player/seek_target.h"
 
 #ifdef HAVE_LIBMPV
 #include <mpv/client.h>
 #include <mpv/render.h>
+#ifdef HAVE_MPV_RENDER_GL
 #include <mpv/render_gl.h>
+#endif
+#ifdef HAVE_MPV_RENDER_DK3D
+#include <mpv/render_dk3d.h>
+#endif
+#endif
+
+#ifdef HAVE_LIBMPV
 
 typedef enum
 {
@@ -51,6 +60,15 @@ static mpv_handle *g_mpv = NULL;
 static mpv_render_context *g_render_ctx = NULL;
 static bool g_render_update_pending = false;
 
+typedef enum
+{
+    LIBMPV_RENDER_BACKEND_NONE = 0,
+    LIBMPV_RENDER_BACKEND_GL,
+    LIBMPV_RENDER_BACKEND_DK3D
+} LibmpvRenderBackend;
+
+static LibmpvRenderBackend g_render_backend = LIBMPV_RENDER_BACKEND_NONE;
+
 static bool g_has_media = false;
 static char *g_uri = NULL;
 static PlayerState g_state = PLAYER_STATE_IDLE;
@@ -67,6 +85,10 @@ static char *g_pending_seek_target = NULL;
 static bool g_stopped = false;
 static bool g_file_loaded = false;
 static int g_last_error = 0;
+static bool g_process_volume_active = false;
+static u64 g_process_volume_pid = 0;
+
+static void libmpv_on_render_update(void *ctx);
 
 static void libmpv_ensure_sync(void)
 {
@@ -81,6 +103,67 @@ static int libmpv_double_to_ms(double value)
     if (value <= 0.0)
         return 0;
     return (int)(value * 1000.0 + 0.5);
+}
+
+static void libmpv_process_volume_shutdown(void)
+{
+    if (!g_process_volume_active)
+        return;
+
+    audaExit();
+    g_process_volume_active = false;
+    g_process_volume_pid = 0;
+}
+
+static bool libmpv_process_volume_init(void)
+{
+    Result rc;
+    u64 pid = 0;
+
+    libmpv_process_volume_shutdown();
+
+    if (!hosversionAtLeast(11, 0, 0))
+        return false;
+
+    rc = audaInitialize();
+    if (R_FAILED(rc))
+        return false;
+
+    rc = svcGetProcessId(&pid, CUR_PROCESS_HANDLE);
+    if (R_FAILED(rc))
+    {
+        audaExit();
+        return false;
+    }
+
+    g_process_volume_active = true;
+    g_process_volume_pid = pid;
+    return true;
+}
+
+static bool libmpv_process_volume_apply(int volume_0_100, bool mute)
+{
+    Result rc;
+    float volume;
+
+    if (!g_process_volume_active)
+        return false;
+
+    if (volume_0_100 < 0)
+        volume_0_100 = 0;
+    if (volume_0_100 > 100)
+        volume_0_100 = 100;
+
+    volume = mute ? 0.0f : (float)volume_0_100 / 100.0f;
+    rc = audaSetAudioOutputProcessMasterVolume(g_process_volume_pid, 0, volume);
+    if (R_FAILED(rc))
+    {
+        log_warn("[player-libmpv] aud:a set output volume failed: 0x%x\n", rc);
+        libmpv_process_volume_shutdown();
+        return false;
+    }
+
+    return true;
 }
 
 static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
@@ -130,6 +213,17 @@ static char *libmpv_format_seek_target(int position_ms)
 
     snprintf(target, (size_t)needed + 1, "%.3f", position_ms / 1000.0);
     return target;
+}
+
+static char *libmpv_normalize_seek_target_alloc(const char *target)
+{
+    int position_ms = 0;
+
+    if (!target)
+        return NULL;
+    if (player_seek_target_parse_ms(target, &position_ms))
+        return libmpv_format_seek_target(position_ms);
+    return strdup(target);
 }
 
 static bool libmpv_set_uri_locked(const char *uri)
@@ -288,22 +382,29 @@ static void libmpv_reset_locked(void)
     g_file_loaded = false;
     g_last_error = 0;
     g_render_update_pending = false;
+    g_render_backend = LIBMPV_RENDER_BACKEND_NONE;
 }
 
 static bool libmpv_send_seek_target_locked(const char *target, LibmpvPendingEvents *pending)
 {
     const char *args[4];
+    char *normalized = NULL;
     int rc;
 
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0' || g_state == PLAYER_STATE_STOPPED || !target || target[0] == '\0')
         return false;
 
+    normalized = libmpv_normalize_seek_target_alloc(target);
+    if (normalized && strcmp(normalized, target) != 0)
+        log_debug("[player-libmpv] normalize seek target raw=%s normalized=%s\n", target, normalized);
+
     args[0] = "seek";
-    args[1] = target;
+    args[1] = normalized ? normalized : target;
     args[2] = "absolute";
     args[3] = NULL;
 
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_SEEK, args);
+    free(normalized);
     if (rc < 0)
     {
         log_warn("[player-libmpv] seek failed: %s\n", mpv_error_string(rc));
@@ -339,7 +440,7 @@ static void libmpv_maybe_issue_pending_seek_locked(LibmpvPendingEvents *pending)
 
 static bool libmpv_async_load_current(bool paused)
 {
-    const char *args[6];
+    const char *args[5];
     const char *options = paused ? "pause=yes" : "pause=no";
     int rc;
     LibmpvPendingEvents pending = {0};
@@ -354,9 +455,8 @@ static bool libmpv_async_load_current(bool paused)
     args[0] = "loadfile";
     args[1] = g_uri;
     args[2] = "replace";
-    args[3] = "-1";
-    args[4] = options;
-    args[5] = NULL;
+    args[3] = options;
+    args[4] = NULL;
 
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_LOADFILE, args);
     if (rc < 0)
@@ -381,6 +481,63 @@ static bool libmpv_async_load_current(bool paused)
 
     libmpv_flush_events(&pending);
     return true;
+}
+
+static void libmpv_log_render_attach_order_warning(const char *backend_name)
+{
+    bool media_started;
+
+    mutexLock(&g_mutex);
+    media_started = g_has_media || g_file_loaded || g_state != PLAYER_STATE_IDLE;
+    mutexUnlock(&g_mutex);
+
+    if (media_started)
+    {
+        log_warn("[player-libmpv] attaching %s render context after media was set/started; libmpv render contexts are expected to be created before playback starts\n",
+                 backend_name ? backend_name : "unknown");
+    }
+}
+
+static bool libmpv_render_attach_context(mpv_render_context **out_ctx,
+                                         mpv_handle *mpv,
+                                         mpv_render_param *params,
+                                         LibmpvRenderBackend backend,
+                                         const char *backend_name)
+{
+    mpv_render_context *new_ctx = NULL;
+    int rc;
+
+    if (!out_ctx || !mpv || !params)
+        return false;
+
+    *out_ctx = NULL;
+
+    rc = mpv_render_context_create(&new_ctx, mpv, params);
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] render_context_create (%s) failed: %s\n",
+                 backend_name ? backend_name : "unknown",
+                 mpv_error_string(rc));
+        return false;
+    }
+
+    mpv_render_context_set_update_callback(new_ctx, libmpv_on_render_update, NULL);
+
+    mutexLock(&g_mutex);
+    if (!g_render_ctx)
+    {
+        g_render_ctx = new_ctx;
+        g_render_backend = backend;
+        g_render_update_pending = true;
+        new_ctx = NULL;
+    }
+    *out_ctx = g_render_ctx;
+    mutexUnlock(&g_mutex);
+
+    if (new_ctx)
+        mpv_render_context_free(new_ctx);
+
+    return *out_ctx != NULL;
 }
 
 static void libmpv_on_render_update(void *ctx)
@@ -636,8 +793,12 @@ static bool libmpv_available(void)
 static bool libmpv_init(void)
 {
     int rc;
+    bool process_volume = false;
+    double neutral_volume = 100.0;
+    int neutral_mute = 0;
 
     libmpv_ensure_sync();
+    libmpv_process_volume_shutdown();
     mutexLock(&g_mutex);
     libmpv_reset_locked();
     mutexUnlock(&g_mutex);
@@ -656,11 +817,24 @@ static bool libmpv_init(void)
     mpv_set_option_string(g_mpv, "osc", "no");
     mpv_set_option_string(g_mpv, "osd-level", "0");
     mpv_set_option_string(g_mpv, "audio-display", "no");
+    mpv_set_option_string(g_mpv, "image-display-duration", "inf");
     mpv_set_option_string(g_mpv, "idle", "yes");
+    // Switch libass builds often lack fontconfig/coretext providers.
+    // Disable provider probing to avoid startup warnings for an OSD path we do not use.
+    mpv_set_option_string(g_mpv, "sub-font-provider", "none");
+    mpv_set_option_string(g_mpv, "demuxer-lavf-o", "http_persistent=0,http_multiple=0");
+    
+    // Prefer hardware decode on Switch. If the libmpv package exposes the
+    // explicit nvtegra backend, use it directly; otherwise fall back to mpv's
+    // generic enabled path and let the selected render backend negotiate interop.
+#ifdef HAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
+    mpv_set_option_string(g_mpv, "hwdec", "nvtegra");
+#else
+    mpv_set_option_string(g_mpv, "hwdec", "yes");
+#endif
+    mpv_set_option_string(g_mpv, "gpu-hwdec-interop", "auto");
     mpv_set_option_string(g_mpv, "vo", "libmpv");
     mpv_set_option_string(g_mpv, "ao", "hos");
-    mpv_set_option_string(g_mpv, "demuxer-lavf-propagate-opts", "yes");
-    mpv_set_option_string(g_mpv, "demuxer-lavf-o", "http_persistent=0,http_multiple=0");
 
     rc = mpv_initialize(g_mpv);
     if (rc < 0)
@@ -671,16 +845,29 @@ static bool libmpv_init(void)
         return false;
     }
 
-    mpv_request_log_messages(g_mpv, "info");
-    mpv_observe_property(g_mpv, LIBMPV_OBS_VOLUME, "volume", MPV_FORMAT_DOUBLE);
+    process_volume = libmpv_process_volume_init();
+    if (process_volume)
+    {
+        (void)mpv_set_property(g_mpv, "volume", MPV_FORMAT_DOUBLE, &neutral_volume);
+        (void)mpv_set_property(g_mpv, "mute", MPV_FORMAT_FLAG, &neutral_mute);
+        if (!libmpv_process_volume_apply(PLAYER_DEFAULT_VOLUME, false))
+            process_volume = false;
+    }
+
+    mpv_request_log_messages(g_mpv, log_get_mpv_level());
+    if (!process_volume)
+        mpv_observe_property(g_mpv, LIBMPV_OBS_VOLUME, "volume", MPV_FORMAT_DOUBLE);
     mpv_observe_property(g_mpv, LIBMPV_OBS_TIME_POS, "time-pos", MPV_FORMAT_DOUBLE);
     mpv_observe_property(g_mpv, LIBMPV_OBS_PAUSE, "pause", MPV_FORMAT_FLAG);
-    mpv_observe_property(g_mpv, LIBMPV_OBS_MUTE, "mute", MPV_FORMAT_FLAG);
+    if (!process_volume)
+        mpv_observe_property(g_mpv, LIBMPV_OBS_MUTE, "mute", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_DURATION, "duration", MPV_FORMAT_DOUBLE);
     mpv_observe_property(g_mpv, LIBMPV_OBS_SEEKABLE, "seekable", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_PAUSED_FOR_CACHE, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_SEEKING, "seeking", MPV_FORMAT_FLAG);
 
+    if (process_volume)
+        log_info("[player-libmpv] init volume_backend=aud:a-process\n");
     log_info("[player-libmpv] init\n");
     return true;
 }
@@ -689,6 +876,8 @@ static void libmpv_deinit(void)
 {
     mpv_render_context *render_ctx = NULL;
     mpv_handle *mpv = NULL;
+
+    log_info("[player-libmpv] deinit begin\n");
 
     mutexLock(&g_mutex);
     render_ctx = g_render_ctx;
@@ -699,11 +888,22 @@ static void libmpv_deinit(void)
     mutexUnlock(&g_mutex);
 
     if (render_ctx)
+    {
+        log_info("[player-libmpv] deinit step=render_context_free begin\n");
         mpv_render_context_free(render_ctx);
+        log_info("[player-libmpv] deinit step=render_context_free done\n");
+    }
+    
     if (mpv)
+    {
+        log_info("[player-libmpv] deinit step=terminate_destroy begin\n");
         mpv_terminate_destroy(mpv);
+        log_info("[player-libmpv] deinit step=terminate_destroy done\n");
+    }
 
-    log_info("[player-libmpv] deinit\n");
+    libmpv_process_volume_shutdown();
+
+    log_info("[player-libmpv] deinit done\n");
 }
 
 static void libmpv_set_event_sink(void (*sink)(const PlayerEvent *event))
@@ -930,6 +1130,14 @@ static bool libmpv_set_volume(int volume_0_100)
         return false;
     }
 
+    if (g_process_volume_active && libmpv_process_volume_apply(volume_0_100, g_mute))
+    {
+        libmpv_set_volume_locked(volume_0_100, &pending);
+        mutexUnlock(&g_mutex);
+        libmpv_flush_events(&pending);
+        return true;
+    }
+
     rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_SET_VOLUME, "volume", MPV_FORMAT_DOUBLE, &volume);
     if (rc < 0)
     {
@@ -956,6 +1164,14 @@ static bool libmpv_set_mute(bool mute)
     {
         mutexUnlock(&g_mutex);
         return false;
+    }
+
+    if (g_process_volume_active && libmpv_process_volume_apply(g_volume, mute))
+    {
+        libmpv_set_mute_locked(mute, &pending);
+        mutexUnlock(&g_mutex);
+        libmpv_flush_events(&pending);
+        return true;
     }
 
     rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_SET_MUTE, "mute", MPV_FORMAT_FLAG, &mute_flag);
@@ -1016,14 +1232,13 @@ static bool libmpv_render_supported(void)
     return supported;
 }
 
+#ifdef HAVE_MPV_RENDER_GL
 static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx)
 {
     mpv_opengl_init_params gl_init_params;
     mpv_render_param params[4];
-    mpv_render_context *new_ctx = NULL;
     mpv_handle *mpv = NULL;
-    int rc;
-    int advanced_control = 0;
+    int advanced_control = 1;
 
     if (!get_proc_address)
         return false;
@@ -1031,13 +1246,16 @@ static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const c
     mutexLock(&g_mutex);
     if (g_render_ctx)
     {
+        bool ok = g_render_backend == LIBMPV_RENDER_BACKEND_GL;
         mutexUnlock(&g_mutex);
-        return true;
+        return ok;
     }
     mpv = g_mpv;
     mutexUnlock(&g_mutex);
     if (!mpv)
         return false;
+
+    libmpv_log_render_attach_order_warning("OpenGL");
 
     gl_init_params.get_proc_address = get_proc_address;
     gl_init_params.get_proc_address_ctx = get_proc_address_ctx;
@@ -1051,28 +1269,17 @@ static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const c
     params[3].type = MPV_RENDER_PARAM_INVALID;
     params[3].data = NULL;
 
-    rc = mpv_render_context_create(&new_ctx, mpv, params);
-    if (rc < 0)
-    {
-        log_warn("[player-libmpv] render_context_create failed: %s\n", mpv_error_string(rc));
-        return false;
-    }
-
-    mpv_render_context_set_update_callback(new_ctx, libmpv_on_render_update, NULL);
-
-    mutexLock(&g_mutex);
-    if (!g_render_ctx)
-    {
-        g_render_ctx = new_ctx;
-        g_render_update_pending = true;
-        new_ctx = NULL;
-    }
-    mutexUnlock(&g_mutex);
-
-    if (new_ctx)
-        mpv_render_context_free(new_ctx);
-    return true;
+    return libmpv_render_attach_context(&g_render_ctx, mpv, params, LIBMPV_RENDER_BACKEND_GL, "OpenGL");
 }
+#else
+static bool libmpv_render_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx)
+{
+    (void)get_proc_address;
+    (void)get_proc_address_ctx;
+    log_warn("[player-libmpv] OpenGL render support not available at compile time\n");
+    return false;
+}
+#endif
 
 static bool libmpv_render_attach_sw(void)
 {
@@ -1087,17 +1294,19 @@ static void libmpv_render_detach(void)
     render_ctx = g_render_ctx;
     g_render_ctx = NULL;
     g_render_update_pending = false;
+    g_render_backend = LIBMPV_RENDER_BACKEND_NONE;
     mutexUnlock(&g_mutex);
 
     if (render_ctx)
         mpv_render_context_free(render_ctx);
 }
 
+#ifdef HAVE_MPV_RENDER_GL
 static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y)
 {
     mpv_render_context *render_ctx = NULL;
     mpv_opengl_fbo mpv_fbo;
-    mpv_render_param params[4];
+    mpv_render_param params[3];
     int flip = flip_y ? 1 : 0;
     uint64_t flags;
     int rc;
@@ -1106,7 +1315,7 @@ static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y)
         return false;
 
     mutexLock(&g_mutex);
-    render_ctx = g_render_ctx;
+    render_ctx = (g_render_backend == LIBMPV_RENDER_BACKEND_GL) ? g_render_ctx : NULL;
     g_render_update_pending = false;
     mutexUnlock(&g_mutex);
     if (!render_ctx)
@@ -1126,12 +1335,20 @@ static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y)
     params[1].data = &flip;
     params[2].type = MPV_RENDER_PARAM_INVALID;
     params[2].data = NULL;
-    params[3].type = MPV_RENDER_PARAM_INVALID;
-    params[3].data = NULL;
 
     rc = mpv_render_context_render(render_ctx, params);
     return rc >= 0;
 }
+#else
+static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y)
+{
+    (void)fbo;
+    (void)width;
+    (void)height;
+    (void)flip_y;
+    return false;
+}
+#endif
 
 static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t stride)
 {
@@ -1140,6 +1357,91 @@ static bool libmpv_render_frame_sw(void *pixels, int width, int height, size_t s
     (void)height;
     (void)stride;
     return false;
+}
+
+static bool libmpv_render_attach_dk3d(const PlayerVideoDk3dInit *init)
+{
+#ifdef HAVE_MPV_RENDER_DK3D
+    mpv_render_param params[4];
+    mpv_handle *mpv = NULL;
+    int advanced_control = 1;
+    mpv_deko3d_init_params init_params;
+
+    mutexLock(&g_mutex);
+    if (g_render_ctx)
+    {
+        bool ok = g_render_backend == LIBMPV_RENDER_BACKEND_DK3D;
+        mutexUnlock(&g_mutex);
+        return ok;
+    }
+    mpv = g_mpv;
+    mutexUnlock(&g_mutex);
+    if (!mpv)
+        return false;
+    if (!init || !init->device)
+    {
+        log_warn("[player-libmpv] deko3d render requested without a valid device\n");
+        return false;
+    }
+
+    memset(&init_params, 0, sizeof(init_params));
+    init_params.device = init->device;
+
+    libmpv_log_render_attach_order_warning("deko3d");
+
+    params[0].type = MPV_RENDER_PARAM_API_TYPE;
+    params[0].data = (void *)MPV_RENDER_API_TYPE_DEKO3D;
+    params[1].type = MPV_RENDER_PARAM_DEKO3D_INIT_PARAMS;
+    params[1].data = &init_params;
+    params[2].type = MPV_RENDER_PARAM_ADVANCED_CONTROL;
+    params[2].data = &advanced_control;
+    params[3].type = MPV_RENDER_PARAM_INVALID;
+    params[3].data = NULL;
+
+    return libmpv_render_attach_context(&g_render_ctx, mpv, params, LIBMPV_RENDER_BACKEND_DK3D, "deko3d");
+#else
+    log_warn("[player-libmpv] deko3d render not available at compile time\n");
+    return false;
+#endif
+}
+
+static bool libmpv_render_frame_dk3d(const PlayerVideoDk3dFrame *frame)
+{
+    mpv_render_context *render_ctx = NULL;
+    mpv_deko3d_fbo fbo;
+    mpv_render_param params[2];
+    uint64_t flags;
+    int rc;
+
+    if (!frame || !frame->image || !frame->ready_fence || !frame->done_fence ||
+        frame->width <= 0 || frame->height <= 0)
+        return false;
+
+    mutexLock(&g_mutex);
+    render_ctx = (g_render_backend == LIBMPV_RENDER_BACKEND_DK3D) ? g_render_ctx : NULL;
+    g_render_update_pending = false;
+    mutexUnlock(&g_mutex);
+    if (!render_ctx)
+        return false;
+
+    flags = mpv_render_context_update(render_ctx);
+    (void)flags;
+
+    memset(&fbo, 0, sizeof(fbo));
+    fbo.tex = frame->image;
+    fbo.ready_fence = frame->ready_fence;
+    fbo.done_fence = frame->done_fence;
+    fbo.w = frame->width;
+    fbo.h = frame->height;
+    fbo.format = frame->format;
+
+    params[0].type = MPV_RENDER_PARAM_DEKO3D_FBO;
+    params[0].data = &fbo;
+    params[1].type = MPV_RENDER_PARAM_INVALID;
+    params[1].data = NULL;
+
+    rc = mpv_render_context_render(render_ctx, params);
+    return rc >= 0;
 }
 
 static int libmpv_get_position_ms(void)
@@ -1221,9 +1523,11 @@ const BackendOps g_libmpv_ops = {
     .render_supported = libmpv_render_supported,
     .render_attach_gl = libmpv_render_attach_gl,
     .render_attach_sw = libmpv_render_attach_sw,
+    .render_attach_dk3d = libmpv_render_attach_dk3d,
     .render_detach = libmpv_render_detach,
     .render_frame_gl = libmpv_render_frame_gl,
     .render_frame_sw = libmpv_render_frame_sw,
+    .render_frame_dk3d = libmpv_render_frame_dk3d,
     .get_position_ms = libmpv_get_position_ms,
     .get_duration_ms = libmpv_get_duration_ms,
     .get_volume = libmpv_get_volume,

@@ -35,6 +35,7 @@ static const SoapRouteEntry g_routes[] = {
     {"AVTransport", g_serviceTypeAvTransport, "Previous", "avtransport_previous", avtransport_previous},
     {"AVTransport", g_serviceTypeAvTransport, "SetPlayMode", "avtransport_set_play_mode", avtransport_set_play_mode},
 
+    {"RenderingControl", g_serviceTypeRenderingControl, "GetBrightness", "renderingcontrol_get_brightness", renderingcontrol_get_brightness},
     {"RenderingControl", g_serviceTypeRenderingControl, "GetVolume", "renderingcontrol_get_volume", renderingcontrol_get_volume},
     {"RenderingControl", g_serviceTypeRenderingControl, "SetVolume", "renderingcontrol_set_volume", renderingcontrol_set_volume},
     {"RenderingControl", g_serviceTypeRenderingControl, "GetMute", "renderingcontrol_get_mute", renderingcontrol_get_mute},

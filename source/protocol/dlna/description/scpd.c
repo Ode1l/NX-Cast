@@ -6,13 +6,12 @@
 #include <string.h>
 
 #include "log/log.h"
+#include "protocol/dlna/server_info.h"
 #include "template_resource.h"
 
 #define DLNA_HTTP_XML_CONTENT_TYPE "text/xml; charset=\"utf-8\""
 #define DLNA_HTTP_HTML_CONTENT_TYPE "text/html; charset=\"utf-8\""
 #define DLNA_HTTP_JPEG_CONTENT_TYPE "image/jpeg"
-#define DLNA_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
-
 typedef struct
 {
     const char *request_path;
@@ -170,7 +169,7 @@ static bool build_http_response(int status,
                        status_text,
                        content_type,
                        body_len,
-                       DLNA_SERVER_INFO);
+                       dlna_server_info_get());
     if (written < 0 || (size_t)written >= response_size)
         return false;
 

@@ -125,12 +125,6 @@ static void player_apply_event_locked(const PlayerEvent *event)
     g_snapshot.mute = event->mute;
     g_snapshot.seekable = event->seekable;
 
-    if (event->uri && g_has_current_media)
-    {
-        if (!player_media_set(&g_current_media, event->uri, g_current_media.metadata))
-            return;
-    }
-
     if (g_has_current_media)
     {
         g_snapshot.has_media = true;
@@ -428,17 +422,19 @@ void player_deinit(void)
 
     if (g_backend && g_backend->wakeup)
     {
-        log_info("[player] deinit step=backend_wakeup\n");
+        log_info("[player] deinit step=backend_wakeup begin\n");
         g_backend->wakeup();
+        log_info("[player] deinit step=backend_wakeup done\n");
     }
 
     if (g_player_thread_started)
     {
-        log_info("[player] deinit waiting for event thread exit\n");
+        log_info("[player] deinit step=thread_wait_for_exit begin\n");
         threadWaitForExit(&g_player_thread);
+        log_info("[player] deinit step=thread_wait_for_exit done\n");
         threadClose(&g_player_thread);
         g_player_thread_started = false;
-        log_info("[player] deinit event thread closed\n");
+        log_info("[player] deinit step=thread_closed\n");
     }
 
     if (g_backend && g_backend->deinit)
@@ -453,7 +449,7 @@ void player_deinit(void)
     player_reset_snapshot_locked();
     mutexUnlock(&g_player_mutex);
 
-    log_info("[player] deinit backend=%s\n", player_get_backend_name());
+    log_info("[player] deinit end backend=%s\n", player_get_backend_name());
     g_backend = NULL;
     g_initialized = false;
 }
@@ -560,7 +556,8 @@ bool player_video_supported(void)
     if (!g_initialized || !g_backend)
         return false;
     if ((!g_backend->render_attach_gl || !g_backend->render_frame_gl) &&
-        (!g_backend->render_attach_sw || !g_backend->render_frame_sw))
+        (!g_backend->render_attach_sw || !g_backend->render_frame_sw) &&
+        (!g_backend->render_attach_dk3d || !g_backend->render_frame_dk3d))
     {
         return false;
     }
@@ -583,6 +580,13 @@ bool player_video_attach_sw(void)
     return g_backend->render_attach_sw();
 }
 
+bool player_video_attach_dk3d(const PlayerVideoDk3dInit *init)
+{
+    if (!player_video_supported() || !g_backend->render_attach_dk3d)
+        return false;
+    return g_backend->render_attach_dk3d(init);
+}
+
 void player_video_detach(void)
 {
     if (!g_initialized || !g_backend || !g_backend->render_detach)
@@ -602,6 +606,13 @@ bool player_video_render_sw(void *pixels, int width, int height, size_t stride)
     if (!player_video_supported() || !g_backend->render_frame_sw)
         return false;
     return g_backend->render_frame_sw(pixels, width, height, stride);
+}
+
+bool player_video_render_dk3d(const PlayerVideoDk3dFrame *frame)
+{
+    if (!player_video_supported() || !g_backend->render_frame_dk3d)
+        return false;
+    return g_backend->render_frame_dk3d(frame);
 }
 
 int player_get_position_ms(void)

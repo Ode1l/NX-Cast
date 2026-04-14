@@ -46,6 +46,7 @@ bool avtransport_set_play_mode(const SoapActionContext *ctx, SoapActionOutput *o
 
 bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput *out);
 bool renderingcontrol_set_volume(const SoapActionContext *ctx, SoapActionOutput *out);
+bool renderingcontrol_get_brightness(const SoapActionContext *ctx, SoapActionOutput *out);
 bool renderingcontrol_get_mute(const SoapActionContext *ctx, SoapActionOutput *out);
 bool renderingcontrol_set_mute(const SoapActionContext *ctx, SoapActionOutput *out);
 bool renderingcontrol_list_presets(const SoapActionContext *ctx, SoapActionOutput *out);

@@ -7,6 +7,29 @@
 #include "../handler_internal.h"
 #include "player/renderer.h"
 
+bool renderingcontrol_get_brightness(const SoapActionContext *ctx, SoapActionOutput *out)
+{
+    char *instance_id = NULL;
+
+    if (!ctx || !out)
+        return false;
+
+    if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
+        return false;
+
+    soap_writer_clear(out);
+    if (!soap_writer_element_int(out, "CurrentBrightness", 100))
+    {
+        free(instance_id);
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+
+    free(instance_id);
+    soap_handler_set_success(out, NULL);
+    return true;
+}
+
 bool renderingcontrol_get_volume(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char *instance_id = NULL;

@@ -131,8 +131,11 @@ source/
       description/
       control/
     http/
-romfs/
+assets/
   dlna/
+
+Runtime storage on Switch:
+  sdmc:/switch/NX-Cast/dlna/
 ```
 
 ## Recommended Reading Order

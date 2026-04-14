@@ -253,6 +253,7 @@ static ssize_t recv_full_http_request(int client_sock, char *request_buffer, siz
 
 static void normalize_path(const char *raw_path, char *path, size_t path_size)
 {
+    const char *source;
     size_t read_index = 0;
     size_t write_index = 0;
     bool previous_was_slash = false;
@@ -266,9 +267,21 @@ static void normalize_path(const char *raw_path, char *path, size_t path_size)
         return;
     }
 
-    while (raw_path[read_index] != '\0' && raw_path[read_index] != '?' && write_index + 1 < path_size)
+    source = raw_path;
+    if (strncasecmp(source, "http://", 7) == 0 || strncasecmp(source, "https://", 8) == 0)
     {
-        char ch = raw_path[read_index++];
+        const char *scheme_sep = strstr(source, "://");
+        const char *first_slash = scheme_sep ? strchr(scheme_sep + 3, '/') : NULL;
+        source = first_slash ? first_slash : "/";
+    }
+    else if (source[0] == '\0')
+    {
+        source = "/";
+    }
+
+    while (source[read_index] != '\0' && source[read_index] != '?' && write_index + 1 < path_size)
+    {
+        char ch = source[read_index++];
         if (ch == '/')
         {
             if (previous_was_slash)

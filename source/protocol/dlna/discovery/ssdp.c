@@ -18,12 +18,12 @@
 #include <unistd.h>
 
 #include "log/log.h"
+#include "protocol/dlna/server_info.h"
 
 #define SSDP_PORT 1900
 #define SSDP_MULTICAST "239.255.255.250"
 #define SSDP_NOTIFY_INTERVAL_MS 30000ULL
 #define SSDP_CACHE_MAX_AGE 66
-#define SSDP_SERVER_INFO "NintendoSwitch/1.0 UPnP/1.0 NX-Cast/0.1"
 // Keep a conservative stack budget here too. SSDP itself is simple, but
 // repeated logging and response formatting make 0x10000 a safer floor.
 #define SSDP_THREAD_STACK_SIZE 0x10000
@@ -46,7 +46,15 @@ typedef struct
     char *location;                      // http://<ip>:<port>/device.xml
 } SsdpState;
 
+typedef struct
+{
+    const char *st;
+    char *usn;
+} SsdpAdvertisement;
+
 static SsdpState g_ssdp;
+static SsdpAdvertisement g_advertisements[6];
+static size_t g_advertisement_count = 0;
 
 static char *ssdp_strdup_printf(const char *fmt, ...)
 {
@@ -86,6 +94,71 @@ static void ssdp_clear_cached_strings(void)
     free(g_ssdp.location);
     g_ssdp.local_ip = NULL;
     g_ssdp.location = NULL;
+}
+
+static void ssdp_clear_advertisements(void)
+{
+    for (size_t i = 0; i < g_advertisement_count; ++i)
+    {
+        free(g_advertisements[i].usn);
+        g_advertisements[i].usn = NULL;
+        g_advertisements[i].st = NULL;
+    }
+    g_advertisement_count = 0;
+}
+
+static bool ssdp_add_advertisement(const char *st, const char *usn)
+{
+    if (!st || st[0] == '\0' || !usn || usn[0] == '\0')
+        return false;
+    if (g_advertisement_count >= sizeof(g_advertisements) / sizeof(g_advertisements[0]))
+        return false;
+
+    g_advertisements[g_advertisement_count].st = st;
+    g_advertisements[g_advertisement_count].usn = strdup(usn);
+    if (!g_advertisements[g_advertisement_count].usn)
+        return false;
+
+    ++g_advertisement_count;
+    return true;
+}
+
+static bool ssdp_build_advertisements(void)
+{
+    char *root_usn = NULL;
+    char *device_usn = NULL;
+    char *avtransport_usn = NULL;
+    char *renderingcontrol_usn = NULL;
+    char *connectionmanager_usn = NULL;
+    bool ok = false;
+
+    ssdp_clear_advertisements();
+
+    root_usn = ssdp_strdup_printf("%s::upnp:rootdevice", g_ssdp.config.uuid);
+    device_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
+    avtransport_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeAvTransport);
+    renderingcontrol_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeRenderingControl);
+    connectionmanager_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeConnectionManager);
+    if (!root_usn || !device_usn || !avtransport_usn || !renderingcontrol_usn || !connectionmanager_usn)
+        goto cleanup;
+
+    ok = ssdp_add_advertisement("upnp:rootdevice", root_usn) &&
+         ssdp_add_advertisement(g_ssdp.config.uuid, g_ssdp.config.uuid) &&
+         ssdp_add_advertisement(g_ssdp.config.device_type, device_usn) &&
+         ssdp_add_advertisement(g_serviceTypeRenderingControl, renderingcontrol_usn) &&
+         ssdp_add_advertisement(g_serviceTypeConnectionManager, connectionmanager_usn) &&
+         ssdp_add_advertisement(g_serviceTypeAvTransport, avtransport_usn);
+
+cleanup:
+    free(root_usn);
+    free(device_usn);
+    free(avtransport_usn);
+    free(renderingcontrol_usn);
+    free(connectionmanager_usn);
+
+    if (!ok)
+        ssdp_clear_advertisements();
+    return ok;
 }
 
 static uint64_t ssdp_now_ms(void)
@@ -286,7 +359,7 @@ static void send_msearch_response(const char *st, const char *usn, const struct 
                                   SSDP_CACHE_MAX_AGE,
                                   date,
                                   g_ssdp.location,
-                                  SSDP_SERVER_INFO,
+                                  dlna_server_info_get(),
                                   st,
                                   usn);
     if (!response)
@@ -340,7 +413,7 @@ static void send_notify_packet(const char *nt, const char *usn)
                                  SSDP_CACHE_MAX_AGE,
                                  g_ssdp.location,
                                  nt,
-                                 SSDP_SERVER_INFO,
+                                 dlna_server_info_get(),
                                  usn,
                                  date);
     free(date);
@@ -367,35 +440,59 @@ static void send_notify_packet(const char *nt, const char *usn)
     free(payload);
 }
 
+static void send_byebye_packet(const char *nt, const char *usn)
+{
+    struct sockaddr_in addr;
+    char *payload = NULL;
+
+    if (g_ssdp.socket_fd < 0 || !nt || nt[0] == '\0' || !usn || usn[0] == '\0')
+        return;
+
+    payload = ssdp_strdup_printf("NOTIFY * HTTP/1.1\r\n"
+                                 "HOST: %s:%d\r\n"
+                                 "NT: %s\r\n"
+                                 "NTS: ssdp:byebye\r\n"
+                                 "USN: %s\r\n"
+                                 "SERVER: %s\r\n"
+                                 "\r\n",
+                                 SSDP_MULTICAST,
+                                 SSDP_PORT,
+                                 nt,
+                                 usn,
+                                 dlna_server_info_get());
+    if (!payload)
+        return;
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(SSDP_PORT);
+    addr.sin_addr.s_addr = inet_addr(SSDP_MULTICAST);
+
+    for (int i = 0; i < 2; ++i)
+    {
+        ssize_t sent = sendto(g_ssdp.socket_fd,
+                              payload,
+                              strlen(payload),
+                              0,
+                              (const struct sockaddr *)&addr,
+                              sizeof(addr));
+        if (sent < 0)
+            break;
+    }
+
+    free(payload);
+}
+
 static void send_alive_notifications(void)
 {
-    char *root_usn = NULL;
-    char *device_usn = NULL;
-    char *avtransport_usn = NULL;
-    char *renderingcontrol_usn = NULL;
-    char *connectionmanager_usn = NULL;
+    for (size_t i = 0; i < g_advertisement_count; ++i)
+        send_notify_packet(g_advertisements[i].st, g_advertisements[i].usn);
+}
 
-    root_usn = ssdp_strdup_printf("%s::upnp:rootdevice", g_ssdp.config.uuid);
-    device_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
-    avtransport_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeAvTransport);
-    renderingcontrol_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeRenderingControl);
-    connectionmanager_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeConnectionManager);
-    if (!root_usn || !device_usn || !avtransport_usn || !renderingcontrol_usn || !connectionmanager_usn)
-        goto cleanup;
-
-    send_notify_packet("upnp:rootdevice", root_usn);
-    send_notify_packet(g_ssdp.config.uuid, g_ssdp.config.uuid);
-    send_notify_packet(g_ssdp.config.device_type, device_usn);
-    send_notify_packet(g_serviceTypeRenderingControl, renderingcontrol_usn);
-    send_notify_packet(g_serviceTypeConnectionManager, connectionmanager_usn);
-    send_notify_packet(g_serviceTypeAvTransport, avtransport_usn);
-
-cleanup:
-    free(root_usn);
-    free(device_usn);
-    free(avtransport_usn);
-    free(renderingcontrol_usn);
-    free(connectionmanager_usn);
+static void send_byebye_notifications(void)
+{
+    for (size_t i = 0; i < g_advertisement_count; ++i)
+        send_byebye_packet(g_advertisements[i].st, g_advertisements[i].usn);
 }
 
 static char *ssdp_recv_packet_alloc(int socket_fd, struct sockaddr_in *from, ssize_t *out_len)
@@ -445,75 +542,35 @@ static void respond_to_msearch(const char *st_value, const struct sockaddr_in *f
     if (!st_value || st_value[0] == '\0')
         return;
 
-    char *root_usn = ssdp_strdup_printf("%s::upnp:rootdevice", g_ssdp.config.uuid);
-    char *device_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_ssdp.config.device_type);
-    char *avtransport_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeAvTransport);
-    char *renderingcontrol_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeRenderingControl);
-    char *connectionmanager_usn = ssdp_strdup_printf("%s::%s", g_ssdp.config.uuid, g_serviceTypeConnectionManager);
-
-    if (!root_usn || !device_usn || !avtransport_usn || !renderingcontrol_usn || !connectionmanager_usn)
-        goto cleanup;
-
-    // Reply only to known/expected ST values.
-    if (strcasecmp(st_value, "ssdp:all") == 0)
+    bool match_all = strcasecmp(st_value, "ssdp:all") == 0;
+    for (size_t i = 0; i < g_advertisement_count; ++i)
     {
-        send_msearch_response("upnp:rootdevice", root_usn, from);
-        send_msearch_response(g_ssdp.config.device_type, device_usn, from);
-        send_msearch_response(g_ssdp.config.uuid, g_ssdp.config.uuid, from);
-        send_msearch_response(g_serviceTypeAvTransport, avtransport_usn, from);
-        send_msearch_response(g_serviceTypeRenderingControl, renderingcontrol_usn, from);
-        send_msearch_response(g_serviceTypeConnectionManager, connectionmanager_usn, from);
-        goto cleanup;
+        if (match_all || strcasecmp(st_value, g_advertisements[i].st) == 0)
+            send_msearch_response(g_advertisements[i].st, g_advertisements[i].usn, from);
     }
+}
 
-    if (strcasecmp(st_value, "upnp:rootdevice") == 0)
-    {
-        send_msearch_response("upnp:rootdevice", root_usn, from);
-        goto cleanup;
-    }
+static bool ssdp_parse_request_line(const char *packet, char *method, size_t method_size, char *target, size_t target_size)
+{
+    int rc;
 
-    if (strcasecmp(st_value, g_ssdp.config.device_type) == 0)
-    {
-        send_msearch_response(g_ssdp.config.device_type, device_usn, from);
-        goto cleanup;
-    }
+    if (!packet || !method || method_size == 0 || !target || target_size == 0)
+        return false;
 
-    if (strcasecmp(st_value, g_ssdp.config.uuid) == 0)
-    {
-        send_msearch_response(g_ssdp.config.uuid, g_ssdp.config.uuid, from);
-        goto cleanup;
-    }
+    rc = sscanf(packet, "%15s %31s", method, target);
+    if (rc != 2)
+        return false;
 
-    if (strcasecmp(st_value, g_serviceTypeAvTransport) == 0)
-    {
-        send_msearch_response(g_serviceTypeAvTransport, avtransport_usn, from);
-        goto cleanup;
-    }
-
-    if (strcasecmp(st_value, g_serviceTypeRenderingControl) == 0)
-    {
-        send_msearch_response(g_serviceTypeRenderingControl, renderingcontrol_usn, from);
-        goto cleanup;
-    }
-
-    if (strcasecmp(st_value, g_serviceTypeConnectionManager) == 0)
-    {
-        send_msearch_response(g_serviceTypeConnectionManager, connectionmanager_usn, from);
-        goto cleanup;
-    }
-
-cleanup:
-    free(root_usn);
-    free(device_usn);
-    free(avtransport_usn);
-    free(renderingcontrol_usn);
-    free(connectionmanager_usn);
+    method[method_size - 1] = '\0';
+    target[target_size - 1] = '\0';
+    return true;
 }
 
 // Basic parser that filters for SSDP discovery packets.
 static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in *from)
 {
-    char *man = NULL;
+    char method[16];
+    char target[32];
     char *st = NULL;
 
     if (length <= 0)
@@ -522,36 +579,31 @@ static void handle_packet(char *packet, ssize_t length, const struct sockaddr_in
     log_debug("[ssdp] recv packet from %s:%d bytes=%zd\n",
               inet_ntoa(from->sin_addr), ntohs(from->sin_port), length);
 
-    if (strncasecmp(packet, "M-SEARCH", 8) != 0)
+    if (!ssdp_parse_request_line(packet, method, sizeof(method), target, sizeof(target)))
     {
-        log_debug("[ssdp] packet not M-SEARCH, ignoring\n");
+        log_debug("[ssdp] packet request-line parse failed, ignoring\n");
         return;
     }
 
-    if (!get_header_value_alloc(packet, "MAN", &man))
+    if (strcasecmp(method, "NOTIFY") == 0 && strcmp(target, "*") == 0)
     {
-        log_debug("[ssdp] M-SEARCH without MAN header, ignoring\n");
         return;
     }
-    
-    // Accept both "ssdp:discover" with quotes and ssdp:discover without quotes
-    if (strcasecmp(man, "\"ssdp:discover\"") != 0 && strcasecmp(man, "ssdp:discover") != 0)
+
+    if (strcasecmp(method, "M-SEARCH") != 0 || strcmp(target, "*") != 0)
     {
-        log_debug("[ssdp] M-SEARCH invalid MAN value: %s, ignoring\n", man);
-        free(man);
+        log_debug("[ssdp] packet not M-SEARCH *, ignoring method=%s target=%s\n", method, target);
         return;
     }
 
     if (!get_header_value_alloc(packet, "ST", &st))
     {
         log_debug("[ssdp] M-SEARCH without ST header, ignoring\n");
-        free(man);
         return;
     }
     log_debug("[ssdp] M-SEARCH ST=%s\n", st);
 
     respond_to_msearch(st, from);
-    free(man);
     free(st);
 }
 
@@ -636,6 +688,13 @@ bool ssdp_start(const SsdpConfig *config)
 
     if (!create_socket(&g_ssdp))
         return false;
+    if (!ssdp_build_advertisements())
+    {
+        close(g_ssdp.socket_fd);
+        g_ssdp.socket_fd = -1;
+        ssdp_clear_cached_strings();
+        return false;
+    }
 
     g_ssdp.running = true;
     Result rc = threadCreate(&g_ssdp.thread, ssdp_thread, NULL, NULL, SSDP_THREAD_STACK_SIZE, 0x2B, -2);
@@ -644,6 +703,7 @@ bool ssdp_start(const SsdpConfig *config)
         log_error("[ssdp] threadCreate failed: 0x%08X\n", rc);
         g_ssdp.running = false;
         ssdp_clear_cached_strings();
+        ssdp_clear_advertisements();
         close(g_ssdp.socket_fd);
         g_ssdp.socket_fd = -1;
         return false;
@@ -656,6 +716,7 @@ bool ssdp_start(const SsdpConfig *config)
         g_ssdp.running = false;
         threadClose(&g_ssdp.thread);
         ssdp_clear_cached_strings();
+        ssdp_clear_advertisements();
         close(g_ssdp.socket_fd);
         g_ssdp.socket_fd = -1;
         return false;
@@ -678,6 +739,9 @@ void ssdp_stop(void)
     g_ssdp.running = false;
 
     if (g_ssdp.socket_fd >= 0)
+        send_byebye_notifications();
+
+    if (g_ssdp.socket_fd >= 0)
     {
         int fd = g_ssdp.socket_fd;
         g_ssdp.socket_fd = -1;
@@ -696,5 +760,6 @@ void ssdp_stop(void)
     }
 
     ssdp_clear_cached_strings();
+    ssdp_clear_advertisements();
     log_info("[ssdp] Responder stopped.\n");
 }

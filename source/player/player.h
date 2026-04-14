@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <deko3d.h>
+
 #include "types.h"
 
 typedef enum
@@ -11,6 +13,21 @@ typedef enum
     PLAYER_BACKEND_MOCK,
     PLAYER_BACKEND_LIBMPV
 } PlayerBackendType;
+
+typedef struct
+{
+    DkDevice device;
+} PlayerVideoDk3dInit;
+
+typedef struct
+{
+    DkImage *image;
+    DkFence *ready_fence;
+    DkFence *done_fence;
+    int width;
+    int height;
+    DkImageFormat format;
+} PlayerVideoDk3dFrame;
 
 bool player_set_backend(PlayerBackendType backend);
 PlayerBackendType player_get_backend(void);
@@ -33,9 +50,11 @@ bool player_set_mute(bool mute);
 bool player_video_supported(void);
 bool player_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
 bool player_video_attach_sw(void);
+bool player_video_attach_dk3d(const PlayerVideoDk3dInit *init);
 void player_video_detach(void);
 bool player_video_render_gl(int fbo, int width, int height, bool flip_y);
 bool player_video_render_sw(void *pixels, int width, int height, size_t stride);
+bool player_video_render_dk3d(const PlayerVideoDk3dFrame *frame);
 
 int player_get_position_ms(void);
 int player_get_duration_ms(void);

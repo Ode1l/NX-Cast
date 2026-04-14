@@ -78,6 +78,12 @@ def try_fetch_url(url: str, output_dir: Path, label: str, user_agent: str, valid
         return {"ok": False, "error": error}
 
 
+def summary_safe_result(result: dict) -> dict:
+    safe = dict(result)
+    safe.pop("body", None)
+    return safe
+
+
 def parse_description(description_xml: bytes, fetched_url: str) -> dict:
     root = ET.fromstring(description_xml)
     url_base = root.findtext("d:URLBase", default="", namespaces=DEVICE_NS).strip()
@@ -144,7 +150,7 @@ def main() -> int:
     for url in candidates:
         label = safe_name(url)
         result = try_fetch_url(url, output_dir, label, args.user_agent, validate_xml=True)
-        fetched_descriptions.append({"url": url, **result})
+        fetched_descriptions.append({"url": url, **summary_safe_result(result)})
         if primary_description is None and result.get("ok"):
             primary_description = result
             primary_description["source_url"] = url
@@ -185,7 +191,9 @@ def main() -> int:
                 {
                     "category": category,
                     "url": url,
-                    **try_fetch_url(url, output_dir, label, args.user_agent, validate_xml=url.lower().endswith(".xml")),
+                    **summary_safe_result(
+                        try_fetch_url(url, output_dir, label, args.user_agent, validate_xml=url.lower().endswith(".xml"))
+                    ),
                 }
             )
 

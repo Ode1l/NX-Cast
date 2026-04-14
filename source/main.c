@@ -13,6 +13,7 @@
 #include "player/player.h"
 #include "player/view.h"
 #include "protocol/dlna_control.h"
+#include "protocol/dlna/description/resource_store.h"
 // #include "protocol/airplay/discovery/mdns.h"
 
 typedef struct
@@ -29,6 +30,15 @@ typedef struct
 #define ANSI_TEXT  "\x1b[37;1m"
 
 static int g_nxlinkSock = -1;
+static bool g_nxlinkWasActive = false;
+static bool g_networkInitialized = false;
+static bool g_consoleInitialized = false;
+static const char g_shutdownTraceDirParent[] = "sdmc:/switch";
+static const char g_shutdownTraceDir[] = "sdmc:/switch/NX-Cast";
+static const char g_shutdownTracePath[] = "sdmc:/switch/NX-Cast/shutdown_trace.log";
+
+static void shutdown_stdio_trace(const char *fmt, ...);
+static void shutdown_trace_reset(void);
 
 typedef enum
 {
@@ -36,6 +46,33 @@ typedef enum
     EXIT_REASON_PLUS_BUTTON,
     EXIT_REASON_APPLET_LOOP_ENDED
 } ExitReason;
+
+static void set_power_policy(bool active, bool use_logger)
+{
+    Result media_rc = appletSetMediaPlaybackState(active);
+    Result sleep_rc = appletSetAutoSleepDisabled(active);
+
+    if (use_logger)
+    {
+        if (R_FAILED(media_rc))
+            log_warn("[power] appletSetMediaPlaybackState(%d) failed: 0x%x\n", active ? 1 : 0, media_rc);
+        else
+            log_info("[power] media playback state=%d\n", active ? 1 : 0);
+
+        if (R_FAILED(sleep_rc))
+            log_warn("[power] appletSetAutoSleepDisabled(%d) failed: 0x%x\n", active ? 1 : 0, sleep_rc);
+        else
+            log_info("[power] auto sleep disabled=%d\n", active ? 1 : 0);
+    }
+    else
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=power_policy media_playback=%d rc=0x%x auto_sleep_disabled=%d rc=0x%x\n",
+                             active ? 1 : 0,
+                             media_rc,
+                             active ? 1 : 0,
+                             sleep_rc);
+    }
+}
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -73,6 +110,68 @@ static const char *color_for_log_line(const char *line)
     if (strncmp(line, "[DEBUG]", 7) == 0)
         return ANSI_DEBUG;
     return ANSI_TEXT;
+}
+
+static const char *exit_reason_name(ExitReason reason)
+{
+    switch (reason)
+    {
+    case EXIT_REASON_PLUS_BUTTON:
+        return "plus-button";
+    case EXIT_REASON_APPLET_LOOP_ENDED:
+        return "applet-loop-ended";
+    case EXIT_REASON_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
+static void shutdown_stdio_trace(const char *fmt, ...)
+{
+    va_list args;
+    FILE *file = NULL;
+    char line[512];
+    int written = 0;
+
+    if (!fmt)
+        return;
+
+    if (mkdir(g_shutdownTraceDirParent, 0777) != 0 && errno != EEXIST)
+        return;
+    if (mkdir(g_shutdownTraceDir, 0777) != 0 && errno != EEXIST)
+        return;
+
+    va_start(args, fmt);
+    written = vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+
+    if (written <= 0)
+        return;
+
+    file = fopen(g_shutdownTracePath, "ab");
+    if (file)
+    {
+        fwrite(line, 1, (size_t)written < sizeof(line) ? (size_t)written : strlen(line), file);
+        fflush(file);
+        fsync(fileno(file));
+        fclose(file);
+    }
+
+}
+
+static void shutdown_trace_reset(void)
+{
+    FILE *file;
+
+    if (mkdir(g_shutdownTraceDirParent, 0777) != 0 && errno != EEXIST)
+        return;
+    if (mkdir(g_shutdownTraceDir, 0777) != 0 && errno != EEXIST)
+        return;
+
+    file = fopen(g_shutdownTracePath, "wb");
+    if (!file)
+        return;
+    fclose(file);
 }
 
 static size_t compute_total_visual_lines(int width)
@@ -195,6 +294,7 @@ static void enable_nxlink_stdio(bool network_ready)
     g_nxlinkSock = nxlinkStdioForDebug();
     if (g_nxlinkSock >= 0)
     {
+        g_nxlinkWasActive = true;
         log_set_stdio_mirror(true);
         log_info("[log] nxlink stderr connected host=%s port=%d fd=%d stdout=local\n",
                  inet_ntoa(__nxlink_host),
@@ -209,19 +309,62 @@ static void enable_nxlink_stdio(bool network_ready)
              NXLINK_CLIENT_PORT);
 }
 
+void userAppExit(void)
+{
+    shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit begin network_initialized=%d nxlink_fd=%d console_initialized=%d\n",
+                         g_networkInitialized ? 1 : 0,
+                         g_nxlinkSock,
+                         g_consoleInitialized ? 1 : 0);
+
+    if (g_nxlinkSock >= 0)
+    {
+        int nxlink_fd = g_nxlinkSock;
+        g_nxlinkSock = -1;
+        fflush(stdout);
+        fflush(stderr);
+        consoleDebugInit(debugDevice_NULL);
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit nxlink_close begin fd=%d\n", nxlink_fd);
+        close(nxlink_fd);
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit nxlink_close done\n");
+    }
+
+    if (g_networkInitialized)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit socketExit begin\n");
+        socketExit();
+        g_networkInitialized = false;
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit socketExit done\n");
+    }
+
+    if (g_consoleInitialized)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit consoleExit begin\n");
+        consoleExit(NULL);
+        g_consoleInitialized = false;
+    }
+}
+
 int main(int argc, char* argv[])
 {
     consoleInit(NULL);
-    // File I/O operations disabled to prevent system freeze
-    // Shutdown trace file logging is skipped
+    g_consoleInitialized = true;
+    shutdown_trace_reset();
+    shutdown_stdio_trace("[INFO] [shutdown] trace_build=exit-userAppExit-v1\n");
     
     if (!log_runtime_init())
     {
         printf("[ERROR] [log] log_runtime_init failed\n");
     }
-    log_set_level(LOG_LEVEL_DEBUG);
-    log_info("[log] level=DEBUG\n");
+    set_power_policy(true, true);
+
+    bool storageReady = dlna_resource_store_ensure_defaults();
+    if (storageReady)
+        log_info("[storage] DLNA resources ready on SD.\n");
+    else
+        log_warn("[storage] failed to prepare DLNA resources on SD.\n");
+
     bool networkReady = initialize_network();
+    g_networkInitialized = networkReady;
     enable_nxlink_stdio(networkReady);
     bool dlnaRunning = false;
     bool videoPlatformReady = player_view_init();
@@ -229,6 +372,11 @@ int main(int argc, char* argv[])
     if (networkReady)
     {
         dlnaRunning = dlna_control_start();
+        if (dlnaRunning && videoPlatformReady)
+        {
+            bool prepared = player_view_prepare_video();
+            log_info("[ui] video render prepare=%d\n", prepared ? 1 : 0);
+        }
         // mdns_discover_airplay();
     }
 
@@ -360,6 +508,33 @@ int main(int argc, char* argv[])
         exit_reason = EXIT_REASON_APPLET_LOOP_ENDED;
 
     log_set_stdio_mirror(false);
+    shutdown_stdio_trace("[INFO] [shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
+                         exit_reason_name(exit_reason),
+                         networkReady ? 1 : 0,
+                         dlnaRunning ? 1 : 0,
+                         videoPlatformReady ? 1 : 0,
+                         g_nxlinkSock,
+                         storageReady ? 1 : 0);
+    log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
+             exit_reason_name(exit_reason),
+             networkReady ? 1 : 0,
+             dlnaRunning ? 1 : 0,
+             videoPlatformReady ? 1 : 0,
+             g_nxlinkSock,
+             storageReady ? 1 : 0);
+
+    if (videoPlatformReady)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit begin\n");
+        log_info("[shutdown] step=player_view_deinit begin\n");
+        player_view_deinit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_view_deinit done\n");
+        log_info("[shutdown] step=player_view_deinit done\n");
+    }
+    else
+    {
+        log_info("[shutdown] step=player_view_deinit skip reason=not-initialized\n");
+    }
 
     if (networkReady)
     {
@@ -368,15 +543,28 @@ int main(int argc, char* argv[])
             dlna_control_stop();
         }
     }
-    if (videoPlatformReady)
+    else
     {
-        player_view_deinit();
+        log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
     }
+
+    shutdown_stdio_trace("[INFO] [shutdown] step=log_runtime_shutdown begin\n");
+    log_info("[shutdown] step=log_runtime_shutdown begin\n");
     log_runtime_shutdown();
+    shutdown_stdio_trace("[INFO] [shutdown] step=log_runtime_shutdown done\n");
+    set_power_policy(false, false);
+
+    if (g_nxlinkSock >= 0)
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close defer reason=userAppExit fd=%d\n", g_nxlinkSock);
+    else
+        shutdown_stdio_trace("[INFO] [shutdown] step=nxlink_close skip reason=no-fd\n");
+
     if (networkReady)
-    {
-        socketExit();
-    }
-    consoleExit(NULL);
+        shutdown_stdio_trace("[INFO] [shutdown] step=socketExit defer reason=userAppExit\n");
+
+    if (g_consoleInitialized)
+        shutdown_stdio_trace("[INFO] [shutdown] step=consoleExit defer reason=userAppExit\n");
+
+    shutdown_stdio_trace("[INFO] [shutdown] step=main return begin\n");
     return 0;
 }

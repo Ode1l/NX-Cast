@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_ROOT = REPO_ROOT / "romfs" / "dlna"
+TEMPLATE_ROOT = REPO_ROOT / "assets" / "dlna"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "artifacts" / "dlna-smoke"
 
 RAW_PLACEHOLDERS = {"header_extra", "service_extra"}
