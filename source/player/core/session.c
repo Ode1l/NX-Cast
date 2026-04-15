@@ -260,6 +260,19 @@ static bool player_run_backend_string(bool (*fn)(const char *), const char *valu
     return ok;
 }
 
+static bool player_run_backend_string_int(bool (*fn)(const char *, int), const char *text, int value)
+{
+    bool ok;
+
+    if (!g_initialized || !g_backend || !fn || !text)
+        return false;
+
+    ok = fn(text, value);
+    if (ok && g_backend->wakeup)
+        g_backend->wakeup();
+    return ok;
+}
+
 static bool player_run_backend_flag(bool (*fn)(bool), bool value)
 {
     bool ok;
@@ -549,6 +562,11 @@ bool player_set_volume(int volume_0_100)
 bool player_set_mute(bool mute)
 {
     return player_run_backend_flag(g_backend ? g_backend->set_mute : NULL, mute);
+}
+
+bool player_show_osd(const char *text, int duration_ms)
+{
+    return player_run_backend_string_int(g_backend ? g_backend->show_osd : NULL, text, duration_ms);
 }
 
 bool player_video_supported(void)

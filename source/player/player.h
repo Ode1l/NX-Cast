@@ -47,6 +47,7 @@ bool player_seek_target(const char *target);
 bool player_seek_ms(int position_ms);
 bool player_set_volume(int volume_0_100);
 bool player_set_mute(bool mute);
+bool player_show_osd(const char *text, int duration_ms);
 bool player_video_supported(void);
 bool player_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
 bool player_video_attach_sw(void);

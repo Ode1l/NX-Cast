@@ -21,6 +21,7 @@ typedef struct
     bool (*seek_ms)(int position_ms);
     bool (*set_volume)(int volume_0_100);
     bool (*set_mute)(bool mute);
+    bool (*show_osd)(const char *text, int duration_ms);
     bool (*pump_events)(int timeout_ms);
     void (*wakeup)(void);
     bool (*render_supported)(void);

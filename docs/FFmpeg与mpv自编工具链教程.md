@@ -7,8 +7,8 @@
 适用目标：
 
 1. 让 `NX-Cast` 获得能播网络流的 `FFmpeg`
-2. 让 `NX-Cast` 获得 `hos-audio` 的 `libmpv`
-3. 后续继续切到 `deko3d + hwdec`
+2. 让 `NX-Cast` 获得 `hos-audio + deko3d` 的 `libmpv`
+3. 让 Docker、本地构建和 GitHub Actions 使用同一套媒体包
 
 ## 1. 先说结论
 
@@ -79,9 +79,9 @@
 
 对 `NX-Cast` 当前阶段，建议这么走：
 
-1. 先装 `wiliwili-dev` 的预编译 `FFmpeg/libmpv`
-2. 先让 `NX-Cast` 能成功链接并跑起来
-3. 再决定接 OpenGL 版还是直接切 `deko3d`
+1. 默认安装 `wiliwili-dev` 的预编译 `deko3d` 套餐
+2. 让 `NX-Cast` 直接按当前代码路径启用 `render_dk3d`
+3. 只把 OpenGL 版保留为回退或最小调试环境
 4. 最后才自己重新编包
 
 不要先做的事：
@@ -115,11 +115,11 @@ sudo dkp-pacman -U \
 
 1. 支持网络视频的 `FFmpeg`
 2. `hos-audio` 的 `libmpv`
-3. OpenGL 路线，不是 `deko3d`
+3. OpenGL 回退路线，不是当前仓库默认发布路线
 
 ### 5.3 安装 deko3d 版包
 
-如果你要直接试 `deko3d`，装这套：
+当前仓库默认构建和 CI 都按这套安装：
 
 ```bash
 base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
@@ -164,7 +164,7 @@ test -f /opt/devkitpro/portlibs/switch/include/libavutil/hwcontext_nvtegra.h && 
 
 ## 7. 让 NX-Cast 直接用这套库
 
-装完之后，先直接在当前系统 `portlibs` 上编 `NX-Cast`：
+装完之后，直接在当前系统 `portlibs` 上编 `NX-Cast`：
 
 ```bash
 cd /Users/ode1l/Documents/VSCode/NX-Cast
@@ -177,9 +177,19 @@ make -j2
 2. `libavutil/hwcontext_nvtegra.h`
 3. `libmpv.a` 里是否出现 `nvtegra`
 
-也就是说，先不需要再写额外环境变量，先看它能不能识别。
+也就是说，先不需要再写额外环境变量，先看它能不能识别并自动进入 `deko3d` 路径。
 
-## 8. 如果要自己编包，再走本地构建
+## 8. Docker 与 GitHub Actions
+
+仓库内的 `Dockerfile` 和 GitHub Actions 也默认按同一套 `wiliwili` 预编译包安装：
+
+1. `libuam`
+2. `switch-ffmpeg`
+3. `switch-libmpv_deko3d`
+
+如果你本地和 CI 的行为不一致，优先检查是否装成了 OpenGL 版 `switch-libmpv`。
+
+## 9. 如果要自己编包，再走本地构建
 
 只有在下面几种情况下，你才需要自己编：
 
@@ -242,9 +252,9 @@ done
 
 这也是为什么我仍然建议你先用预编译包。
 
-## 9. 运行时代码接线参考
+## 10. 运行时代码接线参考
 
-如果你后面要把 `NX-Cast` 真正切到 `deko3d`，最直接的参考不是构建脚本，而是：
+如果你后面要继续深化 `NX-Cast` 的 `deko3d` 路径，最直接的参考不是构建脚本，而是：
 
 1. [mpv_core.hpp](/Users/ode1l/Documents/VSCode/others/wiliwili-dev/wiliwili/include/view/mpv_core.hpp)
 2. [mpv_core.cpp](/Users/ode1l/Documents/VSCode/others/wiliwili-dev/wiliwili/source/view/mpv_core.cpp)
@@ -257,19 +267,19 @@ done
 4. `vo=libmpv`
 5. `hwdec` 作为运行时选项设置，而不是自己写解码器
 
-## 10. 现在最推荐你怎么做
+## 11. 现在最推荐你怎么做
 
 如果你的目标是继续推进 `NX-Cast`，最稳的是：
 
-1. 先安装 `wiliwili` 的预编译 `switch-ffmpeg`
-2. 再安装 `switch-libmpv_deko3d`
-3. 回到 `NX-Cast` 跑 `make -j2`
-4. 看项目是否已经识别出 `render_dk3d.h` 和 `hwcontext_nvtegra.h`
-5. 识别成功后，再改 `NX-Cast` 的 runtime 接线
+1. 安装 `wiliwili` 的预编译 `deko3d` 套餐
+2. 回到 `NX-Cast` 跑 `make -j2`
+3. 看项目是否已经识别出 `render_dk3d.h` 和 `hwcontext_nvtegra.h`
+4. 如果本地要复现 CI，直接用仓库 `Dockerfile`
+5. 只有需要改底层库时，再进入自编包路径
 
 这比你继续在 `SwitchWave` 里手工收 `configure` 错误更实际。
 
-## 11. 当前结论
+## 12. 当前结论
 
 `wiliwili-dev` 给你的真正价值不是它的 app，而是：
 
@@ -277,4 +287,4 @@ done
 2. 一套已验证可用的 Switch `libmpv` 包
 3. 一套清楚的 `deko3d + hos-audio + nvtegra` 参考实现
 
-对 `NX-Cast` 当前阶段，先用它的包，再移植它的 runtime 接线，是最短路径。
+对 `NX-Cast` 当前阶段，先用它的包并保持 Docker/CI 与本地一致，是最短路径。

@@ -11,6 +11,7 @@
 
 #include "log/log.h"
 #include "player/player.h"
+#include "player/ui/ui.h"
 #include "player/view.h"
 #include "protocol/dlna_control.h"
 #include "protocol/dlna/description/resource_store.h"
@@ -387,11 +388,16 @@ int main(int argc, char* argv[])
     padInitializeDefault(&pad);
     PadRepeater repeater;
     padRepeaterInitialize(&repeater, 14, 3);
+    PadRepeater video_repeater;
+    padRepeaterInitialize(&video_repeater, 14, 3);
 
     int scroll_from_bottom = 0;
     int stick_repeat_cooldown = 0;
+    int video_stick_repeat_cooldown = 0;
     TouchScrollState touch_scroll = {0};
     ExitReason exit_reason = EXIT_REASON_UNKNOWN;
+    PlayerUiState video_ui;
+    player_ui_reset(&video_ui);
 
     log_info("[ui] NX-Cast starting. Press + to exit.\n");
     log_info("[ui] Use Up/Down, sticks, or touch drag to scroll logs.\n");
@@ -400,16 +406,18 @@ int main(int argc, char* argv[])
 
     while (appletMainLoop())
     {
+        PlayerSnapshot snapshot = {0};
+        bool have_snapshot = false;
+
         padUpdate(&pad);
 
-        PlayerSnapshot snapshot;
         PlayerViewMode active_view = PLAYER_VIEW_LOG;
         if (videoPlatformReady)
         {
             if (player_get_snapshot(&snapshot))
             {
+                have_snapshot = true;
                 player_view_sync(&snapshot);
-                player_snapshot_clear(&snapshot);
             }
             player_view_begin_frame();
             active_view = player_view_get_mode();
@@ -422,6 +430,7 @@ int main(int argc, char* argv[])
         {
             exit_reason = EXIT_REASON_PLUS_BUTTON;
             log_set_stdio_mirror(false);
+            shutdown_stdio_trace("[INFO] [shutdown] requested reason=%s\n", exit_reason_name(exit_reason));
             break;
         }
 
@@ -500,8 +509,75 @@ int main(int argc, char* argv[])
         else
         {
             touch_scroll.active = false;
+
+            if (have_snapshot)
+            {
+                if (!snapshot.has_media)
+                {
+                    player_ui_clear(&video_ui);
+                }
+                else
+                    player_ui_sync(&video_ui, &snapshot);
+
+                padRepeaterUpdate(&video_repeater,
+                                  kHeld & (HidNpadButton_L | HidNpadButton_R |
+                                           HidNpadButton_Left | HidNpadButton_Right |
+                                           HidNpadButton_Up | HidNpadButton_Down));
+                u64 repeated_video = padRepeaterGetButtons(&video_repeater);
+                u64 video_nav = kDown | repeated_video;
+
+                if (kDown & HidNpadButton_A)
+                    player_ui_toggle_pause(&video_ui, &snapshot);
+
+                if (kDown & HidNpadButton_Minus)
+                    player_ui_show_controls(&video_ui, &snapshot);
+
+                if (video_nav & (HidNpadButton_L | HidNpadButton_Left))
+                    player_ui_seek(&video_ui, &snapshot, -PLAYER_UI_SEEK_STEP_MS);
+                if (video_nav & (HidNpadButton_R | HidNpadButton_Right))
+                    player_ui_seek(&video_ui, &snapshot, PLAYER_UI_SEEK_STEP_MS);
+                if (video_nav & HidNpadButton_Up)
+                    player_ui_change_volume(&video_ui, &snapshot, PLAYER_UI_VOLUME_STEP);
+                if (video_nav & HidNpadButton_Down)
+                    player_ui_change_volume(&video_ui, &snapshot, -PLAYER_UI_VOLUME_STEP);
+
+                if (video_stick_repeat_cooldown > 0)
+                    --video_stick_repeat_cooldown;
+                else
+                {
+                    HidAnalogStickState l = padGetStickPos(&pad, 0);
+                    HidAnalogStickState r = padGetStickPos(&pad, 1);
+                    int stick_x = abs(r.x) > abs(l.x) ? r.x : l.x;
+                    int stick_y = abs(r.y) > abs(l.y) ? r.y : l.y;
+
+                    if (stick_x <= -PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        player_ui_seek(&video_ui, &snapshot, -PLAYER_UI_SEEK_STEP_MS);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                    else if (stick_x >= PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        player_ui_seek(&video_ui, &snapshot, PLAYER_UI_SEEK_STEP_MS);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                    else if (stick_y >= PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        player_ui_change_volume(&video_ui, &snapshot, PLAYER_UI_VOLUME_STEP);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                    else if (stick_y <= -PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        player_ui_change_volume(&video_ui, &snapshot, -PLAYER_UI_VOLUME_STEP);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                }
+            }
+
             player_view_render_frame();
         }
+
+        if (have_snapshot)
+            player_snapshot_clear(&snapshot);
     }
 
     if (exit_reason == EXIT_REASON_UNKNOWN)
@@ -540,7 +616,15 @@ int main(int argc, char* argv[])
     {
         if (dlnaRunning)
         {
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop begin\n");
+            log_info("[shutdown] step=dlna_control_stop begin\n");
             dlna_control_stop();
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop done\n");
+            log_info("[shutdown] step=dlna_control_stop done\n");
+        }
+        else
+        {
+            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
         }
     }
     else

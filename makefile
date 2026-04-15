@@ -46,6 +46,7 @@ BUILD		:=	build
 SOURCES		:=	source \
 			source/log \
 			source/player \
+			source/player/ui \
 			source/player/core \
 			source/player/backend \
 			source/player/render \
@@ -231,9 +232,9 @@ all: sdmc_init $(BUILD)
 
 sdmc_init:
 	@echo "Preparing SDMC directory structure..."
-	@mkdir -p $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna
-	@if [ -d "$(CURDIR)/romfs/dlna" ]; then cp -v $(CURDIR)/romfs/dlna/*.xml $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna/; else echo "Warning: romfs/dlna not found"; fi
-	@ls -la $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
+	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/dlna
+	@if [ -d "$(CURDIR)/assets/dlna" ]; then cp -v $(CURDIR)/assets/dlna/* $(CURDIR)/sdmc/switch/NX-Cast/dlna/; else echo "Warning: assets/dlna not found"; fi
+	@ls -la $(CURDIR)/sdmc/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@

@@ -15,14 +15,16 @@ The project already has these major pieces in place:
 - renderer snapshot and event bridge
 - `libmpv` backend
 - `ao=hos`
-- `OpenGL/libmpv render API`
+- `deko3d/libmpv render API`
+- controller-driven playback OSD and local seek/volume controls
 
 The project is currently best described as:
 
 1. generic `DMR` foundation established
 2. protocol state and renderer state aligned around the same playback session
 3. direct `URL -> libmpv` playback path landed
-4. `hwdec=nvtegra` still limited by the current official toolchain
+4. `deko3d` is now the preferred render route when the custom media toolchain is installed
+5. `hwdec=nvtegra` is requested at runtime, but still depends on the installed `FFmpeg/libmpv` build
 
 ## Core Design Principles
 
@@ -79,7 +81,6 @@ Current observed runtime fields include:
 - `pause`
 - `mute`
 - `seekable`
-- `idle-active`
 - `paused-for-cache`
 - `seeking`
 - end-of-file / error transitions
@@ -91,8 +92,9 @@ Current observed runtime fields include:
 The current intended backend route is:
 
 1. `ao=hos`
-2. `OpenGL/libmpv render API`
+2. `deko3d/libmpv render API`
 3. `libmpv` remains the playback core
+4. `OpenGL/libmpv render API` remains as a fallback when the custom media toolchain is absent
 
 Important distinction:
 
@@ -101,9 +103,10 @@ Important distinction:
 
 Current conclusions:
 
-1. `hos-audio + OpenGL` is integrated
-2. `hwdec=nvtegra` is not yet a dependable baseline under the current official `dkp` toolchain
-3. `deko3d` remains future work rather than the current default route
+1. `hos-audio + deko3d` is integrated
+2. runtime `hwdec=nvtegra` preference is wired in
+3. the official `dkp` toolchain still only provides the fallback OpenGL path
+4. the custom `wiliwili` media packages are the current recommended baseline for real Switch playback
 
 ## Current Priorities
 
@@ -113,7 +116,8 @@ The next priorities are:
 2. improve protocol state fidelity and control-point sync
 3. keep the template-driven description layer aligned with actual implementation
 4. continue stabilizing playback on real-world URLs and mixed control points
-5. revisit `nvtegra` and future `deko3d` once the toolchain side is ready
+5. continue hardening the new `deko3d` renderer and controller-driven player UI
+6. keep `nvtegra` validation tied to the custom media toolchain, not the official fallback packages
 
 ## Repository Layout
 
@@ -152,6 +156,20 @@ Requirements:
 - `devkitPro`
 - `devkitA64`
 - `libnx`
+- recommended custom media packages from `wiliwili`:
+  - `libuam`
+  - `switch-ffmpeg`
+  - `switch-libmpv_deko3d`
+
+Recommended local install:
+
+```bash
+base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
+sudo dkp-pacman -U \
+  $base_url/libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst \
+  $base_url/switch-ffmpeg-7.1-1-any.pkg.tar.zst \
+  $base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst
+```
 
 Build:
 
@@ -162,6 +180,13 @@ make
 Output:
 
 - `NX-Cast.nro`
+
+Docker build:
+
+```bash
+docker build -t nx-cast-build .
+docker run --rm -e DEVKITPRO=/opt/devkitpro -v "$PWD:/workspace" -w /workspace nx-cast-build bash -lc 'make clean && make -j$(nproc)'
+```
 
 ## Documentation Note
 

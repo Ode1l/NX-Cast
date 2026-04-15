@@ -1,12 +1,24 @@
 # libmpv 依赖安装与路线说明
 
-这份文档只保留结论，不再承载自编译细节。
+这份文档只保留当前结论。
 
-## 1. 当前两条路线
+## 1. 当前推荐路线
 
-### 1.1 官方基线
+当前仓库默认推荐的媒体工具链是 `wiliwili` 的 Switch 预编译包：
 
-官方 `dkp` 路线当前稳定可用的是：
+1. `libuam`
+2. `switch-ffmpeg`
+3. `switch-libmpv_deko3d`
+
+原因：
+
+1. 这条线已经提供 `deko3d + hos-audio + nvtegra` 相关能力
+2. `NX-Cast` 当前代码已经接通 `render_dk3d`
+3. Docker 和 GitHub Actions 也已经按这条路线安装依赖
+
+## 2. 官方 dkp 路线的定位
+
+官方 `dkp` 包仍然有价值，但现在只应视为回退路径：
 
 1. `libmpv`
 2. `ao=hos`
@@ -14,47 +26,31 @@
 
 适合：
 
-1. 保持项目可编译
-2. 做协议层和基础播放器联调
+1. 保持最低可编译基线
+2. 本地快速验证协议层和基础播放器逻辑
 
-### 1.2 wiliwili-dev 路线
+不适合：
 
-如果目标是：
+1. 作为当前项目的默认发布构建环境
+2. 验证 `deko3d`
+3. 验证真实 `hwdec=nvtegra`
 
-1. `FFmpeg nvtegra`
-2. `mpv hos-audio`
-3. `mpv deko3d`
+## 3. 当前项目状态
 
-当前推荐直接改走 `wiliwili-dev` 的 Switch 包与构建脚本，不再自己从官方 upstream 拼参数。
-
-## 2. 现在不再推荐的路线
-
-下面这些做法都不再推荐：
-
-1. 直接用 `ffmpeg-upstream`
-2. 直接用 `mpv-upstream`
-3. 一边查源码一边临时猜 `configure` 参数
-
-原因是：
-
-1. upstream 没有你要的 Switch 专用能力
-2. 真正可用的 Switch 包和构建脚本已经在 `wiliwili-dev` 里现成存在
-
-## 3. 当前主文档
-
-如果你要开始真正自编 `FFmpeg/mpv`，直接看：
-
-1. [FFmpeg与mpv自编工具链教程.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/FFmpeg与mpv自编工具链教程.md)
-
-## 4. 当前项目状态
-
-即使你把 `wiliwili-dev` 这套库装好了，`NX-Cast` 现在也还没有自动完成：
+`NX-Cast` 现在已经完成：
 
 1. `deko3d` 渲染接线
-2. explicit `hwdec=nvtegra` 接线
+2. `show_osd` 接口与最小本地播放器控制
+3. `hwdec=nvtegra` 的运行时优先设置
 
-所以正确顺序是：
+仍然取决于依赖包的部分：
 
-1. 先把库编出来
-2. 再让 `NX-Cast` 成功链接
-3. 最后再移植后端代码
+1. `render_dk3d.h` 是否存在
+2. `libmpv` 是否真是 `deko3d` 版本
+3. `FFmpeg` 是否真带 `hwcontext_nvtegra`
+
+## 4. 主文档
+
+如果你要安装或自编 `FFmpeg/mpv`，直接看：
+
+1. [FFmpeg与mpv自编工具链教程.md](/Users/ode1l/Documents/VSCode/NX-Cast/docs/FFmpeg与mpv自编工具链教程.md)

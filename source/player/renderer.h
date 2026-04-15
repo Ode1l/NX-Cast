@@ -29,6 +29,7 @@ static inline bool renderer_seek_target(const char *target) { return player_seek
 static inline bool renderer_seek_ms(int position_ms) { return player_seek_ms(position_ms); }
 static inline bool renderer_set_volume(int volume_0_100) { return player_set_volume(volume_0_100); }
 static inline bool renderer_set_mute(bool mute) { return player_set_mute(mute); }
+static inline bool renderer_show_osd(const char *text, int duration_ms) { return player_show_osd(text, duration_ms); }
 static inline bool renderer_video_supported(void) { return player_video_supported(); }
 static inline bool renderer_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx) { return player_video_attach_gl(get_proc_address, get_proc_address_ctx); }
 static inline bool renderer_video_attach_sw(void) { return player_video_attach_sw(); }

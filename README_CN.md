@@ -15,14 +15,16 @@
 - renderer 的 snapshot/event 状态桥
 - `libmpv` 后端
 - `ao=hos`
-- `OpenGL/libmpv render API`
+- `deko3d/libmpv render API`
+- 基于手柄的播放器 OSD 与本地 seek/音量控制
 
 当前更准确的阶段是：
 
 1. 通用 `DMR` 底座已成立
 2. 协议状态与运行时播放状态已经围绕同一播放会话收口
 3. 直接 `URL -> libmpv` 的播放链已经落地
-4. `hwdec=nvtegra` 仍受当前官方工具链限制
+4. 安装自定义媒体工具链后，`deko3d` 已成为首选渲染路径
+5. `hwdec=nvtegra` 已接入运行时选项，但是否真正生效仍取决于所安装的 `FFmpeg/libmpv`
 
 ## 当前设计原则
 
@@ -79,7 +81,6 @@ SetAVTransportURI
 - `pause`
 - `mute`
 - `seekable`
-- `idle-active`
 - `paused-for-cache`
 - `seeking`
 - EOF / error 状态
@@ -91,8 +92,9 @@ SetAVTransportURI
 当前正式后端路线是：
 
 1. `ao=hos`
-2. `OpenGL/libmpv render API`
+2. `deko3d/libmpv render API`
 3. `libmpv` 继续作为播放器核心
+4. 当自定义媒体工具链不存在时，`OpenGL/libmpv render API` 作为回退路径
 
 需要特别区分：
 
@@ -101,9 +103,10 @@ SetAVTransportURI
 
 当前结论：
 
-1. `hos-audio + OpenGL` 已接通
-2. `hwdec=nvtegra` 当前还不能作为官方 `dkp` 工具链下的稳定基线
-3. `deko3d` 仍然保留为未来能力，不是当前默认路线
+1. `hos-audio + deko3d` 已接通
+2. 运行时 `hwdec=nvtegra` 偏好已经接入
+3. 官方 `dkp` 工具链仍主要对应 OpenGL 回退路径
+4. 当前推荐基线是 `wiliwili` 这套自定义 `FFmpeg/libmpv` 包
 
 ## 当前工作重点
 
@@ -113,7 +116,8 @@ SetAVTransportURI
 2. 提高协议状态与控制端进度同步的准确性
 3. 保持模板化描述层与真实实现一致
 4. 在真实 URL 和真实控制端上继续加固播放稳定性
-5. 在工具链成熟后再推进 `nvtegra` 和未来 `deko3d`
+5. 继续加固新的 `deko3d` 渲染路径和手柄播放器 UI
+6. 把 `nvtegra` 验证建立在自定义媒体工具链上，而不是官方回退包上
 
 ## 目录
 
@@ -152,6 +156,20 @@ Switch 运行时资源目录：
 - `devkitPro`
 - `devkitA64`
 - `libnx`
+- 推荐安装 `wiliwili` 提供的自定义媒体包：
+  - `libuam`
+  - `switch-ffmpeg`
+  - `switch-libmpv_deko3d`
+
+推荐本地安装：
+
+```bash
+base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
+sudo dkp-pacman -U \
+  $base_url/libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst \
+  $base_url/switch-ffmpeg-7.1-1-any.pkg.tar.zst \
+  $base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst
+```
 
 构建：
 
@@ -162,6 +180,13 @@ make
 输出：
 
 - `NX-Cast.nro`
+
+Docker 构建：
+
+```bash
+docker build -t nx-cast-build .
+docker run --rm -e DEVKITPRO=/opt/devkitpro -v "$PWD:/workspace" -w /workspace nx-cast-build bash -lc 'make clean && make -j$(nproc)'
+```
 
 ## 当前文档说明
 

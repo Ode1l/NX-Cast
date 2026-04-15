@@ -40,7 +40,8 @@ Playback backend baseline
 
 - `libmpv` backend
 - `ao=hos`
-- `OpenGL/libmpv render API`
+- `deko3d/libmpv render API`
+- `OpenGL/libmpv render API` fallback
 - status: landed on the current baseline
 
 ## Phase 5
@@ -73,17 +74,18 @@ Source compatibility
 ## Phase 8
 Hardware decode
 
-- evaluate actual `hwdec=nvtegra` activation
-- if needed, move to a custom media toolchain
-- status: blocked by current official `dkp` toolchain limits
+- runtime `hwdec=nvtegra` preference wiring
+- validate actual activation on the custom media toolchain
+- status: partially landed, still constrained by the installed `FFmpeg/libmpv` package set
 
 ## Phase 9
-Future backend upgrade
+Custom media toolchain baseline
 
 - custom `FFmpeg/mpv` toolchain
-- optional `deko3d` / `render_dk3d`
+- `render_dk3d`
 - `libuam`
-- status: future work, not current default path
+- Docker / CI integration
+- status: active baseline, still being hardened
 
 ## Phase 10
 AirPlay receiver

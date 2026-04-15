@@ -1189,6 +1189,43 @@ static bool libmpv_set_mute(bool mute)
     return true;
 }
 
+static bool libmpv_show_osd(const char *text, int duration_ms)
+{
+    char duration_buf[16];
+    const char *args[4];
+    int rc;
+
+    if (!text)
+        return false;
+
+    if (duration_ms < 0)
+        duration_ms = 0;
+
+    snprintf(duration_buf, sizeof(duration_buf), "%d", duration_ms);
+
+    mutexLock(&g_mutex);
+    if (!g_mpv)
+    {
+        mutexUnlock(&g_mutex);
+        return false;
+    }
+
+    args[0] = "show-text";
+    args[1] = text;
+    args[2] = duration_buf;
+    args[3] = NULL;
+    rc = mpv_command_async(g_mpv, 0, args);
+    mutexUnlock(&g_mutex);
+
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] show_osd failed: %s\n", mpv_error_string(rc));
+        return false;
+    }
+
+    return true;
+}
+
 static bool libmpv_pump_events(int timeout_ms)
 {
     mpv_event *event;
@@ -1518,6 +1555,7 @@ const BackendOps g_libmpv_ops = {
     .seek_ms = libmpv_seek_ms,
     .set_volume = libmpv_set_volume,
     .set_mute = libmpv_set_mute,
+    .show_osd = libmpv_show_osd,
     .pump_events = libmpv_pump_events,
     .wakeup = libmpv_wakeup,
     .render_supported = libmpv_render_supported,
