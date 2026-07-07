@@ -102,3 +102,13 @@ DMP expansion
 - VOD program lists and detail pages
 - optional source adapters
 - status: planned
+
+## Phase 12
+Application GUI and IPTV
+
+- shared app navigation and input layer
+- ImGui/deko3d application shell
+- user-provided local/remote M3U sources
+- channel groups, favorites, history and live channel switching
+- XMLTV EPG and logo cache as later work
+- status: planned; see `docs/IPTV与GUI实施规划.md`
