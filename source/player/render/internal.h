@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include <switch.h>
 
@@ -13,6 +14,8 @@
 #endif
 
 #include "player/view.h"
+
+#define FRONTEND_DK3D_FRAMEBUFFER_COUNT 2
 
 typedef enum
 {
@@ -43,11 +46,21 @@ typedef struct
     DkMemBlock dk3d_overlay_cmd_mem;
     DkCmdBuf dk3d_overlay_cmdbuf;
     DkMemBlock dk3d_framebuffer_mem;
-    DkImage dk3d_framebuffers[2];
+    DkImage dk3d_framebuffers[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
     DkSwapchain dk3d_swapchain;
     uint32_t dk3d_fence_timeout_count;
 #endif
 } ViewContext;
+
+void frontend_overlay_render_sw(void *pixels, size_t stride, u32 width, u32 height, const ViewContext *ctx);
+
+#if defined(HAVE_SWITCH_EGL_GLES) && !defined(HAVE_MPV_RENDER_DK3D)
+void frontend_overlay_render_gl(ViewContext *ctx);
+#endif
+
+#ifdef HAVE_MPV_RENDER_DK3D
+void frontend_overlay_render_dk3d(ViewContext *ctx, int slot);
+#endif
 
 bool frontend_connect(ViewContext *ctx);
 bool frontend_open(ViewContext *ctx);
