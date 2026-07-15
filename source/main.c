@@ -11,6 +11,8 @@
 
 #include "log/log.h"
 #include "player/player.h"
+#include "player/ui/layout.h"
+#include "player/ui/ui.h"
 #include "player/view.h"
 #include "protocol/dlna_control.h"
 #include "protocol/dlna/description/resource_store.h"
@@ -22,12 +24,34 @@ typedef struct
     s32 last_y;
 } TouchScrollState;
 
+typedef struct
+{
+    bool active;
+    PlayerViewMode start_view;
+    s32 start_x;
+    s32 start_y;
+    s32 last_x;
+    s32 last_y;
+    uint64_t start_ms;
+} TouchTraceState;
+
+typedef struct
+{
+    bool active;
+    int target_ms;
+    int last_preview_ms;
+} TouchSeekState;
+
 #define ANSI_RESET "\x1b[0m"
 #define ANSI_DEBUG "\x1b[36;1m"
 #define ANSI_INFO  "\x1b[32;1m"
 #define ANSI_WARN  "\x1b[33;1m"
 #define ANSI_ERROR "\x1b[31;1m"
 #define ANSI_TEXT  "\x1b[37;1m"
+
+#define TOUCH_TAP_MAX_DURATION_MS 650ULL
+#define TOUCH_TAP_MAX_MOVE_PX 24
+#define TOUCH_TAP_DEBOUNCE_MS 350ULL
 
 static int g_nxlinkSock = -1;
 static bool g_nxlinkWasActive = false;
@@ -46,6 +70,54 @@ typedef enum
     EXIT_REASON_PLUS_BUTTON,
     EXIT_REASON_APPLET_LOOP_ENDED
 } ExitReason;
+
+static uint64_t main_monotonic_time_ms(void)
+{
+    return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
+
+static const char *main_player_state_name(PlayerState state)
+{
+    switch (state)
+    {
+    case PLAYER_STATE_IDLE:
+        return "idle";
+    case PLAYER_STATE_STOPPED:
+        return "stopped";
+    case PLAYER_STATE_LOADING:
+        return "loading";
+    case PLAYER_STATE_BUFFERING:
+        return "buffering";
+    case PLAYER_STATE_SEEKING:
+        return "seeking";
+    case PLAYER_STATE_PLAYING:
+        return "playing";
+    case PLAYER_STATE_PAUSED:
+        return "paused";
+    case PLAYER_STATE_ERROR:
+        return "error";
+    default:
+        return "unknown";
+    }
+}
+
+static LogLevel main_input_trace_level(void)
+{
+#if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
+    return LOG_LEVEL_WARN;
+#else
+    return LOG_LEVEL_INFO;
+#endif
+}
+
+static void main_input_trace(const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    vlog_write(main_input_trace_level(), fmt, args);
+    va_end(args);
+}
 
 static void set_power_policy(bool active, bool use_logger)
 {
@@ -81,6 +153,77 @@ static int clamp_int(int value, int min_value, int max_value)
     if (value > max_value)
         return max_value;
     return value;
+}
+
+static bool main_get_video_layout(PlayerUiLayout *out, int *out_width, int *out_height)
+{
+    PlayerUiLayout layout;
+    PlayerViewStatus status = {0};
+    int width = 1280;
+    int height = 720;
+    bool have_status;
+    bool ok;
+
+    have_status = player_view_get_status(&status);
+    if (have_status)
+    {
+        if (status.display_width > 0)
+            width = (int)status.display_width;
+        if (status.display_height > 0)
+            height = (int)status.display_height;
+        player_view_status_clear(&status);
+    }
+
+    ok = player_ui_layout_compute(width, height, out ? out : &layout);
+    if (out_width)
+        *out_width = width;
+    if (out_height)
+        *out_height = height;
+    return ok;
+}
+
+static bool main_touch_progress_target_ms(int x, int y, const PlayerSnapshot *snapshot, int *out_target_ms)
+{
+    PlayerUiLayout layout;
+
+    if (!snapshot || !snapshot->has_media || !snapshot->seekable || snapshot->duration_ms <= 0 || !out_target_ms)
+        return false;
+    if (!main_get_video_layout(&layout, NULL, NULL))
+        return false;
+    if (!player_ui_layout_progress_hit_test(&layout, x, y))
+        return false;
+
+    *out_target_ms = player_ui_layout_progress_target_ms(&layout, x, snapshot->duration_ms);
+    return true;
+}
+
+static bool main_touch_progress_drag_target_ms(int x, const PlayerSnapshot *snapshot, int *out_target_ms)
+{
+    PlayerUiLayout layout;
+
+    if (!snapshot || !snapshot->has_media || !snapshot->seekable || snapshot->duration_ms <= 0 || !out_target_ms)
+        return false;
+    if (!main_get_video_layout(&layout, NULL, NULL))
+        return false;
+
+    *out_target_ms = player_ui_layout_progress_target_ms(&layout, x, snapshot->duration_ms);
+    return true;
+}
+
+static bool main_touch_center_button_hit(int x, int y)
+{
+    int width;
+    int height;
+    int hit_size;
+
+    if (!main_get_video_layout(NULL, &width, &height))
+        return false;
+
+    hit_size = clamp_int(height / 3, 180, 280);
+    return x >= width / 2 - hit_size / 2 &&
+           x <= width / 2 + hit_size / 2 &&
+           y >= height / 2 - hit_size / 2 &&
+           y <= height / 2 + hit_size / 2;
 }
 
 static int wrapped_line_count(const char *line, int width)
@@ -387,11 +530,21 @@ int main(int argc, char* argv[])
     padInitializeDefault(&pad);
     PadRepeater repeater;
     padRepeaterInitialize(&repeater, 14, 3);
+    PadRepeater video_repeater;
+    padRepeaterInitialize(&video_repeater, 20, 15);
 
     int scroll_from_bottom = 0;
     int stick_repeat_cooldown = 0;
+    int video_stick_repeat_cooldown = 0;
     TouchScrollState touch_scroll = {0};
+    TouchTraceState touch_trace = {0};
+    TouchSeekState touch_seek = {0};
+    uint64_t last_touch_tap_ms = 0;
+    PlayerViewMode last_logged_view = PLAYER_VIEW_LOG;
+    bool have_logged_view = false;
     ExitReason exit_reason = EXIT_REASON_UNKNOWN;
+    PlayerUiState video_ui;
+    player_ui_reset(&video_ui);
 
     log_info("[ui] NX-Cast starting. Press + to exit.\n");
     log_info("[ui] Use Up/Down, sticks, or touch drag to scroll logs.\n");
@@ -400,16 +553,18 @@ int main(int argc, char* argv[])
 
     while (appletMainLoop())
     {
+        PlayerSnapshot snapshot = {0};
+        bool have_snapshot = false;
+
         padUpdate(&pad);
 
-        PlayerSnapshot snapshot;
         PlayerViewMode active_view = PLAYER_VIEW_LOG;
         if (videoPlatformReady)
         {
             if (player_get_snapshot(&snapshot))
             {
+                have_snapshot = true;
                 player_view_sync(&snapshot);
-                player_snapshot_clear(&snapshot);
             }
             player_view_begin_frame();
             active_view = player_view_get_mode();
@@ -417,11 +572,143 @@ int main(int argc, char* argv[])
 
         u64 kDown = padGetButtonsDown(&pad);
         u64 kHeld = padGetButtons(&pad);
+        HidTouchScreenState touch_state = {0};
+        size_t touch_total = hidGetTouchScreenStates(&touch_state, 1);
+        bool touch_present = touch_total > 0 && touch_state.count > 0;
+        bool touch_tap = false;
+        s32 touch_x = 0;
+        s32 touch_y = 0;
+        s32 touch_tap_x = 0;
+        s32 touch_tap_y = 0;
+        uint64_t input_now_ms = main_monotonic_time_ms();
+
+        if (!have_logged_view || active_view != last_logged_view)
+        {
+            main_input_trace("[input] active_view=%s state=%s media=%d snapshot=%d\n",
+                             player_view_mode_name(active_view),
+                             have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                             have_snapshot && snapshot.has_media ? 1 : 0,
+                             have_snapshot ? 1 : 0);
+            last_logged_view = active_view;
+            have_logged_view = true;
+        }
+
+        if (touch_present)
+        {
+            touch_x = (s32)touch_state.touches[0].x;
+            touch_y = (s32)touch_state.touches[0].y;
+            if (!touch_trace.active)
+            {
+                touch_trace.active = true;
+                touch_trace.start_x = touch_x;
+                touch_trace.start_y = touch_y;
+                touch_trace.start_ms = input_now_ms;
+                touch_trace.start_view = active_view;
+                main_input_trace("[input] touch begin view=%s x=%d y=%d state=%s media=%d\n",
+                                 player_view_mode_name(active_view),
+                                 (int)touch_x,
+                                 (int)touch_y,
+                                 have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                                 have_snapshot && snapshot.has_media ? 1 : 0);
+
+                touch_seek.active = false;
+                if (active_view == PLAYER_VIEW_VIDEO &&
+                    have_snapshot &&
+                    player_ui_overlay_visible(&video_ui) &&
+                    main_touch_progress_target_ms((int)touch_x, (int)touch_y, &snapshot, &touch_seek.target_ms))
+                {
+                    touch_seek.active = true;
+                    touch_seek.last_preview_ms = -1;
+                    main_input_trace("[input] action=touch-seek begin target_ms=%d x=%d y=%d\n",
+                                     touch_seek.target_ms,
+                                     (int)touch_x,
+                                     (int)touch_y);
+                }
+            }
+            touch_trace.last_x = touch_x;
+            touch_trace.last_y = touch_y;
+
+            if (touch_seek.active &&
+                have_snapshot &&
+                main_touch_progress_drag_target_ms((int)touch_x, &snapshot, &touch_seek.target_ms) &&
+                (touch_seek.last_preview_ms < 0 || abs(touch_seek.target_ms - touch_seek.last_preview_ms) >= 250))
+            {
+                bool ok = player_ui_preview_seek_to(&video_ui, &snapshot, touch_seek.target_ms);
+                touch_seek.last_preview_ms = touch_seek.target_ms;
+                main_input_trace("[input] action=touch-seek preview ok=%d target_ms=%d x=%d\n",
+                                 ok ? 1 : 0,
+                                 touch_seek.target_ms,
+                                 (int)touch_x);
+            }
+        }
+        else if (touch_trace.active)
+        {
+            uint64_t touch_duration_ms = input_now_ms - touch_trace.start_ms;
+            int touch_dx = (int)(touch_trace.last_x - touch_trace.start_x);
+            int touch_dy = (int)(touch_trace.last_y - touch_trace.start_y);
+            bool touch_seek_released = false;
+            bool tap_shape = touch_duration_ms <= TOUCH_TAP_MAX_DURATION_MS &&
+                             abs(touch_dx) <= TOUCH_TAP_MAX_MOVE_PX &&
+                             abs(touch_dy) <= TOUCH_TAP_MAX_MOVE_PX;
+            bool tap_view = touch_trace.start_view == PLAYER_VIEW_VIDEO &&
+                            active_view == PLAYER_VIEW_VIDEO;
+            bool tap_debounced = last_touch_tap_ms != 0 &&
+                                 input_now_ms - last_touch_tap_ms < TOUCH_TAP_DEBOUNCE_MS;
+
+            main_input_trace("[input] touch end start_view=%s view=%s duration_ms=%llu dx=%d dy=%d state=%s media=%d\n",
+                             player_view_mode_name(touch_trace.start_view),
+                             player_view_mode_name(active_view),
+                             (unsigned long long)touch_duration_ms,
+                             touch_dx,
+                             touch_dy,
+                             have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                             have_snapshot && snapshot.has_media ? 1 : 0);
+
+            if (touch_seek.active)
+            {
+                bool ok = have_snapshot && player_ui_seek_to(&video_ui, &snapshot, touch_seek.target_ms);
+                main_input_trace("[input] action=touch-seek commit ok=%d target_ms=%d\n",
+                                 ok ? 1 : 0,
+                                 touch_seek.target_ms);
+                touch_seek.active = false;
+                touch_seek_released = true;
+            }
+
+            if (!touch_seek_released && tap_shape && tap_view && !tap_debounced)
+            {
+                touch_tap = true;
+                touch_tap_x = touch_trace.last_x;
+                touch_tap_y = touch_trace.last_y;
+                last_touch_tap_ms = input_now_ms;
+                main_input_trace("[input] touch tap accepted x=%d y=%d duration_ms=%llu\n",
+                                 (int)touch_tap_x,
+                                 (int)touch_tap_y,
+                                 (unsigned long long)touch_duration_ms);
+            }
+            else if (!touch_seek_released)
+            {
+                main_input_trace("[input] touch tap skipped shape=%d view=%d debounce=%d\n",
+                                 tap_shape ? 1 : 0,
+                                 tap_view ? 1 : 0,
+                                 tap_debounced ? 1 : 0);
+            }
+            touch_trace.active = false;
+        }
+
+        if (kDown)
+        {
+            main_input_trace("[input] buttons_down=0x%llx view=%s state=%s media=%d\n",
+                             (unsigned long long)kDown,
+                             player_view_mode_name(active_view),
+                             have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                             have_snapshot && snapshot.has_media ? 1 : 0);
+        }
 
         if (kDown & HidNpadButton_Plus)
         {
             exit_reason = EXIT_REASON_PLUS_BUTTON;
             log_set_stdio_mirror(false);
+            shutdown_stdio_trace("[INFO] [shutdown] requested reason=%s\n", exit_reason_name(exit_reason));
             break;
         }
 
@@ -466,11 +753,9 @@ int main(int argc, char* argv[])
                 stick_repeat_cooldown = 3;
             }
 
-            HidTouchScreenState touch_state;
-            size_t touch_total = hidGetTouchScreenStates(&touch_state, 1);
-            if (touch_total > 0 && touch_state.count > 0)
+            if (touch_present)
             {
-                s32 y = (s32)touch_state.touches[0].y;
+                s32 y = touch_y;
                 if (!touch_scroll.active)
                 {
                     touch_scroll.active = true;
@@ -500,8 +785,209 @@ int main(int argc, char* argv[])
         else
         {
             touch_scroll.active = false;
-            player_view_render_frame();
+
+            if (have_snapshot)
+            {
+                if (!snapshot.has_media)
+                {
+                    player_ui_clear(&video_ui);
+                }
+                else
+                    player_ui_sync(&video_ui, &snapshot);
+
+                if (touch_tap)
+                {
+                    if (snapshot.has_media)
+                    {
+                        if (player_ui_overlay_visible(&video_ui) &&
+                            main_touch_center_button_hit((int)touch_tap_x, (int)touch_tap_y))
+                        {
+                            main_input_trace("[input] action=touch-toggle-pause begin x=%d y=%d state=%s\n",
+                                             (int)touch_tap_x,
+                                             (int)touch_tap_y,
+                                             main_player_state_name(snapshot.state));
+                            bool ok = player_ui_toggle_pause(&video_ui, &snapshot);
+                            main_input_trace("[input] action=touch-toggle-pause done ok=%d state=%s\n",
+                                             ok ? 1 : 0,
+                                             main_player_state_name(snapshot.state));
+                        }
+                        else
+                        {
+                            main_input_trace("[input] action=touch-show-controls begin x=%d y=%d state=%s\n",
+                                             (int)touch_tap_x,
+                                             (int)touch_tap_y,
+                                             main_player_state_name(snapshot.state));
+                            int duration = player_ui_show_controls(&video_ui, &snapshot);
+                            main_input_trace("[input] action=touch-show-controls done duration_ms=%d state=%s\n",
+                                             duration,
+                                             main_player_state_name(snapshot.state));
+                        }
+                    }
+                    else
+                    {
+                        main_input_trace("[input] action=touch-show-controls skip reason=no-media\n");
+                    }
+                }
+
+                padRepeaterUpdate(&video_repeater,
+                                  kHeld & (HidNpadButton_L | HidNpadButton_R |
+                                           HidNpadButton_Left | HidNpadButton_Right |
+                                           HidNpadButton_Up | HidNpadButton_Down));
+                u64 repeated_video = padRepeaterGetButtons(&video_repeater);
+                u64 video_nav = kDown | repeated_video;
+
+                if (kDown & HidNpadButton_A)
+                {
+                    main_input_trace("[input] action=toggle-pause begin state=%s\n", main_player_state_name(snapshot.state));
+                    bool ok = player_ui_toggle_pause(&video_ui, &snapshot);
+                    main_input_trace("[input] action=toggle-pause done ok=%d state=%s\n",
+                                     ok ? 1 : 0,
+                                     main_player_state_name(snapshot.state));
+                }
+
+                if (kDown & HidNpadButton_Minus)
+                {
+                    main_input_trace("[input] action=show-controls begin state=%s\n", main_player_state_name(snapshot.state));
+                    int duration = player_ui_show_controls(&video_ui, &snapshot);
+                    main_input_trace("[input] action=show-controls done duration_ms=%d state=%s\n",
+                                     duration,
+                                     main_player_state_name(snapshot.state));
+                }
+
+                if (video_nav & (HidNpadButton_L | HidNpadButton_Left))
+                {
+                    main_input_trace("[input] action=seek begin delta_ms=%d state=%s\n",
+                                     -PLAYER_UI_SEEK_STEP_MS,
+                                     main_player_state_name(snapshot.state));
+                    bool ok = player_ui_seek(&video_ui, &snapshot, -PLAYER_UI_SEEK_STEP_MS);
+                    main_input_trace("[input] action=seek done ok=%d delta_ms=%d state=%s\n",
+                                     ok ? 1 : 0,
+                                     -PLAYER_UI_SEEK_STEP_MS,
+                                     main_player_state_name(snapshot.state));
+                }
+                if (video_nav & (HidNpadButton_R | HidNpadButton_Right))
+                {
+                    main_input_trace("[input] action=seek begin delta_ms=%d state=%s\n",
+                                     PLAYER_UI_SEEK_STEP_MS,
+                                     main_player_state_name(snapshot.state));
+                    bool ok = player_ui_seek(&video_ui, &snapshot, PLAYER_UI_SEEK_STEP_MS);
+                    main_input_trace("[input] action=seek done ok=%d delta_ms=%d state=%s\n",
+                                     ok ? 1 : 0,
+                                     PLAYER_UI_SEEK_STEP_MS,
+                                     main_player_state_name(snapshot.state));
+                }
+                if (video_nav & HidNpadButton_Up)
+                {
+                    main_input_trace("[input] action=volume begin delta=%d state=%s volume=%d mute=%d\n",
+                                     PLAYER_UI_VOLUME_STEP,
+                                     main_player_state_name(snapshot.state),
+                                     snapshot.volume,
+                                     snapshot.mute ? 1 : 0);
+                    bool ok = player_ui_change_volume(&video_ui, &snapshot, PLAYER_UI_VOLUME_STEP);
+                    main_input_trace("[input] action=volume done ok=%d delta=%d state=%s\n",
+                                     ok ? 1 : 0,
+                                     PLAYER_UI_VOLUME_STEP,
+                                     main_player_state_name(snapshot.state));
+                }
+                if (video_nav & HidNpadButton_Down)
+                {
+                    main_input_trace("[input] action=volume begin delta=%d state=%s volume=%d mute=%d\n",
+                                     -PLAYER_UI_VOLUME_STEP,
+                                     main_player_state_name(snapshot.state),
+                                     snapshot.volume,
+                                     snapshot.mute ? 1 : 0);
+                    bool ok = player_ui_change_volume(&video_ui, &snapshot, -PLAYER_UI_VOLUME_STEP);
+                    main_input_trace("[input] action=volume done ok=%d delta=%d state=%s\n",
+                                     ok ? 1 : 0,
+                                     -PLAYER_UI_VOLUME_STEP,
+                                     main_player_state_name(snapshot.state));
+                }
+
+                if (video_stick_repeat_cooldown > 0)
+                    --video_stick_repeat_cooldown;
+                else
+                {
+                    HidAnalogStickState l = padGetStickPos(&pad, 0);
+                    HidAnalogStickState r = padGetStickPos(&pad, 1);
+                    int stick_x = abs(r.x) > abs(l.x) ? r.x : l.x;
+                    int stick_y = abs(r.y) > abs(l.y) ? r.y : l.y;
+
+                    if (stick_x <= -PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        main_input_trace("[input] action=stick-seek begin delta_ms=%d stick_x=%d state=%s\n",
+                                         -PLAYER_UI_SEEK_STEP_MS,
+                                         stick_x,
+                                         main_player_state_name(snapshot.state));
+                        bool ok = player_ui_seek(&video_ui, &snapshot, -PLAYER_UI_SEEK_STEP_MS);
+                        main_input_trace("[input] action=stick-seek done ok=%d delta_ms=%d\n",
+                                         ok ? 1 : 0,
+                                         -PLAYER_UI_SEEK_STEP_MS);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                    else if (stick_x >= PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        main_input_trace("[input] action=stick-seek begin delta_ms=%d stick_x=%d state=%s\n",
+                                         PLAYER_UI_SEEK_STEP_MS,
+                                         stick_x,
+                                         main_player_state_name(snapshot.state));
+                        bool ok = player_ui_seek(&video_ui, &snapshot, PLAYER_UI_SEEK_STEP_MS);
+                        main_input_trace("[input] action=stick-seek done ok=%d delta_ms=%d\n",
+                                         ok ? 1 : 0,
+                                         PLAYER_UI_SEEK_STEP_MS);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                    else if (stick_y >= PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        main_input_trace("[input] action=stick-volume begin delta=%d stick_y=%d state=%s volume=%d mute=%d\n",
+                                         PLAYER_UI_VOLUME_STEP,
+                                         stick_y,
+                                         main_player_state_name(snapshot.state),
+                                         snapshot.volume,
+                                         snapshot.mute ? 1 : 0);
+                        bool ok = player_ui_change_volume(&video_ui, &snapshot, PLAYER_UI_VOLUME_STEP);
+                        main_input_trace("[input] action=stick-volume done ok=%d delta=%d\n",
+                                         ok ? 1 : 0,
+                                         PLAYER_UI_VOLUME_STEP);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                    else if (stick_y <= -PLAYER_UI_STICK_THRESHOLD)
+                    {
+                        main_input_trace("[input] action=stick-volume begin delta=%d stick_y=%d state=%s volume=%d mute=%d\n",
+                                         -PLAYER_UI_VOLUME_STEP,
+                                         stick_y,
+                                         main_player_state_name(snapshot.state),
+                                         snapshot.volume,
+                                         snapshot.mute ? 1 : 0);
+                        bool ok = player_ui_change_volume(&video_ui, &snapshot, -PLAYER_UI_VOLUME_STEP);
+                        main_input_trace("[input] action=stick-volume done ok=%d delta=%d\n",
+                                         ok ? 1 : 0,
+                                         -PLAYER_UI_VOLUME_STEP);
+                        video_stick_repeat_cooldown = 5;
+                    }
+                }
+            }
+
+            bool trace_render_frame = touch_tap || kDown != 0;
+            if (trace_render_frame)
+            {
+                main_input_trace("[render] frame begin reason=input view=%s state=%s media=%d\n",
+                                 player_view_mode_name(active_view),
+                                 have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                                 have_snapshot && snapshot.has_media ? 1 : 0);
+            }
+            bool rendered = player_view_render_frame();
+            if (trace_render_frame)
+            {
+                main_input_trace("[render] frame done rendered=%d view=%s state=%s media=%d\n",
+                                 rendered ? 1 : 0,
+                                 player_view_mode_name(active_view),
+                                 have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                                 have_snapshot && snapshot.has_media ? 1 : 0);
+            }
         }
+
+        if (have_snapshot)
+            player_snapshot_clear(&snapshot);
     }
 
     if (exit_reason == EXIT_REASON_UNKNOWN)
@@ -540,7 +1026,15 @@ int main(int argc, char* argv[])
     {
         if (dlnaRunning)
         {
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop begin\n");
+            log_info("[shutdown] step=dlna_control_stop begin\n");
             dlna_control_stop();
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop done\n");
+            log_info("[shutdown] step=dlna_control_stop done\n");
+        }
+        else
+        {
+            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
         }
     }
     else

@@ -9,6 +9,10 @@ Install:
 - `devkitPro`
 - `devkitA64`
 - `libnx`
+- recommended custom media packages from `wiliwili`:
+  - `libuam`
+  - `switch-ffmpeg`
+  - `switch-libmpv_deko3d`
 
 Build:
 
@@ -41,7 +45,7 @@ Main areas:
 - `source/player/core/`
 - `source/player/backend/`
 - `source/player/render/`
-- `romfs/dlna/`
+- `assets/dlna/`
 
 Read these first before larger changes:
 
@@ -64,5 +68,5 @@ Before submitting:
 - generic DMR interoperability
 - renderer and protocol-state hardening
 - `libmpv` integration and media toolchain work
-- future `nvtegra` / `deko3d` exploration
+- `deko3d` and custom media toolchain hardening
 - documentation

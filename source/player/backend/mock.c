@@ -243,6 +243,15 @@ static bool mock_set_mute(bool mute)
     return true;
 }
 
+static bool mock_show_osd(const char *text, int duration_ms)
+{
+    (void)duration_ms;
+    if (!text)
+        return false;
+    log_debug("[player-mock] osd=%s\n", text);
+    return true;
+}
+
 static bool mock_pump_events(int timeout_ms)
 {
     int before_position = g_position_ms;
@@ -356,6 +365,7 @@ const BackendOps g_mock_ops = {
     .seek_ms = mock_seek_ms,
     .set_volume = mock_set_volume,
     .set_mute = mock_set_mute,
+    .show_osd = mock_show_osd,
     .pump_events = mock_pump_events,
     .wakeup = mock_wakeup,
     .render_supported = mock_render_supported,

@@ -2,7 +2,14 @@
 .gitignore
 .vscode
 build
+dist
+sdmc
+artifacts
 logs
+__pycache__
+*.pyc
+.DS_Store
+**/.DS_Store
 NX-Cast.elf
 NX-Cast.nro
 NX-Cast.nacp

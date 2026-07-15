@@ -93,6 +93,7 @@ player
 6. `seek`
 7. `volume`
 8. `mute`
+9. `show osd`
 
 ### 3.2 PlayerSnapshot
 
@@ -158,7 +159,6 @@ protocol action
    - `pause`
    - `mute`
    - `seekable`
-   - `idle-active`
    - `paused-for-cache`
    - `seeking`
    - EOF / error 事件
@@ -171,12 +171,15 @@ protocol action
 
 1. `libmpv`
 2. `ao=hos`
-3. `OpenGL/libmpv render API`
+3. `deko3d/libmpv render API`
+4. `OpenGL/libmpv render API` 回退路径
+5. `show-text` OSD 桥接
+6. `aud:a` 进程级音量优先，`mpv volume` 回退
 
-当前未真正落地：
+当前依赖外部工具链验证的部分：
 
-1. explicit `nvtegra` hwdec backend
-2. `deko3d` 渲染路径
+1. `hwdec=nvtegra` 是否真的由所安装的 `FFmpeg/libmpv` 生效
+2. 自定义 `FFmpeg/mpv` 包的兼容性与稳定性
 
 ## 7. 当前工作重点
 
@@ -184,5 +187,6 @@ protocol action
 
 1. 继续加固 `libmpv` 事件同步
 2. 保持 renderer 状态与协议状态一致
-3. 在真实控制端和真实 URL 上做稳定性验证
-4. 为未来工具链升级保留清晰 backend 边界
+3. 加固 `deko3d` 路径下的本地播放器 UI 与输入控制
+4. 在真实控制端和真实 URL 上做稳定性验证
+5. 保留 OpenGL 回退能力和清晰 backend 边界

@@ -42,10 +42,12 @@ TARGET		:=	NX-Cast
 APP_TITLE	:=	NX-Cast
 APP_AUTHOR	:=	Ode1l
 APP_VERSION	:=	0.1.0
+ICON		:=	assets/icon/switch-screencast-logo.jpg
 BUILD		:=	build
 SOURCES		:=	source \
 			source/log \
 			source/player \
+			source/player/ui \
 			source/player/core \
 			source/player/backend \
 			source/player/render \
@@ -70,6 +72,17 @@ CFLAGS	:=	-g -Wall -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DNXCAST_APP_VERSION=\"$(APP_VERSION)\"
+
+TRACE_MEDIA ?= 0
+TRACE_INPUT ?= 0
+
+ifeq ($(TRACE_MEDIA),1)
+CFLAGS	+=	-DNXCAST_MEDIA_TRACE_VERBOSE=1
+endif
+
+ifeq ($(TRACE_INPUT),1)
+CFLAGS	+=	-DNXCAST_INPUT_TRACE_VERBOSE=1
+endif
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
@@ -231,9 +244,9 @@ all: sdmc_init $(BUILD)
 
 sdmc_init:
 	@echo "Preparing SDMC directory structure..."
-	@mkdir -p $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna
-	@if [ -d "$(CURDIR)/romfs/dlna" ]; then cp -v $(CURDIR)/romfs/dlna/*.xml $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna/; else echo "Warning: romfs/dlna not found"; fi
-	@ls -la $(CURDIR)/$(SDMC)/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
+	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/dlna
+	@if [ -d "$(CURDIR)/assets/dlna" ]; then cp -v $(CURDIR)/assets/dlna/* $(CURDIR)/sdmc/switch/NX-Cast/dlna/; else echo "Warning: assets/dlna not found"; fi
+	@ls -la $(CURDIR)/sdmc/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@

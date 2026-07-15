@@ -7,9 +7,11 @@
 
 #include "log/log.h"
 #include "player/backend.h"
+#include "player/trace.h"
 
 #define PLAYER_EVENT_THREAD_STACK_SIZE 0x8000
 #define PLAYER_EVENT_POLL_TIMEOUT_MS 100
+#define PLAYER_TRACE_URL_MAX 160
 
 static const BackendOps *g_backend = NULL;
 static PlayerBackendType g_backend_type = PLAYER_BACKEND_AUTO;
@@ -260,6 +262,19 @@ static bool player_run_backend_string(bool (*fn)(const char *), const char *valu
     return ok;
 }
 
+static bool player_run_backend_string_int(bool (*fn)(const char *, int), const char *text, int value)
+{
+    bool ok;
+
+    if (!g_initialized || !g_backend || !fn || !text)
+        return false;
+
+    ok = fn(text, value);
+    if (ok && g_backend->wakeup)
+        g_backend->wakeup();
+    return ok;
+}
+
 static bool player_run_backend_flag(bool (*fn)(bool), bool value)
 {
     bool ok;
@@ -294,6 +309,16 @@ static void player_thread_main(void *arg)
         else
             svcSleepThread((int64_t)PLAYER_EVENT_POLL_TIMEOUT_MS * 1000000LL);
     }
+}
+
+static void player_log_trace_action(const char *action, const char *phase, const char *detail)
+{
+    player_trace_log("[media-trace] seq=%u layer=player action=%s phase=%s url_hash=%08x detail=%s\n",
+                     player_trace_current_media_seq(),
+                     action ? action : "(unknown)",
+                     phase ? phase : "(unknown)",
+                     player_trace_current_media_hash(),
+                     detail ? detail : "-");
 }
 
 bool player_set_backend(PlayerBackendType backend)
@@ -476,21 +501,41 @@ bool player_set_media(const PlayerMedia *media)
     PlayerMedia previous_media = {0};
     bool previous_has_media;
     bool ok;
+    uint32_t seq;
+    uint32_t hash;
+    char summary[PLAYER_TRACE_URL_MAX];
 
     if (!g_initialized || !g_backend || !g_backend->set_media || !media || !media->uri || media->uri[0] == '\0')
         return false;
+
+    hash = player_trace_uri_hash(media->uri);
+    seq = player_trace_current_media_seq();
+    if (seq == 0 || player_trace_current_media_hash() != hash)
+        seq = player_trace_begin_media("PlayerSetMedia", media->uri, media->metadata);
+    player_trace_log("[media-trace] seq=%u layer=player action=set_media phase=begin url_hash=%08x url=%s\n",
+                     seq,
+                     hash,
+                     player_trace_uri_summary(media->uri, summary, sizeof(summary)));
 
     mutexLock(&g_player_mutex);
     previous_has_media = g_has_current_media;
     if (previous_has_media && !player_media_copy(&previous_media, &g_current_media))
     {
         mutexUnlock(&g_player_mutex);
+        player_trace_warn("[media-trace] seq=%u layer=player action=set_media phase=failed reason=copy-previous url_hash=%08x url=%s\n",
+                          seq,
+                          hash,
+                          player_trace_uri_summary(media->uri, summary, sizeof(summary)));
         return false;
     }
     if (!player_store_media_locked(true, media))
     {
         player_media_clear(&previous_media);
         mutexUnlock(&g_player_mutex);
+        player_trace_warn("[media-trace] seq=%u layer=player action=set_media phase=failed reason=store-media url_hash=%08x url=%s\n",
+                          seq,
+                          hash,
+                          player_trace_uri_summary(media->uri, summary, sizeof(summary)));
         return false;
     }
     g_snapshot.state = PLAYER_STATE_LOADING;
@@ -506,6 +551,10 @@ bool player_set_media(const PlayerMedia *media)
         (void)player_store_media_locked(previous_has_media, previous_has_media ? &previous_media : NULL);
         mutexUnlock(&g_player_mutex);
         player_media_clear(&previous_media);
+        player_trace_warn("[media-trace] seq=%u layer=player action=set_media phase=failed reason=backend url_hash=%08x url=%s\n",
+                          seq,
+                          hash,
+                          player_trace_uri_summary(media->uri, summary, sizeof(summary)));
         return false;
     }
 
@@ -513,32 +562,58 @@ bool player_set_media(const PlayerMedia *media)
     player_refresh_cached_snapshot_from_backend();
     if (g_backend->wakeup)
         g_backend->wakeup();
+    player_trace_log("[media-trace] seq=%u layer=player action=set_media phase=done url_hash=%08x url=%s\n",
+                     seq,
+                     hash,
+                     player_trace_uri_summary(media->uri, summary, sizeof(summary)));
     return true;
 }
 
 bool player_play(void)
 {
-    return player_run_backend_bool(g_backend ? g_backend->play : NULL);
+    bool ok;
+    player_log_trace_action("Play", "begin", "-");
+    ok = player_run_backend_bool(g_backend ? g_backend->play : NULL);
+    player_log_trace_action("Play", ok ? "done" : "failed", ok ? "-" : "backend");
+    return ok;
 }
 
 bool player_pause(void)
 {
-    return player_run_backend_bool(g_backend ? g_backend->pause : NULL);
+    bool ok;
+    player_log_trace_action("Pause", "begin", "-");
+    ok = player_run_backend_bool(g_backend ? g_backend->pause : NULL);
+    player_log_trace_action("Pause", ok ? "done" : "failed", ok ? "-" : "backend");
+    return ok;
 }
 
 bool player_stop(void)
 {
-    return player_run_backend_bool(g_backend ? g_backend->stop : NULL);
+    bool ok;
+    player_log_trace_action("Stop", "begin", "-");
+    ok = player_run_backend_bool(g_backend ? g_backend->stop : NULL);
+    player_log_trace_action("Stop", ok ? "done" : "failed", ok ? "-" : "backend");
+    return ok;
 }
 
 bool player_seek_target(const char *target)
 {
-    return player_run_backend_string(g_backend ? g_backend->seek_target : NULL, target);
+    bool ok;
+    player_log_trace_action("Seek", "begin", target);
+    ok = player_run_backend_string(g_backend ? g_backend->seek_target : NULL, target);
+    player_log_trace_action("Seek", ok ? "done" : "failed", ok ? target : "backend");
+    return ok;
 }
 
 bool player_seek_ms(int position_ms)
 {
-    return player_run_backend_int(g_backend ? g_backend->seek_ms : NULL, position_ms);
+    bool ok;
+    char detail[32];
+    snprintf(detail, sizeof(detail), "%d", position_ms);
+    player_log_trace_action("SeekMs", "begin", detail);
+    ok = player_run_backend_int(g_backend ? g_backend->seek_ms : NULL, position_ms);
+    player_log_trace_action("SeekMs", ok ? "done" : "failed", ok ? detail : "backend");
+    return ok;
 }
 
 bool player_set_volume(int volume_0_100)
@@ -549,6 +624,11 @@ bool player_set_volume(int volume_0_100)
 bool player_set_mute(bool mute)
 {
     return player_run_backend_flag(g_backend ? g_backend->set_mute : NULL, mute);
+}
+
+bool player_show_osd(const char *text, int duration_ms)
+{
+    return player_run_backend_string_int(g_backend ? g_backend->show_osd : NULL, text, duration_ms);
 }
 
 bool player_video_supported(void)

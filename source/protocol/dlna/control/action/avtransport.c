@@ -10,8 +10,10 @@
 #include "log/log.h"
 #include "player/renderer.h"
 #include "player/seek_target.h"
+#include "player/trace.h"
 
 #define AVTRANSPORT_COUNTER_UNKNOWN 2147483647
+#define AVTRANSPORT_TRACE_URL_MAX 160
 
 static void avtransport_get_snapshot(RendererSnapshot *snapshot)
 {
@@ -182,6 +184,33 @@ static bool avtransport_write_int_element(SoapActionOutput *out, const char *tag
     return false;
 }
 
+static void avtransport_log_trace(const char *action, const char *phase, const char *uri, const char *detail)
+{
+    char summary[AVTRANSPORT_TRACE_URL_MAX];
+    uint32_t seq = player_trace_current_media_seq();
+    uint32_t hash = uri && uri[0] ? player_trace_uri_hash(uri) : player_trace_current_media_hash();
+
+    if (phase && strcmp(phase, "failed") == 0)
+    {
+        player_trace_warn("[media-trace] seq=%u layer=soap action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+                          seq,
+                          action ? action : "(unknown)",
+                          phase,
+                          hash,
+                          detail ? detail : "-",
+                          player_trace_uri_summary(uri, summary, sizeof(summary)));
+        return;
+    }
+
+    player_trace_log("[media-trace] seq=%u layer=soap action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+                     seq,
+                     action ? action : "(unknown)",
+                     phase ? phase : "(unknown)",
+                     hash,
+                     detail ? detail : "-",
+                     player_trace_uri_summary(uri, summary, sizeof(summary)));
+}
+
 static bool parse_track_number(const char *value, int *out_track)
 {
     char *end = NULL;
@@ -274,6 +303,8 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     char *instance_id = NULL;
     char *uri = NULL;
     char *metadata = NULL;
+    uint32_t seq = 0;
+    char summary[AVTRANSPORT_TRACE_URL_MAX];
 
     if (!ctx || !out)
         return false;
@@ -299,8 +330,19 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
         }
     }
 
+    seq = player_trace_begin_media("SetAVTransportURI", uri, metadata);
+    player_trace_log("[media-trace] seq=%u layer=soap action=SetAVTransportURI phase=dispatch instance=%s url_hash=%08x url=%s\n",
+                     seq,
+                     instance_id,
+                     player_trace_uri_hash(uri),
+                     player_trace_uri_summary(uri, summary, sizeof(summary)));
+
     if (!renderer_set_uri(uri, metadata))
     {
+        player_trace_warn("[media-trace] seq=%u layer=soap action=SetAVTransportURI phase=failed reason=renderer_set_uri url_hash=%08x url=%s\n",
+                          seq,
+                          player_trace_uri_hash(uri),
+                          player_trace_uri_summary(uri, summary, sizeof(summary)));
         free(instance_id);
         free(uri);
         free(metadata);
@@ -309,6 +351,10 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     }
 
     dlna_protocol_state_apply_set_uri(uri, metadata);
+    player_trace_log("[media-trace] seq=%u layer=soap action=SetAVTransportURI phase=done url_hash=%08x url=%s\n",
+                     seq,
+                     player_trace_uri_hash(uri),
+                     player_trace_uri_summary(uri, summary, sizeof(summary)));
 
     free(instance_id);
     free(uri);
@@ -343,8 +389,10 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
+    avtransport_log_trace("Play", "begin", state->av_transport_uri, speed);
     if (!renderer_play())
     {
+        avtransport_log_trace("Play", "failed", state->av_transport_uri, "renderer_play");
         free(instance_id);
         free(speed);
         soap_handler_set_fault(out, 704, "Playing failed");
@@ -353,6 +401,7 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
 
     dlna_protocol_state_set_transport_speed(speed);
     dlna_protocol_state_apply_play();
+    avtransport_log_trace("Play", "done", state->av_transport_uri, speed);
     free(instance_id);
     free(speed);
     soap_handler_set_success(out, "");
@@ -377,14 +426,17 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
+    avtransport_log_trace("Pause", "begin", state->av_transport_uri, "-");
     if (!renderer_pause())
     {
+        avtransport_log_trace("Pause", "failed", state->av_transport_uri, "renderer_pause");
         free(instance_id);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
     dlna_protocol_state_apply_pause();
+    avtransport_log_trace("Pause", "done", state->av_transport_uri, "-");
     free(instance_id);
     soap_handler_set_success(out, "");
     return true;
@@ -400,14 +452,17 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
     if (!soap_handler_require_arg_alloc(ctx, out, "InstanceID", &instance_id))
         return false;
 
+    avtransport_log_trace("Stop", "begin", dlna_protocol_state_view()->av_transport_uri, "-");
     if (!renderer_stop())
     {
+        avtransport_log_trace("Stop", "failed", dlna_protocol_state_view()->av_transport_uri, "renderer_stop");
         free(instance_id);
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
     }
 
     dlna_protocol_state_apply_stop();
+    avtransport_log_trace("Stop", "done", dlna_protocol_state_view()->av_transport_uri, "-");
     free(instance_id);
     soap_handler_set_success(out, "");
     return true;
@@ -715,10 +770,12 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
 
     if (strcasecmp(unit, "TRACK_NR") == 0)
     {
+        avtransport_log_trace("Seek", "begin", state->av_transport_uri, target);
         bool ok = avtransport_seek_track_number(state, out, target);
         free(instance_id);
         free(unit);
         free(target);
+        avtransport_log_trace("Seek", ok ? "done" : "failed", state->av_transport_uri, "TRACK_NR");
         if (!ok)
             return false;
         soap_handler_set_success(out, "");
@@ -730,8 +787,10 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     if (normalized_target && strcmp(normalized_target, target) != 0)
         log_debug("[avtransport] normalize seek target raw=%s normalized=%s\n", target, normalized_target);
 
+    avtransport_log_trace("Seek", "begin", state->av_transport_uri, effective_target);
     if (!renderer_seek_target(effective_target))
     {
+        avtransport_log_trace("Seek", "failed", state->av_transport_uri, "renderer_seek_target");
         free(instance_id);
         free(unit);
         free(target);
@@ -742,6 +801,7 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
 
     dlna_protocol_state_apply_seek_target(effective_target);
     dlna_protocol_state_set_transport_status("OK");
+    avtransport_log_trace("Seek", "done", state->av_transport_uri, effective_target);
     free(instance_id);
     free(unit);
     free(target);

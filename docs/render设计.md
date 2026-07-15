@@ -8,9 +8,13 @@
 
 1. `libmpv`
 2. `ao=hos`
-3. `OpenGL/libmpv render API`
+3. `deko3d/libmpv render API`
 
-这条路线已经替代了早期“只靠 software render + framebuffer”的阶段性方案，成为当前基线。
+回退路线是：
+
+1. `OpenGL/libmpv render API`
+
+当前仓库默认希望在安装自定义媒体工具链时进入 `deko3d` 路径，只有在该工具链不存在时才回退到 `OpenGL`。
 
 ## 2. 必须区分的两件事
 
@@ -22,11 +26,12 @@
 
 当前路线：
 
-1. `OpenGL/libmpv render API`
+1. `deko3d/libmpv render API`
 
 未来路线：
 
-1. `deko3d`
+1. 继续加固现有 `deko3d`
+2. 保留 `OpenGL` 回退
 
 ### 2.2 解码
 
@@ -66,8 +71,9 @@
 负责：
 
 1. 平台显示接入
-2. `OpenGL` context 生命周期
-3. 前台视频页与日志页切换
+2. `deko3d` 设备、swapchain 与逐帧 present 生命周期
+3. 必要时回退到 `OpenGL` context 生命周期
+4. 前台视频页与日志页切换
 
 ### 4.3 render/view
 
@@ -81,25 +87,25 @@
 
 当前官方 `dkp` 工具链下：
 
-1. `OpenGL` 路线可推进
+1. `OpenGL` 回退路线仍可推进
 2. `ao=hos` 可推进
-3. explicit `nvtegra` hwdec backend 未真正可用
-4. `mpv/render_dk3d.h` 不存在
+3. explicit `nvtegra` hwdec backend 仍不应作为稳定基线
 
-这意味着：
+当前自定义媒体工具链下：
 
-1. 当前项目正式路线应继续是 `hos-audio + OpenGL`
-2. `deko3d` 应保留为未来能力
+1. `mpv/render_dk3d.h` 存在
+2. `deko3d` 路线可用
+3. `hwdec=nvtegra` 才有实际验证意义
 
 ## 6. deko3d 的位置
 
-`deko3d` 不是当前默认路线，但仍然有明确意义：
+`deko3d` 现在已经不是“未来设想”，而是当前默认发布路线：
 
 1. 更接近 Switch 原生 GPU 路线
 2. 更适合作为长期完整后端
-3. 更适合与未来自定义媒体工具链配套
+3. 已经和当前自定义媒体工具链绑定
 
-如果后续切到自定义工具链，再进入：
+对应依赖：
 
 1. `libuam`
 2. `FFmpeg(nvtegra)`
@@ -109,10 +115,10 @@
 
 当前 render 方向不是继续换渲染 API，而是：
 
-1. 保持 `OpenGL` 路线稳定
-2. 提高 mixed transport 下的显示稳定性
-3. 在工具链成熟后再考虑 `nvtegra`
-4. 最后再决定是否引入 `deko3d`
+1. 加固 `deko3d` 路线稳定性
+2. 保留 `OpenGL` 回退能力
+3. 提高 mixed transport 下的显示稳定性
+4. 把 `nvtegra` 验证放在自定义媒体工具链上推进
 
 ## 8. 相关文档
 

@@ -13,7 +13,8 @@
 
 #define VIEW_DEFAULT_WIDTH 1280
 #define VIEW_DEFAULT_HEIGHT 720
-#define DK3D_FRAMEBUFFER_COUNT 2
+#define DK3D_OVERLAY_CMDMEM_SIZE (128 * 1024)
+#define DK3D_FENCE_WAIT_TIMEOUT_NS 1000000000LL
 
 static void frontend_query_display_size(u32 *out_width, u32 *out_height);
 
@@ -162,6 +163,37 @@ static bool frontend_open_gl(ViewContext *ctx)
 #endif
 
 #ifdef HAVE_MPV_RENDER_DK3D
+static bool frontend_dk3d_init_overlay(ViewContext *ctx)
+{
+    DkMemBlockMaker mem_block_maker;
+    DkCmdBufMaker cmdbuf_maker;
+
+    if (!ctx || ctx->dk3d_overlay_cmd_mem || ctx->dk3d_overlay_cmdbuf)
+        return true;
+
+    dkMemBlockMakerDefaults(&mem_block_maker, ctx->dk3d_device, DK3D_OVERLAY_CMDMEM_SIZE);
+    mem_block_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
+    ctx->dk3d_overlay_cmd_mem = dkMemBlockCreate(&mem_block_maker);
+    if (!ctx->dk3d_overlay_cmd_mem)
+    {
+        log_error("[player-view] dkMemBlockCreate failed for dk3d overlay commands\n");
+        return false;
+    }
+
+    dkCmdBufMakerDefaults(&cmdbuf_maker, ctx->dk3d_device);
+    ctx->dk3d_overlay_cmdbuf = dkCmdBufCreate(&cmdbuf_maker);
+    if (!ctx->dk3d_overlay_cmdbuf)
+    {
+        log_error("[player-view] dkCmdBufCreate failed for dk3d overlay\n");
+        dkMemBlockDestroy(ctx->dk3d_overlay_cmd_mem);
+        ctx->dk3d_overlay_cmd_mem = NULL;
+        return false;
+    }
+
+    dkCmdBufAddMemory(ctx->dk3d_overlay_cmdbuf, ctx->dk3d_overlay_cmd_mem, 0, DK3D_OVERLAY_CMDMEM_SIZE);
+    return true;
+}
+
 static void frontend_dk3d_reset(ViewContext *ctx)
 {
     if (!ctx)
@@ -171,6 +203,8 @@ static void frontend_dk3d_reset(ViewContext *ctx)
     ctx->dk3d_swapchain_ready = false;
     ctx->dk3d_device = NULL;
     ctx->dk3d_queue = NULL;
+    ctx->dk3d_overlay_cmd_mem = NULL;
+    ctx->dk3d_overlay_cmdbuf = NULL;
     ctx->dk3d_framebuffer_mem = NULL;
     memset(ctx->dk3d_framebuffers, 0, sizeof(ctx->dk3d_framebuffers));
     ctx->dk3d_swapchain = NULL;
@@ -204,6 +238,10 @@ static void frontend_dk3d_shutdown(ViewContext *ctx)
     if (ctx->dk3d_queue)
     {
         dkQueueWaitIdle(ctx->dk3d_queue);
+        if (ctx->dk3d_overlay_cmdbuf)
+            dkCmdBufDestroy(ctx->dk3d_overlay_cmdbuf);
+        if (ctx->dk3d_overlay_cmd_mem)
+            dkMemBlockDestroy(ctx->dk3d_overlay_cmd_mem);
         dkQueueDestroy(ctx->dk3d_queue);
     }
     if (ctx->dk3d_device)
@@ -243,6 +281,11 @@ static bool frontend_dk3d_connect(ViewContext *ctx)
         frontend_dk3d_shutdown(ctx);
         return false;
     }
+    if (!frontend_dk3d_init_overlay(ctx))
+    {
+        frontend_dk3d_shutdown(ctx);
+        return false;
+    }
 
     memset(&init, 0, sizeof(init));
     init.device = ctx->dk3d_device;
@@ -263,7 +306,7 @@ static bool frontend_dk3d_create_swapchain(ViewContext *ctx, u32 width, u32 heig
     DkImageLayoutMaker image_layout_maker;
     DkImageLayout framebuffer_layout;
     DkMemBlockMaker mem_block_maker;
-    DkImage const *swapchain_images[DK3D_FRAMEBUFFER_COUNT];
+    DkImage const *swapchain_images[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
     DkSwapchainMaker swapchain_maker;
     uint32_t framebuffer_size;
     uint32_t framebuffer_align;
@@ -285,7 +328,7 @@ static bool frontend_dk3d_create_swapchain(ViewContext *ctx, u32 width, u32 heig
     framebuffer_align = dkImageLayoutGetAlignment(&framebuffer_layout);
     framebuffer_size = (framebuffer_size + framebuffer_align - 1U) & ~(framebuffer_align - 1U);
 
-    dkMemBlockMakerDefaults(&mem_block_maker, ctx->dk3d_device, DK3D_FRAMEBUFFER_COUNT * framebuffer_size);
+    dkMemBlockMakerDefaults(&mem_block_maker, ctx->dk3d_device, FRONTEND_DK3D_FRAMEBUFFER_COUNT * framebuffer_size);
     mem_block_maker.flags = DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
     ctx->dk3d_framebuffer_mem = dkMemBlockCreate(&mem_block_maker);
     if (!ctx->dk3d_framebuffer_mem)
@@ -294,13 +337,13 @@ static bool frontend_dk3d_create_swapchain(ViewContext *ctx, u32 width, u32 heig
         return false;
     }
 
-    for (i = 0; i < DK3D_FRAMEBUFFER_COUNT; ++i)
+    for (i = 0; i < FRONTEND_DK3D_FRAMEBUFFER_COUNT; ++i)
     {
         dkImageInitialize(&ctx->dk3d_framebuffers[i], &framebuffer_layout, ctx->dk3d_framebuffer_mem, i * framebuffer_size);
         swapchain_images[i] = &ctx->dk3d_framebuffers[i];
     }
 
-    dkSwapchainMakerDefaults(&swapchain_maker, ctx->dk3d_device, nwindowGetDefault(), swapchain_images, DK3D_FRAMEBUFFER_COUNT);
+    dkSwapchainMakerDefaults(&swapchain_maker, ctx->dk3d_device, nwindowGetDefault(), swapchain_images, FRONTEND_DK3D_FRAMEBUFFER_COUNT);
     ctx->dk3d_swapchain = dkSwapchainCreate(&swapchain_maker);
     if (!ctx->dk3d_swapchain)
     {
@@ -338,6 +381,7 @@ static bool frontend_open_dk3d(ViewContext *ctx)
     log_info("[player-view] render_api_connected=1 backend=dk3d\n");
     return true;
 }
+
 #endif
 
 static bool frontend_open_sw(ViewContext *ctx)
@@ -552,7 +596,7 @@ bool frontend_render(ViewContext *ctx)
             return false;
 
         dkSwapchainAcquireImage(ctx->dk3d_swapchain, &slot, &ready_fence);
-        if (slot < 0 || slot >= DK3D_FRAMEBUFFER_COUNT)
+        if (slot < 0 || slot >= FRONTEND_DK3D_FRAMEBUFFER_COUNT)
             return false;
 
         frame.image = &ctx->dk3d_framebuffers[slot];
@@ -566,13 +610,21 @@ bool frontend_render(ViewContext *ctx)
         if (!rendered)
             return false;
 
-        wait_result = dkFenceWait(&done_fence, INT64_MAX);
+        wait_result = dkFenceWait(&done_fence, DK3D_FENCE_WAIT_TIMEOUT_NS);
         if (wait_result != DkResult_Success)
         {
-            log_warn("[player-view] dkFenceWait failed: %d\n", (int)wait_result);
+            ++ctx->dk3d_fence_timeout_count;
+            log_warn("[player-view] dkFenceWait failed result=%d count=%u timeout_ns=%lld frame=%llu presented=%llu\n",
+                     (int)wait_result,
+                     ctx->dk3d_fence_timeout_count,
+                     (long long)DK3D_FENCE_WAIT_TIMEOUT_NS,
+                     (unsigned long long)ctx->status.frame_counter,
+                     (unsigned long long)ctx->status.frames_presented);
             return false;
         }
+        ctx->dk3d_fence_timeout_count = 0;
 
+        frontend_overlay_render_dk3d(ctx, slot);
         dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
         ++ctx->status.frames_presented;
         return true;
@@ -599,6 +651,8 @@ bool frontend_render(ViewContext *ctx)
                                                (int)ctx->status.display_width,
                                                (int)ctx->status.display_height,
                                                true);
+        if (rendered)
+            frontend_overlay_render_gl(ctx);
         if (eglSwapBuffers(ctx->egl_display, ctx->egl_surface) != EGL_TRUE)
             return false;
         if (rendered)
@@ -625,6 +679,7 @@ bool frontend_render(ViewContext *ctx)
     {
         memset(pixels, 0, (size_t)stride * (size_t)ctx->status.display_height);
     }
+    frontend_overlay_render_sw(pixels, (size_t)stride, ctx->status.display_width, ctx->status.display_height, ctx);
 
     framebufferEnd(&ctx->framebuffer);
     if (rendered)
