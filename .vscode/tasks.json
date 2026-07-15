@@ -2,9 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "NX-Cast: Clean",
+      "type": "shell",
+      "command": "source /opt/devkitpro/switchvars.sh && make clean",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "NX-Cast: Build",
       "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make clean && make -j8",
+      "command": "source /opt/devkitpro/switchvars.sh && make NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j${input:buildJobs}",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -23,9 +38,44 @@
       ]
     },
     {
-      "label": "NX-Cast: Upload",
+      "label": "NX-Cast: Build (Trace Media+Input)",
       "type": "shell",
-      "command": "NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; set +e; \"${NXLINK_PREFIX[@]}\" nxlink \"$NRO_PATH\"; nxlink_status=$?; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"",
+      "command": "source /opt/devkitpro/switchvars.sh && make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j${input:buildJobs}",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "NX-Cast: Rebuild",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Clean",
+        "NX-Cast: Build"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Rebuild (Trace Media+Input)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Clean",
+        "NX-Cast: Build (Trace Media+Input)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Package Release",
+      "type": "shell",
+      "command": "NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -38,9 +88,9 @@
       "problemMatcher": []
     },
     {
-      "label": "NX-Cast: Upload + nxlink server",
+      "label": "NX-Cast: Nxlink Upload",
       "type": "shell",
-      "command": "LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; \"${NXLINK_PREFIX[@]}\" nxlink -s \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"",
+      "command": "NO_BUILD=1 NXLINK_SERVER=0 ./scripts/run_nxlink.sh",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -51,7 +101,65 @@
         }
       },
       "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Nxlink Upload + Server",
+      "type": "shell",
+      "command": "NO_BUILD=1 NXLINK_SERVER=1 ./scripts/run_nxlink.sh",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Rebuild + Nxlink Upload",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Rebuild",
+        "NX-Cast: Nxlink Upload"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Rebuild + Nxlink Upload + Server",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Rebuild",
+        "NX-Cast: Nxlink Upload + Server"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Rebuild Trace + Nxlink Upload + Server",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Rebuild (Trace Media+Input)",
+        "NX-Cast: Nxlink Upload + Server"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Rebuild + Package Release",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Rebuild",
+        "NX-Cast: Package Release"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "buildJobs",
+      "type": "promptString",
+      "description": "Parallel make jobs",
+      "default": "8"
     }
   ]
 }
-

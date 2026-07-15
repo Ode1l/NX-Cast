@@ -2,37 +2,60 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "NX-Cast: Build (clean & make)",
+      "name": "NX-Cast: Rebuild",
       "type": "node-terminal",
       "request": "launch",
-      "command": "echo \"[launch] build completed\"",
-      "preLaunchTask": "NX-Cast: Build"
+      "command": "echo \"[launch] NX-Cast rebuild finished\"",
+      "preLaunchTask": "NX-Cast: Rebuild"
     },
     {
-      "name": "NX-Cast: Build & Upload",
+      "name": "NX-Cast: Rebuild (Trace Media+Input)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "bash -lc 'NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; set +e; \"${NXLINK_PREFIX[@]}\" nxlink \"$NRO_PATH\"; nxlink_status=$?; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'",
-      "preLaunchTask": "NX-Cast: Build"
+      "command": "echo \"[launch] NX-Cast trace rebuild finished\"",
+      "preLaunchTask": "NX-Cast: Rebuild (Trace Media+Input)"
     },
     {
-      "name": "NX-Cast: Build & Upload & nxlink server",
+      "name": "NX-Cast: Rebuild & Upload",
       "type": "node-terminal",
       "request": "launch",
-      "command": "bash -lc 'LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; \"${NXLINK_PREFIX[@]}\" nxlink -s \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'",
-      "preLaunchTask": "NX-Cast: Build"
+      "command": "echo \"[launch] NX-Cast rebuild and upload finished\"",
+      "preLaunchTask": "NX-Cast: Rebuild + Nxlink Upload"
+    },
+    {
+      "name": "NX-Cast: Rebuild & Upload + nxlink server",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "echo \"[launch] NX-Cast rebuild and nxlink server session finished\"",
+      "preLaunchTask": "NX-Cast: Rebuild + Nxlink Upload + Server"
+    },
+    {
+      "name": "NX-Cast: Trace Rebuild & Upload + nxlink server",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "echo \"[launch] NX-Cast trace rebuild and nxlink server session finished\"",
+      "preLaunchTask": "NX-Cast: Rebuild Trace + Nxlink Upload + Server"
     },
     {
       "name": "NX-Cast: Upload",
       "type": "node-terminal",
       "request": "launch",
-      "command": "bash -lc 'NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; set +e; \"${NXLINK_PREFIX[@]}\" nxlink \"$NRO_PATH\"; nxlink_status=$?; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'"
+      "command": "echo \"[launch] NX-Cast upload finished\"",
+      "preLaunchTask": "NX-Cast: Nxlink Upload"
     },
     {
-      "name": "NX-Cast: Upload & nxlink server",
+      "name": "NX-Cast: Upload + nxlink server",
       "type": "node-terminal",
       "request": "launch",
-      "command": "bash -lc 'LOG_DIR=\"${workspaceFolder}/logs\"; mkdir -p \"$LOG_DIR\"; LOG_STAMP=\"$(date +%Y%m%d-%H%M%S)\"; SESSION_LOG=\"$LOG_DIR/run_nxlink-$LOG_STAMP.log\"; NRO_PATH=\"${workspaceFolder}/NX-Cast.nro\"; NXLINK_PREFIX=(); if command -v stdbuf >/dev/null 2>&1; then NXLINK_PREFIX=(stdbuf -oL -eL); fi; if [ ! -f \"$NRO_PATH\" ]; then echo \"[run-nxlink] NRO not found: $NRO_PATH\" >&2; exit 1; fi; echo \"[run-nxlink] session_log=$SESSION_LOG\"; set +e; \"${NXLINK_PREFIX[@]}\" nxlink -s \"$NRO_PATH\" 2>&1 | tee \"$SESSION_LOG\"; nxlink_status=${PIPESTATUS[0]}; set -e; if [ \"$nxlink_status\" -ne 0 ]; then echo \"[run-nxlink] nxlink exited with status $nxlink_status\"; fi; exit \"$nxlink_status\"'"
+      "command": "echo \"[launch] NX-Cast nxlink server session finished\"",
+      "preLaunchTask": "NX-Cast: Nxlink Upload + Server"
+    },
+    {
+      "name": "NX-Cast: Rebuild & Package Release",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "echo \"[launch] NX-Cast release package finished\"",
+      "preLaunchTask": "NX-Cast: Rebuild + Package Release"
     }
   ]
 }

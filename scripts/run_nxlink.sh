@@ -11,6 +11,7 @@ NRO_PATH=${1:-${PROJECT_ROOT}/NX-Cast.nro}
 SWITCH_IP=${SWITCH_IP:-}
 NO_BUILD=${NO_BUILD:-0}
 BUILD_JOBS=${BUILD_JOBS:-4}
+NXLINK_SERVER=${NXLINK_SERVER:-1}
 LOG_STAMP="$(date +%Y%m%d-%H%M%S)"
 SESSION_LOG="${LOG_DIR}/run_nxlink-${LOG_STAMP}.log"
 NXLINK_ARGS=()
@@ -37,11 +38,18 @@ cd "$PROJECT_ROOT"
 echo "[run-nxlink] session_log=${SESSION_LOG}"
 
 set +e
-if [ -n "$SWITCH_IP" ]; then
+if [ "$NXLINK_SERVER" = "1" ] && [ -n "$SWITCH_IP" ]; then
   echo "[run-nxlink] target=${SWITCH_IP} mode=server"
   "${NXLINK_ARGS[@]}" "$NXLINK_BIN" -a "$SWITCH_IP" -s "$NRO_PATH" 2>&1 | tee "$SESSION_LOG"
-else
+elif [ "$NXLINK_SERVER" = "1" ]; then
+  echo "[run-nxlink] mode=server"
   "${NXLINK_ARGS[@]}" "$NXLINK_BIN" -s "$NRO_PATH" 2>&1 | tee "$SESSION_LOG"
+elif [ -n "$SWITCH_IP" ]; then
+  echo "[run-nxlink] target=${SWITCH_IP} mode=upload"
+  "${NXLINK_ARGS[@]}" "$NXLINK_BIN" -a "$SWITCH_IP" "$NRO_PATH" 2>&1 | tee "$SESSION_LOG"
+else
+  echo "[run-nxlink] mode=upload"
+  "${NXLINK_ARGS[@]}" "$NXLINK_BIN" "$NRO_PATH" 2>&1 | tee "$SESSION_LOG"
 fi
 nxlink_status=${PIPESTATUS[0]}
 set -e

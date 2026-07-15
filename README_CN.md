@@ -158,10 +158,10 @@ NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-make trace
+make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
 ```
 
-`make trace` 会先 clean，再打开媒体和输入 trace，并强制要求 `libmpv/deko3d` 后重新编译。复现 UI 卡顿、触摸事件、SOAP/player 状态不同步、播放失败时用这个包。
+Trace 是按需启用的构建变量，不是默认构建模式。复现 UI 卡顿、触摸事件、SOAP/player 状态不同步、播放失败时再打开。
 
 ## CI/CD
 

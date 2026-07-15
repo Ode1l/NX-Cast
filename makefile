@@ -251,14 +251,10 @@ ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
 endif
 
-.PHONY: $(BUILD) clean all trace
+.PHONY: $(BUILD) clean all
 
 #---------------------------------------------------------------------------------
 all: sdmc_init $(BUILD)
-
-trace:
-	@$(MAKE) clean
-	@$(MAKE) TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 all
 
 sdmc_init:
 	@echo "Preparing SDMC directory structure..."
