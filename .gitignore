@@ -1,13 +1,17 @@
-build
+build/
+dist/
+sdmc/
+artifacts/
+logs/
 
 NX-Cast.elf
 NX-Cast.nacp
 NX-Cast.nro
 NX-Cast.lst
 
-.Ds_Store
-source/.DS_Store
-logs
-dist
+.DS_Store
+**/.DS_Store
+__pycache__/
+*.pyc
 
 # .vscode VSCode settings folder. you can use my settings.
