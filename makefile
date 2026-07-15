@@ -75,6 +75,8 @@ CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DNXCAST_APP_VERSION=\"$(APP_VERSION)\"
 
 TRACE_MEDIA ?= 0
 TRACE_INPUT ?= 0
+NXCAST_REQUIRE_LIBMPV ?= 0
+NXCAST_REQUIRE_DEKO3D ?= 0
 
 ifeq ($(TRACE_MEDIA),1)
 CFLAGS	+=	-DNXCAST_MEDIA_TRACE_VERBOSE=1
@@ -134,6 +136,18 @@ endif
 
 ifeq ($(FFMPEG_NVTEGRA_HEADER_FOUND),1)
 CFLAGS	+=	-DHAVE_NVTEGRA_HWCONTEXT
+endif
+
+ifeq ($(NXCAST_REQUIRE_LIBMPV),1)
+ifeq ($(MPV_FOUND),)
+$(error NXCAST_REQUIRE_LIBMPV=1 but mpv was not found via pkg-config. Check PORTLIBS_PREFIX and switch-libmpv installation)
+endif
+endif
+
+ifeq ($(NXCAST_REQUIRE_DEKO3D),1)
+ifeq ($(DEKO3D_RENDER_ACTIVE),)
+$(error NXCAST_REQUIRE_DEKO3D=1 but deko3d libmpv render support is not active. Check switch-libmpv_deko3d and libuam packages)
+endif
 endif
 
 ifeq ($(DEKO3D_RENDER_ACTIVE),)

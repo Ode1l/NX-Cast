@@ -3,6 +3,11 @@ FROM devkitpro/devkita64:20260219
 WORKDIR /workspace
 
 ENV DEVKITPRO=/opt/devkitpro
+ENV DEVKITA64=/opt/devkitpro/devkitA64
+ENV PORTLIBS_PREFIX=/opt/devkitpro/portlibs/switch
+ENV PORTLIBS=/opt/devkitpro/portlibs/switch
+ENV PKG_CONFIG_PATH=/opt/devkitpro/portlibs/switch/lib/pkgconfig
+ENV PATH=/opt/devkitpro/devkitA64/bin:/opt/devkitpro/tools/bin:${PATH}
 ARG NXCAST_MPV_VARIANT=deko3d
 ARG WILIWILI_RELEASE=v0.1.0
 ARG LIBUAM_PKG=libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst
