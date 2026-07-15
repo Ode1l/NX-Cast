@@ -4,8 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "player/player.h"
-
 static PlayerUiOverlaySnapshot g_overlay_snapshot;
 
 static void overlay_reset_snapshot(void)
@@ -70,8 +68,8 @@ static void compose_bar_fallback_text(const PlayerUiOverlayBar *bar, char *text,
     }
     *cursor = '\0';
 
-    snprintf(slots, sizeof(slots), "%s | %s | %s", bar->left, bar->center, bar->right);
-    snprintf(text, text_size, "%s\n%s\n%s", bar->title, slots, progress);
+    snprintf(slots, sizeof(slots), "%s  %s  %s", bar->left, bar->center, bar->right);
+    snprintf(text, text_size, "%s\n%s\n%s\n%s", bar->title, slots, progress, bar->hint);
 }
 
 int player_ui_overlay_show_message(const char *title, const char *line1, int duration_ms)
@@ -101,7 +99,7 @@ int player_ui_overlay_show_message(const char *title, const char *line1, int dur
 
 int player_ui_overlay_show_bar(const PlayerUiOverlayBar *bar, int duration_ms)
 {
-    char text[320];
+    char text[512];
 
     overlay_reset_snapshot();
     g_overlay_snapshot.kind = PLAYER_UI_OVERLAY_BAR;
@@ -123,11 +121,9 @@ int player_ui_overlay_show_text(const char *text, int duration_ms)
     if (!text[0] && duration_ms <= 0)
     {
         overlay_reset_snapshot();
-        (void)player_show_osd("", 0);
         return 0;
     }
 
-    (void)player_show_osd(text, duration_ms);
     return duration_ms > 0 ? duration_ms : 0;
 }
 
@@ -143,5 +139,4 @@ bool player_ui_overlay_get_snapshot(PlayerUiOverlaySnapshot *out)
 void player_ui_overlay_clear(void)
 {
     overlay_reset_snapshot();
-    (void)player_show_osd("", 0);
 }

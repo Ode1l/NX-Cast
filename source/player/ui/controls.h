@@ -8,4 +8,6 @@ int player_ui_controls_show(const PlayerSnapshot *snapshot, const char *headline
 int player_ui_controls_show_help(const PlayerSnapshot *snapshot, bool paused);
 bool player_ui_controls_toggle_pause(PlayerUiState *state, const PlayerSnapshot *snapshot);
 bool player_ui_controls_seek(PlayerUiState *state, const PlayerSnapshot *snapshot, int delta_ms);
+bool player_ui_controls_preview_seek_to(PlayerUiState *state, const PlayerSnapshot *snapshot, int target_ms);
+bool player_ui_controls_seek_to(PlayerUiState *state, const PlayerSnapshot *snapshot, int target_ms);
 bool player_ui_controls_change_volume(PlayerUiState *state, const PlayerSnapshot *snapshot, int delta);

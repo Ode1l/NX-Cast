@@ -13,7 +13,7 @@ static int clamp_int(int value, int min_value, int max_value)
     return value;
 }
 
-static void format_media_time(int position_ms, char *out, size_t out_size)
+void player_ui_timeline_format_time(int position_ms, char *out, size_t out_size)
 {
     int total_seconds;
     int hour;
@@ -35,6 +35,17 @@ static void format_media_time(int position_ms, char *out, size_t out_size)
         snprintf(out, out_size, "%02d:%02d:%02d", hour, minute, second);
     else
         snprintf(out, out_size, "%02d:%02d", minute, second);
+}
+
+int player_ui_timeline_progress_permille(const PlayerSnapshot *snapshot)
+{
+    if (!snapshot || !snapshot->has_media || snapshot->duration_ms <= 0)
+        return 0;
+
+    return clamp_int((int)((((long long)snapshot->position_ms * 1000LL) + (snapshot->duration_ms / 2)) /
+                           snapshot->duration_ms),
+                     0,
+                     1000);
 }
 
 static void build_progress_bar(int position_ms, int duration_ms, char *out, size_t out_size)
@@ -89,11 +100,11 @@ void player_ui_timeline_describe(const PlayerSnapshot *snapshot, char *out, size
     if (!snapshot || !snapshot->has_media)
         return;
 
-    format_media_time(snapshot->position_ms, position_text, sizeof(position_text));
+    player_ui_timeline_format_time(snapshot->position_ms, position_text, sizeof(position_text));
 
     if (snapshot->duration_ms > 0)
     {
-        format_media_time(snapshot->duration_ms, duration_text, sizeof(duration_text));
+        player_ui_timeline_format_time(snapshot->duration_ms, duration_text, sizeof(duration_text));
         build_progress_bar(snapshot->position_ms, snapshot->duration_ms, progress_bar, sizeof(progress_bar));
         snprintf(out, out_size, "%s  %s / %s", progress_bar, position_text, duration_text);
         return;

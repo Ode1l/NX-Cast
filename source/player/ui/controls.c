@@ -8,6 +8,8 @@
 #include "player/ui/overlay.h"
 
 #define PLAYER_UI_OSD_SHORT_MS 1500
+#define PLAYER_UI_SEEK_PREVIEW_MS 1200
+#define PLAYER_UI_INTERACTION_HOLD_MS 1200
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -21,6 +23,17 @@ static int clamp_int(int value, int min_value, int max_value)
 static uint64_t monotonic_time_ms(void)
 {
     return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
+
+static void update_overlay_timing(PlayerUiState *state, uint64_t now_ms, int duration, bool interaction)
+{
+    if (!state)
+        return;
+
+    state->overlay_until_ms = now_ms + (uint64_t)duration;
+    state->overlay_refresh_at_ms = now_ms + PLAYER_UI_OVERLAY_REFRESH_MS;
+    if (interaction)
+        state->interaction_overlay_until_ms = now_ms + PLAYER_UI_INTERACTION_HOLD_MS;
 }
 
 int player_ui_controls_show(const PlayerSnapshot *snapshot, const char *headline, int duration_ms)
@@ -37,6 +50,7 @@ bool player_ui_controls_toggle_pause(PlayerUiState *state, const PlayerSnapshot 
 {
     bool ok = false;
     int duration = 0;
+    uint64_t now_ms = monotonic_time_ms();
 
     if (!snapshot || !snapshot->has_media)
         return false;
@@ -57,8 +71,7 @@ bool player_ui_controls_toggle_pause(PlayerUiState *state, const PlayerSnapshot 
     if (!ok)
         duration = player_ui_overlay_show_message("Play/Pause failed", NULL, PLAYER_UI_OSD_SHORT_MS);
 
-    if (state)
-        state->overlay_until_ms = monotonic_time_ms() + (uint64_t)duration;
+    update_overlay_timing(state, now_ms, duration, true);
     return ok;
 }
 
@@ -67,17 +80,25 @@ bool player_ui_controls_seek(PlayerUiState *state, const PlayerSnapshot *snapsho
     int target_ms;
     int duration_ms;
     int duration;
+    int base_ms;
+    uint64_t now_ms = monotonic_time_ms();
     char headline[48];
+    PlayerSnapshot preview_snapshot;
 
     if (!snapshot || !snapshot->has_media || !snapshot->seekable)
     {
         duration = player_ui_overlay_show_message("Seek unavailable", NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
-            state->overlay_until_ms = monotonic_time_ms() + (uint64_t)duration;
+            state->seek_preview_active = false;
+        update_overlay_timing(state, now_ms, duration, true);
         return false;
     }
 
-    target_ms = snapshot->position_ms + delta_ms;
+    base_ms = snapshot->position_ms;
+    if (state && state->seek_preview_active && now_ms < state->seek_preview_until_ms)
+        base_ms = state->seek_preview_ms;
+
+    target_ms = base_ms + delta_ms;
     duration_ms = snapshot->duration_ms;
     if (target_ms < 0)
         target_ms = 0;
@@ -88,15 +109,100 @@ bool player_ui_controls_seek(PlayerUiState *state, const PlayerSnapshot *snapsho
     {
         duration = player_ui_overlay_show_message("Seek failed", NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
-            state->overlay_until_ms = monotonic_time_ms() + (uint64_t)duration;
+            state->seek_preview_active = false;
+        update_overlay_timing(state, now_ms, duration, true);
         return false;
     }
 
-    snprintf(headline, sizeof(headline), "Seek %s%d s", delta_ms >= 0 ? "+" : "", delta_ms / 1000);
-    duration = player_ui_controls_show(snapshot, headline, PLAYER_UI_OSD_SHORT_MS);
+    snprintf(headline, sizeof(headline), "SEEK %s%dS", delta_ms >= 0 ? "+" : "", delta_ms / 1000);
+    preview_snapshot = *snapshot;
+    preview_snapshot.position_ms = target_ms;
+    duration = player_ui_controls_show(&preview_snapshot, headline, PLAYER_UI_SEEK_PREVIEW_MS);
     if (state)
-        state->overlay_until_ms = monotonic_time_ms() + (uint64_t)duration;
+    {
+        state->seek_preview_active = true;
+        state->seek_preview_ms = target_ms;
+        state->seek_preview_until_ms = now_ms + PLAYER_UI_SEEK_PREVIEW_MS;
+    }
+    update_overlay_timing(state, now_ms, duration, true);
     return true;
+}
+
+static bool player_ui_controls_show_seek_to(PlayerUiState *state,
+                                            const PlayerSnapshot *snapshot,
+                                            int target_ms,
+                                            const char *headline,
+                                            int duration_ms,
+                                            bool interaction)
+{
+    PlayerSnapshot preview_snapshot;
+    uint64_t now_ms = monotonic_time_ms();
+    int duration;
+
+    if (!snapshot || !snapshot->has_media || !snapshot->seekable || snapshot->duration_ms <= 0)
+    {
+        duration = player_ui_overlay_show_message("Seek unavailable", NULL, PLAYER_UI_OSD_SHORT_MS);
+        if (state)
+            state->seek_preview_active = false;
+        update_overlay_timing(state, now_ms, duration, interaction);
+        return false;
+    }
+
+    target_ms = clamp_int(target_ms, 0, snapshot->duration_ms);
+    preview_snapshot = *snapshot;
+    preview_snapshot.position_ms = target_ms;
+    duration = player_ui_controls_show(&preview_snapshot, headline ? headline : "SEEK", duration_ms);
+
+    if (state)
+    {
+        state->seek_preview_active = true;
+        state->seek_preview_ms = target_ms;
+        state->seek_preview_until_ms = now_ms + (uint64_t)duration_ms;
+    }
+    update_overlay_timing(state, now_ms, duration, interaction);
+    return true;
+}
+
+bool player_ui_controls_preview_seek_to(PlayerUiState *state, const PlayerSnapshot *snapshot, int target_ms)
+{
+    return player_ui_controls_show_seek_to(state,
+                                           snapshot,
+                                           target_ms,
+                                           "SEEK",
+                                           PLAYER_UI_SEEK_PREVIEW_MS,
+                                           true);
+}
+
+bool player_ui_controls_seek_to(PlayerUiState *state, const PlayerSnapshot *snapshot, int target_ms)
+{
+    uint64_t now_ms = monotonic_time_ms();
+    int duration;
+
+    if (!snapshot || !snapshot->has_media || !snapshot->seekable || snapshot->duration_ms <= 0)
+    {
+        duration = player_ui_overlay_show_message("Seek unavailable", NULL, PLAYER_UI_OSD_SHORT_MS);
+        if (state)
+            state->seek_preview_active = false;
+        update_overlay_timing(state, now_ms, duration, true);
+        return false;
+    }
+
+    target_ms = clamp_int(target_ms, 0, snapshot->duration_ms);
+    if (!player_seek_ms(target_ms))
+    {
+        duration = player_ui_overlay_show_message("Seek failed", NULL, PLAYER_UI_OSD_SHORT_MS);
+        if (state)
+            state->seek_preview_active = false;
+        update_overlay_timing(state, now_ms, duration, true);
+        return false;
+    }
+
+    return player_ui_controls_show_seek_to(state,
+                                           snapshot,
+                                           target_ms,
+                                           "SEEK",
+                                           PLAYER_UI_SEEK_PREVIEW_MS,
+                                           true);
 }
 
 bool player_ui_controls_change_volume(PlayerUiState *state, const PlayerSnapshot *snapshot, int delta)
@@ -104,7 +210,9 @@ bool player_ui_controls_change_volume(PlayerUiState *state, const PlayerSnapshot
     int current_volume;
     int target_volume;
     int duration;
+    uint64_t now_ms = monotonic_time_ms();
     char headline[64];
+    PlayerSnapshot preview_snapshot;
 
     if (!snapshot)
         return false;
@@ -120,14 +228,15 @@ bool player_ui_controls_change_volume(PlayerUiState *state, const PlayerSnapshot
     if (!player_set_volume(target_volume))
     {
         duration = player_ui_overlay_show_message("Volume failed", NULL, PLAYER_UI_OSD_SHORT_MS);
-        if (state)
-            state->overlay_until_ms = monotonic_time_ms() + (uint64_t)duration;
+        update_overlay_timing(state, now_ms, duration, true);
         return false;
     }
 
-    snprintf(headline, sizeof(headline), "Volume %d%%", target_volume);
-    duration = player_ui_controls_show(snapshot, headline, PLAYER_UI_OSD_SHORT_MS);
-    if (state)
-        state->overlay_until_ms = monotonic_time_ms() + (uint64_t)duration;
+    snprintf(headline, sizeof(headline), "VOLUME %d%%", target_volume);
+    preview_snapshot = *snapshot;
+    preview_snapshot.volume = target_volume;
+    preview_snapshot.mute = false;
+    duration = player_ui_controls_show(&preview_snapshot, headline, PLAYER_UI_OSD_SHORT_MS);
+    update_overlay_timing(state, now_ms, duration, true);
     return true;
 }

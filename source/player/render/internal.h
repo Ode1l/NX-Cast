@@ -45,6 +45,7 @@ typedef struct
     DkMemBlock dk3d_framebuffer_mem;
     DkImage dk3d_framebuffers[2];
     DkSwapchain dk3d_swapchain;
+    uint32_t dk3d_fence_timeout_count;
 #endif
 } ViewContext;
 

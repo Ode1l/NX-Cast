@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include "player/types.h"
+
 typedef enum
 {
     PLAYER_UI_OVERLAY_NONE = 0,
@@ -18,10 +20,18 @@ typedef struct
 typedef struct
 {
     char title[64];
+    char subtitle[96];
     char left[48];
     char center[96];
     char right[48];
+    char hint[96];
     int progress_permille;
+    int position_ms;
+    int duration_ms;
+    int volume;
+    bool mute;
+    bool seekable;
+    PlayerState state;
 } PlayerUiOverlayBar;
 
 typedef struct

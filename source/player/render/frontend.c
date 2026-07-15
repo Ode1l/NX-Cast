@@ -10,12 +10,14 @@
 
 #include "log/log.h"
 #include "player/player.h"
+#include "player/ui/layout.h"
 #include "player/ui/overlay.h"
 
 #define VIEW_DEFAULT_WIDTH 1280
 #define VIEW_DEFAULT_HEIGHT 720
 #define DK3D_FRAMEBUFFER_COUNT 2
 #define DK3D_OVERLAY_CMDMEM_SIZE (128 * 1024)
+#define DK3D_FENCE_WAIT_TIMEOUT_NS 1000000000LL
 
 typedef struct
 {
@@ -168,7 +170,7 @@ static void frontend_overlay_fill_rect_gl_cb(void *userdata, const FrontendOverl
 
 static void frontend_overlay_render_gl(ViewContext *ctx)
 {
-    FrontendOverlayRect rects[8];
+    FrontendOverlayRect rects[24];
     size_t rect_count = 0;
     size_t i;
 
@@ -465,7 +467,7 @@ static void frontend_overlay_fill_rect_dk3d_cb(void *userdata, const FrontendOve
 
 static void frontend_overlay_render_dk3d(ViewContext *ctx, int slot)
 {
-    FrontendOverlayRect rects[8];
+    FrontendOverlayRect rects[24];
     size_t rect_count = 0;
     size_t i;
     DkImageView image_view;
@@ -664,6 +666,39 @@ static void frontend_overlay_draw_text(const char *text,
     }
 }
 
+static void frontend_overlay_draw_text_shadowed(const char *text,
+                                                int x,
+                                                int y,
+                                                int scale,
+                                                int max_width,
+                                                uint8_t gray,
+                                                FrontendOverlayRectFillFn fill_rect,
+                                                void *userdata)
+{
+    int shadow_offset;
+
+    if (!text || !text[0] || scale <= 0 || max_width <= 0 || !fill_rect)
+        return;
+
+    shadow_offset = clamp_int(scale / 2, 1, 3);
+    frontend_overlay_draw_text(text,
+                               x + shadow_offset,
+                               y + shadow_offset,
+                               scale,
+                               max_width,
+                               3,
+                               fill_rect,
+                               userdata);
+    frontend_overlay_draw_text(text,
+                               x,
+                               y,
+                               scale,
+                               max_width,
+                               gray,
+                               fill_rect,
+                               userdata);
+}
+
 static void frontend_overlay_push_rect(FrontendOverlayRect *rects, size_t rect_capacity, size_t *count, int x, int y, int width, int height, uint8_t gray)
 {
     if (!rects || !count || *count >= rect_capacity || width <= 0 || height <= 0)
@@ -677,28 +712,169 @@ static void frontend_overlay_push_rect(FrontendOverlayRect *rects, size_t rect_c
     ++(*count);
 }
 
+static bool frontend_overlay_title_has_prefix(const char *title, const char *prefix)
+{
+    if (!title || !prefix)
+        return false;
+    while (*prefix)
+    {
+        if (*title++ != *prefix++)
+            return false;
+    }
+    return true;
+}
+
+static const char *frontend_overlay_seek_delta_label(const char *title)
+{
+    const char *label;
+
+    if (!frontend_overlay_title_has_prefix(title, "SEEK "))
+        return NULL;
+
+    label = title + 5;
+    if (label[0] != '+' && label[0] != '-')
+        return NULL;
+    return label;
+}
+
+static bool frontend_overlay_bar_has_focus(const PlayerUiOverlayBar *bar)
+{
+    if (!bar)
+        return false;
+
+    if (bar->state == PLAYER_STATE_PAUSED ||
+        bar->state == PLAYER_STATE_BUFFERING ||
+        bar->state == PLAYER_STATE_SEEKING ||
+        bar->state == PLAYER_STATE_LOADING ||
+        bar->state == PLAYER_STATE_ERROR)
+    {
+        return true;
+    }
+
+    return frontend_overlay_title_has_prefix(bar->title, "PAUSED") ||
+           frontend_overlay_title_has_prefix(bar->title, "PLAYING") ||
+           frontend_overlay_title_has_prefix(bar->title, "SEEK") ||
+           frontend_overlay_title_has_prefix(bar->title, "VOLUME");
+}
+
+static void frontend_overlay_push_triangle_icon(FrontendOverlayRect *rects,
+                                                size_t rect_capacity,
+                                                size_t *count,
+                                                int cx,
+                                                int cy,
+                                                int size,
+                                                int direction,
+                                                uint8_t gray)
+{
+    const int rows = 7;
+    int row_h = clamp_int(size / rows, 5, 14);
+    int max_w = (size * 7) / 10;
+    int top_y = cy - (rows * row_h) / 2;
+    int i;
+
+    for (i = 0; i < rows; ++i)
+    {
+        int distance = i <= rows / 2 ? i : rows - 1 - i;
+        int w = clamp_int(((distance + 1) * max_w) / ((rows / 2) + 1), row_h, max_w);
+        int x = direction >= 0 ? cx - max_w / 2 : cx + max_w / 2 - w;
+        int y = top_y + i * row_h;
+        frontend_overlay_push_rect(rects, rect_capacity, count, x, y, w, row_h - 1, gray);
+    }
+}
+
+static void frontend_overlay_push_pause_icon(FrontendOverlayRect *rects,
+                                             size_t rect_capacity,
+                                             size_t *count,
+                                             int cx,
+                                             int cy,
+                                             int size,
+                                             uint8_t gray)
+{
+    int bar_w = clamp_int(size / 5, 10, 18);
+    int bar_h = clamp_int((size * 4) / 5, 48, 84);
+    int gap = clamp_int(size / 7, 10, 18);
+    int y = cy - bar_h / 2;
+
+    frontend_overlay_push_rect(rects, rect_capacity, count, cx - gap - bar_w, y, bar_w, bar_h, gray);
+    frontend_overlay_push_rect(rects, rect_capacity, count, cx + gap, y, bar_w, bar_h, gray);
+}
+
+static void frontend_overlay_push_volume_icon(FrontendOverlayRect *rects,
+                                              size_t rect_capacity,
+                                              size_t *count,
+                                              int cx,
+                                              int cy,
+                                              int size,
+                                              uint8_t gray)
+{
+    int bar_w = clamp_int(size / 10, 7, 12);
+    int gap = clamp_int(size / 12, 6, 10);
+    int base_y = cy + size / 3;
+    int i;
+
+    for (i = 0; i < 4; ++i)
+    {
+        int h = clamp_int((size * (i + 2)) / 8, 18, size);
+        int x = cx - (bar_w * 2 + gap * 2) + i * (bar_w + gap);
+        frontend_overlay_push_rect(rects, rect_capacity, count, x, base_y - h, bar_w, h, gray);
+    }
+}
+
+static void frontend_overlay_push_focus_icon(FrontendOverlayRect *rects,
+                                             size_t rect_capacity,
+                                             size_t *count,
+                                             const PlayerUiOverlayBar *bar,
+                                             int width,
+                                             int height)
+{
+    int cx = width / 2;
+    int cy = height / 2;
+    int size = clamp_int(height / 8, 72, 104);
+
+    if (!bar)
+        return;
+
+    if (frontend_overlay_title_has_prefix(bar->title, "SEEK"))
+        return;
+
+    if (frontend_overlay_title_has_prefix(bar->title, "VOLUME"))
+    {
+        frontend_overlay_push_volume_icon(rects, rect_capacity, count, cx, cy, size, 226);
+        return;
+    }
+
+    if (frontend_overlay_title_has_prefix(bar->title, "PLAYING"))
+    {
+        frontend_overlay_push_pause_icon(rects, rect_capacity, count, cx, cy, size, 236);
+        return;
+    }
+
+    frontend_overlay_push_triangle_icon(rects, rect_capacity, count, cx, cy, size, 1, 236);
+}
+
 static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlayRect *rects, size_t rect_capacity, size_t *out_count)
 {
     PlayerUiOverlaySnapshot overlay;
     int width;
     int height;
     int pad_x;
-    int pad_y;
-    int bar_x;
-    int bar_y;
-    int bar_width;
-    int bar_height;
-    int inner_pad;
-    int slot_y;
+    int bottom_y;
+    int bottom_height;
     int progress_height;
     int progress_y;
     int progress_width;
     int progress_fill_width;
+    int progress_knob_x;
+    int bubble_width;
+    int bubble_height;
+    int bubble_x;
+    int bubble_y;
+    PlayerUiLayout layout;
     size_t count = 0;
 
     if (out_count)
         *out_count = 0;
-    if (!ctx || !player_ui_overlay_get_snapshot(&overlay) || overlay.kind != PLAYER_UI_OVERLAY_BAR)
+    if (!ctx || !player_ui_overlay_get_snapshot(&overlay) || overlay.kind == PLAYER_UI_OVERLAY_NONE)
         return false;
 
     width = (int)ctx->status.display_width;
@@ -706,24 +882,43 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
     if (width <= 0 || height <= 0)
         return false;
 
-    pad_x = clamp_int(width / 30, 24, 56);
-    pad_y = clamp_int(height / 28, 18, 40);
-    bar_x = pad_x;
-    bar_width = width - pad_x * 2;
-    bar_height = clamp_int(height / 9, 76, 118);
-    bar_y = height - pad_y - bar_height;
-    inner_pad = clamp_int(bar_height / 7, 8, 16);
-    slot_y = bar_y + inner_pad;
-    progress_height = clamp_int(bar_height / 10, 8, 14);
-    progress_y = bar_y + bar_height - inner_pad - progress_height;
-    progress_width = bar_width - inner_pad * 2;
-    progress_fill_width = clamp_int((overlay.bar.progress_permille * progress_width + 500) / 1000, 0, progress_width);
+    if (overlay.kind == PLAYER_UI_OVERLAY_MESSAGE)
+    {
+        bubble_width = clamp_int(width / 3, 280, width - 96);
+        bubble_height = clamp_int(height / 8, 72, 118);
+        bubble_x = (width - bubble_width) / 2;
+        bubble_y = (height - bubble_height) / 2;
+        frontend_overlay_push_rect(rects, rect_capacity, &count, bubble_x, bubble_y, bubble_width, bubble_height, 16);
+        frontend_overlay_push_rect(rects, rect_capacity, &count, bubble_x, bubble_y, bubble_width, 2, 78);
+        frontend_overlay_push_rect(rects, rect_capacity, &count, bubble_x + 18, bubble_y + bubble_height - 10, bubble_width - 36, 2, 42);
+        if (out_count)
+            *out_count = count;
+        return count > 0;
+    }
 
-    frontend_overlay_push_rect(rects, rect_capacity, &count, bar_x, bar_y, bar_width, bar_height, 28);
-    frontend_overlay_push_rect(rects, rect_capacity, &count, bar_x + inner_pad, slot_y - 2, bar_width - inner_pad * 2, 1, 50);
-    frontend_overlay_push_rect(rects, rect_capacity, &count, bar_x + inner_pad, progress_y, progress_width, progress_height, 58);
+    if (!player_ui_layout_compute(width, height, &layout))
+        return false;
+    pad_x = layout.pad_x;
+    bottom_height = layout.bottom_height;
+    bottom_y = layout.bottom_y;
+    progress_height = layout.progress_height;
+    progress_y = layout.progress_y;
+    progress_width = layout.progress_width;
+    progress_fill_width = clamp_int((overlay.bar.progress_permille * progress_width + 500) / 1000, 0, progress_width);
+    progress_knob_x = layout.progress_x + progress_fill_width - progress_height;
+
+    frontend_overlay_push_rect(rects, rect_capacity, &count, 0, bottom_y, width, bottom_height, 12);
+    frontend_overlay_push_rect(rects, rect_capacity, &count, 0, bottom_y, width, 2, 42);
+    frontend_overlay_push_rect(rects, rect_capacity, &count, layout.progress_x, progress_y, progress_width, progress_height, 58);
     if (progress_fill_width > 0)
-        frontend_overlay_push_rect(rects, rect_capacity, &count, bar_x + inner_pad, progress_y, progress_fill_width, progress_height, 188);
+        frontend_overlay_push_rect(rects, rect_capacity, &count, layout.progress_x, progress_y, progress_fill_width, progress_height, 218);
+    progress_knob_x = clamp_int(progress_knob_x, layout.progress_x, layout.progress_x + progress_width - progress_height * 2);
+    frontend_overlay_push_rect(rects, rect_capacity, &count, progress_knob_x, progress_y - progress_height / 2, progress_height * 2, progress_height * 2, 236);
+    frontend_overlay_push_rect(rects, rect_capacity, &count, pad_x, progress_y + progress_height + 20, 190, 34, 25);
+    frontend_overlay_push_rect(rects, rect_capacity, &count, width - pad_x - 150, progress_y + progress_height + 20, 150, 34, 25);
+
+    if (frontend_overlay_bar_has_focus(&overlay.bar))
+        frontend_overlay_push_focus_icon(rects, rect_capacity, &count, &overlay.bar, width, height);
 
     if (out_count)
         *out_count = count;
@@ -788,25 +983,22 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
     int width;
     int height;
     int pad_x;
-    int pad_y;
-    int bar_x;
-    int bar_y;
-    int bar_width;
-    int bar_height;
-    int inner_pad;
+    int bottom_y;
     int title_scale;
-    int slot_scale;
-    int title_y;
-    int slot_y;
-    int title_max_width;
-    int left_zone_width;
-    int right_zone_width;
-    int center_zone_x;
-    int center_zone_width;
+    int hint_scale;
+    int progress_y;
+    int progress_height;
+    int controls_y;
     int right_text_width;
     int center_text_width;
+    int title_text_width;
+    int bubble_width;
+    int bubble_height;
+    int bubble_x;
+    int bubble_y;
+    PlayerUiLayout layout;
 
-    if (!ctx || !fill_rect || !player_ui_overlay_get_snapshot(&overlay) || overlay.kind != PLAYER_UI_OVERLAY_BAR)
+    if (!ctx || !fill_rect || !player_ui_overlay_get_snapshot(&overlay) || overlay.kind == PLAYER_UI_OVERLAY_NONE)
         return;
 
     width = (int)ctx->status.display_width;
@@ -814,65 +1006,113 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
     if (width <= 0 || height <= 0)
         return;
 
-    pad_x = clamp_int(width / 30, 24, 56);
-    pad_y = clamp_int(height / 28, 18, 40);
-    bar_x = pad_x;
-    bar_width = width - pad_x * 2;
-    bar_height = clamp_int(height / 9, 76, 118);
-    bar_y = height - pad_y - bar_height;
-    inner_pad = clamp_int(bar_height / 7, 8, 16);
-    title_scale = clamp_int(bar_height / 26, 2, 4);
-    slot_scale = clamp_int(bar_height / 34, 2, 3);
-    title_y = bar_y + inner_pad;
-    slot_y = bar_y + clamp_int((bar_height * 42) / 100, 28, 48);
-    title_max_width = bar_width - inner_pad * 2;
-    left_zone_width = clamp_int((bar_width * 28) / 100, 160, bar_width / 3);
-    right_zone_width = clamp_int((bar_width * 20) / 100, 110, bar_width / 4);
-    center_zone_x = bar_x + left_zone_width;
-    center_zone_width = bar_width - left_zone_width - right_zone_width;
+    if (overlay.kind == PLAYER_UI_OVERLAY_MESSAGE)
+    {
+        title_scale = clamp_int(height / 180, 3, 5);
+        hint_scale = clamp_int(height / 300, 2, 3);
+        bubble_width = clamp_int(width / 3, 280, width - 96);
+        bubble_height = clamp_int(height / 8, 72, 118);
+        bubble_x = (width - bubble_width) / 2;
+        bubble_y = (height - bubble_height) / 2;
+        title_text_width = frontend_font_measure_text(overlay.message.title, title_scale);
+        center_text_width = frontend_font_measure_text(overlay.message.line1, hint_scale);
 
-    frontend_overlay_draw_text(overlay.bar.title,
-                               bar_x + inner_pad,
-                               title_y,
-                               title_scale,
-                               title_max_width,
-                               230,
-                               fill_rect,
-                               userdata);
+        frontend_overlay_draw_text_shadowed(overlay.message.title,
+                                            bubble_x + (bubble_width - title_text_width) / 2,
+                                            bubble_y + clamp_int(bubble_height / 4, 18, 28),
+                                            title_scale,
+                                            bubble_width - 48,
+                                            236,
+                                            fill_rect,
+                                            userdata);
+        frontend_overlay_draw_text_shadowed(overlay.message.line1,
+                                            bubble_x + (bubble_width - center_text_width) / 2,
+                                            bubble_y + bubble_height - clamp_int(bubble_height / 3, 24, 38),
+                                            hint_scale,
+                                            bubble_width - 48,
+                                            176,
+                                            fill_rect,
+                                            userdata);
+        return;
+    }
 
-    frontend_overlay_draw_text(overlay.bar.left,
-                               bar_x + inner_pad,
-                               slot_y,
-                               slot_scale,
-                               left_zone_width - inner_pad * 2,
-                               190,
-                               fill_rect,
-                               userdata);
+    if (!player_ui_layout_compute(width, height, &layout))
+        return;
+    pad_x = layout.pad_x;
+    bottom_y = layout.bottom_y;
+    progress_height = layout.progress_height;
+    progress_y = layout.progress_y;
+    controls_y = progress_y + progress_height + 28;
+    title_scale = clamp_int(height / 240, 2, 3);
+    hint_scale = clamp_int(height / 330, 2, 2);
 
-    center_text_width = frontend_font_measure_text(overlay.bar.center, slot_scale);
-    frontend_overlay_draw_text(overlay.bar.center,
-                               center_zone_x + (center_zone_width - center_text_width) / 2,
-                               slot_y,
-                               slot_scale,
-                               center_zone_width,
-                               214,
-                               fill_rect,
-                               userdata);
+    frontend_overlay_draw_text_shadowed(overlay.bar.subtitle,
+                                        pad_x,
+                                        bottom_y + 18,
+                                        hint_scale,
+                                        width / 2,
+                                        136,
+                                        fill_rect,
+                                        userdata);
 
-    right_text_width = frontend_font_measure_text(overlay.bar.right, slot_scale);
-    frontend_overlay_draw_text(overlay.bar.right,
-                               bar_x + bar_width - inner_pad - right_text_width,
-                               slot_y,
-                               slot_scale,
-                               right_zone_width - inner_pad,
-                               190,
-                               fill_rect,
-                               userdata);
+    center_text_width = frontend_font_measure_text(overlay.bar.center, title_scale);
+    frontend_overlay_draw_text_shadowed(overlay.bar.center,
+                                        width - pad_x - center_text_width,
+                                        bottom_y + 16,
+                                        title_scale,
+                                        width / 2,
+                                        222,
+                                        fill_rect,
+                                        userdata);
+
+    frontend_overlay_draw_text_shadowed(overlay.bar.left,
+                                        pad_x + 18,
+                                        controls_y + 8,
+                                        hint_scale,
+                                        170,
+                                        222,
+                                        fill_rect,
+                                        userdata);
+
+    right_text_width = frontend_font_measure_text(overlay.bar.right, hint_scale);
+    frontend_overlay_draw_text_shadowed(overlay.bar.right,
+                                        width - pad_x - 18 - right_text_width,
+                                        controls_y + 8,
+                                        hint_scale,
+                                        132,
+                                        222,
+                                        fill_rect,
+                                        userdata);
+
+    frontend_overlay_draw_text_shadowed(overlay.bar.hint,
+                                        pad_x + 220,
+                                        controls_y + 8,
+                                        hint_scale,
+                                        width - pad_x * 2 - 420,
+                                        152,
+                                        fill_rect,
+                                        userdata);
+
+    if (frontend_overlay_title_has_prefix(overlay.bar.title, "SEEK"))
+    {
+        const char *seek_label = frontend_overlay_seek_delta_label(overlay.bar.title);
+        const char *focus_text = seek_label ? seek_label : overlay.bar.center;
+        int focus_scale = clamp_int(height / 170, 3, 4);
+        int focus_width = frontend_font_measure_text(focus_text, focus_scale);
+        frontend_overlay_draw_text_shadowed(focus_text,
+                                            (width - focus_width) / 2,
+                                            height / 2 - (7 * focus_scale) / 2,
+                                            focus_scale,
+                                            width - pad_x * 2,
+                                            238,
+                                            fill_rect,
+                                            userdata);
+    }
 }
 
 static void frontend_overlay_render_sw(void *pixels, size_t stride, u32 width, u32 height, const ViewContext *ctx)
 {
-    FrontendOverlayRect rects[8];
+    FrontendOverlayRect rects[24];
     size_t rect_count = 0;
     size_t i;
     FrontendOverlaySwTarget target;
@@ -1116,12 +1356,19 @@ bool frontend_render(ViewContext *ctx)
         if (!rendered)
             return false;
 
-        wait_result = dkFenceWait(&done_fence, INT64_MAX);
+        wait_result = dkFenceWait(&done_fence, DK3D_FENCE_WAIT_TIMEOUT_NS);
         if (wait_result != DkResult_Success)
         {
-            log_warn("[player-view] dkFenceWait failed: %d\n", (int)wait_result);
+            ++ctx->dk3d_fence_timeout_count;
+            log_warn("[player-view] dkFenceWait failed result=%d count=%u timeout_ns=%lld frame=%llu presented=%llu\n",
+                     (int)wait_result,
+                     ctx->dk3d_fence_timeout_count,
+                     (long long)DK3D_FENCE_WAIT_TIMEOUT_NS,
+                     (unsigned long long)ctx->status.frame_counter,
+                     (unsigned long long)ctx->status.frames_presented);
             return false;
         }
+        ctx->dk3d_fence_timeout_count = 0;
 
         frontend_overlay_render_dk3d(ctx, slot);
         dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
