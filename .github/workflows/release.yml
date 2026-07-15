@@ -48,9 +48,11 @@ jobs:
         run: ./scripts/package_release.sh
 
       - name: Create GitHub Release and upload assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
           files: |
             dist/NX-Cast.nro
             dist/NX-Cast-sdmc.zip
