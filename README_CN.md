@@ -203,6 +203,17 @@ docker build -t nx-cast-build .
 docker run --rm -e DEVKITPRO=/opt/devkitpro -v "$PWD:/workspace" -w /workspace nx-cast-build bash -lc 'make clean && make -j$(nproc)'
 ```
 
+一条命令使用 Docker 构建发布包：
+
+```bash
+./scripts/docker_build_release.sh
+```
+
+这个脚本使用和 GitHub Actions 一样的 Dockerfile 与媒体包版本，最终生成：
+
+- `dist/NX-Cast.nro`
+- `dist/NX-Cast-sdmc.zip`
+
 ## CI/CD
 
 GitHub Actions 使用和本地一致的 Docker 构建路径。

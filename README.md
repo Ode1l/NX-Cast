@@ -203,6 +203,17 @@ docker build -t nx-cast-build .
 docker run --rm -e DEVKITPRO=/opt/devkitpro -v "$PWD:/workspace" -w /workspace nx-cast-build bash -lc 'make clean && make -j$(nproc)'
 ```
 
+One-command Docker release build:
+
+```bash
+./scripts/docker_build_release.sh
+```
+
+This uses the same Dockerfile and media package versions as GitHub Actions, then writes:
+
+- `dist/NX-Cast.nro`
+- `dist/NX-Cast-sdmc.zip`
+
 ## CI/CD
 
 GitHub Actions uses the same Docker build path as local CI.
