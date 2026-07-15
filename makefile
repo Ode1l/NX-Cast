@@ -42,6 +42,7 @@ TARGET		:=	NX-Cast
 APP_TITLE	:=	NX-Cast
 APP_AUTHOR	:=	Ode1l
 APP_VERSION	:=	0.1.0
+ICON		:=	switch-screencast-logo.jpg
 BUILD		:=	build
 SOURCES		:=	source \
 			source/log \
@@ -71,6 +72,17 @@ CFLAGS	:=	-g -Wall -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DNXCAST_APP_VERSION=\"$(APP_VERSION)\"
+
+TRACE_MEDIA ?= 0
+TRACE_INPUT ?= 0
+
+ifeq ($(TRACE_MEDIA),1)
+CFLAGS	+=	-DNXCAST_MEDIA_TRACE_VERBOSE=1
+endif
+
+ifeq ($(TRACE_INPUT),1)
+CFLAGS	+=	-DNXCAST_INPUT_TRACE_VERBOSE=1
+endif
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 

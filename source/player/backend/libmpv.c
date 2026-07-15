@@ -9,6 +9,7 @@
 
 #include "log/log.h"
 #include "player/seek_target.h"
+#include "player/trace.h"
 
 #ifdef HAVE_LIBMPV
 #include <mpv/client.h>
@@ -52,6 +53,19 @@ typedef struct
     size_t count;
 } LibmpvPendingEvents;
 
+typedef enum
+{
+    LIBMPV_LOG_NOISE_NONE = -1,
+    LIBMPV_LOG_NOISE_HTTP_PREMATURE = 0,
+    LIBMPV_LOG_NOISE_H264,
+    LIBMPV_LOG_NOISE_AAC,
+    LIBMPV_LOG_NOISE_DECODE,
+    LIBMPV_LOG_NOISE_COUNT
+} LibmpvLogNoise;
+
+#define LIBMPV_LOG_NOISE_KEEP 8u
+#define LIBMPV_TRACE_URL_MAX 160
+
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 static Mutex g_mutex;
 static bool g_sync_ready = false;
@@ -87,6 +101,8 @@ static bool g_file_loaded = false;
 static int g_last_error = 0;
 static bool g_process_volume_active = false;
 static u64 g_process_volume_pid = 0;
+static unsigned int g_log_noise_seen[LIBMPV_LOG_NOISE_COUNT];
+static unsigned int g_log_noise_suppressed[LIBMPV_LOG_NOISE_COUNT];
 
 static void libmpv_on_render_update(void *ctx);
 
@@ -103,6 +119,32 @@ static int libmpv_double_to_ms(double value)
     if (value <= 0.0)
         return 0;
     return (int)(value * 1000.0 + 0.5);
+}
+
+static void libmpv_log_trace(const char *action, const char *phase, const char *detail, const char *uri)
+{
+    char summary[LIBMPV_TRACE_URL_MAX];
+    uint32_t hash = uri && uri[0] ? player_trace_uri_hash(uri) : player_trace_current_media_hash();
+
+    if (phase && strcmp(phase, "failed") == 0)
+    {
+        player_trace_warn("[media-trace] seq=%u layer=libmpv action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+                          player_trace_current_media_seq(),
+                          action ? action : "(unknown)",
+                          phase,
+                          hash,
+                          detail ? detail : "-",
+                          player_trace_uri_summary(uri, summary, sizeof(summary)));
+        return;
+    }
+
+    player_trace_log("[media-trace] seq=%u layer=libmpv action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+                     player_trace_current_media_seq(),
+                     action ? action : "(unknown)",
+                     phase ? phase : "(unknown)",
+                     hash,
+                     detail ? detail : "-",
+                     player_trace_uri_summary(uri, summary, sizeof(summary)));
 }
 
 static void libmpv_process_volume_shutdown(void)
@@ -166,6 +208,148 @@ static bool libmpv_process_volume_apply(int volume_0_100, bool mute)
     return true;
 }
 
+static const char *libmpv_log_noise_name(LibmpvLogNoise noise)
+{
+    switch (noise)
+    {
+    case LIBMPV_LOG_NOISE_HTTP_PREMATURE:
+        return "premature HTTP stream";
+    case LIBMPV_LOG_NOISE_H264:
+        return "H.264 decode";
+    case LIBMPV_LOG_NOISE_AAC:
+        return "AAC decode";
+    case LIBMPV_LOG_NOISE_DECODE:
+        return "decode";
+    case LIBMPV_LOG_NOISE_NONE:
+    default:
+        return "unknown";
+    }
+}
+
+static LibmpvLogNoise libmpv_classify_noisy_log(const char *prefix, const char *text)
+{
+    bool is_ffmpeg = prefix && strstr(prefix, "ffmpeg");
+    bool is_video_decoder = prefix && strcmp(prefix, "vd") == 0;
+    bool is_audio_decoder = prefix && strcmp(prefix, "ad") == 0;
+
+    if (!text)
+        return LIBMPV_LOG_NOISE_NONE;
+
+    if (is_ffmpeg && strstr(text, "Stream ends prematurely"))
+        return LIBMPV_LOG_NOISE_HTTP_PREMATURE;
+
+    if ((is_ffmpeg || is_video_decoder) &&
+        (strstr(text, "Invalid NAL unit size") ||
+         strstr(text, "Error splitting the input into NAL units") ||
+         strstr(text, "missing picture in access unit") ||
+         strstr(text, "co located POCs unavailable")))
+    {
+        return LIBMPV_LOG_NOISE_H264;
+    }
+
+    if ((is_ffmpeg || is_audio_decoder) &&
+        (strstr(text, "Error decoding audio") ||
+         strstr(text, "Reserved bit set") ||
+         strstr(text, "Prediction is not allowed in AAC-LC") ||
+         strstr(text, "Number of bands") ||
+         strstr(text, "Number of scalefactor bands") ||
+         strstr(text, "channel element") ||
+         strstr(text, "Input buffer exhausted") ||
+         strstr(text, "invalid band type") ||
+         strstr(text, "Sample rate index") ||
+         strstr(text, "SBR was found") ||
+         strstr(text, "ms_present") ||
+         strstr(text, "Pulse ") ||
+         strstr(text, "TNS filter order") ||
+         strstr(text, "More than one AAC RDB") ||
+         strstr(text, "Gain control") ||
+         strstr(text, "Invalid audio PTS")))
+    {
+        return LIBMPV_LOG_NOISE_AAC;
+    }
+
+    if ((is_ffmpeg || is_video_decoder || is_audio_decoder) &&
+        (strstr(text, "Error while decoding frame") ||
+         strstr(text, "Error decoding audio")))
+    {
+        return LIBMPV_LOG_NOISE_DECODE;
+    }
+
+    return LIBMPV_LOG_NOISE_NONE;
+}
+
+static void libmpv_reset_log_noise_locked(void)
+{
+    memset(g_log_noise_seen, 0, sizeof(g_log_noise_seen));
+    memset(g_log_noise_suppressed, 0, sizeof(g_log_noise_suppressed));
+}
+
+static bool libmpv_should_suppress_log(const char *prefix, const char *text)
+{
+    LibmpvLogNoise noise = libmpv_classify_noisy_log(prefix, text);
+    unsigned int seen;
+    bool announce = false;
+    bool suppress;
+
+    if (noise == LIBMPV_LOG_NOISE_NONE)
+        return false;
+
+    mutexLock(&g_mutex);
+    seen = ++g_log_noise_seen[noise];
+    suppress = seen > LIBMPV_LOG_NOISE_KEEP;
+    if (suppress)
+    {
+        ++g_log_noise_suppressed[noise];
+        announce = seen == LIBMPV_LOG_NOISE_KEEP + 1u;
+    }
+    mutexUnlock(&g_mutex);
+
+    if (announce)
+    {
+        log_warn("[player-libmpv] suppressing repeated %s log messages after %u entries\n",
+                 libmpv_log_noise_name(noise),
+                 LIBMPV_LOG_NOISE_KEEP);
+    }
+
+    return suppress;
+}
+
+static void libmpv_flush_log_noise_summary(void)
+{
+    unsigned int suppressed[LIBMPV_LOG_NOISE_COUNT];
+
+    mutexLock(&g_mutex);
+    memcpy(suppressed, g_log_noise_suppressed, sizeof(suppressed));
+    libmpv_reset_log_noise_locked();
+    mutexUnlock(&g_mutex);
+
+    for (size_t i = 0; i < LIBMPV_LOG_NOISE_COUNT; ++i)
+    {
+        if (suppressed[i] == 0)
+            continue;
+        log_warn("[player-libmpv] suppressed %u repeated %s log messages\n",
+                 suppressed[i],
+                 libmpv_log_noise_name((LibmpvLogNoise)i));
+    }
+}
+
+static void libmpv_set_option_string_checked(const char *name, const char *value)
+{
+    int rc;
+
+    if (!g_mpv || !name || !value)
+        return;
+
+    rc = mpv_set_option_string(g_mpv, name, value);
+    if (rc < 0)
+    {
+        log_warn("[player-libmpv] option %s=%s rejected: %s\n",
+                 name,
+                 value,
+                 mpv_error_string(rc));
+    }
+}
+
 static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
 {
     char *text;
@@ -183,6 +367,12 @@ static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
         text[--len] = '\0';
 
     if (len == 0)
+    {
+        free(text);
+        return;
+    }
+
+    if (libmpv_should_suppress_log(msg->prefix, text))
     {
         free(text);
         return;
@@ -383,6 +573,7 @@ static void libmpv_reset_locked(void)
     g_last_error = 0;
     g_render_update_pending = false;
     g_render_backend = LIBMPV_RENDER_BACKEND_NONE;
+    libmpv_reset_log_noise_locked();
 }
 
 static bool libmpv_send_seek_target_locked(const char *target, LibmpvPendingEvents *pending)
@@ -403,10 +594,12 @@ static bool libmpv_send_seek_target_locked(const char *target, LibmpvPendingEven
     args[2] = "absolute";
     args[3] = NULL;
 
+    libmpv_log_trace("Seek", "dispatch", args[1], g_uri);
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_SEEK, args);
     free(normalized);
     if (rc < 0)
     {
+        libmpv_log_trace("Seek", "failed", mpv_error_string(rc), g_uri);
         log_warn("[player-libmpv] seek failed: %s\n", mpv_error_string(rc));
         return false;
     }
@@ -444,6 +637,7 @@ static bool libmpv_async_load_current(bool paused)
     const char *options = paused ? "pause=yes" : "pause=no";
     int rc;
     LibmpvPendingEvents pending = {0};
+    char detail[32];
 
     mutexLock(&g_mutex);
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0')
@@ -458,9 +652,14 @@ static bool libmpv_async_load_current(bool paused)
     args[3] = options;
     args[4] = NULL;
 
+    libmpv_reset_log_noise_locked();
+
+    snprintf(detail, sizeof(detail), "paused=%d", paused ? 1 : 0);
+    libmpv_log_trace("loadfile", "dispatch", detail, g_uri);
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_LOADFILE, args);
     if (rc < 0)
     {
+        libmpv_log_trace("loadfile", "failed", mpv_error_string(rc), g_uri);
         log_error("[player-libmpv] loadfile failed: %s\n", mpv_error_string(rc));
         mutexUnlock(&g_mutex);
         return false;
@@ -477,6 +676,7 @@ static bool libmpv_async_load_current(bool paused)
     libmpv_set_duration_locked(0, &pending);
     libmpv_refresh_state_locked(&pending);
     libmpv_queue_event_locked(&pending, PLAYER_EVENT_URI_CHANGED);
+    libmpv_log_trace("loadfile", "queued", detail, g_uri);
     mutexUnlock(&g_mutex);
 
     libmpv_flush_events(&pending);
@@ -579,6 +779,11 @@ static void libmpv_log_reply_error(uint64_t reply_userdata, int error)
         break;
     }
 
+    player_trace_warn("[media-trace] seq=%u layer=libmpv action=%s phase=reply-failed url_hash=%08x detail=%s\n",
+                      player_trace_current_media_seq(),
+                      name,
+                      player_trace_current_media_hash(),
+                      mpv_error_string(error));
     log_warn("[player-libmpv] async reply failed op=%s error=%s\n",
              name,
              mpv_error_string(error));
@@ -652,6 +857,8 @@ static void libmpv_handle_event(mpv_event *event)
     switch (event->event_id)
     {
     case MPV_EVENT_START_FILE:
+        libmpv_flush_log_noise_summary();
+        libmpv_log_trace("mpv-start-file", "event", "-", g_uri);
         log_info("[player-libmpv] start-file uri=%s\n", g_uri ? g_uri : "(null)");
         mutexLock(&g_mutex);
         g_last_error = 0;
@@ -663,6 +870,7 @@ static void libmpv_handle_event(mpv_event *event)
         libmpv_flush_events(&pending);
         break;
     case MPV_EVENT_FILE_LOADED:
+        libmpv_log_trace("mpv-file-loaded", "event", "-", g_uri);
         log_info("[player-libmpv] file-loaded uri=%s\n", g_uri ? g_uri : "(null)");
         mutexLock(&g_mutex);
         g_last_error = 0;
@@ -681,6 +889,7 @@ static void libmpv_handle_event(mpv_event *event)
         libmpv_flush_events(&pending);
         break;
     case MPV_EVENT_PLAYBACK_RESTART:
+        libmpv_log_trace("mpv-playback-restart", "event", "-", g_uri);
         mutexLock(&g_mutex);
         g_file_loaded = true;
         g_stopped = false;
@@ -694,6 +903,8 @@ static void libmpv_handle_event(mpv_event *event)
     {
         mpv_event_end_file *end = (mpv_event_end_file *)event->data;
         const char *reason = "unknown";
+
+        libmpv_flush_log_noise_summary();
 
         if (end)
         {
@@ -722,6 +933,7 @@ static void libmpv_handle_event(mpv_event *event)
                  g_uri ? g_uri : "(null)",
                  reason,
                  end ? mpv_error_string(end->error) : "success");
+        libmpv_log_trace("mpv-end-file", "event", reason, g_uri);
 
         mutexLock(&g_mutex);
         g_stopped = true;
@@ -810,31 +1022,29 @@ static bool libmpv_init(void)
         return false;
     }
 
-    mpv_set_option_string(g_mpv, "config", "no");
-    mpv_set_option_string(g_mpv, "terminal", "no");
-    mpv_set_option_string(g_mpv, "input-default-bindings", "no");
-    mpv_set_option_string(g_mpv, "input-vo-keyboard", "no");
-    mpv_set_option_string(g_mpv, "osc", "no");
-    mpv_set_option_string(g_mpv, "osd-level", "0");
-    mpv_set_option_string(g_mpv, "audio-display", "no");
-    mpv_set_option_string(g_mpv, "image-display-duration", "inf");
-    mpv_set_option_string(g_mpv, "idle", "yes");
+    libmpv_set_option_string_checked("config", "no");
+    libmpv_set_option_string_checked("terminal", "no");
+    libmpv_set_option_string_checked("input-default-bindings", "no");
+    libmpv_set_option_string_checked("input-vo-keyboard", "no");
+    libmpv_set_option_string_checked("osc", "no");
+    libmpv_set_option_string_checked("osd-level", "0");
+    libmpv_set_option_string_checked("audio-display", "no");
+    libmpv_set_option_string_checked("image-display-duration", "inf");
+    libmpv_set_option_string_checked("idle", "yes");
     // Switch libass builds often lack fontconfig/coretext providers.
     // Disable provider probing to avoid startup warnings for an OSD path we do not use.
-    mpv_set_option_string(g_mpv, "sub-font-provider", "none");
-    mpv_set_option_string(g_mpv, "demuxer-lavf-o", "http_persistent=0,http_multiple=0");
-    
+    libmpv_set_option_string_checked("sub-font-provider", "none");
     // Prefer hardware decode on Switch. If the libmpv package exposes the
     // explicit nvtegra backend, use it directly; otherwise fall back to mpv's
     // generic enabled path and let the selected render backend negotiate interop.
 #ifdef HAVE_MPV_EXPLICIT_NVTEGRA_HWDEC
-    mpv_set_option_string(g_mpv, "hwdec", "nvtegra");
+    libmpv_set_option_string_checked("hwdec", "nvtegra");
 #else
-    mpv_set_option_string(g_mpv, "hwdec", "yes");
+    libmpv_set_option_string_checked("hwdec", "yes");
 #endif
-    mpv_set_option_string(g_mpv, "gpu-hwdec-interop", "auto");
-    mpv_set_option_string(g_mpv, "vo", "libmpv");
-    mpv_set_option_string(g_mpv, "ao", "hos");
+    libmpv_set_option_string_checked("gpu-hwdec-interop", "auto");
+    libmpv_set_option_string_checked("vo", "libmpv");
+    libmpv_set_option_string_checked("ao", "hos");
 
     rc = mpv_initialize(g_mpv);
     if (rc < 0)
@@ -878,6 +1088,7 @@ static void libmpv_deinit(void)
     mpv_handle *mpv = NULL;
 
     log_info("[player-libmpv] deinit begin\n");
+    libmpv_flush_log_noise_summary();
 
     mutexLock(&g_mutex);
     render_ctx = g_render_ctx;
@@ -920,6 +1131,7 @@ static bool libmpv_set_media(const PlayerMedia *media)
     if (!media || !media->uri || media->uri[0] == '\0')
         return false;
 
+    libmpv_log_trace("set_media", "begin", "-", media->uri);
     mutexLock(&g_mutex);
     previous_uri = g_uri;
     previous_has_media = g_has_media;
@@ -930,6 +1142,7 @@ static bool libmpv_set_media(const PlayerMedia *media)
     {
         g_uri = previous_uri;
         mutexUnlock(&g_mutex);
+        libmpv_log_trace("set_media", "failed", "copy-uri", media->uri);
         return false;
     }
     g_has_media = true;
@@ -939,6 +1152,7 @@ static bool libmpv_set_media(const PlayerMedia *media)
     if (libmpv_async_load_current(true))
     {
         free(previous_uri);
+        libmpv_log_trace("set_media", "done", "-", media->uri);
         return true;
     }
 
@@ -948,6 +1162,7 @@ static bool libmpv_set_media(const PlayerMedia *media)
     g_has_media = previous_has_media;
     g_last_error = previous_last_error;
     mutexUnlock(&g_mutex);
+    libmpv_log_trace("set_media", "failed", "loadfile", media->uri);
     return false;
 }
 
@@ -967,12 +1182,15 @@ static bool libmpv_play(void)
     if (g_state == PLAYER_STATE_STOPPED)
     {
         mutexUnlock(&g_mutex);
+        libmpv_log_trace("Play", "reload-stopped", "-", NULL);
         return libmpv_async_load_current(false);
     }
 
+    libmpv_log_trace("Play", "dispatch", "-", g_uri);
     rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_PLAY, "pause", MPV_FORMAT_FLAG, &pause_flag);
     if (rc < 0)
     {
+        libmpv_log_trace("Play", "failed", mpv_error_string(rc), g_uri);
         log_warn("[player-libmpv] play failed: %s\n", mpv_error_string(rc));
         mutexUnlock(&g_mutex);
         return false;
@@ -1000,9 +1218,11 @@ static bool libmpv_pause(void)
         return false;
     }
 
+    libmpv_log_trace("Pause", "dispatch", "-", g_uri);
     rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_PAUSE, "pause", MPV_FORMAT_FLAG, &pause_flag);
     if (rc < 0)
     {
+        libmpv_log_trace("Pause", "failed", mpv_error_string(rc), g_uri);
         log_warn("[player-libmpv] pause failed: %s\n", mpv_error_string(rc));
         mutexUnlock(&g_mutex);
         return false;
@@ -1030,9 +1250,11 @@ static bool libmpv_stop(void)
         return false;
     }
 
+    libmpv_log_trace("Stop", "dispatch", "-", g_uri);
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_STOP, args);
     if (rc < 0)
     {
+        libmpv_log_trace("Stop", "failed", mpv_error_string(rc), g_uri);
         log_warn("[player-libmpv] stop failed: %s\n", mpv_error_string(rc));
         mutexUnlock(&g_mutex);
         return false;
