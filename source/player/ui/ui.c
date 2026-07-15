@@ -72,6 +72,7 @@ void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot)
     bool first_video_frame;
     bool persistent_state;
     bool overlay_active;
+    bool interaction_active;
     bool refresh_due;
     uint64_t now_ms;
     int duration;
@@ -95,11 +96,16 @@ void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot)
                        snapshot->state == PLAYER_STATE_BUFFERING ||
                        snapshot->state == PLAYER_STATE_SEEKING ||
                        snapshot->state == PLAYER_STATE_PAUSED;
-    overlay_active = snapshot->state == PLAYER_STATE_PAUSED || now_ms < state->overlay_until_ms;
+    interaction_active = now_ms < state->interaction_overlay_until_ms;
+    overlay_active = snapshot->state == PLAYER_STATE_PAUSED ||
+                     now_ms < state->overlay_until_ms ||
+                     interaction_active;
     refresh_due = overlay_active && now_ms >= state->overlay_refresh_at_ms;
 
-    if (now_ms < state->interaction_overlay_until_ms)
+    if (interaction_active)
     {
+        if (refresh_due && now_ms < state->overlay_until_ms)
+            state->overlay_refresh_at_ms = now_ms + PLAYER_UI_OVERLAY_REFRESH_MS;
         state->video_active = true;
         state->last_state = snapshot->state;
         return;
@@ -119,6 +125,13 @@ void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot)
         if (snapshot->state == PLAYER_STATE_PAUSED)
             state->overlay_until_ms = now_ms + (uint64_t)duration;
         state->overlay_refresh_at_ms = now_ms + PLAYER_UI_OVERLAY_REFRESH_MS;
+    }
+    else if (!overlay_active && state->overlay_until_ms != 0)
+    {
+        player_ui_overlay_clear();
+        state->overlay_until_ms = 0;
+        state->overlay_refresh_at_ms = 0;
+        state->interaction_overlay_until_ms = 0;
     }
 
     state->video_active = true;

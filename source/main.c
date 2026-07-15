@@ -21,12 +21,6 @@
 typedef struct
 {
     bool active;
-    s32 last_y;
-} TouchScrollState;
-
-typedef struct
-{
-    bool active;
     PlayerViewMode start_view;
     s32 start_x;
     s32 start_y;
@@ -43,9 +37,7 @@ typedef struct
 } TouchSeekState;
 
 #define ANSI_RESET "\x1b[0m"
-#define ANSI_DEBUG "\x1b[36;1m"
-#define ANSI_INFO  "\x1b[32;1m"
-#define ANSI_WARN  "\x1b[33;1m"
+#define ANSI_ACCENT "\x1b[36;1m"
 #define ANSI_ERROR "\x1b[31;1m"
 #define ANSI_TEXT  "\x1b[37;1m"
 
@@ -226,35 +218,6 @@ static bool main_touch_center_button_hit(int x, int y)
            y <= height / 2 + hit_size / 2;
 }
 
-static int wrapped_line_count(const char *line, int width)
-{
-    if (width <= 0)
-        return 1;
-    if (!line)
-        return 1;
-
-    size_t len = strlen(line);
-    if (len == 0)
-        return 1;
-
-    return (int)((len + (size_t)width - 1) / (size_t)width);
-}
-
-static const char *color_for_log_line(const char *line)
-{
-    if (!line)
-        return ANSI_TEXT;
-    if (strncmp(line, "[ERROR]", 7) == 0)
-        return ANSI_ERROR;
-    if (strncmp(line, "[WARN]", 6) == 0)
-        return ANSI_WARN;
-    if (strncmp(line, "[INFO]", 6) == 0)
-        return ANSI_INFO;
-    if (strncmp(line, "[DEBUG]", 7) == 0)
-        return ANSI_DEBUG;
-    return ANSI_TEXT;
-}
-
 static const char *exit_reason_name(ExitReason reason)
 {
     switch (reason)
@@ -317,94 +280,66 @@ static void shutdown_trace_reset(void)
     fclose(file);
 }
 
-static size_t compute_total_visual_lines(int width)
+static bool get_latest_error_line(char *out, size_t out_size)
 {
-    size_t total_entries = log_history_count();
-    size_t total_visual_lines = 0;
     char line[512];
+    size_t count;
 
-    for (size_t i = 0; i < total_entries; ++i)
+    if (!out || out_size == 0)
+        return false;
+
+    out[0] = '\0';
+    count = log_history_count();
+    while (count > 0)
     {
-        if (!log_history_get_line(i, line, sizeof(line)))
+        --count;
+        if (!log_history_get_line(count, line, sizeof(line)))
             continue;
-        total_visual_lines += (size_t)wrapped_line_count(line, width);
+        if (strncmp(line, "[ERROR]", 7) == 0)
+        {
+            snprintf(out, out_size, "%s", line);
+            return true;
+        }
     }
 
-    return total_visual_lines;
+    return false;
 }
 
-static void render_log_view(int scroll_from_bottom)
+static const char *ready_label(bool ready)
 {
-    PrintConsole *con = consoleGetDefault();
-    int width = con ? con->windowWidth : 80;
-    int height = con ? con->windowHeight : 45;
-    const int header_lines = 3;
-    int visible_lines = height - header_lines;
-    if (visible_lines < 1)
-        visible_lines = 1;
+    return ready ? "OK" : "NOT READY";
+}
 
-    size_t total_entries = log_history_count();
-    size_t total_visual_lines = compute_total_visual_lines(width);
-    size_t max_scroll = total_visual_lines > (size_t)visible_lines ? total_visual_lines - (size_t)visible_lines : 0;
-    int scroll = clamp_int(scroll_from_bottom, 0, (int)max_scroll);
-    size_t start_visual = total_visual_lines > (size_t)visible_lines
-                              ? total_visual_lines - (size_t)visible_lines - (size_t)scroll
-                              : 0;
+static void render_home_view(bool storage_ready, bool network_ready, bool dlna_running, bool video_ready)
+{
+    char error_line[512];
+    bool has_error = get_latest_error_line(error_line, sizeof(error_line));
 
     consoleClear();
-    printf("NX-Cast  (+ Exit)\n");
-    printf("Logs %zu  Rows %zu  Scroll %d/%zu\n", total_entries, total_visual_lines, scroll, max_scroll);
-    printf("Up/Down + Stick + Touch drag\n");
+    printf(ANSI_ACCENT "NX-Cast" ANSI_RESET "  (+ Exit)\n");
+    printf("DLNA receiver for Nintendo Switch\n\n");
 
-    size_t visual_cursor = 0;
-    int printed_rows = 0;
-    char line[512];
-    for (size_t i = 0; i < total_entries && printed_rows < visible_lines; ++i)
-    {
-        if (!log_history_get_line(i, line, sizeof(line)))
-            continue;
+    printf("How to cast\n");
+    printf("1. Keep your Switch and phone on the same Wi-Fi.\n");
+    printf("2. Open a DLNA capable app and choose \"NX-Cast\".\n");
+    printf("3. Pick a video. Playback opens automatically.\n\n");
 
-        int line_rows = wrapped_line_count(line, width);
-        size_t line_start_visual = visual_cursor;
-        size_t line_end_visual = visual_cursor + (size_t)line_rows;
-        if (line_end_visual <= start_visual)
-        {
-            visual_cursor = line_end_visual;
-            continue;
-        }
+    printf("Player controls\n");
+    printf("A: Play/Pause    L/R: Seek -/+10s    Up/Down: Volume\n");
+    printf("Touch: Show controls, drag timeline to seek\n");
+    printf("+: Exit\n\n");
 
-        int row_start = 0;
-        if (start_visual > line_start_visual)
-            row_start = (int)(start_visual - line_start_visual);
+    printf("Status\n");
+    printf("Storage: %s    Network: %s    DLNA: %s    Player: %s\n\n",
+           ready_label(storage_ready),
+           ready_label(network_ready),
+           ready_label(dlna_running),
+           ready_label(video_ready));
 
-        size_t line_len = strlen(line);
-        const char *color = color_for_log_line(line);
-        for (int row = row_start; row < line_rows && printed_rows < visible_lines; ++row)
-        {
-            size_t chunk_start = (size_t)row * (size_t)width;
-            size_t chunk_len = 0;
-            if (chunk_start < line_len)
-            {
-                chunk_len = line_len - chunk_start;
-                if (chunk_len > (size_t)width)
-                    chunk_len = (size_t)width;
-            }
-
-            printf("%s", color);
-            if (chunk_len > 0)
-                printf("%.*s", (int)chunk_len, line + chunk_start);
-            printf(ANSI_RESET "\n");
-            ++printed_rows;
-        }
-
-        visual_cursor = line_end_visual;
-    }
-
-    while (printed_rows < visible_lines)
-    {
-        printf("\n");
-        ++printed_rows;
-    }
+    if (has_error)
+        printf(ANSI_ERROR "Last error: %s" ANSI_RESET "\n", error_line);
+    else
+        printf(ANSI_TEXT "No error recorded." ANSI_RESET "\n");
 }
 
 static bool initialize_network(void)
@@ -528,26 +463,21 @@ int main(int argc, char* argv[])
 
     PadState pad;
     padInitializeDefault(&pad);
-    PadRepeater repeater;
-    padRepeaterInitialize(&repeater, 14, 3);
     PadRepeater video_repeater;
     padRepeaterInitialize(&video_repeater, 20, 15);
 
-    int scroll_from_bottom = 0;
-    int stick_repeat_cooldown = 0;
     int video_stick_repeat_cooldown = 0;
-    TouchScrollState touch_scroll = {0};
     TouchTraceState touch_trace = {0};
     TouchSeekState touch_seek = {0};
     uint64_t last_touch_tap_ms = 0;
-    PlayerViewMode last_logged_view = PLAYER_VIEW_LOG;
+    PlayerViewMode last_logged_view = PLAYER_VIEW_HOME;
     bool have_logged_view = false;
     ExitReason exit_reason = EXIT_REASON_UNKNOWN;
     PlayerUiState video_ui;
     player_ui_reset(&video_ui);
 
     log_info("[ui] NX-Cast starting. Press + to exit.\n");
-    log_info("[ui] Use Up/Down, sticks, or touch drag to scroll logs.\n");
+    log_info("[ui] Home view shows cast instructions and last error only.\n");
     if (videoPlatformReady)
         log_info("[ui] Video view auto-activates while playback is active.\n");
 
@@ -558,7 +488,7 @@ int main(int argc, char* argv[])
 
         padUpdate(&pad);
 
-        PlayerViewMode active_view = PLAYER_VIEW_LOG;
+        PlayerViewMode active_view = PLAYER_VIEW_HOME;
         if (videoPlatformReady)
         {
             if (player_get_snapshot(&snapshot))
@@ -712,80 +642,13 @@ int main(int argc, char* argv[])
             break;
         }
 
-        if (active_view == PLAYER_VIEW_LOG)
+        if (active_view == PLAYER_VIEW_HOME)
         {
-            PrintConsole *con = consoleGetDefault();
-            int width = con ? con->windowWidth : 80;
-            int visible_lines = (con ? con->windowHeight : 45) - 3;
-            if (visible_lines < 1)
-                visible_lines = 1;
-            size_t total_visual_lines = compute_total_visual_lines(width);
-            int max_scroll = 0;
-            if (total_visual_lines > (size_t)visible_lines)
-                max_scroll = (int)(total_visual_lines - (size_t)visible_lines);
-
-            padRepeaterUpdate(&repeater, kHeld & (HidNpadButton_Up | HidNpadButton_Down));
-            u64 repeated = padRepeaterGetButtons(&repeater);
-            u64 nav_buttons = kDown | repeated;
-            if (nav_buttons & HidNpadButton_Up)
-                scroll_from_bottom = clamp_int(scroll_from_bottom + 1, 0, max_scroll);
-            if (nav_buttons & HidNpadButton_Down)
-                scroll_from_bottom = clamp_int(scroll_from_bottom - 1, 0, max_scroll);
-
-            HidAnalogStickState l = padGetStickPos(&pad, 0);
-            HidAnalogStickState r = padGetStickPos(&pad, 1);
-            int stick_y = l.y;
-            if (abs(r.y) > abs(stick_y))
-                stick_y = r.y;
-
-            if (stick_repeat_cooldown > 0)
-                --stick_repeat_cooldown;
-            else if (stick_y > 12000)
-            {
-                int step = stick_y > 24000 ? 2 : 1;
-                scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
-                stick_repeat_cooldown = 3;
-            }
-            else if (stick_y < -12000)
-            {
-                int step = stick_y < -24000 ? 2 : 1;
-                scroll_from_bottom = clamp_int(scroll_from_bottom - step, 0, max_scroll);
-                stick_repeat_cooldown = 3;
-            }
-
-            if (touch_present)
-            {
-                s32 y = touch_y;
-                if (!touch_scroll.active)
-                {
-                    touch_scroll.active = true;
-                    touch_scroll.last_y = y;
-                }
-                else
-                {
-                    s32 dy = y - touch_scroll.last_y;
-                    const int pixels_per_line = 18;
-                    if (dy >= pixels_per_line || dy <= -pixels_per_line)
-                    {
-                        int step = dy / pixels_per_line;
-                        scroll_from_bottom = clamp_int(scroll_from_bottom + step, 0, max_scroll);
-                        touch_scroll.last_y = y;
-                    }
-                }
-            }
-            else
-            {
-                touch_scroll.active = false;
-            }
-
-            scroll_from_bottom = clamp_int(scroll_from_bottom, 0, max_scroll);
-            render_log_view(scroll_from_bottom);
+            render_home_view(storageReady, networkReady, dlnaRunning, videoPlatformReady);
             consoleUpdate(NULL);
         }
         else
         {
-            touch_scroll.active = false;
-
             if (have_snapshot)
             {
                 if (!snapshot.has_media)

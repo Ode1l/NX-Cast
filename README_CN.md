@@ -16,6 +16,7 @@
 - `libmpv` 后端和 `ao=hos`
 - 首选 `deko3d/libmpv render API` 视频路径
 - 在媒体工具链支持时请求 `hwdec=nvtegra`
+- 静态主页，展示投屏教程、运行状态和最后一条错误
 - 手柄和触摸播放器 overlay
 - Docker 和 GitHub Actions 发布构建
 
@@ -51,6 +52,8 @@ switch/NX-Cast/dlna/
 `switch/NX-Cast/dlna/` 里是运行时需要的 DLNA XML、CSV、HTML 和图标资源。
 
 ## 控制
+
+空闲时，软件显示主页：基础投屏教程、运行状态和最后一条错误。完整日志历史仍保留给调试使用，但不会作为发布版前台 UI 展示。
 
 视频播放时：
 
@@ -150,6 +153,15 @@ NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
 严格参数用于防止误生成没有链接 `libmpv/deko3d` 的小体积 mock/fallback `NRO`。
+
+用于排查播放和输入问题的 trace 构建：
+
+```bash
+source /opt/devkitpro/switchvars.sh
+make trace
+```
+
+`make trace` 会先 clean，再打开媒体和输入 trace，并强制要求 `libmpv/deko3d` 后重新编译。复现 UI 卡顿、触摸事件、SOAP/player 状态不同步、播放失败时用这个包。
 
 ## CI/CD
 

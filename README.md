@@ -20,6 +20,7 @@ The current baseline includes:
 - `libmpv` backend with `ao=hos`
 - `deko3d/libmpv render API` as the preferred video path
 - runtime `hwdec=nvtegra` preference when the installed media toolchain supports it
+- static home screen with cast instructions and last-error display
 - controller and touch playback overlay
 - Docker and GitHub Actions release builds
 
@@ -55,6 +56,8 @@ switch/NX-Cast/dlna/
 `switch/NX-Cast/dlna/` contains the runtime DLNA XML, CSV, HTML, and icon assets.
 
 ## Controls
+
+When idle, the app shows a home screen with basic casting instructions, runtime status, and only the latest error. Full log history is kept for debugging but is not shown as the release foreground UI.
 
 During video playback:
 
@@ -154,6 +157,15 @@ NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
 The strict flags prevent accidentally producing a tiny mock/fallback `NRO` without `libmpv/deko3d`.
+
+Trace build for playback/input debugging:
+
+```bash
+source /opt/devkitpro/switchvars.sh
+make trace
+```
+
+`make trace` cleans first, then rebuilds with media and input trace enabled and strict `libmpv/deko3d` requirements. Use it for reproducing UI stutter, touch handling, SOAP/player state drift, or hard-to-read playback failures.
 
 ## CI/CD
 

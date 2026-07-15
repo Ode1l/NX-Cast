@@ -20,7 +20,7 @@ typedef struct
 #define PLAYER_UI_SEEK_STEP_MS 10000
 #define PLAYER_UI_VOLUME_STEP 5
 #define PLAYER_UI_STICK_THRESHOLD 16000
-#define PLAYER_UI_OVERLAY_REFRESH_MS 250
+#define PLAYER_UI_OVERLAY_REFRESH_MS 500
 
 void player_ui_reset(PlayerUiState *state);
 void player_ui_clear(PlayerUiState *state);

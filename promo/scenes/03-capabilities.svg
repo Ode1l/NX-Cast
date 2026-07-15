@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <rect width="1920" height="1080" fill="#0A0A0B"/>
+  <rect x="0" y="0" width="960" height="14" fill="#00BDDE"/>
+  <rect x="960" y="0" width="960" height="14" fill="#FF5F52"/>
+
+  <text x="112" y="112" fill="#F4F0E8" font-family="Avenir Next, Helvetica, sans-serif" font-size="26" font-weight="700" letter-spacing="7">NX-CAST / 03</text>
+  <text x="112" y="255" fill="#F4F0E8" font-family="Avenir Next, Helvetica, sans-serif" font-size="92" font-weight="800">BUILT TO RECEIVE.</text>
+  <text x="116" y="318" fill="#A7A39B" font-family="Arial Unicode MS, sans-serif" font-size="32">发现、控制、播放，一条完整链路。</text>
+
+  <path d="M112 410h1696M112 612h1696M112 814h1696" stroke="#F4F0E8" stroke-opacity=".18" stroke-width="2"/>
+
+  <text x="112" y="540" fill="#00BDDE" font-family="Avenir Next, Helvetica, sans-serif" font-size="30" font-weight="800">01</text>
+  <text x="230" y="540" fill="#F4F0E8" font-family="Avenir Next, Helvetica, sans-serif" font-size="62" font-weight="700">DISCOVER</text>
+  <text x="1788" y="540" text-anchor="end" fill="#A7A39B" font-family="SFMono, monospace" font-size="34">SSDP</text>
+
+  <text x="112" y="742" fill="#FF5F52" font-family="Avenir Next, Helvetica, sans-serif" font-size="30" font-weight="800">02</text>
+  <text x="230" y="742" fill="#F4F0E8" font-family="Avenir Next, Helvetica, sans-serif" font-size="62" font-weight="700">CONTROL</text>
+  <text x="1788" y="742" text-anchor="end" fill="#A7A39B" font-family="SFMono, monospace" font-size="31">PLAY  PAUSE  SEEK  VOLUME</text>
+
+  <text x="112" y="944" fill="#00BDDE" font-family="Avenir Next, Helvetica, sans-serif" font-size="30" font-weight="800">03</text>
+  <text x="230" y="944" fill="#F4F0E8" font-family="Avenir Next, Helvetica, sans-serif" font-size="62" font-weight="700">PLAY</text>
+  <text x="1788" y="944" text-anchor="end" fill="#A7A39B" font-family="SFMono, monospace" font-size="34">LIBMPV / DEKO3D</text>
+</svg>
+

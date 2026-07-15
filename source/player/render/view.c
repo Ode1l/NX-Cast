@@ -99,9 +99,9 @@ const char *player_view_mode_name(PlayerViewMode mode)
     {
     case PLAYER_VIEW_VIDEO:
         return "video";
-    case PLAYER_VIEW_LOG:
+    case PLAYER_VIEW_HOME:
     default:
-        return "log";
+        return "home";
     }
 }
 
@@ -142,8 +142,8 @@ bool player_view_init(void)
 {
     memset(&g_view, 0, sizeof(g_view));
     g_view.status.initialized = true;
-    g_view.status.active_view = PLAYER_VIEW_LOG;
-    g_view.status.desired_view = PLAYER_VIEW_LOG;
+    g_view.status.active_view = PLAYER_VIEW_HOME;
+    g_view.status.desired_view = PLAYER_VIEW_HOME;
     g_view.status.render_owner = PLAYER_RENDER_OWNER_MAIN_THREAD;
 
     log_info("[player-view] init render_owner=%s active_view=%s\n",
@@ -235,7 +235,7 @@ void player_view_sync(const PlayerSnapshot *snapshot)
         else
         {
             g_view.stop_hold_until_ms = 0;
-            g_view.status.desired_view = PLAYER_VIEW_LOG;
+            g_view.status.desired_view = PLAYER_VIEW_HOME;
         }
     }
 
@@ -267,7 +267,7 @@ void player_view_begin_frame(void)
     {
         if (!frontend_open(&g_view))
         {
-            g_view.status.desired_view = PLAYER_VIEW_LOG;
+            g_view.status.desired_view = PLAYER_VIEW_HOME;
             log_warn("[player-view] video view rejected render_api=%d\n",
                      g_view.status.render_api_connected ? 1 : 0);
             return;

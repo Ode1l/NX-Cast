@@ -66,6 +66,7 @@ Responsibilities:
 1. Switch the foreground video page.
 2. Own render-context lifecycle.
 3. Connect backend render callbacks through a narrow interface.
+4. Return to the home page when no playback session is active.
 
 Main files:
 
@@ -80,6 +81,8 @@ Responsibilities:
 1. Keep playback overlay state.
 2. Draw timeline and controls.
 3. Map controller and touch input to player commands.
+
+The release foreground UI is intentionally not a scrolling log console. The idle page is a static home/instruction screen, and it only surfaces the latest error while full log history stays available for debugging paths.
 
 Main files:
 
@@ -191,3 +194,5 @@ Current player work should focus on:
 3. Hardening the local player UI and input control on the `deko3d` path.
 4. Testing against real controllers and real URLs.
 5. Keeping the OpenGL fallback and backend boundary clear.
+
+Use `make trace` when diagnosing player/UI problems. It rebuilds with `TRACE_MEDIA=1`, `TRACE_INPUT=1`, and strict `libmpv/deko3d` requirements, while normal builds keep the runtime log level suitable for release-style testing.

@@ -7,7 +7,7 @@
 
 typedef enum
 {
-    PLAYER_VIEW_LOG = 0,
+    PLAYER_VIEW_HOME = 0,
     PLAYER_VIEW_VIDEO
 } PlayerViewMode;
 

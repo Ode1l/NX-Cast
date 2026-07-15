@@ -240,9 +240,12 @@ static LibmpvLogNoise libmpv_classify_noisy_log(const char *prefix, const char *
 
     if ((is_ffmpeg || is_video_decoder) &&
         (strstr(text, "Invalid NAL unit size") ||
+         strstr(text, "Invalid NAL unit") ||
          strstr(text, "Error splitting the input into NAL units") ||
          strstr(text, "missing picture in access unit") ||
-         strstr(text, "co located POCs unavailable")))
+         strstr(text, "co located POCs unavailable") ||
+         strstr(text, "mmco: unref short failure") ||
+         strstr(text, "error while decoding MB")))
     {
         return LIBMPV_LOG_NOISE_H264;
     }
@@ -263,6 +266,9 @@ static LibmpvLogNoise libmpv_classify_noisy_log(const char *prefix, const char *
          strstr(text, "TNS filter order") ||
          strstr(text, "More than one AAC RDB") ||
          strstr(text, "Gain control") ||
+         strstr(text, "Clipped noise gain") ||
+         strstr(text, "If you heard an audible artifact") ||
+         strstr(text, "If you want to help") ||
          strstr(text, "Invalid audio PTS")))
     {
         return LIBMPV_LOG_NOISE_AAC;
