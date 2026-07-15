@@ -6,6 +6,9 @@ on:
       - '**'
   pull_request:
 
+permissions:
+  contents: write
+
 env:
   NXCAST_MPV_VARIANT: deko3d
   WILIWILI_RELEASE: v0.1.0
@@ -50,3 +53,36 @@ jobs:
             dist/NX-Cast.nro
             dist/NX-Cast-sdmc.zip
           if-no-files-found: error
+
+      - name: Update continuous GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTINUOUS_TAG: continuous
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "${CONTINUOUS_TAG}" "${GITHUB_SHA}"
+          git push -f origin "refs/tags/${CONTINUOUS_TAG}"
+
+          notes="Automatic development build from ${GITHUB_REF_NAME} at ${GITHUB_SHA}."
+          if gh release view "${CONTINUOUS_TAG}" >/dev/null 2>&1; then
+            gh release upload "${CONTINUOUS_TAG}" \
+              dist/NX-Cast.nro \
+              dist/NX-Cast-sdmc.zip \
+              --clobber
+            gh release edit "${CONTINUOUS_TAG}" \
+              --title "NX-Cast Continuous" \
+              --notes "${notes}" \
+              --prerelease
+          else
+            gh release create "${CONTINUOUS_TAG}" \
+              dist/NX-Cast.nro \
+              dist/NX-Cast-sdmc.zip \
+              --title "NX-Cast Continuous" \
+              --notes "${notes}" \
+              --prerelease \
+              --target "${GITHUB_SHA}"
+          fi

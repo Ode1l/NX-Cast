@@ -203,6 +203,27 @@ docker build -t nx-cast-build .
 docker run --rm -e DEVKITPRO=/opt/devkitpro -v "$PWD:/workspace" -w /workspace nx-cast-build bash -lc 'make clean && make -j$(nproc)'
 ```
 
+## CI/CD
+
+GitHub Actions 使用和本地一致的 Docker 构建路径。
+
+- 任意分支执行 `git push` 后，会自动构建并更新名为 `NX-Cast Continuous` 的滚动预发布版本。
+- 滚动预发布固定使用 `continuous` tag，所以每次 push 会替换上一次开发包，不会制造一堆正式版本号。
+- 推送 `v0.1.0` 这种版本 tag 时，才会通过独立 release workflow 创建正式 GitHub Release。
+
+开发包：
+
+```bash
+git push
+```
+
+正式版本：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## 当前文档说明
 
 仓库文档按当前实现维护，不再保留已经删除的旧设计表述。  

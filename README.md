@@ -203,6 +203,27 @@ docker build -t nx-cast-build .
 docker run --rm -e DEVKITPRO=/opt/devkitpro -v "$PWD:/workspace" -w /workspace nx-cast-build bash -lc 'make clean && make -j$(nproc)'
 ```
 
+## CI/CD
+
+GitHub Actions uses the same Docker build path as local CI.
+
+- Any branch `git push` builds the project and updates the rolling prerelease named `NX-Cast Continuous`.
+- The rolling prerelease uses the fixed tag `continuous`, so each push replaces the previous development package.
+- Pushing a version tag such as `v0.1.0` creates a formal GitHub Release through the separate release workflow.
+
+Development package:
+
+```bash
+git push
+```
+
+Formal release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Documentation Note
 
 Repository docs are current-state docs. If code and docs diverge, the source tree is authoritative and docs should be updated to match the code.
