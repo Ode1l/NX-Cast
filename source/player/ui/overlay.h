@@ -11,6 +11,16 @@ typedef enum
     PLAYER_UI_OVERLAY_BAR
 } PlayerUiOverlayKind;
 
+typedef enum
+{
+    PLAYER_UI_OVERLAY_FOCUS_NONE = 0,
+    PLAYER_UI_OVERLAY_FOCUS_PLAY,
+    PLAYER_UI_OVERLAY_FOCUS_PAUSE,
+    PLAYER_UI_OVERLAY_FOCUS_SEEK,
+    PLAYER_UI_OVERLAY_FOCUS_VOLUME,
+    PLAYER_UI_OVERLAY_FOCUS_STATUS
+} PlayerUiOverlayFocus;
+
 typedef struct
 {
     char title[64];
@@ -31,6 +41,8 @@ typedef struct
     int volume;
     bool mute;
     bool seekable;
+    PlayerUiOverlayFocus focus;
+    int seek_delta_ms;
     PlayerState state;
 } PlayerUiOverlayBar;
 

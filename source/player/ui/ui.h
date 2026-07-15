@@ -24,6 +24,7 @@ typedef struct
 
 void player_ui_reset(PlayerUiState *state);
 void player_ui_clear(PlayerUiState *state);
+void player_ui_hide_overlay(PlayerUiState *state);
 void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot);
 bool player_ui_toggle_pause(PlayerUiState *state, const PlayerSnapshot *snapshot);
 bool player_ui_seek(PlayerUiState *state, const PlayerSnapshot *snapshot, int delta_ms);

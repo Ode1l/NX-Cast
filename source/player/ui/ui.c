@@ -67,6 +67,20 @@ void player_ui_clear(PlayerUiState *state)
     state->seek_preview_active = false;
 }
 
+void player_ui_hide_overlay(PlayerUiState *state)
+{
+    player_ui_overlay_clear();
+    if (!state)
+        return;
+
+    state->overlay_until_ms = 0;
+    state->overlay_refresh_at_ms = 0;
+    state->interaction_overlay_until_ms = 0;
+    state->seek_preview_until_ms = 0;
+    state->seek_preview_ms = 0;
+    state->seek_preview_active = false;
+}
+
 void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot)
 {
     bool first_video_frame;

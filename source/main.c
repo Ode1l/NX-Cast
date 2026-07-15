@@ -662,8 +662,8 @@ int main(int argc, char* argv[])
                 {
                     if (snapshot.has_media)
                     {
-                        if (player_ui_overlay_visible(&video_ui) &&
-                            main_touch_center_button_hit((int)touch_tap_x, (int)touch_tap_y))
+                        bool overlay_visible = player_ui_overlay_visible(&video_ui);
+                        if (overlay_visible && main_touch_center_button_hit((int)touch_tap_x, (int)touch_tap_y))
                         {
                             main_input_trace("[input] action=touch-toggle-pause begin x=%d y=%d state=%s\n",
                                              (int)touch_tap_x,
@@ -673,6 +673,14 @@ int main(int argc, char* argv[])
                             main_input_trace("[input] action=touch-toggle-pause done ok=%d state=%s\n",
                                              ok ? 1 : 0,
                                              main_player_state_name(snapshot.state));
+                        }
+                        else if (overlay_visible)
+                        {
+                            main_input_trace("[input] action=touch-hide-controls x=%d y=%d state=%s\n",
+                                             (int)touch_tap_x,
+                                             (int)touch_tap_y,
+                                             main_player_state_name(snapshot.state));
+                            player_ui_hide_overlay(&video_ui);
                         }
                         else
                         {

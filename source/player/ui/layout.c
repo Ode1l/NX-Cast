@@ -1,6 +1,6 @@
 #include "player/ui/layout.h"
 
-#define PLAYER_UI_PROGRESS_HIT_SLOP 40
+#define PLAYER_UI_PROGRESS_HIT_SLOP 52
 
 static int clamp_int(int value, int min_value, int max_value)
 {
@@ -19,11 +19,11 @@ bool player_ui_layout_compute(int display_width, int display_height, PlayerUiLay
     if (!out || display_width <= 0 || display_height <= 0)
         return false;
 
-    out->pad_x = clamp_int(display_width / 22, 36, 78);
-    out->bottom_height = clamp_int(display_height / 5, 132, 190);
+    out->pad_x = clamp_int(display_width / 18, 48, 88);
+    out->bottom_height = clamp_int(display_height / 6, 112, 154);
     out->bottom_y = display_height - out->bottom_height;
-    out->progress_height = clamp_int(display_height / 80, 7, 12);
-    out->progress_y = out->bottom_y + clamp_int(out->bottom_height / 3, 40, 62);
+    out->progress_height = clamp_int(display_height / 100, 6, 10);
+    out->progress_y = out->bottom_y + clamp_int(out->bottom_height / 5, 20, 30);
     out->progress_x = out->pad_x;
     out->progress_width = display_width - out->pad_x * 2;
 
