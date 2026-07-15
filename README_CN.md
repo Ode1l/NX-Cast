@@ -1,226 +1,159 @@
 # NX-Cast
 
-`NX-Cast` 是运行在 Atmosphère Homebrew 环境下的 Nintendo Switch 开源媒体接收器。
+`NX-Cast` 是运行在 Atmosphere Homebrew 环境下的 Nintendo Switch 媒体接收器。
 
-当前主线目标是把 Switch 上的通用 `DLNA DMR` 接收器做扎实，并采用直接的 `protocol -> renderer -> libmpv` 播放路径，而不是继续维护一套独立的入口建模和策略流水线。
+当前产品目标是做一个扎实的通用 `DLNA DMR`：手机、桌面播放器、电视应用通过 DLNA 把媒体 URL 发给 Switch，Switch 再通过 `libmpv` 播放。
 
 ## 当前状态
 
-项目已经完成并验证过这些基础能力：
+当前主线已经具备：
 
 - `SSDP` 发现
-- 运行时输出的 `Description.xml` 与各服务 `SCPD`
-- `SOAP` 控制链：`SetAVTransportURI / Play / Pause / Stop / Seek`
-- `GENA` 事件订阅与 `LastChange`
-- renderer 的 snapshot/event 状态桥
-- `libmpv` 后端
-- `ao=hos`
-- `deko3d/libmpv render API`
-- 基于手柄的播放器 OSD 与本地 seek/音量控制
+- 运行时输出 `Description.xml` 和服务 `SCPD`
+- `SOAP` 控制：`SetAVTransportURI`、`Play`、`Pause`、`Stop`、`Seek`、音量
+- `GENA` 事件订阅和 `LastChange`
+- 协议状态从真实播放会话同步
+- `libmpv` 后端和 `ao=hos`
+- 首选 `deko3d/libmpv render API` 视频路径
+- 在媒体工具链支持时请求 `hwdec=nvtegra`
+- 手柄和触摸播放器 overlay
+- Docker 和 GitHub Actions 发布构建
 
-当前更准确的阶段是：
+项目仍然是实验性 Switch homebrew。当前开发重点是 DLNA 兼容性、播放稳定性和播放器 UI。
 
-1. 通用 `DMR` 底座已成立
-2. 协议状态与运行时播放状态已经围绕同一播放会话收口
-3. 直接 `URL -> libmpv` 的播放链已经落地
-4. 安装自定义媒体工具链后，`deko3d` 已成为首选渲染路径
-5. `hwdec=nvtegra` 已接入运行时选项，但是否真正生效仍取决于所安装的 `FFmpeg/libmpv`
+## 当前不做什么
 
-## 当前设计原则
+`NX-Cast` 当前不是：
 
-项目当前按这几条原则推进：
+- DLNA 媒体服务器，也就是 `DMS`
+- DLNA 控制器，也就是 `DMC`
+- AirPlay 接收器
+- iQiyi、MangoTV、CCTV、Bilibili 或 IPTV 的站点原生客户端
+- DRM 绕过或站点登录实现
 
-1. 结构重构与行为变化分开做
-2. 协议层只做协议职责，不变成站点兼容 hack 层
-3. 协议动作直接调用 renderer
-4. `libmpv` 负责 URL 探测、拉流、demux、decode 与播放
-5. renderer 订阅 `libmpv` 属性和事件，再把运行时状态同步回协议层
-6. `SOAP`、`LastChange`、兼容查询都读取同一份协议观察状态
+当前播放链保持很薄：DLNA 只提供 URL，后续探测、网络请求、demux、decode 和播放交给 `libmpv/FFmpeg`。
 
-一句话说：
+## 安装
 
-**协议层向下发命令，renderer 把真实运行时状态再向上同步。**
+优先使用 GitHub Release 里的发布包：
 
-## 当前架构
+1. 下载 `NX-Cast-sdmc.zip`
+2. 解压到 Switch SD 卡根目录
+3. 从 `hbmenu` 启动 `switch/NX-Cast/NX-Cast.nro`
 
-```text
-main
-  -> protocol/dlna
-       -> discovery (SSDP)
-       -> description (template XML / CSV)
-       -> control (SOAP / GENA / protocol_state)
-            -> renderer facade
-  -> player
-       -> core (session / snapshot / event pump)
-       -> backend (libmpv / mock)
-       -> render (view / frontend)
-```
-
-当前两条关键状态线：
-
-1. renderer 维护真实播放会话
-2. `protocol_state` 维护协议观察状态
-
-## 当前播放模型
-
-当前播放路径刻意保持很薄：
-
-```text
-SetAVTransportURI
-  -> renderer_set_uri(...)
-  -> libmpv loadfile
-  -> libmpv 自动探测 URL / demux / decode
-  -> 属性与事件回调
-  -> protocol_state 同步
-```
-
-当前回收并同步的运行时字段包括：
-
-- `time-pos`
-- `duration`
-- `pause`
-- `mute`
-- `seekable`
-- `paused-for-cache`
-- `seeking`
-- EOF / error 状态
-
-项目当前已经不再保留独立的预处理播放层。
-
-## 当前后端路线
-
-当前正式后端路线是：
-
-1. `ao=hos`
-2. `deko3d/libmpv render API`
-3. `libmpv` 继续作为播放器核心
-4. 当自定义媒体工具链不存在时，`OpenGL/libmpv render API` 作为回退路径
-
-需要特别区分：
-
-- `OpenGL` / `deko3d` 是渲染路径
-- `hwdec=nvtegra` 是解码路径
-
-当前结论：
-
-1. `hos-audio + deko3d` 已接通
-2. 运行时 `hwdec=nvtegra` 偏好已经接入
-3. 官方 `dkp` 工具链仍主要对应 OpenGL 回退路径
-4. 当前推荐基线是 `wiliwili` 这套自定义 `FFmpeg/libmpv` 包
-
-## 当前工作重点
-
-当前优先级是：
-
-1. 继续补通用 `DMR` 兼容面
-2. 提高协议状态与控制端进度同步的准确性
-3. 保持模板化描述层与真实实现一致
-4. 在真实 URL 和真实控制端上继续加固播放稳定性
-5. 继续加固新的 `deko3d` 渲染路径和手柄播放器 UI
-6. 把 `nvtegra` 验证建立在自定义媒体工具链上，而不是官方回退包上
-
-## 目录
-
-```text
-source/
-  main.c
-  log/
-  player/
-    core/
-    backend/
-    render/
-  protocol/
-    dlna/
-      discovery/
-      description/
-      control/
-    http/
-assets/
-  dlna/
-
-Switch 运行时资源目录：
-  sdmc:/switch/NX-Cast/dlna/
-```
-
-## 推荐阅读顺序
-
-1. [docs/Player层设计.md](docs/Player层设计.md)
-2. [docs/DMR实现细节.md](docs/DMR实现细节.md)
-3. [docs/SCPD模块说明.md](docs/SCPD模块说明.md)
-4. [ROADMAP.md](ROADMAP.md)
-
-## 构建
-
-需要：
-
-- `devkitPro`
-- `devkitA64`
-- `libnx`
-- 推荐安装 `wiliwili` 提供的自定义媒体包：
-  - `libuam`
-  - `switch-ffmpeg`
-  - `switch-libmpv_deko3d`
-
-推荐本地安装：
-
-```bash
-base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
-sudo dkp-pacman -U \
-  $base_url/libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst \
-  $base_url/switch-ffmpeg-7.1-1-any.pkg.tar.zst \
-  $base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst
-```
-
-构建：
-
-```bash
-make
-```
-
-输出：
-
-- `NX-Cast.nro`
-- 执行 `./scripts/package_release.sh` 后生成 `dist/NX-Cast-sdmc.zip`
-
-发布包：
-
-```bash
-make
-./scripts/package_release.sh
-```
-
-`dist/NX-Cast-sdmc.zip` 内部是可以直接放到 SD 卡根目录的结构：
+发布包结构：
 
 ```text
 switch/NX-Cast/NX-Cast.nro
 switch/NX-Cast/dlna/
 ```
 
-Docker 构建：
+`switch/NX-Cast/dlna/` 里是运行时需要的 DLNA XML、CSV、HTML 和图标资源。
 
-```bash
-docker build -t nx-cast-build .
-docker run --rm -e DEVKITPRO=/opt/devkitpro -v "$PWD:/workspace" -w /workspace nx-cast-build bash -lc 'make clean && make -j$(nproc)'
+## 控制
+
+视频播放时：
+
+- `A`：播放 / 暂停
+- `+`：退出程序
+- `-`：显示控制栏
+- `L` 或 `Left`：后退 10 秒
+- `R` 或 `Right`：前进 10 秒
+- `Up` / `Down`：调高 / 调低音量
+- 左摇杆或右摇杆横向：seek
+- 左摇杆或右摇杆纵向：音量
+- 触摸屏点击：显示控制栏
+- 控制栏显示时点击中间按钮：播放 / 暂停
+- 触摸拖拽进度条：预览目标时间，松手后跳转
+
+## 架构
+
+```text
+main
+  -> protocol/dlna
+       -> discovery
+       -> description
+       -> control
+       -> protocol_state
+  -> protocol/http
+  -> player
+       -> core
+       -> backend
+       -> render
+       -> ui
 ```
 
-一条命令使用 Docker 构建发布包：
+关键状态流：
+
+```text
+SetAVTransportURI
+  -> renderer_set_uri
+  -> libmpv loadfile
+  -> libmpv properties/events
+  -> PlayerSnapshot / PlayerEvent
+  -> protocol_state
+  -> SOAP query / GENA notify
+```
+
+协议命令向下发给播放器。真实运行时状态再从播放器向上同步，成为协议观察状态。
+
+## 构建
+
+### 推荐：Docker
+
+这是最省事的路径。它和 GitHub Actions 使用同一套媒体包，并且直接生成可发布的 SD 卡包。
 
 ```bash
 ./scripts/docker_build_release.sh
 ```
 
-这个脚本使用和 GitHub Actions 一样的 Dockerfile 与媒体包版本，最终生成：
+输出：
 
-- `dist/NX-Cast.nro`
-- `dist/NX-Cast-sdmc.zip`
+```text
+dist/NX-Cast.nro
+dist/NX-Cast-sdmc.zip
+```
+
+Docker 构建会安装当前推荐的 `wiliwili` 媒体包：
+
+- `libuam`
+- `switch-ffmpeg`
+- `switch-libmpv_deko3d`
+
+### 本地 devkitPro 构建
+
+需要：
+
+- `devkitPro`
+- `devkitA64`
+- `libnx`
+- `switch-libmpv_deko3d`
+- `switch-ffmpeg`
+- `libuam`
+
+安装当前推荐的预编译媒体包：
+
+```bash
+base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
+sudo dkp-pacman -U \
+  "$base_url/libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst" \
+  "$base_url/switch-ffmpeg-7.1-1-any.pkg.tar.zst" \
+  "$base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst"
+```
+
+构建：
+
+```bash
+source /opt/devkitpro/switchvars.sh
+make NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
+NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
+```
+
+严格参数用于防止误生成没有链接 `libmpv/deko3d` 的小体积 mock/fallback `NRO`。
 
 ## CI/CD
 
-GitHub Actions 使用和本地一致的 Docker 构建路径。
-
-- 任意分支执行 `git push` 后，会自动构建并更新名为 `NX-Cast Continuous` 的滚动预发布版本。
-- 滚动预发布固定使用 `continuous` tag，所以每次 push 会替换上一次开发包，不会制造一堆正式版本号。
-- 推送 `v0.1.0` 这种版本 tag 时，才会通过独立 release workflow 创建正式 GitHub Release。
+GitHub Actions 使用和本地 Docker 构建一致的 Dockerfile 和媒体包版本。
 
 开发包：
 
@@ -228,14 +161,61 @@ GitHub Actions 使用和本地一致的 Docker 构建路径。
 git push
 ```
 
-正式版本：
+任意分支 push 后会构建项目，并更新滚动预发布：
+
+- Release 名称：`NX-Cast Continuous`
+- Tag：`continuous`
+- Assets：`NX-Cast.nro`、`NX-Cast-sdmc.zip`
+
+正式发布：
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-## 当前文档说明
+正式 release workflow 会强制要求 `libmpv/deko3d`，并拒绝明显异常的小体积 `NRO`。
 
-仓库文档按当前实现维护，不再保留已经删除的旧设计表述。  
-如果文档和代码冲突，以 `source/` 当前实现为准，并应继续更新文档而不是保留过时描述。
+## 目录
+
+```text
+assets/
+  dlna/        复制到 SD 卡的 DLNA 运行时模板
+  icon/        NRO 图标源文件
+docs/          设计说明和实施规划
+scripts/       构建、打包、nxlink、冒烟测试
+source/
+  log/
+  player/
+    backend/
+    core/
+    render/
+    ui/
+  protocol/
+    dlna/
+    http/
+```
+
+以下目录是生成物，已经被忽略：
+
+```text
+build/
+dist/
+sdmc/
+artifacts/
+logs/
+```
+
+## 文档
+
+从 [docs/README.md](docs/README.md) 开始看。
+
+推荐阅读顺序：
+
+1. [docs/DMR实现细节.md](docs/DMR实现细节.md)
+2. [docs/Player层设计.md](docs/Player层设计.md)
+3. [docs/render设计.md](docs/render设计.md)
+4. [docs/SCPD模块说明.md](docs/SCPD模块说明.md)
+5. [docs/IPTV与GUI实施规划.md](docs/IPTV与GUI实施规划.md)
+
+如果文档和源码冲突，以当前 `source/` 为准。
