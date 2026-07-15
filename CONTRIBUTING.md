@@ -49,10 +49,10 @@ Main areas:
 
 Read these first before larger changes:
 
-1. [README_CN.md](README_CN.md)
-2. [docs/Player层设计.md](docs/Player层设计.md)
-3. [docs/DMR实现细节.md](docs/DMR实现细节.md)
-4. [docs/SCPD模块说明.md](docs/SCPD模块说明.md)
+1. [README.md](README.md)
+2. [docs/player-layer.md](docs/player-layer.md)
+3. [docs/dmr-implementation.md](docs/dmr-implementation.md)
+4. [docs/scpd-module.md](docs/scpd-module.md)
 
 ## Pull Requests
 

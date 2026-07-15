@@ -1,50 +1,49 @@
 # NX-Cast Documentation
 
-This directory keeps implementation notes, design boundaries, and future plans for `NX-Cast`.
+This directory keeps design boundaries, implementation notes, toolchain guidance, and future product plans for `NX-Cast`.
 
-Most documents are written in Chinese because the project design discussion is currently Chinese-first.
+All Markdown documents in this directory use English file names and English content. The UPnP PDF files are protocol references and are intentionally kept as-is.
 
 ## Recommended Reading
 
-1. [DMR实现细节.md](DMR实现细节.md)
-2. [Player层设计.md](Player层设计.md)
-3. [render设计.md](render设计.md)
-4. [SCPD模块说明.md](SCPD模块说明.md)
-5. [SOAP模块说明.md](SOAP模块说明.md)
-6. [多线程设计.md](多线程设计.md)
-7. [源兼容性.md](源兼容性.md)
+1. [dmr-implementation.md](dmr-implementation.md)
+2. [player-layer.md](player-layer.md)
+3. [render-design.md](render-design.md)
+4. [scpd-module.md](scpd-module.md)
+5. [soap-module.md](soap-module.md)
+6. [threading-design.md](threading-design.md)
+7. [source-compatibility.md](source-compatibility.md)
 
 ## Build And Media Toolchain
 
-- [libmpv依赖安装.md](libmpv依赖安装.md)
-- [FFmpeg与mpv自编工具链教程.md](FFmpeg与mpv自编工具链教程.md)
+- [libmpv-dependencies.md](libmpv-dependencies.md)
+- [ffmpeg-mpv-toolchain.md](ffmpeg-mpv-toolchain.md)
 
 Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra` support.
 
 ## Protocol
 
-- [DMR实现细节.md](DMR实现细节.md)
-- [SCPD模块说明.md](SCPD模块说明.md)
-- [SOAP模块说明.md](SOAP模块说明.md)
-- [ConnectionManager-SinkProtocolInfo设计.md](ConnectionManager-SinkProtocolInfo设计.md)
+- [dmr-implementation.md](dmr-implementation.md)
+- [scpd-module.md](scpd-module.md)
+- [soap-module.md](soap-module.md)
+- [connection-manager-sink-protocol-info.md](connection-manager-sink-protocol-info.md)
 
-Use these when working on DLNA discovery, description, SOAP actions, GENA, or protocol state sync.
+Use these when working on DLNA discovery, device/service description, SOAP actions, GENA, or protocol state sync.
 
 ## Player And UI
 
-- [Player层设计.md](Player层设计.md)
-- [Player入口资源选择设计.md](Player入口资源选择设计.md)
-- [render设计.md](render设计.md)
-- [多线程设计.md](多线程设计.md)
+- [player-layer.md](player-layer.md)
+- [player-open-path.md](player-open-path.md)
+- [render-design.md](render-design.md)
+- [threading-design.md](threading-design.md)
 
 Use these when working on playback control, `libmpv` backend integration, renderer lifecycle, or the player overlay.
 
 ## Product Planning
 
-- [IPTV与GUI实施规划.md](IPTV与GUI实施规划.md)
-- [桌面快捷方式方案.md](桌面快捷方式方案.md)
-- [源兼容性.md](源兼容性.md)
-- [../ROADMAP.md](../ROADMAP.md)
+- [iptv-gui-plan.md](iptv-gui-plan.md)
+- [desktop-shortcut.md](desktop-shortcut.md)
+- [source-compatibility.md](source-compatibility.md)
 
 Use these when planning future GUI, IPTV, source compatibility, or Switch desktop integration work.
 

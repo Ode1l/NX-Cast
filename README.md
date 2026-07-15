@@ -1,5 +1,9 @@
 # NX-Cast
 
+<p align="center">
+  <img src="assets/icon/switch-screencast-logo.svg" alt="NX-Cast logo" width="180">
+</p>
+
 `NX-Cast` is a Nintendo Switch homebrew media receiver for Atmosphere.
 
 The current product target is a solid generic `DLNA DMR` receiver: phones, desktop players, and TV apps send a media URL through DLNA, and the Switch plays it through `libmpv`.
@@ -212,10 +216,10 @@ Start with [docs/README.md](docs/README.md).
 
 Recommended order:
 
-1. [docs/DMR实现细节.md](docs/DMR实现细节.md)
-2. [docs/Player层设计.md](docs/Player层设计.md)
-3. [docs/render设计.md](docs/render设计.md)
-4. [docs/SCPD模块说明.md](docs/SCPD模块说明.md)
-5. [docs/IPTV与GUI实施规划.md](docs/IPTV与GUI实施规划.md)
+1. [docs/dmr-implementation.md](docs/dmr-implementation.md)
+2. [docs/player-layer.md](docs/player-layer.md)
+3. [docs/render-design.md](docs/render-design.md)
+4. [docs/scpd-module.md](docs/scpd-module.md)
+5. [docs/iptv-gui-plan.md](docs/iptv-gui-plan.md)
 
 If documentation and source disagree, the current `source/` tree is authoritative.

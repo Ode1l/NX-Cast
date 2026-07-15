@@ -1,8 +1,8 @@
-# DLNA
+# Development Notes
 
-## 重构player
+Short-term notes that have not yet become full issues:
 
-1. 不再猜测User-Agent 完全删掉，交给ffmpeg自动处理
-2. 编译硬解码+3dffmpeg/mpv
-
-//先setcontext 再set url
+1. Keep source-specific user-agent branches out of the player.
+2. Continue validating hardware decode and `deko3d` through the strict media toolchain build.
+3. Prefer initializing the render context before loading media into `libmpv`.
+4. Keep UI input logging available behind trace flags, not enabled by default.

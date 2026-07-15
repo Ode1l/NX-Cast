@@ -212,10 +212,10 @@ logs/
 
 推荐阅读顺序：
 
-1. [docs/DMR实现细节.md](docs/DMR实现细节.md)
-2. [docs/Player层设计.md](docs/Player层设计.md)
-3. [docs/render设计.md](docs/render设计.md)
-4. [docs/SCPD模块说明.md](docs/SCPD模块说明.md)
-5. [docs/IPTV与GUI实施规划.md](docs/IPTV与GUI实施规划.md)
+1. [docs/dmr-implementation.md](docs/dmr-implementation.md)
+2. [docs/player-layer.md](docs/player-layer.md)
+3. [docs/render-design.md](docs/render-design.md)
+4. [docs/scpd-module.md](docs/scpd-module.md)
+5. [docs/iptv-gui-plan.md](docs/iptv-gui-plan.md)
 
 如果文档和源码冲突，以当前 `source/` 为准。

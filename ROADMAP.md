@@ -111,4 +111,4 @@ Application GUI and IPTV
 - user-provided local/remote M3U sources
 - channel groups, favorites, history and live channel switching
 - XMLTV EPG and logo cache as later work
-- status: planned; see `docs/IPTV与GUI实施规划.md`
+- status: planned; see `docs/iptv-gui-plan.md`
