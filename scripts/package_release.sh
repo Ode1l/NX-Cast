@@ -11,6 +11,14 @@ if [ ! -f "${ROOT_DIR}/NX-Cast.nro" ]; then
     exit 1
 fi
 
+if [ "${NXCAST_MIN_NRO_SIZE:-0}" -gt 0 ]; then
+    actual_size=$(wc -c < "${ROOT_DIR}/NX-Cast.nro" | tr -d ' ')
+    if [ "${actual_size}" -lt "${NXCAST_MIN_NRO_SIZE}" ]; then
+        echo "NX-Cast.nro is too small (${actual_size} bytes). Expected at least ${NXCAST_MIN_NRO_SIZE} bytes." >&2
+        exit 1
+    fi
+fi
+
 if [ ! -d "${ROOT_DIR}/assets/dlna" ]; then
     echo "assets/dlna not found. Cannot package runtime DLNA assets." >&2
     exit 1
