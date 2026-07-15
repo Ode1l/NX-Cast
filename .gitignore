@@ -8,5 +8,6 @@ NX-Cast.lst
 .Ds_Store
 source/.DS_Store
 logs
+dist
 
 # .vscode VSCode settings folder. you can use my settings.

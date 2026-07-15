@@ -180,6 +180,21 @@ make
 输出：
 
 - `NX-Cast.nro`
+- 执行 `./scripts/package_release.sh` 后生成 `dist/NX-Cast-sdmc.zip`
+
+发布包：
+
+```bash
+make
+./scripts/package_release.sh
+```
+
+`dist/NX-Cast-sdmc.zip` 内部是可以直接放到 SD 卡根目录的结构：
+
+```text
+switch/NX-Cast/NX-Cast.nro
+switch/NX-Cast/dlna/
+```
 
 Docker 构建：
 

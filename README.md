@@ -180,6 +180,21 @@ make
 Output:
 
 - `NX-Cast.nro`
+- `dist/NX-Cast-sdmc.zip` after `./scripts/package_release.sh`
+
+Release package:
+
+```bash
+make
+./scripts/package_release.sh
+```
+
+`dist/NX-Cast-sdmc.zip` contains this SD card layout:
+
+```text
+switch/NX-Cast/NX-Cast.nro
+switch/NX-Cast/dlna/
+```
 
 Docker build:
 

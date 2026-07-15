@@ -39,10 +39,14 @@ jobs:
             nx-cast-build:ci \
             bash -lc 'make clean && make -j$(nproc)'
 
+      - name: Package SD card layout
+        run: ./scripts/package_release.sh
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nx-cast-${{ github.sha }}
           path: |
-            NX-Cast.nro
+            dist/NX-Cast.nro
+            dist/NX-Cast-sdmc.zip
           if-no-files-found: error
