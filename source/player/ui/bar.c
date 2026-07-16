@@ -41,6 +41,79 @@ static int clamp_int(int value, int min_value, int max_value)
     return value;
 }
 
+static bool has_prefix(const char *text, const char *prefix)
+{
+    if (!text || !prefix)
+        return false;
+    while (*prefix)
+    {
+        if (*text++ != *prefix++)
+            return false;
+    }
+    return true;
+}
+
+static int parse_seek_delta_ms(const char *headline)
+{
+    int sign = 1;
+    int seconds = 0;
+
+    if (!has_prefix(headline, "SEEK "))
+        return 0;
+
+    headline += 5;
+    if (*headline == '-')
+    {
+        sign = -1;
+        ++headline;
+    }
+    else if (*headline == '+')
+    {
+        ++headline;
+    }
+    else
+    {
+        return 0;
+    }
+
+    while (*headline >= '0' && *headline <= '9')
+    {
+        seconds = seconds * 10 + (*headline - '0');
+        ++headline;
+    }
+
+    return sign * seconds * 1000;
+}
+
+static PlayerUiOverlayFocus focus_from_headline(const char *headline, PlayerState state)
+{
+    if (has_prefix(headline, "SEEK"))
+        return PLAYER_UI_OVERLAY_FOCUS_SEEK;
+    if (has_prefix(headline, "VOLUME"))
+        return PLAYER_UI_OVERLAY_FOCUS_VOLUME;
+    if (has_prefix(headline, "PAUSED"))
+        return PLAYER_UI_OVERLAY_FOCUS_PLAY;
+    if (has_prefix(headline, "PLAYING"))
+        return PLAYER_UI_OVERLAY_FOCUS_PAUSE;
+
+    switch (state)
+    {
+    case PLAYER_STATE_PAUSED:
+        return PLAYER_UI_OVERLAY_FOCUS_PLAY;
+    case PLAYER_STATE_PLAYING:
+        return PLAYER_UI_OVERLAY_FOCUS_PAUSE;
+    case PLAYER_STATE_LOADING:
+    case PLAYER_STATE_BUFFERING:
+    case PLAYER_STATE_SEEKING:
+    case PLAYER_STATE_ERROR:
+        return PLAYER_UI_OVERLAY_FOCUS_STATUS;
+    case PLAYER_STATE_STOPPED:
+    case PLAYER_STATE_IDLE:
+    default:
+        return PLAYER_UI_OVERLAY_FOCUS_NONE;
+    }
+}
+
 void player_ui_bar_build(const PlayerSnapshot *snapshot, const char *headline, PlayerUiOverlayBar *out)
 {
     char position_text[16];
@@ -74,11 +147,13 @@ void player_ui_bar_build(const PlayerSnapshot *snapshot, const char *headline, P
 
     if (!headline)
         snprintf(out->title, sizeof(out->title), "%s", label);
+    out->focus = focus_from_headline(out->title, snapshot->state);
+    out->seek_delta_ms = parse_seek_delta_ms(out->title);
     out->subtitle[0] = '\0';
-    snprintf(out->left, sizeof(out->left), snapshot->state == PLAYER_STATE_PAUSED ? "A PLAY" : "A PAUSE");
+    snprintf(out->left, sizeof(out->left), out->focus == PLAYER_UI_OVERLAY_FOCUS_PLAY ? "A PLAY" : "A PAUSE");
     snprintf(out->center, sizeof(out->center), "%s / %s", position_text, duration_text);
     snprintf(out->right, sizeof(out->right), snapshot->mute ? "MUTE" : "VOL %d%%", out->volume);
-    snprintf(out->hint, sizeof(out->hint), "L/R 10S   UP/DOWN VOL");
+    snprintf(out->hint, sizeof(out->hint), "L/R SEEK   TOUCH DRAG   UP/DOWN VOL");
 }
 
 int player_ui_bar_show(const PlayerSnapshot *snapshot, const char *headline, int duration_ms)

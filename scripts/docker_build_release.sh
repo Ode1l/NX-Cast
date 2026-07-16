@@ -28,4 +28,4 @@ docker run --rm \
     -v "${ROOT_DIR}:/workspace" \
     -w /workspace \
     "${IMAGE}" \
-    bash -lc 'set -euo pipefail; jobs="${JOBS:-$(nproc)}"; make clean && make NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j"${jobs}" && ./scripts/package_release.sh'
+    bash -lc 'set -euo pipefail; jobs="${JOBS:-$(nproc)}"; make clean && make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j"${jobs}" && ./scripts/package_release.sh'

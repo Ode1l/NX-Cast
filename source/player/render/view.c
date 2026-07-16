@@ -167,6 +167,15 @@ bool player_view_prepare_video(void)
     return ok;
 }
 
+void player_view_set_home_state(const PlayerHomeViewState *state)
+{
+    if (!g_view.status.initialized || !state)
+        return;
+
+    g_view.home_state = *state;
+    g_view.home_state_valid = true;
+}
+
 void player_view_deinit(void)
 {
     bool restore_console = false;
@@ -260,6 +269,14 @@ void player_view_begin_frame(void)
     ++g_view.status.frame_counter;
     (void)frontend_connect(&g_view);
 
+    if (g_view.status.desired_view == PLAYER_VIEW_HOME &&
+        !g_view.status.foreground_video_active &&
+        frontend_open_home(&g_view))
+    {
+        log_info("[player-view] home renderer active frame=%llu\n",
+                 (unsigned long long)g_view.status.frame_counter);
+    }
+
     if (g_view.status.active_view == g_view.status.desired_view)
         return;
 
@@ -275,7 +292,8 @@ void player_view_begin_frame(void)
     }
     else
     {
-        frontend_close(&g_view, true);
+        if (!frontend_open_home(&g_view))
+            frontend_close(&g_view, true);
     }
 
     log_info("[player-view] active_view=%s frame=%llu\n",
@@ -300,6 +318,11 @@ bool player_view_get_status(PlayerViewStatus *out)
         return false;
 
     return player_view_status_copy(out, &g_view.status);
+}
+
+bool player_view_has_foreground_renderer(void)
+{
+    return g_view.status.initialized && g_view.status.foreground_video_active;
 }
 
 bool player_view_render_frame(void)

@@ -87,7 +87,7 @@ acquire frame
   -> present frame
 ```
 
-If future GUI work adds ImGui or another UI layer, that layer should be composed after player video and before present. Only one system should acquire and present per frame.
+The optional `NXCAST_USE_IMGUI_UI=1` path renders the Dear ImGui + deko3d player overlay after the mpv video frame and before present. If ImGui initialization fails, rendering falls back to the legacy C overlay. Only one system should acquire and present per frame.
 
 ## Backend Attachment
 

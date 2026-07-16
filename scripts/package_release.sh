@@ -25,10 +25,13 @@ if [ ! -d "${ROOT_DIR}/assets/dlna" ]; then
 fi
 
 rm -rf "${SDMC_DIR}" "${PACKAGE}"
-mkdir -p "${SDMC_DIR}/switch/NX-Cast/dlna"
+mkdir -p "${SDMC_DIR}/switch/NX-Cast/dlna" "${SDMC_DIR}/switch/NX-Cast/fonts"
 
 cp "${ROOT_DIR}/NX-Cast.nro" "${SDMC_DIR}/switch/NX-Cast/NX-Cast.nro"
 cp "${ROOT_DIR}/assets/dlna/"* "${SDMC_DIR}/switch/NX-Cast/dlna/"
+if [ -d "${ROOT_DIR}/assets/fonts" ]; then
+    cp "${ROOT_DIR}/assets/fonts/"* "${SDMC_DIR}/switch/NX-Cast/fonts/"
+fi
 
 mkdir -p "${DIST_DIR}"
 cp "${ROOT_DIR}/NX-Cast.nro" "${DIST_DIR}/NX-Cast.nro"

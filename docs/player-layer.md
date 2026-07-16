@@ -195,4 +195,4 @@ Current player work should focus on:
 4. Testing against real controllers and real URLs.
 5. Keeping the OpenGL fallback and backend boundary clear.
 
-Use `make trace` when diagnosing player/UI problems. It rebuilds with `TRACE_MEDIA=1`, `TRACE_INPUT=1`, and strict `libmpv/deko3d` requirements, while normal builds keep the runtime log level suitable for release-style testing.
+Use `TRACE_MEDIA=1 TRACE_INPUT=1` when diagnosing player/UI problems, while normal builds keep the runtime log level suitable for release-style testing.

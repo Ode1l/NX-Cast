@@ -1050,6 +1050,8 @@ static bool libmpv_init(void)
 #endif
     libmpv_set_option_string_checked("gpu-hwdec-interop", "auto");
     libmpv_set_option_string_checked("vo", "libmpv");
+    libmpv_set_option_string_checked("audio-channels", "stereo");
+    libmpv_set_option_string_checked("audio-client-name", "NX-Cast");
     libmpv_set_option_string_checked("ao", "hos");
 
     rc = mpv_initialize(g_mpv);

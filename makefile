@@ -77,6 +77,7 @@ TRACE_MEDIA ?= 0
 TRACE_INPUT ?= 0
 NXCAST_REQUIRE_LIBMPV ?= 0
 NXCAST_REQUIRE_DEKO3D ?= 0
+NXCAST_USE_IMGUI_UI ?= 0
 
 ifeq ($(TRACE_MEDIA),1)
 CFLAGS	+=	-DNXCAST_MEDIA_TRACE_VERBOSE=1
@@ -85,8 +86,6 @@ endif
 ifeq ($(TRACE_INPUT),1)
 CFLAGS	+=	-DNXCAST_INPUT_TRACE_VERBOSE=1
 endif
-
-CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
@@ -156,6 +155,17 @@ CFLAGS	+=	-DHAVE_SWITCH_EGL_GLES
 LIBS	+=	$(EGL_GLES_LIBS)
 endif
 endif
+
+ifeq ($(NXCAST_USE_IMGUI_UI),1)
+ifeq ($(DEKO3D_RENDER_ACTIVE),)
+$(error NXCAST_USE_IMGUI_UI=1 requires active deko3d libmpv render support)
+endif
+SOURCES += source/player/render/imgui third_party/imgui
+INCLUDES += third_party/imgui
+CFLAGS += -DNXCAST_USE_IMGUI_UI=1
+endif
+
+CXXFLAGS	:= $(CFLAGS) -std=gnu++17 -fno-rtti -fno-exceptions
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -251,19 +261,17 @@ ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
 endif
 
-.PHONY: $(BUILD) clean all trace
+.PHONY: $(BUILD) clean all
 
 #---------------------------------------------------------------------------------
 all: sdmc_init $(BUILD)
-
-trace:
-	@$(MAKE) clean
-	@$(MAKE) TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 all
 
 sdmc_init:
 	@echo "Preparing SDMC directory structure..."
 	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/dlna
 	@if [ -d "$(CURDIR)/assets/dlna" ]; then cp -v $(CURDIR)/assets/dlna/* $(CURDIR)/sdmc/switch/NX-Cast/dlna/; else echo "Warning: assets/dlna not found"; fi
+	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/fonts
+	@if [ -d "$(CURDIR)/assets/fonts" ]; then cp -v $(CURDIR)/assets/fonts/* $(CURDIR)/sdmc/switch/NX-Cast/fonts/; else echo "Warning: assets/fonts not found"; fi
 	@ls -la $(CURDIR)/sdmc/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
 
 $(BUILD):

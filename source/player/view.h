@@ -5,6 +5,8 @@
 
 #include "types.h"
 
+#define PLAYER_HOME_ERROR_MAX 512
+
 typedef enum
 {
     PLAYER_VIEW_HOME = 0,
@@ -35,16 +37,28 @@ typedef struct
     char *media_uri;
 } PlayerViewStatus;
 
+typedef struct
+{
+    bool storage_ready;
+    bool network_ready;
+    bool dlna_running;
+    bool video_ready;
+    bool has_error;
+    char error_line[PLAYER_HOME_ERROR_MAX];
+} PlayerHomeViewState;
+
 void player_view_status_clear(PlayerViewStatus *status);
 bool player_view_status_copy(PlayerViewStatus *out, const PlayerViewStatus *status);
 bool player_view_init(void);
 void player_view_deinit(void);
 bool player_view_prepare_video(void);
+void player_view_set_home_state(const PlayerHomeViewState *state);
 void player_view_sync(const PlayerSnapshot *snapshot);
 void player_view_begin_frame(void);
 PlayerViewMode player_view_get_mode(void);
 PlayerRenderOwner player_view_get_owner(void);
 bool player_view_get_status(PlayerViewStatus *out);
+bool player_view_has_foreground_renderer(void);
 const char *player_view_mode_name(PlayerViewMode mode);
 const char *player_render_owner_name(PlayerRenderOwner owner);
 bool player_view_render_frame(void);
