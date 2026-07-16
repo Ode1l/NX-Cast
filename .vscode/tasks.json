@@ -19,7 +19,7 @@
     {
       "label": "NX-Cast: Build",
       "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j${input:buildJobs}",
+      "command": "source /opt/devkitpro/switchvars.sh && make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j4",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -40,7 +40,7 @@
     {
       "label": "NX-Cast: Build (Trace Media+Input)",
       "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j${input:buildJobs}",
+      "command": "source /opt/devkitpro/switchvars.sh && make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j4",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -152,14 +152,6 @@
         "NX-Cast: Package Release"
       ],
       "problemMatcher": []
-    }
-  ],
-  "inputs": [
-    {
-      "id": "buildJobs",
-      "type": "promptString",
-      "description": "Parallel make jobs",
-      "default": "8"
     }
   ]
 }

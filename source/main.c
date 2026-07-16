@@ -40,6 +40,7 @@ typedef struct
 #define ANSI_ACCENT "\x1b[36;1m"
 #define ANSI_ERROR "\x1b[31;1m"
 #define ANSI_TEXT  "\x1b[37;1m"
+#define ANSI_DIM   "\x1b[2m"
 
 #define TOUCH_TAP_MAX_DURATION_MS 650ULL
 #define TOUCH_TAP_MAX_MOVE_PX 24
@@ -310,36 +311,80 @@ static const char *ready_label(bool ready)
     return ready ? "OK" : "NOT READY";
 }
 
-static void render_home_view(bool storage_ready, bool network_ready, bool dlna_running, bool video_ready)
+static void build_home_view_state(PlayerHomeViewState *out,
+                                  bool storage_ready,
+                                  bool network_ready,
+                                  bool dlna_running,
+                                  bool video_ready)
 {
-    char error_line[512];
-    bool has_error = get_latest_error_line(error_line, sizeof(error_line));
+    if (!out)
+        return;
+
+    memset(out, 0, sizeof(*out));
+    out->storage_ready = storage_ready;
+    out->network_ready = network_ready;
+    out->dlna_running = dlna_running;
+    out->video_ready = video_ready;
+    out->has_error = get_latest_error_line(out->error_line, sizeof(out->error_line));
+}
+
+static void render_home_view(const PlayerHomeViewState *state)
+{
+    if (!state)
+        return;
 
     consoleClear();
-    printf(ANSI_ACCENT "NX-Cast" ANSI_RESET "  (+ Exit)\n");
-    printf("DLNA receiver for Nintendo Switch\n\n");
+    printf("\n");
+    printf(ANSI_ACCENT "  NX-CAST / HOME" ANSI_RESET "                                  " ANSI_TEXT "DLNA RECEIVER" ANSI_RESET "\n");
+    printf(ANSI_ACCENT "  =======================================================================" ANSI_RESET "\n\n");
 
-    printf("How to cast\n");
-    printf("1. Keep your Switch and phone on the same Wi-Fi.\n");
-    printf("2. Open a DLNA capable app and choose \"NX-Cast\".\n");
-    printf("3. Pick a video. Playback opens automatically.\n\n");
+    printf(ANSI_TEXT "       CAST MEDIA TO YOUR SWITCH" ANSI_RESET "\n");
+    printf("       Keep your phone and Switch on the same Wi-Fi, then select "
+           ANSI_ACCENT "NX-Cast" ANSI_RESET ".\n\n");
 
-    printf("Player controls\n");
-    printf("A: Play/Pause    L/R: Seek -/+10s    Up/Down: Volume\n");
-    printf("Touch: Show controls, drag timeline to seek\n");
-    printf("+: Exit\n\n");
+    printf("  +-------------------+        +---------------+        +-------------------+\n");
+    printf("  |  PHONE / DESKTOP  |        |     DLNA      |        |  NX-CAST SWITCH   |\n");
+    printf("  |                   |        |               |        |                   |\n");
+    printf("  |  Open video app   |  --->  |  Cast / Push  |  --->  |  Receive stream   |\n");
+    printf("  |  iQiyi CCTV IPTV  |        |  one URL once |        |  Play on Switch   |\n");
+    printf("  +-------------------+        +---------------+        +-------------------+\n\n");
 
-    printf("Status\n");
-    printf("Storage: %s    Network: %s    DLNA: %s    Player: %s\n\n",
-           ready_label(storage_ready),
-           ready_label(network_ready),
-           ready_label(dlna_running),
-           ready_label(video_ready));
+    printf(ANSI_ACCENT "  [ QUICK START ]" ANSI_RESET "\n");
+    printf("  1. Open a video app or IPTV page on your phone / desktop.\n");
+    printf("  2. Tap Cast, DLNA, or media renderer, then choose " ANSI_ACCENT "NX-Cast" ANSI_RESET ".\n");
+    printf("  3. Wait for the loading spinner; playback controls appear on touch.\n\n");
 
-    if (has_error)
-        printf(ANSI_ERROR "Last error: %s" ANSI_RESET "\n", error_line);
+    printf(ANSI_ACCENT "  [ PLAYER CONTROLS ]" ANSI_RESET "\n");
+    printf("  A Play/Pause     L/R Seek 10s     Up/Down Volume     + Exit\n");
+    printf("  Touch: show/hide UI. Drag timeline: preview, release to seek.\n\n");
+
+    printf(ANSI_ACCENT "  [ STATUS ]" ANSI_RESET " ");
+    printf("Storage:%s%s%s  ",
+           state->storage_ready ? ANSI_ACCENT : ANSI_ERROR,
+           ready_label(state->storage_ready),
+           ANSI_RESET);
+    printf("Network:%s%s%s  ",
+           state->network_ready ? ANSI_ACCENT : ANSI_ERROR,
+           ready_label(state->network_ready),
+           ANSI_RESET);
+    printf("DLNA:%s%s%s  ",
+           state->dlna_running ? ANSI_ACCENT : ANSI_ERROR,
+           ready_label(state->dlna_running),
+           ANSI_RESET);
+    printf("Player:%s%s%s\n\n",
+           state->video_ready ? ANSI_ACCENT : ANSI_ERROR,
+           ready_label(state->video_ready),
+           ANSI_RESET);
+
+    printf(ANSI_ACCENT "  [ DIAGNOSTICS ]" ANSI_RESET "\n");
+    if (state->has_error)
+    {
+        printf("  Latest error: " ANSI_ERROR "%s" ANSI_RESET "\n", state->error_line);
+    }
     else
-        printf(ANSI_TEXT "No error recorded." ANSI_RESET "\n");
+    {
+        printf("  " ANSI_DIM "No error recorded. Full log is available through nxlink / in-memory history." ANSI_RESET "\n");
+    }
 }
 
 static bool initialize_network(void)
@@ -446,15 +491,25 @@ int main(int argc, char* argv[])
     enable_nxlink_stdio(networkReady);
     bool dlnaRunning = false;
     bool videoPlatformReady = player_view_init();
+    bool rendererPrestarted = false;
+    bool videoRenderReady = false;
 
     if (networkReady)
     {
-        dlnaRunning = dlna_control_start();
-        if (dlnaRunning && videoPlatformReady)
+        if (videoPlatformReady)
         {
-            bool prepared = player_view_prepare_video();
-            log_info("[ui] video render prepare=%d\n", prepared ? 1 : 0);
+            rendererPrestarted = player_init();
+            if (rendererPrestarted)
+            {
+                videoRenderReady = player_view_prepare_video();
+                log_info("[ui] video render prepare=%d before_dlna=1\n", videoRenderReady ? 1 : 0);
+            }
+            else
+            {
+                log_warn("[ui] renderer init failed before DLNA start; SOAP actions may fail.\n");
+            }
         }
+        dlnaRunning = dlna_control_start();
         // mdns_discover_airplay();
     }
 
@@ -484,13 +539,16 @@ int main(int argc, char* argv[])
     while (appletMainLoop())
     {
         PlayerSnapshot snapshot = {0};
+        PlayerHomeViewState home_state;
         bool have_snapshot = false;
 
         padUpdate(&pad);
+        build_home_view_state(&home_state, storageReady, networkReady, dlnaRunning, videoRenderReady);
 
         PlayerViewMode active_view = PLAYER_VIEW_HOME;
         if (videoPlatformReady)
         {
+            player_view_set_home_state(&home_state);
             if (player_get_snapshot(&snapshot))
             {
                 have_snapshot = true;
@@ -644,8 +702,12 @@ int main(int argc, char* argv[])
 
         if (active_view == PLAYER_VIEW_HOME)
         {
-            render_home_view(storageReady, networkReady, dlnaRunning, videoPlatformReady);
-            consoleUpdate(NULL);
+            bool rendered = videoPlatformReady && player_view_render_frame();
+            if (!rendered && (!videoPlatformReady || !player_view_has_foreground_renderer()))
+            {
+                render_home_view(&home_state);
+                consoleUpdate(NULL);
+            }
         }
         else
         {
@@ -869,14 +931,14 @@ int main(int argc, char* argv[])
                          exit_reason_name(exit_reason),
                          networkReady ? 1 : 0,
                          dlnaRunning ? 1 : 0,
-                         videoPlatformReady ? 1 : 0,
+                         videoRenderReady ? 1 : 0,
                          g_nxlinkSock,
                          storageReady ? 1 : 0);
     log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
              exit_reason_name(exit_reason),
              networkReady ? 1 : 0,
              dlnaRunning ? 1 : 0,
-             videoPlatformReady ? 1 : 0,
+             videoRenderReady ? 1 : 0,
              g_nxlinkSock,
              storageReady ? 1 : 0);
 
@@ -911,6 +973,15 @@ int main(int argc, char* argv[])
     else
     {
         log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
+    }
+
+    if (rendererPrestarted && !dlnaRunning)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_deinit begin reason=prestarted-without-dlna\n");
+        log_info("[shutdown] step=player_deinit begin reason=prestarted-without-dlna\n");
+        player_deinit();
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_deinit done\n");
+        log_info("[shutdown] step=player_deinit done\n");
     }
 
     shutdown_stdio_trace("[INFO] [shutdown] step=log_runtime_shutdown begin\n");

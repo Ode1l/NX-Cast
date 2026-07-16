@@ -14,6 +14,13 @@ static uint64_t monotonic_time_ms(void)
     return armTicksToNs(armGetSystemTick()) / 1000000ULL;
 }
 
+static bool is_auto_overlay_state(PlayerState state)
+{
+    return state == PLAYER_STATE_LOADING ||
+           state == PLAYER_STATE_BUFFERING ||
+           state == PLAYER_STATE_SEEKING;
+}
+
 static int show_video_state_osd(const PlayerSnapshot *snapshot, bool first_video_frame)
 {
     if (!snapshot || !snapshot->has_media)
@@ -62,8 +69,10 @@ void player_ui_clear(PlayerUiState *state)
     state->overlay_until_ms = 0;
     state->overlay_refresh_at_ms = 0;
     state->interaction_overlay_until_ms = 0;
+    state->auto_overlay_suppressed_until_ms = 0;
     state->seek_preview_until_ms = 0;
     state->seek_preview_ms = 0;
+    state->auto_overlay_suppressed_state = PLAYER_STATE_IDLE;
     state->seek_preview_active = false;
 }
 
@@ -76,6 +85,16 @@ void player_ui_hide_overlay(PlayerUiState *state)
     state->overlay_until_ms = 0;
     state->overlay_refresh_at_ms = 0;
     state->interaction_overlay_until_ms = 0;
+    if (is_auto_overlay_state(state->last_state))
+    {
+        state->auto_overlay_suppressed_state = state->last_state;
+        state->auto_overlay_suppressed_until_ms = monotonic_time_ms() + PLAYER_UI_OSD_LONG_MS;
+    }
+    else
+    {
+        state->auto_overlay_suppressed_state = PLAYER_STATE_IDLE;
+        state->auto_overlay_suppressed_until_ms = 0;
+    }
     state->seek_preview_until_ms = 0;
     state->seek_preview_ms = 0;
     state->seek_preview_active = false;
@@ -87,6 +106,7 @@ void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot)
     bool persistent_state;
     bool overlay_active;
     bool interaction_active;
+    bool auto_suppressed;
     bool refresh_due;
     uint64_t now_ms;
     int duration;
@@ -111,6 +131,17 @@ void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot)
                        snapshot->state == PLAYER_STATE_SEEKING ||
                        snapshot->state == PLAYER_STATE_PAUSED;
     interaction_active = now_ms < state->interaction_overlay_until_ms;
+    auto_suppressed = is_auto_overlay_state(snapshot->state) &&
+                      state->auto_overlay_suppressed_state == snapshot->state &&
+                      now_ms < state->auto_overlay_suppressed_until_ms;
+    if (!is_auto_overlay_state(snapshot->state) ||
+        state->auto_overlay_suppressed_state != snapshot->state ||
+        now_ms >= state->auto_overlay_suppressed_until_ms)
+    {
+        state->auto_overlay_suppressed_state = PLAYER_STATE_IDLE;
+        state->auto_overlay_suppressed_until_ms = 0;
+        auto_suppressed = false;
+    }
     overlay_active = snapshot->state == PLAYER_STATE_PAUSED ||
                      now_ms < state->overlay_until_ms ||
                      interaction_active;
@@ -122,6 +153,14 @@ void player_ui_sync(PlayerUiState *state, const PlayerSnapshot *snapshot)
             state->overlay_refresh_at_ms = now_ms + PLAYER_UI_OVERLAY_REFRESH_MS;
         state->video_active = true;
         state->last_state = snapshot->state;
+        return;
+    }
+
+    if (auto_suppressed)
+    {
+        state->video_active = true;
+        state->last_state = snapshot->state;
+        state->overlay_refresh_at_ms = 0;
         return;
     }
 
@@ -186,6 +225,8 @@ int player_ui_show_controls(PlayerUiState *state, const PlayerSnapshot *snapshot
         uint64_t now_ms = monotonic_time_ms();
         state->overlay_until_ms = now_ms + (uint64_t)duration;
         state->overlay_refresh_at_ms = now_ms + PLAYER_UI_OVERLAY_REFRESH_MS;
+        state->auto_overlay_suppressed_state = PLAYER_STATE_IDLE;
+        state->auto_overlay_suppressed_until_ms = 0;
     }
 
     return duration;

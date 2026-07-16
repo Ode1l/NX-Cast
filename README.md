@@ -152,17 +152,17 @@ Build:
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-make NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
+make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
 NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
-The strict flags prevent accidentally producing a tiny mock/fallback `NRO` without `libmpv/deko3d`.
+`NXCAST_USE_IMGUI_UI=1` enables the Dear ImGui + deko3d player overlay. Omit it to build the legacy C overlay path for fallback debugging. The strict flags prevent accidentally producing a tiny mock/fallback `NRO` without `libmpv/deko3d`.
 
 Trace build for playback/input debugging:
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
+make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
 ```
 
 The trace flags are optional build variables, not the default build mode. Use them for reproducing UI stutter, touch handling, SOAP/player state drift, or hard-to-read playback failures.

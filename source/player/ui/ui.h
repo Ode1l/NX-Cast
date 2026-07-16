@@ -12,8 +12,10 @@ typedef struct
     uint64_t overlay_until_ms;
     uint64_t overlay_refresh_at_ms;
     uint64_t interaction_overlay_until_ms;
+    uint64_t auto_overlay_suppressed_until_ms;
     uint64_t seek_preview_until_ms;
     int seek_preview_ms;
+    PlayerState auto_overlay_suppressed_state;
     bool seek_preview_active;
 } PlayerUiState;
 

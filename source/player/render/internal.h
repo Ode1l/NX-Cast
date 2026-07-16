@@ -33,6 +33,8 @@ typedef struct
     FrontendRenderPath render_path;
     uint64_t last_video_state_ms;
     uint64_t stop_hold_until_ms;
+    PlayerHomeViewState home_state;
+    bool home_state_valid;
 #ifdef HAVE_SWITCH_EGL_GLES
     EGLDisplay egl_display;
     EGLSurface egl_surface;
@@ -49,6 +51,7 @@ typedef struct
     DkImage dk3d_framebuffers[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
     DkSwapchain dk3d_swapchain;
     uint32_t dk3d_fence_timeout_count;
+    bool dk3d_overlay_dirty;
 #endif
 } ViewContext;
 
@@ -63,6 +66,7 @@ void frontend_overlay_render_dk3d(ViewContext *ctx, int slot);
 #endif
 
 bool frontend_connect(ViewContext *ctx);
+bool frontend_open_home(ViewContext *ctx);
 bool frontend_open(ViewContext *ctx);
 void frontend_close(ViewContext *ctx, bool restore_console);
 void frontend_shutdown(ViewContext *ctx);

@@ -32,6 +32,8 @@ static void update_overlay_timing(PlayerUiState *state, uint64_t now_ms, int dur
 
     state->overlay_until_ms = now_ms + (uint64_t)duration;
     state->overlay_refresh_at_ms = now_ms + PLAYER_UI_OVERLAY_REFRESH_MS;
+    state->auto_overlay_suppressed_state = PLAYER_STATE_IDLE;
+    state->auto_overlay_suppressed_until_ms = 0;
     if (interaction)
         state->interaction_overlay_until_ms = now_ms + PLAYER_UI_INTERACTION_HOLD_MS;
 }

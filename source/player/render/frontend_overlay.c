@@ -10,7 +10,7 @@
 #include "player/ui/layout.h"
 #include "player/ui/overlay.h"
 
-#define FRONTEND_OVERLAY_RECT_CAPACITY 128
+#define FRONTEND_OVERLAY_RECT_CAPACITY 192
 
 typedef struct
 {
@@ -49,6 +49,20 @@ static FrontendOverlayColor overlay_color(uint8_t r, uint8_t g, uint8_t b)
 static FrontendOverlayColor overlay_color_gray(uint8_t gray)
 {
     return overlay_color(gray, gray, gray);
+}
+
+static FrontendOverlayColor overlay_lerp_color(FrontendOverlayColor a, FrontendOverlayColor b, int step, int steps)
+{
+    FrontendOverlayColor out;
+
+    if (steps <= 1)
+        return b;
+
+    out.r = (uint8_t)((a.r * (steps - 1 - step) + b.r * step) / (steps - 1));
+    out.g = (uint8_t)((a.g * (steps - 1 - step) + b.g * step) / (steps - 1));
+    out.b = (uint8_t)((a.b * (steps - 1 - step) + b.b * step) / (steps - 1));
+    out.a = 0xFF;
+    return out;
 }
 
 static char frontend_font_normalize_char(char c)
@@ -305,17 +319,56 @@ static void frontend_overlay_push_pill(FrontendOverlayRect *rects,
     frontend_overlay_push_rect_color(rects, rect_capacity, count, x + radius, y + height - cap_h, width - radius * 2, cap_h, color);
 }
 
+static void frontend_overlay_push_vertical_gradient(FrontendOverlayRect *rects,
+                                                    size_t rect_capacity,
+                                                    size_t *count,
+                                                    int x,
+                                                    int y,
+                                                    int width,
+                                                    int height,
+                                                    FrontendOverlayColor top,
+                                                    FrontendOverlayColor bottom)
+{
+    const int bands = 8;
+    int i;
+
+    if (width <= 0 || height <= 0)
+        return;
+
+    for (i = 0; i < bands; ++i)
+    {
+        int y0 = y + (height * i) / bands;
+        int y1 = y + (height * (i + 1)) / bands;
+        frontend_overlay_push_rect_color(rects,
+                                         rect_capacity,
+                                         count,
+                                         x,
+                                         y0,
+                                         width,
+                                         y1 - y0,
+                                         overlay_lerp_color(top, bottom, i, bands));
+    }
+}
+
 static void frontend_overlay_push_center_card(FrontendOverlayRect *rects,
                                               size_t rect_capacity,
                                               size_t *count,
                                               int width,
                                               int height)
 {
-    int card_width = clamp_int(width / 4, 210, 320);
-    int card_height = clamp_int(height / 9, 68, 94);
+    int card_width = clamp_int(width / 8, 132, 170);
+    int card_height = clamp_int(height / 6, 104, 132);
     int x = (width - card_width) / 2;
     int y = (height - card_height) / 2;
 
+    frontend_overlay_push_pill(rects,
+                               rect_capacity,
+                               count,
+                               x + 4,
+                               y + 6,
+                               card_width,
+                               card_height,
+                               overlay_color(4, 5, 8));
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                count,
@@ -323,15 +376,15 @@ static void frontend_overlay_push_center_card(FrontendOverlayRect *rects,
                                y,
                                card_width,
                                card_height,
-                               overlay_color(8, 10, 16));
+                               overlay_color(23, 27, 36));
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                count,
-                               x + 5,
-                               y + 5,
-                               card_width - 10,
-                               card_height - 10,
-                               overlay_color(18, 22, 30));
+                               x + 8,
+                               y + 8,
+                               card_width - 16,
+                               card_height - 16,
+                               overlay_color(35, 40, 52));
 }
 
 static bool frontend_overlay_title_has_prefix(const char *title, const char *prefix)
@@ -444,6 +497,8 @@ static void frontend_overlay_push_focus_icon(FrontendOverlayRect *rects,
     if (!bar)
         return;
 
+    frontend_overlay_push_center_card(rects, rect_capacity, count, width, height);
+
     if (bar->focus == PLAYER_UI_OVERLAY_FOCUS_PLAY)
     {
         frontend_overlay_push_triangle_icon(rects, rect_capacity, count, cx, cy, size, 1, 242);
@@ -455,8 +510,6 @@ static void frontend_overlay_push_focus_icon(FrontendOverlayRect *rects,
         frontend_overlay_push_pause_icon(rects, rect_capacity, count, cx, cy, size, 242);
         return;
     }
-
-    frontend_overlay_push_center_card(rects, rect_capacity, count, width, height);
 
     if (bar->focus == PLAYER_UI_OVERLAY_FOCUS_VOLUME)
     {
@@ -491,6 +544,9 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
     int progress_width;
     int progress_fill_width;
     int progress_knob_x;
+    int progress_knob_size;
+    int chip_y;
+    int chip_height;
     int bubble_width;
     int bubble_height;
     int bubble_x;
@@ -545,10 +601,20 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
     progress_width = layout.progress_width;
     progress_fill_width = clamp_int((overlay.bar.progress_permille * progress_width + 500) / 1000, 0, progress_width);
     progress_knob_x = layout.progress_x + progress_fill_width - progress_height;
+    progress_knob_size = progress_height * 4;
+    chip_height = clamp_int(height / 20, 34, 42);
+    chip_y = progress_y + progress_height + 22;
 
-    frontend_overlay_push_rect_color(rects, rect_capacity, &count, 0, bottom_y - 12, width, 12, overlay_color(3, 4, 8));
-    frontend_overlay_push_rect_color(rects, rect_capacity, &count, 0, bottom_y, width, bottom_height, overlay_color(7, 9, 14));
-    frontend_overlay_push_rect_color(rects, rect_capacity, &count, 0, bottom_y, width, 2, overlay_color(26, 31, 43));
+    frontend_overlay_push_vertical_gradient(rects,
+                                            rect_capacity,
+                                            &count,
+                                            0,
+                                            bottom_y - 30,
+                                            width,
+                                            bottom_height + 30,
+                                            overlay_color(2, 3, 6),
+                                            overlay_color(10, 12, 18));
+
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                &count,
@@ -556,7 +622,7 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
                                progress_y,
                                progress_width,
                                progress_height,
-                               overlay_color(48, 54, 68));
+                               overlay_color(58, 64, 76));
     if (progress_fill_width > 0)
     {
         if (progress_fill_width > progress_height * 2)
@@ -567,7 +633,7 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
                                        progress_y,
                                        progress_fill_width,
                                        progress_height,
-                                       overlay_color(64, 220, 255));
+                                       overlay_color(238, 244, 255));
         else
             frontend_overlay_push_rect_color(rects,
                                              rect_capacity,
@@ -576,41 +642,43 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
                                              progress_y,
                                              progress_fill_width,
                                              progress_height,
-                                             overlay_color(64, 220, 255));
+                                             overlay_color(238, 244, 255));
     }
-    progress_knob_x = clamp_int(progress_knob_x, layout.progress_x, layout.progress_x + progress_width - progress_height * 2);
+    progress_knob_x = clamp_int(progress_knob_x - progress_knob_size / 2 + progress_height / 2,
+                                layout.progress_x - progress_knob_size / 2,
+                                layout.progress_x + progress_width - progress_knob_size / 2);
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                &count,
                                progress_knob_x,
-                               progress_y - progress_height,
-                               progress_height * 3,
-                               progress_height * 3,
-                               overlay_color(246, 248, 255));
+                               progress_y - (progress_knob_size - progress_height) / 2,
+                               progress_knob_size,
+                               progress_knob_size,
+                               overlay_color(250, 252, 255));
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                &count,
-                               pad_x,
-                               progress_y + progress_height + 22,
-                               170,
-                               34,
-                               overlay_color(22, 26, 35));
+                               layout.progress_x,
+                               chip_y,
+                               232,
+                               chip_height,
+                               overlay_color(24, 28, 38));
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                &count,
-                               (width - 210) / 2,
-                               progress_y + progress_height + 22,
-                               210,
-                               34,
+                               layout.progress_x + 248,
+                               chip_y,
+                               420,
+                               chip_height,
                                overlay_color(18, 22, 30));
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                &count,
-                               width - pad_x - 156,
-                               progress_y + progress_height + 22,
-                               156,
-                               34,
-                               overlay_color(22, 26, 35));
+                               width - pad_x - 162,
+                               chip_y,
+                               162,
+                               chip_height,
+                               overlay_color(24, 28, 38));
 
     if (frontend_overlay_bar_has_focus(&overlay.bar))
         frontend_overlay_push_focus_icon(rects, rect_capacity, &count, &overlay.bar, width, height);
@@ -678,7 +746,6 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
     int width;
     int height;
     int pad_x;
-    int bottom_y;
     int title_scale;
     int hint_scale;
     int progress_y;
@@ -734,36 +801,25 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
     if (!player_ui_layout_compute(width, height, &layout))
         return;
     pad_x = layout.pad_x;
-    bottom_y = layout.bottom_y;
     progress_height = layout.progress_height;
     progress_y = layout.progress_y;
-    controls_y = progress_y + progress_height + 28;
-    title_scale = clamp_int(height / 240, 2, 3);
+    controls_y = progress_y + progress_height + 22;
+    title_scale = clamp_int(height / 260, 2, 3);
     hint_scale = clamp_int(height / 330, 2, 2);
 
-    center_text_width = frontend_font_measure_text(overlay.bar.center, title_scale);
     frontend_overlay_draw_text_shadowed(overlay.bar.center,
-                                        width - pad_x - center_text_width,
-                                        bottom_y + 12,
-                                        title_scale,
-                                        width / 2,
-                                        222,
-                                        fill_rect,
-                                        userdata);
-
-    frontend_overlay_draw_text_shadowed(overlay.bar.left,
-                                        pad_x + 18,
-                                        controls_y + 8,
+                                        layout.progress_x + 20,
+                                        controls_y + 9,
                                         hint_scale,
-                                        140,
-                                        222,
+                                        190,
+                                        232,
                                         fill_rect,
                                         userdata);
 
     right_text_width = frontend_font_measure_text(overlay.bar.right, hint_scale);
     frontend_overlay_draw_text_shadowed(overlay.bar.right,
-                                        width - pad_x - 18 - right_text_width,
-                                        controls_y + 8,
+                                        width - pad_x - 20 - right_text_width,
+                                        controls_y + 9,
                                         hint_scale,
                                         132,
                                         222,
@@ -771,11 +827,11 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
                                         userdata);
 
     frontend_overlay_draw_text_shadowed(overlay.bar.hint,
-                                        (width - frontend_font_measure_text(overlay.bar.hint, hint_scale)) / 2,
-                                        controls_y + 8,
+                                        layout.progress_x + 268,
+                                        controls_y + 9,
                                         hint_scale,
-                                        width - pad_x * 2,
-                                        152,
+                                        400,
+                                        164,
                                         fill_rect,
                                         userdata);
 
@@ -919,14 +975,17 @@ static void frontend_overlay_fill_rect_dk3d_cb(void *userdata, const FrontendOve
 void frontend_overlay_render_dk3d(ViewContext *ctx, int slot)
 {
     FrontendOverlayRect rects[FRONTEND_OVERLAY_RECT_CAPACITY];
+    FrontendOverlayRect cleanup_rect;
     size_t rect_count = 0;
     size_t i;
     DkImageView image_view;
     DkViewport viewport;
+    bool has_overlay;
 
     if (!ctx || !ctx->dk3d_overlay_cmdbuf || slot < 0 || slot >= FRONTEND_DK3D_FRAMEBUFFER_COUNT)
         return;
-    if (!frontend_overlay_build_rects(ctx, rects, sizeof(rects) / sizeof(rects[0]), &rect_count) || rect_count == 0)
+    has_overlay = frontend_overlay_build_rects(ctx, rects, sizeof(rects) / sizeof(rects[0]), &rect_count) && rect_count > 0;
+    if (!has_overlay && !ctx->dk3d_overlay_dirty)
         return;
 
     memset(&viewport, 0, sizeof(viewport));
@@ -940,9 +999,29 @@ void frontend_overlay_render_dk3d(ViewContext *ctx, int slot)
     dkCmdBufBindRenderTarget(ctx->dk3d_overlay_cmdbuf, &image_view, NULL);
     dkCmdBufSetViewports(ctx->dk3d_overlay_cmdbuf, 0, &viewport, 1);
 
-    for (i = 0; i < rect_count; ++i)
-        frontend_dk3d_fill_rect(ctx->dk3d_overlay_cmdbuf, &rects[i]);
-    frontend_overlay_render_text_generic(ctx, frontend_overlay_fill_rect_dk3d_cb, &ctx->dk3d_overlay_cmdbuf);
+    if (!has_overlay)
+    {
+        PlayerUiLayout layout;
+        int cleanup_y = (int)ctx->status.display_height - 160;
+
+        if (player_ui_layout_compute((int)ctx->status.display_width, (int)ctx->status.display_height, &layout))
+            cleanup_y = layout.bottom_y - 30;
+
+        cleanup_rect.x = 0;
+        cleanup_rect.y = clamp_int(cleanup_y, 0, (int)ctx->status.display_height);
+        cleanup_rect.width = (int)ctx->status.display_width;
+        cleanup_rect.height = (int)ctx->status.display_height - cleanup_rect.y;
+        cleanup_rect.color = overlay_color(0, 0, 0);
+        frontend_dk3d_fill_rect(ctx->dk3d_overlay_cmdbuf, &cleanup_rect);
+        ctx->dk3d_overlay_dirty = false;
+    }
+    else
+    {
+        for (i = 0; i < rect_count; ++i)
+            frontend_dk3d_fill_rect(ctx->dk3d_overlay_cmdbuf, &rects[i]);
+        frontend_overlay_render_text_generic(ctx, frontend_overlay_fill_rect_dk3d_cb, &ctx->dk3d_overlay_cmdbuf);
+        ctx->dk3d_overlay_dirty = true;
+    }
 
     dkQueueSubmitCommands(ctx->dk3d_queue, dkCmdBufFinishList(ctx->dk3d_overlay_cmdbuf));
 }
