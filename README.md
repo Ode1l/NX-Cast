@@ -40,7 +40,7 @@ The playback path intentionally stays thin: DLNA provides the URL, then `libmpv/
 
 ## Install
 
-Use the release package when possible:
+Use the SD card package when possible:
 
 1. Download `NX-Cast-sdmc.zip` from the GitHub Release.
 2. Extract it to the root of the Switch SD card.
@@ -49,11 +49,18 @@ Use the release package when possible:
 The package layout is:
 
 ```text
-switch/NX-Cast/NX-Cast.nro
-switch/NX-Cast/dlna/
+switch/
+  NX-Cast/
+    NX-Cast.nro
+    dlna/
+    fonts/
 ```
 
-`switch/NX-Cast/dlna/` contains the runtime DLNA XML, CSV, HTML, and icon assets.
+`NX-Cast-sdmc.zip` is already laid out like the SD card. Extract it directly to the SD root; do not put it inside an extra nested folder.
+
+`switch/NX-Cast/dlna/` contains runtime DLNA XML, CSV, HTML, and icon assets. `switch/NX-Cast/fonts/` contains the packaged UI font and license notices.
+
+For full install and troubleshooting details, see [docs/install.md](docs/install.md).
 
 ## Controls
 

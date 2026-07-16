@@ -6,13 +6,14 @@ All Markdown documents in this directory use English file names and English cont
 
 ## Recommended Reading
 
-1. [dmr-implementation.md](dmr-implementation.md)
-2. [player-layer.md](player-layer.md)
-3. [render-design.md](render-design.md)
-4. [scpd-module.md](scpd-module.md)
-5. [soap-module.md](soap-module.md)
-6. [threading-design.md](threading-design.md)
-7. [source-compatibility.md](source-compatibility.md)
+1. [install.md](install.md)
+2. [dmr-implementation.md](dmr-implementation.md)
+3. [player-layer.md](player-layer.md)
+4. [render-design.md](render-design.md)
+5. [scpd-module.md](scpd-module.md)
+6. [soap-module.md](soap-module.md)
+7. [threading-design.md](threading-design.md)
+8. [source-compatibility.md](source-compatibility.md)
 
 ## Build And Media Toolchain
 

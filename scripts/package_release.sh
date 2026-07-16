@@ -33,12 +33,35 @@ if [ -d "${ROOT_DIR}/assets/fonts" ]; then
     cp "${ROOT_DIR}/assets/fonts/"* "${SDMC_DIR}/switch/NX-Cast/fonts/"
 fi
 
+cat > "${SDMC_DIR}/README-NX-Cast.txt" <<'EOF'
+NX-Cast install
+===============
+
+Recommended install:
+1. Extract this zip to the root of your Switch SD card.
+2. Confirm the final path is:
+   sdmc:/switch/NX-Cast/NX-Cast.nro
+3. Launch NX-Cast from hbmenu.
+
+Do not extract this zip into an extra nested folder such as:
+sdmc:/NX-Cast-sdmc/switch/NX-Cast/
+
+Included files:
+- switch/NX-Cast/NX-Cast.nro
+- switch/NX-Cast/dlna/ runtime DLNA description assets
+- switch/NX-Cast/fonts/ packaged UI font and license notices
+
+If NX-Cast does not appear in hbmenu, check the SD card path above.
+If the UI font looks wrong, reinstall this full SD package instead of copying
+only the NRO.
+EOF
+
 mkdir -p "${DIST_DIR}"
 cp "${ROOT_DIR}/NX-Cast.nro" "${DIST_DIR}/NX-Cast.nro"
 
 (
     cd "${SDMC_DIR}"
-    zip -qr "${PACKAGE}" switch
+    zip -qr "${PACKAGE}" README-NX-Cast.txt switch
 )
 
 echo "Packaged ${PACKAGE}"

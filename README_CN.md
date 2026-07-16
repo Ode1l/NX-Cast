@@ -36,7 +36,7 @@
 
 ## 安装
 
-优先使用 GitHub Release 里的发布包：
+优先使用 GitHub Release 里的 SD 卡发布包：
 
 1. 下载 `NX-Cast-sdmc.zip`
 2. 解压到 Switch SD 卡根目录
@@ -45,11 +45,18 @@
 发布包结构：
 
 ```text
-switch/NX-Cast/NX-Cast.nro
-switch/NX-Cast/dlna/
+switch/
+  NX-Cast/
+    NX-Cast.nro
+    dlna/
+    fonts/
 ```
 
-`switch/NX-Cast/dlna/` 里是运行时需要的 DLNA XML、CSV、HTML 和图标资源。
+`NX-Cast-sdmc.zip` 已经按 SD 卡目录排好结构，直接解压到 SD 卡根目录即可。不要多套一层 `NX-Cast-sdmc/switch/...` 目录。
+
+`switch/NX-Cast/dlna/` 里是运行时需要的 DLNA XML、CSV、HTML 和图标资源。`switch/NX-Cast/fonts/` 里是 UI 字体和许可证说明。
+
+完整安装和排错说明见 [docs/install.md](docs/install.md)。
 
 ## 控制
 
