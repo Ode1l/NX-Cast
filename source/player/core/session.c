@@ -313,8 +313,9 @@ static void player_thread_main(void *arg)
 
 static void player_log_trace_action(const char *action, const char *phase, const char *detail)
 {
-    player_trace_log("[media-trace] seq=%u layer=player action=%s phase=%s url_hash=%08x detail=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=player action=%s phase=%s url_hash=%08x detail=%s\n",
                      player_trace_current_media_seq(),
+                     (unsigned long long)player_trace_elapsed_ms(),
                      action ? action : "(unknown)",
                      phase ? phase : "(unknown)",
                      player_trace_current_media_hash(),
@@ -512,8 +513,9 @@ bool player_set_media(const PlayerMedia *media)
     seq = player_trace_current_media_seq();
     if (seq == 0 || player_trace_current_media_hash() != hash)
         seq = player_trace_begin_media("PlayerSetMedia", media->uri, media->metadata);
-    player_trace_log("[media-trace] seq=%u layer=player action=set_media phase=begin url_hash=%08x url=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=player action=set_media phase=begin url_hash=%08x url=%s\n",
                      seq,
+                     (unsigned long long)player_trace_elapsed_ms(),
                      hash,
                      player_trace_uri_summary(media->uri, summary, sizeof(summary)));
 
@@ -522,8 +524,9 @@ bool player_set_media(const PlayerMedia *media)
     if (previous_has_media && !player_media_copy(&previous_media, &g_current_media))
     {
         mutexUnlock(&g_player_mutex);
-        player_trace_warn("[media-trace] seq=%u layer=player action=set_media phase=failed reason=copy-previous url_hash=%08x url=%s\n",
+        player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=player action=set_media phase=failed reason=copy-previous url_hash=%08x url=%s\n",
                           seq,
+                          (unsigned long long)player_trace_elapsed_ms(),
                           hash,
                           player_trace_uri_summary(media->uri, summary, sizeof(summary)));
         return false;
@@ -532,8 +535,9 @@ bool player_set_media(const PlayerMedia *media)
     {
         player_media_clear(&previous_media);
         mutexUnlock(&g_player_mutex);
-        player_trace_warn("[media-trace] seq=%u layer=player action=set_media phase=failed reason=store-media url_hash=%08x url=%s\n",
+        player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=player action=set_media phase=failed reason=store-media url_hash=%08x url=%s\n",
                           seq,
+                          (unsigned long long)player_trace_elapsed_ms(),
                           hash,
                           player_trace_uri_summary(media->uri, summary, sizeof(summary)));
         return false;
@@ -551,8 +555,9 @@ bool player_set_media(const PlayerMedia *media)
         (void)player_store_media_locked(previous_has_media, previous_has_media ? &previous_media : NULL);
         mutexUnlock(&g_player_mutex);
         player_media_clear(&previous_media);
-        player_trace_warn("[media-trace] seq=%u layer=player action=set_media phase=failed reason=backend url_hash=%08x url=%s\n",
+        player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=player action=set_media phase=failed reason=backend url_hash=%08x url=%s\n",
                           seq,
+                          (unsigned long long)player_trace_elapsed_ms(),
                           hash,
                           player_trace_uri_summary(media->uri, summary, sizeof(summary)));
         return false;
@@ -562,8 +567,9 @@ bool player_set_media(const PlayerMedia *media)
     player_refresh_cached_snapshot_from_backend();
     if (g_backend->wakeup)
         g_backend->wakeup();
-    player_trace_log("[media-trace] seq=%u layer=player action=set_media phase=done url_hash=%08x url=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=player action=set_media phase=done url_hash=%08x url=%s\n",
                      seq,
+                     (unsigned long long)player_trace_elapsed_ms(),
                      hash,
                      player_trace_uri_summary(media->uri, summary, sizeof(summary)));
     return true;

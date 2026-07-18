@@ -33,6 +33,7 @@ Use these when working on DLNA discovery, device/service description, SOAP actio
 
 ## Player And UI
 
+- [iptv.md](iptv.md)
 - [player-layer.md](player-layer.md)
 - [player-open-path.md](player-open-path.md)
 - [render-design.md](render-design.md)

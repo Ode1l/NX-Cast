@@ -4,9 +4,9 @@
   <img src="assets/icon/switch-screencast-logo.svg" alt="NX-Cast logo" width="180">
 </p>
 
-`NX-Cast` is a Nintendo Switch homebrew media receiver for Atmosphere.
+`NX-Cast` is a Nintendo Switch homebrew DLNA receiver and IPTV player for Atmosphere.
 
-The current product target is a solid generic `DLNA DMR` receiver: phones, desktop players, and TV apps send a media URL through DLNA, and the Switch plays it through `libmpv`.
+It accepts media URLs from phones, desktop players, and TV apps as a generic `DLNA DMR`, and it can independently browse and play local or remote M3U IPTV sources. Both paths use the same hardware-accelerated `libmpv` playback session.
 
 ## Current Status
 
@@ -21,6 +21,8 @@ The current baseline includes:
 - `deko3d/libmpv render API` as the preferred video path
 - runtime `hwdec=nvtegra` preference when the installed media toolchain supports it
 - static home screen with cast instructions and last-error display
+- local/remote M3U source management, SD cache, and direct IPTV URL input
+- channel groups, search, favorites, recent history, logo cache, and XMLTV now/next EPG
 - controller and touch playback overlay
 - Docker and GitHub Actions release builds
 
@@ -33,10 +35,18 @@ This project is still experimental Switch homebrew. Current development is focus
 - a DLNA media server (`DMS`)
 - a DLNA media controller (`DMC`)
 - an AirPlay receiver
-- a source-native app for iQiyi, MangoTV, CCTV, Bilibili, or IPTV
+- a source-native app or channel provider for iQiyi, MangoTV, CCTV, or Bilibili
 - a DRM bypass or site login implementation
 
 The playback path intentionally stays thin: DLNA provides the URL, then `libmpv/FFmpeg` handles probing, networking, demuxing, decoding, and playback.
+
+## IPTV
+
+IPTV is a supported release feature, not a separate experimental build. NX-Cast can import local or remote M3U/M3U8 playlists, classify channel lists versus direct HLS streams, cache remote sources on the SD card, and browse channels from the Home screen or over a playing video.
+
+The IPTV browser includes playlist groups, search, Favorites, Recent, persistent source management, asynchronous logo caching, and plain/gzip XMLTV current/next programme information. Users provide their own authorized playlists and optional programme-guide URLs; NX-Cast does not bundle subscription access or bypass DRM.
+
+See [docs/iptv.md](docs/iptv.md) for supported formats, SD-card paths, source configuration, controls, and current limitations.
 
 ## Install
 
@@ -54,11 +64,12 @@ switch/
     NX-Cast.nro
     dlna/
     fonts/
+    iptv/
 ```
 
 `NX-Cast-sdmc.zip` is already laid out like the SD card. Extract it directly to the SD root; do not put it inside an extra nested folder.
 
-`switch/NX-Cast/dlna/` contains runtime DLNA XML, CSV, HTML, and icon assets. `switch/NX-Cast/fonts/` contains the packaged UI font and license notices.
+`switch/NX-Cast/dlna/` contains runtime DLNA XML, CSV, HTML, and icon assets. `switch/NX-Cast/fonts/` contains the packaged UI font and license notices. Put local `.m3u` or `.m3u8` playlists in `switch/NX-Cast/iptv/`.
 
 For full install and troubleshooting details, see [docs/install.md](docs/install.md).
 
@@ -66,9 +77,26 @@ For full install and troubleshooting details, see [docs/install.md](docs/install
 
 When idle, the app shows a home screen with basic casting instructions, runtime status, and only the latest error. Full log history is kept for debugging but is not shown as the release foreground UI.
 
+On the home screen:
+
+- `X` or either stick click: open IPTV; inside IPTV, `X` switches between Channels and Sources
+- `A`: return to the active player from Home, or play the selected IPTV channel
+- `Up` / `Down` or either stick vertically: select a channel
+- `Left` / `Right`, either stick horizontally, or `L` / `R`: move one page
+- `Y`: favorite a channel, add a remote source, or refresh all sources from Home
+- `ZL` / `ZR`: cycle channel filters; `ZR` configures XMLTV on Sources
+- `L3` / `R3`: search channels / clear search
+- `-`: open a media or M3U URL; playlist URLs are imported into Channels instead of played as one stream
+- `B`: close the IPTV browser
+- touch: tap a row to select it, tap it again or tap `PLAY CHANNEL` to play; swipe the list or use the on-screen arrows to change page
+
+NX-Cast accepts input from every connected standard controller. A single horizontal Joy-Con can browse with its stick, click the stick to open IPTV, use `SR` to confirm, and use `SL` to return. A paired Joy-Con set, handheld controls, Pro Controller, and touch screen can each complete channel selection independently.
+
 During video playback:
 
 - `A`: play / pause
+- `B`: return to Home without stopping playback
+- `X` or either stick click: open the IPTV channel menu over the current video; `A` switches channel and `B` closes the menu
 - `+`: exit the app
 - `-`: show controls
 - `L` or `Left`: seek backward 10 seconds
@@ -84,6 +112,9 @@ During video playback:
 
 ```text
 main
+  -> iptv
+       -> local/remote M3U cache and classification
+       -> channel filters, favorites, logos, and XMLTV EPG
   -> protocol/dlna
        -> discovery
        -> description
@@ -205,9 +236,11 @@ The release workflow requires `libmpv/deko3d` and rejects obviously invalid smal
 assets/
   dlna/        runtime DLNA templates copied to SD
   icon/        NRO icon sources
+  iptv/        IPTV source examples and packaged presets
 docs/          design notes and implementation plans
 scripts/       build, packaging, nxlink, smoke tests
 source/
+  iptv/
   log/
   player/
     backend/
@@ -239,6 +272,7 @@ Recommended order:
 2. [docs/player-layer.md](docs/player-layer.md)
 3. [docs/render-design.md](docs/render-design.md)
 4. [docs/scpd-module.md](docs/scpd-module.md)
-5. [docs/iptv-gui-plan.md](docs/iptv-gui-plan.md)
+5. [docs/iptv.md](docs/iptv.md)
+6. [docs/iptv-gui-plan.md](docs/iptv-gui-plan.md)
 
 If documentation and source disagree, the current `source/` tree is authoritative.

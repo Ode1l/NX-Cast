@@ -1,0 +1,10 @@
+# NX-Cast preinstalled IPTV sources
+#
+# Copy this file to sources.txt in the same directory, then add one source per
+# line. HTTPS is recommended. Blank lines and lines beginning with # are ignored.
+#
+# Simple form:
+# https://example.com/channels.m3u
+#
+# Optional display name and programme guide:
+# My IPTV | https://example.com/channels.m3u | https://example.com/guide.xml

@@ -1,0 +1,4 @@
+Turn your Switch into a D L N A media receiver.
+Launch N X Cast, select it as the playback device on your phone, and your video starts playing on the Switch.
+Control playback remotely from the phone, or use the touchscreen and controllers directly.
+N X Cast is open source, experimental, and continuously improving.

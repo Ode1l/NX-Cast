@@ -22,6 +22,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test IPTV channel-list navigation
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Isource \
+            scripts/test_iptv_channel_list.c \
+            -o /tmp/test_iptv_channel_list
+          /tmp/test_iptv_channel_list
+
       - name: Build project image
         run: |
           docker build \
@@ -50,6 +57,8 @@ jobs:
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v3
         with:
+          name: NX-Cast ${{ github.ref_name }} - DLNA + IPTV
+          body_path: .github/release-notes.md
           generate_release_notes: true
           overwrite_files: true
           fail_on_unmatched_files: true

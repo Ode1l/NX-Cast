@@ -1,0 +1,3 @@
+Chinese CCTV | https://raw.githubusercontent.com/BurningC4/Chinese-IPTV/master/TV-IPV4.m3u | https://raw.githubusercontent.com/BurningC4/Chinese-IPTV/master/guide.xml
+https://iptv-org.github.io/iptv/languages/zho.m3u
+https://iptv-org.github.io/iptv/languages/eng.m3u

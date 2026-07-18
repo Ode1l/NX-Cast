@@ -1,8 +1,8 @@
 # NX-Cast
 
-`NX-Cast` 是运行在 Atmosphere Homebrew 环境下的 Nintendo Switch 媒体接收器。
+`NX-Cast` 是运行在 Atmosphere Homebrew 环境下的 Nintendo Switch DLNA 接收器和 IPTV 播放器。
 
-当前产品目标是做一个扎实的通用 `DLNA DMR`：手机、桌面播放器、电视应用通过 DLNA 把媒体 URL 发给 Switch，Switch 再通过 `libmpv` 播放。
+它既可以作为通用 `DLNA DMR`，接收手机、桌面播放器和电视应用发送的媒体 URL，也可以独立浏览和播放本地或远程 M3U IPTV 源。两条播放路径共用同一个支持硬解的 `libmpv` 播放会话。
 
 ## 当前状态
 
@@ -17,6 +17,8 @@
 - 首选 `deko3d/libmpv render API` 视频路径
 - 在媒体工具链支持时请求 `hwdec=nvtegra`
 - 静态主页，展示投屏教程、运行状态和最后一条错误
+- 本地/远程 M3U 源管理、SD 缓存和 IPTV 直链输入
+- 频道分组、搜索、收藏、最近播放、台标缓存和 XMLTV 当前/下一节目
 - 手柄和触摸播放器 overlay
 - Docker 和 GitHub Actions 发布构建
 
@@ -29,10 +31,18 @@
 - DLNA 媒体服务器，也就是 `DMS`
 - DLNA 控制器，也就是 `DMC`
 - AirPlay 接收器
-- iQiyi、MangoTV、CCTV、Bilibili 或 IPTV 的站点原生客户端
+- iQiyi、MangoTV、CCTV、Bilibili 等平台的站点原生客户端或频道提供方
 - DRM 绕过或站点登录实现
 
 当前播放链保持很薄：DLNA 只提供 URL，后续探测、网络请求、demux、decode 和播放交给 `libmpv/FFmpeg`。
+
+## IPTV
+
+IPTV 已经是正式发布功能，不需要使用单独的实验构建。NX-Cast 可以导入本地或远程 M3U/M3U8 播放列表，区分频道列表和直接 HLS 流，把远程源缓存到 SD 卡，并且可以从主页或播放画面上方打开频道浏览器。
+
+IPTV 浏览器支持播放列表分组、搜索、收藏、最近播放、持久化源管理、异步台标缓存，以及 plain/gzip XMLTV 当前和下一节目信息。用户需要提供自己有权访问的播放列表和可选节目单地址；NX-Cast 不提供付费频道权限，也不会绕过 DRM。
+
+支持格式、SD 卡路径、源配置、控制方式和当前限制见 [docs/iptv.md](docs/iptv.md)。
 
 ## 安装
 
@@ -50,11 +60,12 @@ switch/
     NX-Cast.nro
     dlna/
     fonts/
+    iptv/
 ```
 
 `NX-Cast-sdmc.zip` 已经按 SD 卡目录排好结构，直接解压到 SD 卡根目录即可。不要多套一层 `NX-Cast-sdmc/switch/...` 目录。
 
-`switch/NX-Cast/dlna/` 里是运行时需要的 DLNA XML、CSV、HTML 和图标资源。`switch/NX-Cast/fonts/` 里是 UI 字体和许可证说明。
+`switch/NX-Cast/dlna/` 里是运行时需要的 DLNA XML、CSV、HTML 和图标资源。`switch/NX-Cast/fonts/` 里是 UI 字体和许可证说明。本地 `.m3u` 或 `.m3u8` 播放列表放入 `switch/NX-Cast/iptv/`。
 
 完整安装和排错说明见 [docs/install.md](docs/install.md)。
 
@@ -62,9 +73,26 @@ switch/
 
 空闲时，软件显示主页：基础投屏教程、运行状态和最后一条错误。完整日志历史仍保留给调试使用，但不会作为发布版前台 UI 展示。
 
+主页 IPTV 控制：
+
+- `X` 或任一摇杆按下：打开 IPTV；进入 IPTV 后使用 `X` 切换频道与源管理页面
+- `A`：从主页返回正在播放的视频，或播放当前选中的频道
+- `Up` / `Down` 或任一摇杆纵向：逐项选择频道
+- `Left` / `Right`、任一摇杆横向或 `L` / `R`：频道列表翻页
+- `Y`：收藏频道、添加远程源；在主页刷新全部源
+- `ZL` / `ZR`：切换频道筛选；源管理页用 `ZR` 配置 XMLTV
+- `L3` / `R3`：搜索频道 / 清除搜索
+- `-`：输入媒体或 M3U URL；播放列表会导入频道页，不再被当成单个视频直接播放
+- `B`：关闭频道列表
+- 触摸：点击频道行进行选择，再次点击或点击 `PLAY CHANNEL` 播放；滑动列表或点击屏幕翻页箭头进行翻页
+
+NX-Cast 会合并读取所有已连接的标准手柄。单只横握 Joy-Con 可以用摇杆浏览和打开 IPTV，使用 `SR` 确认、`SL` 返回；双 Joy-Con、掌机模式、Pro Controller 和触摸屏也都能各自独立完成选台。
+
 视频播放时：
 
 - `A`：播放 / 暂停
+- `B`：返回主页，但不停止当前播放
+- `X` 或任一摇杆按下：在当前视频上打开 IPTV 频道菜单；`A` 换台，`B` 关闭菜单
 - `+`：退出程序
 - `-`：显示控制栏
 - `L` 或 `Left`：后退 10 秒
@@ -80,6 +108,9 @@ switch/
 
 ```text
 main
+  -> iptv
+       -> 本地/远程 M3U 缓存与分类
+       -> 频道筛选、收藏、台标和 XMLTV EPG
   -> protocol/dlna
        -> discovery
        -> description
@@ -201,9 +232,11 @@ git push origin v0.1.0
 assets/
   dlna/        复制到 SD 卡的 DLNA 运行时模板
   icon/        NRO 图标源文件
+  iptv/        IPTV 源示例和随包预设
 docs/          设计说明和实施规划
 scripts/       构建、打包、nxlink、冒烟测试
 source/
+  iptv/
   log/
   player/
     backend/
@@ -235,6 +268,7 @@ logs/
 2. [docs/player-layer.md](docs/player-layer.md)
 3. [docs/render-design.md](docs/render-design.md)
 4. [docs/scpd-module.md](docs/scpd-module.md)
-5. [docs/iptv-gui-plan.md](docs/iptv-gui-plan.md)
+5. [docs/iptv.md](docs/iptv.md)
+6. [docs/iptv-gui-plan.md](docs/iptv-gui-plan.md)
 
 如果文档和源码冲突，以当前 `source/` 为准。

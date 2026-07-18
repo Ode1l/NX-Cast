@@ -23,6 +23,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test IPTV channel-list navigation
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Isource \
+            scripts/test_iptv_channel_list.c \
+            -o /tmp/test_iptv_channel_list
+          /tmp/test_iptv_channel_list
+
       - name: Build project image
         run: |
           docker build \
@@ -70,7 +77,10 @@ jobs:
           git tag -f "${CONTINUOUS_TAG}" "${GITHUB_SHA}"
           git push -f origin "refs/tags/${CONTINUOUS_TAG}"
 
-          notes="Automatic development build from ${GITHUB_REF_NAME} at ${GITHUB_SHA}."
+          notes_file="$(mktemp)"
+          cat .github/release-notes.md > "${notes_file}"
+          printf '\n\n## Continuous Build\n\nAutomatic development build from `%s` at `%s`.\n' \
+            "${GITHUB_REF_NAME}" "${GITHUB_SHA}" >> "${notes_file}"
           if gh release view "${CONTINUOUS_TAG}" >/dev/null 2>&1; then
             gh release upload "${CONTINUOUS_TAG}" \
               dist/NX-Cast.nro \
@@ -78,14 +88,14 @@ jobs:
               --clobber
             gh release edit "${CONTINUOUS_TAG}" \
               --title "NX-Cast Continuous" \
-              --notes "${notes}" \
+              --notes-file "${notes_file}" \
               --prerelease
           else
             gh release create "${CONTINUOUS_TAG}" \
               dist/NX-Cast.nro \
               dist/NX-Cast-sdmc.zip \
               --title "NX-Cast Continuous" \
-              --notes "${notes}" \
+              --notes-file "${notes_file}" \
               --prerelease \
               --target "${GITHUB_SHA}"
           fi

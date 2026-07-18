@@ -160,6 +160,8 @@ protocol action
 
 `SetAVTransportURI` sends the URL directly to the renderer. `libmpv/FFmpeg` is responsible for probing, networking, demuxing, decoding, and playback.
 
+Startup policy, initial-Seek merging, direct-MP4 cache tuning, and stage timing are documented in [player-open-path.md](player-open-path.md).
+
 ## libmpv Integration
 
 The backend has two lines of integration:

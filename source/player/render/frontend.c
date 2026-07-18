@@ -10,6 +10,7 @@
 
 #include "log/log.h"
 #include "player/player.h"
+#include "player/trace.h"
 
 #if defined(HAVE_MPV_RENDER_DK3D) && defined(NXCAST_USE_IMGUI_UI)
 #include "player/render/imgui_overlay.h"
@@ -21,6 +22,29 @@
 #define DK3D_FENCE_WAIT_TIMEOUT_NS 1000000000LL
 
 static void frontend_query_display_size(u32 *out_width, u32 *out_height);
+
+static bool frontend_loading_only(const ViewContext *ctx)
+{
+    return ctx && ctx->status.player_state == PLAYER_STATE_LOADING;
+}
+
+static void frontend_trace_first_video_frame(ViewContext *ctx)
+{
+    uint32_t seq;
+
+    if (!ctx)
+        return;
+    seq = player_trace_current_media_seq();
+    if (seq == 0 || ctx->first_video_frame_trace_seq == seq)
+        return;
+    ctx->first_video_frame_trace_seq = seq;
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=render action=first-frame phase=presented url_hash=%08x frame=%llu presented=%llu\n",
+                     seq,
+                     (unsigned long long)player_trace_elapsed_ms(),
+                     player_trace_current_media_hash(),
+                     (unsigned long long)ctx->status.frame_counter,
+                     (unsigned long long)ctx->status.frames_presented);
+}
 
 #if defined(HAVE_SWITCH_EGL_GLES) && !defined(HAVE_MPV_RENDER_DK3D)
 static void *frontend_gl_get_proc_address(void *ctx, const char *name)
@@ -636,6 +660,20 @@ bool frontend_render(ViewContext *ctx)
         if (ctx->status.active_view != PLAYER_VIEW_VIDEO)
             return false;
 
+        if (frontend_loading_only(ctx))
+        {
+#if defined(NXCAST_USE_IMGUI_UI)
+            slot = dkQueueAcquireImage(ctx->dk3d_queue, ctx->dk3d_swapchain);
+            if (slot < 0 || slot >= FRONTEND_DK3D_FRAMEBUFFER_COUNT)
+                return false;
+            if (!frontend_imgui_loading_render(ctx, slot))
+                return false;
+            dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
+            ++ctx->status.frames_presented;
+            return true;
+#endif
+        }
+
         dkSwapchainAcquireImage(ctx->dk3d_swapchain, &slot, &ready_fence);
         if (slot < 0 || slot >= FRONTEND_DK3D_FRAMEBUFFER_COUNT)
             return false;
@@ -673,6 +711,7 @@ bool frontend_render(ViewContext *ctx)
 #endif
         dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
         ++ctx->status.frames_presented;
+        frontend_trace_first_video_frame(ctx);
         return true;
     }
 #endif
@@ -693,6 +732,15 @@ bool frontend_render(ViewContext *ctx)
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        if (frontend_loading_only(ctx))
+        {
+            frontend_overlay_render_gl(ctx);
+            if (eglSwapBuffers(ctx->egl_display, ctx->egl_surface) != EGL_TRUE)
+                return false;
+            ++ctx->status.frames_presented;
+            return true;
+        }
+
         bool rendered = player_video_render_gl(0,
                                                (int)ctx->status.display_width,
                                                (int)ctx->status.display_height,
@@ -702,7 +750,10 @@ bool frontend_render(ViewContext *ctx)
         if (eglSwapBuffers(ctx->egl_display, ctx->egl_surface) != EGL_TRUE)
             return false;
         if (rendered)
+        {
             ++ctx->status.frames_presented;
+            frontend_trace_first_video_frame(ctx);
+        }
         return rendered;
 #else
         return false;
@@ -717,10 +768,14 @@ bool frontend_render(ViewContext *ctx)
     if (!pixels)
         return false;
 
-    bool rendered = player_video_render_sw(pixels,
-                                           (int)ctx->status.display_width,
-                                           (int)ctx->status.display_height,
-                                           (size_t)stride);
+    bool rendered = false;
+    if (!frontend_loading_only(ctx))
+    {
+        rendered = player_video_render_sw(pixels,
+                                          (int)ctx->status.display_width,
+                                          (int)ctx->status.display_height,
+                                          (size_t)stride);
+    }
     if (!rendered)
     {
         memset(pixels, 0, (size_t)stride * (size_t)ctx->status.display_height);
@@ -729,6 +784,9 @@ bool frontend_render(ViewContext *ctx)
 
     framebufferEnd(&ctx->framebuffer);
     if (rendered)
+    {
         ++ctx->status.frames_presented;
+        frontend_trace_first_video_frame(ctx);
+    }
     return rendered;
 }
