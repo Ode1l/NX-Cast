@@ -220,11 +220,13 @@ git push
 正式发布：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag -a v0.2.0 -m "NX-Cast v0.2.0"
+git push origin v0.2.0
 ```
 
 正式 release workflow 会强制要求 `libmpv/deko3d`，并拒绝明显异常的小体积 `NRO`。
+
+版本历史和发布详情见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 目录
 

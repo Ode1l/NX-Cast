@@ -224,11 +224,13 @@ Any branch push builds the project and updates the rolling prerelease:
 Formal release:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag -a v0.2.0 -m "NX-Cast v0.2.0"
+git push origin v0.2.0
 ```
 
 The release workflow requires `libmpv/deko3d` and rejects obviously invalid small `NRO` outputs.
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and release details.
 
 ## Repository Layout
 

@@ -1,3 +1,7 @@
+# NX-Cast v0.2.0
+
+Released 2026-07-19.
+
 ## Release Highlights
 
 NX-Cast now combines its DLNA media receiver with an integrated IPTV player for Nintendo Switch homebrew.

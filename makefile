@@ -41,7 +41,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET		:=	NX-Cast
 APP_TITLE	:=	NX-Cast
 APP_AUTHOR	:=	Ode1l
-APP_VERSION	:=	0.1.0
+APP_VERSION	:=	0.2.0
 ICON		:=	assets/icon/switch-screencast-logo.jpg
 BUILD		:=	build
 SOURCES		:=	source \
