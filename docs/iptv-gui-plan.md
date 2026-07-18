@@ -1,6 +1,6 @@
 # IPTV And GUI Plan
 
-This document plans future IPTV and full-application GUI work. It is intentionally separated from the current DLNA DMR playback path because these features should be built incrementally.
+This document records the staged IPTV and full-application GUI plan. Local/remote sources, SD caching, filtering, favorites, recent history, logo caching, and XMLTV now/next data are implemented; see [iptv.md](iptv.md) for current behavior and the NXMP gap.
 
 ## Product Direction
 
@@ -167,6 +167,8 @@ Deliverables:
 
 ### Phase 2: Source Store
 
+Status: implemented for local files and remote HTTP/HTTPS M3U sources.
+
 Deliverables:
 
 1. Add/remove/list IPTV sources.
@@ -175,6 +177,8 @@ Deliverables:
 4. Refresh sources manually.
 
 ### Phase 3: Minimal Channel Browser
+
+Status: implemented through the ImGui/deko3d home renderer.
 
 Deliverables:
 
@@ -194,6 +198,8 @@ Deliverables:
 5. Channel browser screen.
 
 ### Phase 5: Product Polish
+
+Status: search, group filters, favorites, recent history, logo download cache, and XMLTV current/next are implemented. Logo texture rendering and richer EPG screens remain.
 
 Deliverables:
 

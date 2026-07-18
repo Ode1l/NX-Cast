@@ -33,6 +33,8 @@ typedef struct
     FrontendRenderPath render_path;
     uint64_t last_video_state_ms;
     uint64_t stop_hold_until_ms;
+    bool home_override;
+    uint32_t first_video_frame_trace_seq;
     PlayerHomeViewState home_state;
     bool home_state_valid;
 #ifdef HAVE_SWITCH_EGL_GLES

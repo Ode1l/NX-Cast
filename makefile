@@ -45,6 +45,7 @@ APP_VERSION	:=	0.1.0
 ICON		:=	assets/icon/switch-screencast-logo.jpg
 BUILD		:=	build
 SOURCES		:=	source \
+			source/iptv \
 			source/log \
 			source/player \
 			source/player/ui \
@@ -272,6 +273,8 @@ sdmc_init:
 	@if [ -d "$(CURDIR)/assets/dlna" ]; then cp -v $(CURDIR)/assets/dlna/* $(CURDIR)/sdmc/switch/NX-Cast/dlna/; else echo "Warning: assets/dlna not found"; fi
 	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/fonts
 	@if [ -d "$(CURDIR)/assets/fonts" ]; then cp -v $(CURDIR)/assets/fonts/* $(CURDIR)/sdmc/switch/NX-Cast/fonts/; else echo "Warning: assets/fonts not found"; fi
+	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/iptv
+	@if [ -d "$(CURDIR)/assets/iptv" ]; then cp -v $(CURDIR)/assets/iptv/* $(CURDIR)/sdmc/switch/NX-Cast/iptv/; else echo "Warning: assets/iptv not found"; fi
 	@ls -la $(CURDIR)/sdmc/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
 
 $(BUILD):

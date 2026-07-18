@@ -209,12 +209,19 @@ void player_view_sync(const PlayerSnapshot *snapshot)
 {
     uint64_t now_ms;
     bool keep_video_hold = false;
+    bool media_changed;
 
     if (!g_view.status.initialized || !snapshot)
         return;
 
     now_ms = monotonic_time_ms();
     PlayerViewMode previous_desired = g_view.status.desired_view;
+    const char *next_uri = snapshot->has_media ? snapshot->media.uri : NULL;
+
+    media_changed = (g_view.status.media_uri == NULL) != (next_uri == NULL) ||
+                    (g_view.status.media_uri && next_uri && strcmp(g_view.status.media_uri, next_uri) != 0);
+    if (media_changed && next_uri)
+        g_view.home_override = false;
 
     g_view.status.has_media = snapshot->has_media;
     g_view.status.session_active = should_show_video_view(snapshot);
@@ -224,7 +231,7 @@ void player_view_sync(const PlayerSnapshot *snapshot)
     {
         g_view.last_video_state_ms = now_ms;
         g_view.stop_hold_until_ms = 0;
-        g_view.status.desired_view = PLAYER_VIEW_VIDEO;
+        g_view.status.desired_view = g_view.home_override ? PLAYER_VIEW_HOME : PLAYER_VIEW_VIDEO;
     }
     else
     {
@@ -244,11 +251,12 @@ void player_view_sync(const PlayerSnapshot *snapshot)
         else
         {
             g_view.stop_hold_until_ms = 0;
+            g_view.home_override = false;
             g_view.status.desired_view = PLAYER_VIEW_HOME;
         }
     }
 
-    if (!player_view_set_media_uri(&g_view.status, snapshot->has_media ? snapshot->media.uri : NULL))
+    if (!player_view_set_media_uri(&g_view.status, next_uri))
         log_warn("[player-view] failed to update media uri copy\n");
 
     if (previous_desired != g_view.status.desired_view)
@@ -259,6 +267,30 @@ void player_view_sync(const PlayerSnapshot *snapshot)
                  g_view.status.has_media ? 1 : 0,
                  g_view.status.media_uri ? g_view.status.media_uri : "none");
     }
+}
+
+bool player_view_show_home(void)
+{
+    if (!g_view.status.initialized)
+        return false;
+
+    g_view.home_override = true;
+    g_view.status.desired_view = PLAYER_VIEW_HOME;
+    log_info("[player-view] manual navigation target=home state=%s\n",
+             player_state_name(g_view.status.player_state));
+    return true;
+}
+
+bool player_view_show_video(void)
+{
+    if (!g_view.status.initialized || !g_view.status.session_active)
+        return false;
+
+    g_view.home_override = false;
+    g_view.status.desired_view = PLAYER_VIEW_VIDEO;
+    log_info("[player-view] manual navigation target=video state=%s\n",
+             player_state_name(g_view.status.player_state));
+    return true;
 }
 
 void player_view_begin_frame(void)

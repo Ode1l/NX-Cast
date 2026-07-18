@@ -37,9 +37,11 @@ switch/
       switch_font.ttf
       LICENSE.SourceFont.txt
       FREEWARE.ControllerFont.txt
+    iptv/
+      README.txt
 ```
 
-`NX-Cast.nro` is the application. The `dlna/` directory contains runtime device and service description files. The `fonts/` directory contains the packaged UI font and license notices.
+`NX-Cast.nro` is the application. The `dlna/` directory contains runtime device and service description files. The `fonts/` directory contains the packaged UI font and license notices. Copy local `.m3u` or `.m3u8` playlists into the `iptv/` directory.
 
 ## NRO-Only Install
 
@@ -49,7 +51,7 @@ If installing manually:
 
 1. Create `sdmc:/switch/NX-Cast/`.
 2. Copy `NX-Cast.nro` to `sdmc:/switch/NX-Cast/NX-Cast.nro`.
-3. Copy the release `dlna/` and `fonts/` folders if you are not using `NX-Cast-sdmc.zip`.
+3. Copy the release `dlna/`, `fonts/`, and `iptv/` folders if you are not using `NX-Cast-sdmc.zip`.
 
 ## Why There Is No Installer
 

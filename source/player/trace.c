@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <switch.h>
+
 #include "log/log.h"
 
 #define PLAYER_TRACE_URL_SUMMARY_MAX 160
@@ -12,6 +14,12 @@
 static uint32_t g_next_media_seq = 0;
 static uint32_t g_current_media_seq = 0;
 static uint32_t g_current_media_hash = 0;
+static uint64_t g_current_media_started_ms = 0;
+
+static uint64_t player_trace_monotonic_ms(void)
+{
+    return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
 
 static LogLevel player_trace_normal_level(void)
 {
@@ -123,10 +131,11 @@ uint32_t player_trace_begin_media(const char *reason, const char *uri, const cha
     uint32_t hash = player_trace_uri_hash(uri);
     char summary[PLAYER_TRACE_URL_SUMMARY_MAX];
 
+    __atomic_store_n(&g_current_media_started_ms, player_trace_monotonic_ms(), __ATOMIC_RELAXED);
+    __atomic_store_n(&g_current_media_hash, hash, __ATOMIC_RELAXED);
     __atomic_store_n(&g_current_media_seq, seq, __ATOMIC_RELEASE);
-    __atomic_store_n(&g_current_media_hash, hash, __ATOMIC_RELEASE);
 
-    player_trace_log("[media-trace] seq=%u action=%s phase=begin url_hash=%08x metadata_bytes=%zu url=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=0 action=%s phase=begin url_hash=%08x metadata_bytes=%zu url=%s\n",
                      seq,
                      reason ? reason : "SetMedia",
                      hash,
@@ -143,4 +152,15 @@ uint32_t player_trace_current_media_seq(void)
 uint32_t player_trace_current_media_hash(void)
 {
     return __atomic_load_n(&g_current_media_hash, __ATOMIC_ACQUIRE);
+}
+
+uint64_t player_trace_elapsed_ms(void)
+{
+    uint64_t started_ms = __atomic_load_n(&g_current_media_started_ms, __ATOMIC_ACQUIRE);
+    uint64_t now_ms;
+
+    if (started_ms == 0)
+        return 0;
+    now_ms = player_trace_monotonic_ms();
+    return now_ms >= started_ms ? now_ms - started_ms : 0;
 }

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include <switch.h>
 
@@ -65,6 +66,9 @@ typedef enum
 
 #define LIBMPV_LOG_NOISE_KEEP 8u
 #define LIBMPV_TRACE_URL_MAX 160
+#define LIBMPV_INITIAL_SEEK_WINDOW_MS 350ULL
+#define LIBMPV_INITIAL_SEEK_TIMEOUT_MS 3000ULL
+#define LIBMPV_STARTUP_GATE_TIMEOUT_MS 15000ULL
 
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 static Mutex g_mutex;
@@ -98,6 +102,14 @@ static bool g_pending_seek = false;
 static char *g_pending_seek_target = NULL;
 static bool g_stopped = false;
 static bool g_file_loaded = false;
+static bool g_load_pending = false;
+static bool g_startup_render_hold = false;
+static bool g_startup_restart_seen = false;
+static bool g_initial_seek_inflight = false;
+static bool g_initial_seek_event_seen = false;
+static bool g_play_requested = false;
+static bool g_play_unpause_pending = false;
+static uint64_t g_startup_hold_deadline_ms = 0;
 static int g_last_error = 0;
 static bool g_process_volume_active = false;
 static u64 g_process_volume_pid = 0;
@@ -105,6 +117,23 @@ static unsigned int g_log_noise_seen[LIBMPV_LOG_NOISE_COUNT];
 static unsigned int g_log_noise_suppressed[LIBMPV_LOG_NOISE_COUNT];
 
 static void libmpv_on_render_update(void *ctx);
+
+static uint64_t libmpv_monotonic_ms(void)
+{
+    return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
+
+static bool libmpv_is_direct_mp4(const char *uri)
+{
+    const char *end;
+
+    if (!uri || !uri[0])
+        return false;
+    end = strpbrk(uri, "?#");
+    if (!end)
+        end = uri + strlen(uri);
+    return end - uri >= 4 && strncasecmp(end - 4, ".mp4", 4) == 0;
+}
 
 static void libmpv_ensure_sync(void)
 {
@@ -128,8 +157,9 @@ static void libmpv_log_trace(const char *action, const char *phase, const char *
 
     if (phase && strcmp(phase, "failed") == 0)
     {
-        player_trace_warn("[media-trace] seq=%u layer=libmpv action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+        player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=libmpv action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
                           player_trace_current_media_seq(),
+                          (unsigned long long)player_trace_elapsed_ms(),
                           action ? action : "(unknown)",
                           phase,
                           hash,
@@ -138,8 +168,9 @@ static void libmpv_log_trace(const char *action, const char *phase, const char *
         return;
     }
 
-    player_trace_log("[media-trace] seq=%u layer=libmpv action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=libmpv action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
                      player_trace_current_media_seq(),
+                     (unsigned long long)player_trace_elapsed_ms(),
                      action ? action : "(unknown)",
                      phase ? phase : "(unknown)",
                      hash,
@@ -484,6 +515,8 @@ static PlayerState libmpv_derive_state_locked(void)
         return PLAYER_STATE_STOPPED;
     if (!g_file_loaded)
         return PLAYER_STATE_LOADING;
+    if (g_startup_render_hold)
+        return PLAYER_STATE_LOADING;
     if (g_seeking)
         return PLAYER_STATE_SEEKING;
     if (g_paused_for_cache && !g_pause)
@@ -557,6 +590,45 @@ static void libmpv_clear_pending_seek_locked(void)
     g_pending_seek_target = NULL;
 }
 
+static void libmpv_reset_startup_gate_locked(void)
+{
+    g_startup_render_hold = false;
+    g_startup_restart_seen = false;
+    g_initial_seek_inflight = false;
+    g_initial_seek_event_seen = false;
+    g_play_requested = false;
+    g_play_unpause_pending = false;
+    g_startup_hold_deadline_ms = 0;
+}
+
+static void libmpv_release_startup_gate_locked(const char *reason)
+{
+    if (!g_startup_render_hold)
+        return;
+    g_startup_render_hold = false;
+    g_initial_seek_inflight = false;
+    g_initial_seek_event_seen = false;
+    g_startup_hold_deadline_ms = 0;
+    libmpv_log_trace("startup-gate", "released", reason ? reason : "-", g_uri);
+}
+
+static bool libmpv_dispatch_play_locked(const char *detail)
+{
+    int pause_flag = 0;
+    int rc;
+
+    libmpv_log_trace("Play", "dispatch", detail ? detail : "-", g_uri);
+    rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_PLAY, "pause", MPV_FORMAT_FLAG, &pause_flag);
+    if (rc < 0)
+    {
+        libmpv_log_trace("Play", "failed", mpv_error_string(rc), g_uri);
+        log_warn("[player-libmpv] play failed: %s\n", mpv_error_string(rc));
+        return false;
+    }
+
+    return true;
+}
+
 static void libmpv_reset_locked(void)
 {
     free(g_uri);
@@ -576,6 +648,8 @@ static void libmpv_reset_locked(void)
     g_pending_seek_target = NULL;
     g_stopped = false;
     g_file_loaded = false;
+    g_load_pending = false;
+    libmpv_reset_startup_gate_locked();
     g_last_error = 0;
     g_render_update_pending = false;
     g_render_backend = LIBMPV_RENDER_BACKEND_NONE;
@@ -616,15 +690,15 @@ static bool libmpv_send_seek_target_locked(const char *target, LibmpvPendingEven
     return true;
 }
 
-static void libmpv_maybe_issue_pending_seek_locked(LibmpvPendingEvents *pending)
+static bool libmpv_maybe_issue_pending_seek_locked(LibmpvPendingEvents *pending)
 {
     const char *target;
 
     if (!g_pending_seek || !g_file_loaded)
-        return;
+        return false;
 
     if (!g_seekable)
-        return;
+        return false;
 
     target = g_pending_seek_target;
     if (libmpv_send_seek_target_locked(target, pending))
@@ -634,22 +708,38 @@ static void libmpv_maybe_issue_pending_seek_locked(LibmpvPendingEvents *pending)
                  g_file_loaded ? 1 : 0,
                  g_seekable ? 1 : 0);
         libmpv_clear_pending_seek_locked();
+        return true;
     }
+    return false;
 }
 
 static bool libmpv_async_load_current(bool paused)
 {
     const char *args[5];
-    const char *options = paused ? "pause=yes" : "pause=no";
+    char options[256];
     int rc;
     LibmpvPendingEvents pending = {0};
-    char detail[32];
+    char detail[96];
+    bool direct_mp4;
 
     mutexLock(&g_mutex);
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0')
     {
         mutexUnlock(&g_mutex);
         return false;
+    }
+
+    direct_mp4 = libmpv_is_direct_mp4(g_uri);
+    if (direct_mp4)
+    {
+        snprintf(options,
+                 sizeof(options),
+                 "pause=%s,cache=yes,cache-pause-initial=no,demuxer-readahead-secs=2,demuxer-max-bytes=8MiB,demuxer-max-back-bytes=2MiB",
+                 paused ? "yes" : "no");
+    }
+    else
+    {
+        snprintf(options, sizeof(options), "pause=%s", paused ? "yes" : "no");
     }
 
     args[0] = "loadfile";
@@ -660,7 +750,11 @@ static bool libmpv_async_load_current(bool paused)
 
     libmpv_reset_log_noise_locked();
 
-    snprintf(detail, sizeof(detail), "paused=%d", paused ? 1 : 0);
+    snprintf(detail,
+             sizeof(detail),
+             "paused=%d profile=%s",
+             paused ? 1 : 0,
+             direct_mp4 ? "direct-mp4-fast" : "default-stable");
     libmpv_log_trace("loadfile", "dispatch", detail, g_uri);
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_LOADFILE, args);
     if (rc < 0)
@@ -675,6 +769,14 @@ static bool libmpv_async_load_current(bool paused)
     g_pause = paused;
     g_stopped = false;
     g_file_loaded = false;
+    g_load_pending = true;
+    g_startup_render_hold = true;
+    g_startup_restart_seen = false;
+    g_initial_seek_inflight = false;
+    g_initial_seek_event_seen = false;
+    g_play_requested = !paused;
+    g_play_unpause_pending = false;
+    g_startup_hold_deadline_ms = libmpv_monotonic_ms() + LIBMPV_STARTUP_GATE_TIMEOUT_MS;
     g_seeking = false;
     g_paused_for_cache = false;
     libmpv_clear_pending_seek_locked();
@@ -785,8 +887,9 @@ static void libmpv_log_reply_error(uint64_t reply_userdata, int error)
         break;
     }
 
-    player_trace_warn("[media-trace] seq=%u layer=libmpv action=%s phase=reply-failed url_hash=%08x detail=%s\n",
+    player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=libmpv action=%s phase=reply-failed url_hash=%08x detail=%s\n",
                       player_trace_current_media_seq(),
+                      (unsigned long long)player_trace_elapsed_ms(),
                       name,
                       player_trace_current_media_hash(),
                       mpv_error_string(error));
@@ -870,6 +973,7 @@ static void libmpv_handle_event(mpv_event *event)
         g_last_error = 0;
         g_stopped = false;
         g_file_loaded = false;
+        g_load_pending = false;
         g_seeking = false;
         libmpv_refresh_state_locked(&pending);
         mutexUnlock(&g_mutex);
@@ -883,6 +987,12 @@ static void libmpv_handle_event(mpv_event *event)
         g_stopped = false;
         g_file_loaded = true;
         libmpv_maybe_issue_pending_seek_locked(&pending);
+        if (g_play_requested && g_play_unpause_pending)
+        {
+            g_play_unpause_pending = false;
+            if (libmpv_dispatch_play_locked("file-loaded-autoplay"))
+                g_pause = false;
+        }
         libmpv_refresh_state_locked(&pending);
         mutexUnlock(&g_mutex);
         libmpv_flush_events(&pending);
@@ -890,6 +1000,8 @@ static void libmpv_handle_event(mpv_event *event)
     case MPV_EVENT_SEEK:
         mutexLock(&g_mutex);
         g_seeking = true;
+        if (g_startup_render_hold && g_initial_seek_inflight)
+            g_initial_seek_event_seen = true;
         libmpv_refresh_state_locked(&pending);
         mutexUnlock(&g_mutex);
         libmpv_flush_events(&pending);
@@ -901,6 +1013,26 @@ static void libmpv_handle_event(mpv_event *event)
         g_stopped = false;
         g_seeking = false;
         libmpv_maybe_issue_pending_seek_locked(&pending);
+        if (g_startup_render_hold && g_play_requested)
+        {
+            if (g_initial_seek_inflight && g_initial_seek_event_seen)
+            {
+                libmpv_release_startup_gate_locked("initial-seek-complete");
+            }
+            else if (!g_startup_restart_seen)
+            {
+                g_startup_restart_seen = true;
+                if (!g_initial_seek_inflight)
+                {
+                    g_startup_hold_deadline_ms = libmpv_monotonic_ms() + LIBMPV_INITIAL_SEEK_WINDOW_MS;
+                    libmpv_log_trace("startup-gate", "seek-window", "open", g_uri);
+                }
+            }
+            else if (!g_initial_seek_inflight)
+            {
+                libmpv_release_startup_gate_locked("second-playback-restart");
+            }
+        }
         libmpv_refresh_state_locked(&pending);
         mutexUnlock(&g_mutex);
         libmpv_flush_events(&pending);
@@ -935,6 +1067,16 @@ static void libmpv_handle_event(mpv_event *event)
                 break;
             }
         }
+        mutexLock(&g_mutex);
+        bool replaced_previous = g_load_pending;
+        mutexUnlock(&g_mutex);
+        if (replaced_previous)
+        {
+            libmpv_log_trace("mpv-end-file", "event", "replaced-previous", g_uri);
+            log_info("[player-libmpv] ignored end-file for replaced media reason=%s\n", reason);
+            break;
+        }
+
         log_info("[player-libmpv] end-file uri=%s reason=%s error=%s\n",
                  g_uri ? g_uri : "(null)",
                  reason,
@@ -944,6 +1086,7 @@ static void libmpv_handle_event(mpv_event *event)
         mutexLock(&g_mutex);
         g_stopped = true;
         g_file_loaded = false;
+        libmpv_reset_startup_gate_locked();
         g_seeking = false;
         libmpv_clear_pending_seek_locked();
         g_paused_for_cache = false;
@@ -979,6 +1122,8 @@ static void libmpv_handle_event(mpv_event *event)
             mutexLock(&g_mutex);
             if (event->reply_userdata == LIBMPV_REPLY_SEEK)
                 g_seeking = false;
+            if (event->reply_userdata == LIBMPV_REPLY_LOADFILE)
+                g_load_pending = false;
             libmpv_refresh_state_locked(&pending);
             mutexUnlock(&g_mutex);
             libmpv_log_reply_error(event->reply_userdata, event->error);
@@ -992,6 +1137,7 @@ static void libmpv_handle_event(mpv_event *event)
         mutexLock(&g_mutex);
         g_stopped = true;
         g_file_loaded = false;
+        libmpv_reset_startup_gate_locked();
         g_seeking = false;
         libmpv_clear_pending_seek_locked();
         libmpv_refresh_state_locked(&pending);
@@ -1048,6 +1194,10 @@ static bool libmpv_init(void)
 #else
     libmpv_set_option_string_checked("hwdec", "yes");
 #endif
+    // Keep nvtegra hardware decoding, but do not let lavc reuse decoder-owned
+    // surfaces directly while deko3d may still be presenting the previous file.
+    libmpv_set_option_string_checked("vd-lavc-dr", "no");
+    libmpv_set_option_string_checked("vd-lavc-threads", "4");
     libmpv_set_option_string_checked("gpu-hwdec-interop", "auto");
     libmpv_set_option_string_checked("vo", "libmpv");
     libmpv_set_option_string_checked("audio-channels", "stereo");
@@ -1176,8 +1326,6 @@ static bool libmpv_set_media(const PlayerMedia *media)
 
 static bool libmpv_play(void)
 {
-    int pause_flag = 0;
-    int rc;
     LibmpvPendingEvents pending = {0};
 
     mutexLock(&g_mutex);
@@ -1194,18 +1342,28 @@ static bool libmpv_play(void)
         return libmpv_async_load_current(false);
     }
 
-    libmpv_log_trace("Play", "dispatch", "-", g_uri);
-    rc = mpv_set_property_async(g_mpv, LIBMPV_REPLY_PLAY, "pause", MPV_FORMAT_FLAG, &pause_flag);
-    if (rc < 0)
-    {
-        libmpv_log_trace("Play", "failed", mpv_error_string(rc), g_uri);
-        log_warn("[player-libmpv] play failed: %s\n", mpv_error_string(rc));
-        mutexUnlock(&g_mutex);
-        return false;
-    }
-
     g_last_error = 0;
-    g_pause = false;
+    g_play_requested = true;
+    if (g_startup_render_hold)
+        g_startup_hold_deadline_ms = libmpv_monotonic_ms() + LIBMPV_STARTUP_GATE_TIMEOUT_MS;
+
+    // loadfile applies its per-file pause option asynchronously. Defer the
+    // unpause until FILE_LOADED so pause=yes cannot overwrite autoplay.
+    if (!g_file_loaded)
+    {
+        g_play_unpause_pending = true;
+        libmpv_log_trace("Play", "deferred", "waiting-file-loaded", g_uri);
+    }
+    else
+    {
+        g_play_unpause_pending = false;
+        if (!libmpv_dispatch_play_locked("immediate"))
+        {
+            mutexUnlock(&g_mutex);
+            return false;
+        }
+        g_pause = false;
+    }
     libmpv_refresh_state_locked(&pending);
     mutexUnlock(&g_mutex);
 
@@ -1237,6 +1395,9 @@ static bool libmpv_pause(void)
     }
 
     g_last_error = 0;
+    libmpv_release_startup_gate_locked("explicit-pause");
+    g_play_requested = false;
+    g_play_unpause_pending = false;
     g_pause = true;
     libmpv_refresh_state_locked(&pending);
     mutexUnlock(&g_mutex);
@@ -1271,8 +1432,11 @@ static bool libmpv_stop(void)
     g_last_error = 0;
     g_stopped = true;
     g_file_loaded = false;
+    g_load_pending = false;
+    libmpv_reset_startup_gate_locked();
     g_seeking = false;
     g_paused_for_cache = false;
+    g_play_requested = false;
     g_pause = true;
     libmpv_clear_pending_seek_locked();
     libmpv_set_position_locked(0, &pending);
@@ -1286,12 +1450,22 @@ static bool libmpv_stop(void)
 static bool libmpv_seek_target(const char *target)
 {
     LibmpvPendingEvents pending = {0};
+    bool merge_initial_seek;
 
     mutexLock(&g_mutex);
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0' || g_state == PLAYER_STATE_STOPPED || !target || target[0] == '\0')
     {
         mutexUnlock(&g_mutex);
         return false;
+    }
+
+    merge_initial_seek = g_startup_render_hold;
+    if (merge_initial_seek)
+    {
+        g_initial_seek_inflight = true;
+        g_initial_seek_event_seen = false;
+        g_startup_hold_deadline_ms = libmpv_monotonic_ms() + LIBMPV_INITIAL_SEEK_TIMEOUT_MS;
+        libmpv_log_trace("Seek", "initial-merge", target, g_uri);
     }
 
     if (!g_file_loaded)
@@ -1315,6 +1489,11 @@ static bool libmpv_seek_target(const char *target)
 
     if (!libmpv_send_seek_target_locked(target, &pending))
     {
+        if (merge_initial_seek)
+        {
+            g_initial_seek_inflight = false;
+            g_startup_hold_deadline_ms = libmpv_monotonic_ms() + LIBMPV_INITIAL_SEEK_WINDOW_MS;
+        }
         mutexUnlock(&g_mutex);
         return false;
     }
@@ -1456,6 +1635,32 @@ static bool libmpv_show_osd(const char *text, int duration_ms)
     return true;
 }
 
+static void libmpv_release_expired_startup_gate(void)
+{
+    LibmpvPendingEvents pending = {0};
+    const char *reason = NULL;
+    uint64_t now_ms = libmpv_monotonic_ms();
+
+    mutexLock(&g_mutex);
+    if (g_startup_render_hold &&
+        g_startup_hold_deadline_ms > 0 &&
+        now_ms >= g_startup_hold_deadline_ms)
+    {
+        if (!g_file_loaded)
+        {
+            g_startup_hold_deadline_ms = now_ms + LIBMPV_STARTUP_GATE_TIMEOUT_MS;
+            mutexUnlock(&g_mutex);
+            return;
+        }
+        reason = g_initial_seek_inflight ? "initial-seek-timeout" :
+                 (g_startup_restart_seen ? "initial-seek-window-expired" : "startup-timeout");
+        libmpv_release_startup_gate_locked(reason);
+        libmpv_refresh_state_locked(&pending);
+    }
+    mutexUnlock(&g_mutex);
+    libmpv_flush_events(&pending);
+}
+
 static bool libmpv_pump_events(int timeout_ms)
 {
     mpv_event *event;
@@ -1477,6 +1682,8 @@ static bool libmpv_pump_events(int timeout_ms)
         libmpv_handle_event(event);
         event = mpv_wait_event(g_mpv, 0.0);
     }
+
+    libmpv_release_expired_startup_gate();
 
     return handled;
 }

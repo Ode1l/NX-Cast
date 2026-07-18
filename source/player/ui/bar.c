@@ -41,6 +41,57 @@ static int clamp_int(int value, int min_value, int max_value)
     return value;
 }
 
+static void copy_title_text(char *out, size_t out_size, const char *begin, const char *end)
+{
+    size_t length;
+
+    if (!out || out_size == 0)
+        return;
+    out[0] = '\0';
+    if (!begin || !end || end <= begin)
+        return;
+
+    length = (size_t)(end - begin);
+    if (length >= out_size)
+        length = out_size - 1;
+    memcpy(out, begin, length);
+    out[length] = '\0';
+}
+
+static void media_title_from_metadata(const char *metadata, char *out, size_t out_size)
+{
+    static const char *open_tags[] = {"<dc:title>", "<title>"};
+    static const char *close_tags[] = {"</dc:title>", "</title>"};
+
+    if (!out || out_size == 0)
+        return;
+    out[0] = '\0';
+    if (!metadata || !metadata[0])
+        return;
+
+    if (metadata[0] != '<')
+    {
+        snprintf(out, out_size, "%s", metadata);
+        return;
+    }
+
+    for (size_t i = 0; i < sizeof(open_tags) / sizeof(open_tags[0]); ++i)
+    {
+        const char *begin = strstr(metadata, open_tags[i]);
+        const char *end;
+
+        if (!begin)
+            continue;
+        begin += strlen(open_tags[i]);
+        end = strstr(begin, close_tags[i]);
+        if (end)
+        {
+            copy_title_text(out, out_size, begin, end);
+            return;
+        }
+    }
+}
+
 static bool has_prefix(const char *text, const char *prefix)
 {
     if (!text || !prefix)
@@ -149,11 +200,11 @@ void player_ui_bar_build(const PlayerSnapshot *snapshot, const char *headline, P
         snprintf(out->title, sizeof(out->title), "%s", label);
     out->focus = focus_from_headline(out->title, snapshot->state);
     out->seek_delta_ms = parse_seek_delta_ms(out->title);
-    out->subtitle[0] = '\0';
+    media_title_from_metadata(snapshot->media.metadata, out->subtitle, sizeof(out->subtitle));
     snprintf(out->left, sizeof(out->left), out->focus == PLAYER_UI_OVERLAY_FOCUS_PLAY ? "A PLAY" : "A PAUSE");
     snprintf(out->center, sizeof(out->center), "%s / %s", position_text, duration_text);
-    snprintf(out->right, sizeof(out->right), snapshot->mute ? "MUTE" : "VOL %d%%", out->volume);
-    snprintf(out->hint, sizeof(out->hint), "L/R SEEK   TOUCH DRAG   UP/DOWN VOL");
+    snprintf(out->right, sizeof(out->right), snapshot->mute ? "Muted" : "Volume %d%%", out->volume);
+    snprintf(out->hint, sizeof(out->hint), "A PLAY  L/R SEEK  UP/DN VOL  B HOME  X TV");
 }
 
 int player_ui_bar_show(const PlayerSnapshot *snapshot, const char *headline, int duration_ms)

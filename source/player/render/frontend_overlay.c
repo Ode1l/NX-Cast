@@ -546,6 +546,7 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
     int progress_knob_x;
     int progress_knob_size;
     int chip_y;
+    int hint_chip_y;
     int chip_height;
     int bubble_width;
     int bubble_height;
@@ -603,7 +604,8 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
     progress_knob_x = layout.progress_x + progress_fill_width - progress_height;
     progress_knob_size = progress_height * 4;
     chip_height = clamp_int(height / 20, 34, 42);
-    chip_y = progress_y + progress_height + 22;
+    chip_y = layout.info_y - 9;
+    hint_chip_y = layout.hints_y - chip_height / 2;
 
     frontend_overlay_push_vertical_gradient(rects,
                                             rect_capacity,
@@ -666,19 +668,19 @@ static bool frontend_overlay_build_rects(const ViewContext *ctx, FrontendOverlay
     frontend_overlay_push_pill(rects,
                                rect_capacity,
                                &count,
-                               layout.progress_x + 248,
-                               chip_y,
-                               420,
-                               chip_height,
-                               overlay_color(18, 22, 30));
-    frontend_overlay_push_pill(rects,
-                               rect_capacity,
-                               &count,
                                width - pad_x - 162,
                                chip_y,
                                162,
                                chip_height,
                                overlay_color(24, 28, 38));
+    frontend_overlay_push_pill(rects,
+                               rect_capacity,
+                               &count,
+                               width - pad_x - 560,
+                               hint_chip_y,
+                               560,
+                               chip_height,
+                               overlay_color(18, 22, 30));
 
     if (frontend_overlay_bar_has_focus(&overlay.bar))
         frontend_overlay_push_focus_icon(rects, rect_capacity, &count, &overlay.bar, width, height);
@@ -748,10 +750,10 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
     int pad_x;
     int title_scale;
     int hint_scale;
-    int progress_y;
-    int progress_height;
-    int controls_y;
+    int info_y;
+    int hints_y;
     int right_text_width;
+    int hint_text_width;
     int center_text_width;
     int title_text_width;
     int bubble_width;
@@ -801,15 +803,26 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
     if (!player_ui_layout_compute(width, height, &layout))
         return;
     pad_x = layout.pad_x;
-    progress_height = layout.progress_height;
-    progress_y = layout.progress_y;
-    controls_y = progress_y + progress_height + 22;
+    info_y = layout.info_y;
+    hints_y = layout.hints_y;
     title_scale = clamp_int(height / 260, 2, 3);
     hint_scale = clamp_int(height / 330, 2, 2);
 
+    if (overlay.bar.subtitle[0])
+    {
+        frontend_overlay_draw_text_shadowed(overlay.bar.subtitle,
+                                            layout.progress_x,
+                                            layout.title_y,
+                                            title_scale,
+                                            layout.progress_width,
+                                            238,
+                                            fill_rect,
+                                            userdata);
+    }
+
     frontend_overlay_draw_text_shadowed(overlay.bar.center,
                                         layout.progress_x + 20,
-                                        controls_y + 9,
+                                        info_y,
                                         hint_scale,
                                         190,
                                         232,
@@ -819,18 +832,19 @@ static void frontend_overlay_render_text_generic(const ViewContext *ctx, Fronten
     right_text_width = frontend_font_measure_text(overlay.bar.right, hint_scale);
     frontend_overlay_draw_text_shadowed(overlay.bar.right,
                                         width - pad_x - 20 - right_text_width,
-                                        controls_y + 9,
+                                        info_y,
                                         hint_scale,
                                         132,
                                         222,
                                         fill_rect,
                                         userdata);
 
+    hint_text_width = frontend_font_measure_text(overlay.bar.hint, hint_scale);
     frontend_overlay_draw_text_shadowed(overlay.bar.hint,
-                                        layout.progress_x + 268,
-                                        controls_y + 9,
+                                        width - pad_x - 20 - hint_text_width,
+                                        hints_y - (7 * hint_scale) / 2,
                                         hint_scale,
-                                        400,
+                                        520,
                                         164,
                                         fill_rect,
                                         userdata);

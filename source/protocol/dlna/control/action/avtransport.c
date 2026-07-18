@@ -192,8 +192,9 @@ static void avtransport_log_trace(const char *action, const char *phase, const c
 
     if (phase && strcmp(phase, "failed") == 0)
     {
-        player_trace_warn("[media-trace] seq=%u layer=soap action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+        player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=soap action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
                           seq,
+                          (unsigned long long)player_trace_elapsed_ms(),
                           action ? action : "(unknown)",
                           phase,
                           hash,
@@ -202,8 +203,9 @@ static void avtransport_log_trace(const char *action, const char *phase, const c
         return;
     }
 
-    player_trace_log("[media-trace] seq=%u layer=soap action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=soap action=%s phase=%s url_hash=%08x detail=%s url=%s\n",
                      seq,
+                     (unsigned long long)player_trace_elapsed_ms(),
                      action ? action : "(unknown)",
                      phase ? phase : "(unknown)",
                      hash,
@@ -331,16 +333,18 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     }
 
     seq = player_trace_begin_media("SetAVTransportURI", uri, metadata);
-    player_trace_log("[media-trace] seq=%u layer=soap action=SetAVTransportURI phase=dispatch instance=%s url_hash=%08x url=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=soap action=SetAVTransportURI phase=dispatch instance=%s url_hash=%08x url=%s\n",
                      seq,
+                     (unsigned long long)player_trace_elapsed_ms(),
                      instance_id,
                      player_trace_uri_hash(uri),
                      player_trace_uri_summary(uri, summary, sizeof(summary)));
 
     if (!renderer_set_uri(uri, metadata))
     {
-        player_trace_warn("[media-trace] seq=%u layer=soap action=SetAVTransportURI phase=failed reason=renderer_set_uri url_hash=%08x url=%s\n",
+        player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=soap action=SetAVTransportURI phase=failed reason=renderer_set_uri url_hash=%08x url=%s\n",
                           seq,
+                          (unsigned long long)player_trace_elapsed_ms(),
                           player_trace_uri_hash(uri),
                           player_trace_uri_summary(uri, summary, sizeof(summary)));
         free(instance_id);
@@ -351,8 +355,9 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     }
 
     dlna_protocol_state_apply_set_uri(uri, metadata);
-    player_trace_log("[media-trace] seq=%u layer=soap action=SetAVTransportURI phase=done url_hash=%08x url=%s\n",
+    player_trace_log("[media-trace] seq=%u t_ms=%llu layer=soap action=SetAVTransportURI phase=done url_hash=%08x url=%s\n",
                      seq,
+                     (unsigned long long)player_trace_elapsed_ms(),
                      player_trace_uri_hash(uri),
                      player_trace_uri_summary(uri, summary, sizeof(summary)));
 

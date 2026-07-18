@@ -11,6 +11,9 @@ typedef struct
     int progress_y;
     int progress_width;
     int progress_height;
+    int title_y;
+    int info_y;
+    int hints_y;
     int progress_hit_y;
     int progress_hit_height;
 } PlayerUiLayout;

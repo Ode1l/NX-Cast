@@ -6,6 +6,9 @@
 #include "types.h"
 
 #define PLAYER_HOME_ERROR_MAX 512
+#define PLAYER_HOME_IPTV_STATUS_MAX 192
+#define PLAYER_HOME_IPTV_NAME_MAX 128
+#define PLAYER_HOME_IPTV_FILTER_MAX 96
 
 typedef enum
 {
@@ -43,8 +46,27 @@ typedef struct
     bool network_ready;
     bool dlna_running;
     bool video_ready;
+    bool playback_active;
+    PlayerState playback_state;
     bool has_error;
     char error_line[PLAYER_HOME_ERROR_MAX];
+    bool iptv_ready;
+    bool iptv_panel_open;
+    bool iptv_sources_open;
+    bool iptv_refreshing;
+    int iptv_source_count;
+    int iptv_channel_count;
+    int iptv_visible_count;
+    int iptv_favorite_count;
+    int iptv_recent_count;
+    int iptv_logo_cached_count;
+    int iptv_epg_channel_count;
+    int iptv_selected_index;
+    int iptv_source_selected_index;
+    char iptv_active_filter[PLAYER_HOME_IPTV_FILTER_MAX];
+    char iptv_search[PLAYER_HOME_IPTV_FILTER_MAX];
+    char iptv_status[PLAYER_HOME_IPTV_STATUS_MAX];
+    char iptv_last_name[PLAYER_HOME_IPTV_NAME_MAX];
 } PlayerHomeViewState;
 
 void player_view_status_clear(PlayerViewStatus *status);
@@ -54,6 +76,8 @@ void player_view_deinit(void);
 bool player_view_prepare_video(void);
 void player_view_set_home_state(const PlayerHomeViewState *state);
 void player_view_sync(const PlayerSnapshot *snapshot);
+bool player_view_show_home(void);
+bool player_view_show_video(void);
 void player_view_begin_frame(void);
 PlayerViewMode player_view_get_mode(void);
 PlayerRenderOwner player_view_get_owner(void);

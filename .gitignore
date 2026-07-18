@@ -3,6 +3,7 @@ dist/
 sdmc/
 artifacts/
 logs/
+promo/
 
 NX-Cast.elf
 NX-Cast.nacp
