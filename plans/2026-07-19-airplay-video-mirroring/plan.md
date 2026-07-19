@@ -57,7 +57,7 @@ None.
 | Step 4 | `steps/step-4.md` | COMPLETED | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
 | Step 5 | `steps/step-5.md` | COMPLETED | 实现 Pair Setup/Pair Verify 与加密控制会话 |
 | Step 6 | `steps/step-6.md` | COMPLETED | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
-| Step 7 | `steps/step-7.md` | IN_PROGRESS | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
+| Step 7 | `steps/step-7.md` | BLOCKED | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
 | Step 8 | `steps/step-8.md` | PENDING | 实现镜像 H.264 接收、解密、重组和关键帧恢复 |
 | Step 9 | `steps/step-9.md` | PENDING | 建立 MPEG-TS 环形缓冲与 libmpv 自定义流桥接 |
 | Step 10 | `steps/step-10.md` | PENDING | 完成第一阶段 H.264 硬解镜像真机闭环 |
@@ -133,6 +133,10 @@ None.
 | `scripts/smoke_airplay_pairing.py` | Real TCP authorization close/reconnect smoke | local requested/ephemeral port runs, Step 5 |
 | `source/protocol/airplay/discovery/dns.[ch]` | Bounded DNS-SD codec with compressed AirPlay record set | unit, sanitizer and static-analysis tests, Step 6 |
 | `source/protocol/airplay/discovery/mdns.[ch]` | Native multicast responder lifecycle and conflict handling | loopback UDP lifecycle smoke and strict build, Step 6 |
+| `source/protocol/airplay/protocol/handlers.[ch]` | Capability-gated AirPlay control endpoint and session state machine | unit transcript, sanitizer/static analysis and strict build, Step 7 |
+| `source/protocol/airplay/security/fairplay.[ch]` | Fail-closed clean-room boundary for proprietary FairPlay negotiation | supported observable phase fixture and explicit unsupported-path tests, Step 7 |
+| `source/protocol/airplay/receiver.[ch]` | Pairing, control server, handlers, lifecycle and optional discovery composition root | real TCP composed receiver smoke and strict build, Step 7 |
+| `scripts/smoke_airplay_receiver.py` | Composed receiver startup, info, authorization and teardown smoke | local ephemeral-port run and ASan/UBSan run, Step 7 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -163,6 +167,9 @@ None.
 - Strict Switch builds pass with AirPlay trace disabled and enabled, but this workstation lacks `switch-libsodium`; release CI must enforce `NXCAST_REQUIRE_AIRPLAY_ED25519=1` after installing that official package — verified by build output and explicit dependency gate, Step 5.
 - `_airplay._tcp.local` DNS-SD packets contain compressed and mutually consistent PTR/SRV/TXT/A records, reject malformed/self-referential names, and cap packets at 1500 bytes — verified by C tests, ASan/UBSan and static analysis, Step 6.
 - The native responder honors QU queries, announces periodically, renames on conflicting unique records and emits TTL=0 goodbye before socket teardown — verified by isolated real UDP smoke, Step 6.
+- `/info`, observable 164-byte `/fp-setup`, SETUP/RECORD/GET_PARAMETER/TEARDOWN state handling and disconnect cleanup pass deterministic unit transcripts; the composed receiver also serves binary-plist info, rejects unverified SETUP with 470/close and immediately accepts a new connection — verified by normal/sanitizer tests and real TCP smoke, Step 7.
+- The standard 16-byte FairPlay challenge requires a proprietary 142-byte response and wrapped-key algorithm that cannot be independently derived from public behavior; NX-Cast returns 501 and does not advertise mirroring unless an audited unwrap/media backend is supplied — verified by source review, fixtures and receiver capability tests, Step 7.
+- Step 7 Switch builds pass with `TRACE_AIRPLAY=0` and `=1`; traces include only endpoint/state/sequence/length/result metadata and never payloads, PINs or keys — verified by strict builds and trace macro/source review, Step 7.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -173,3 +180,4 @@ None.
 | 2026-07-20 | Step 4 | Added and verified atomic device identity plus mbedTLS/libsodium crypto primitives and published-vector tests. |
 | 2026-07-20 | Step 5 | Added Apple-compatible PIN Pair Setup/Verify, persistent trusted clients, authorization routing and real TCP reconnect validation. |
 | 2026-07-20 | Step 6 | Added a bounded DNS-SD codec and native mDNS responder with query, announce, conflict and goodbye lifecycle tests. |
+| 2026-07-20 | Step 7 | Added the composed control handshake runtime and fail-closed FairPlay boundary; host and Switch checks pass, but a real iPhone RECORD flow remains blocked on independently unavailable FairPlay compatibility. |

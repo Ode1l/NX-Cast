@@ -38,5 +38,8 @@ void airplay_mdns_stop(void);
 bool airplay_mdns_is_running(void);
 uint16_t airplay_mdns_bound_port(void);
 bool airplay_mdns_instance_name(char *output, size_t output_size);
+bool airplay_mdns_build_txt_record(const AirPlayMdnsConfig *config,
+                                   uint8_t output[AIRPLAY_DNS_TXT_MAX],
+                                   size_t *output_size);
 
 #endif

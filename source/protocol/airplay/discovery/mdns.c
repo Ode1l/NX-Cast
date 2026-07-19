@@ -203,12 +203,38 @@ static bool format_hex(const uint8_t *input, size_t input_size, char *output,
     return true;
 }
 
-static bool build_service(unsigned suffix)
+static bool build_txt_record(const AirPlayMdnsConfig *config,
+                             AirPlayDnsService *service)
 {
-    char base[AIRPLAY_MDNS_INSTANCE_BASE_MAX + 1u];
     char device_id[18];
     char public_key[65];
     char features[32];
+    int written;
+
+    if (!config || !service || config->features == 0u ||
+        !format_hex(config->device_id, sizeof(config->device_id),
+                    device_id, sizeof(device_id), ':') ||
+        !format_hex(config->public_key, sizeof(config->public_key),
+                    public_key, sizeof(public_key), 0))
+        return false;
+    written = snprintf(features, sizeof(features), "0x%X,0x%X",
+                       (unsigned)(config->features & UINT32_MAX),
+                       (unsigned)(config->features >> 32));
+    if (written <= 0 || (size_t)written >= sizeof(features))
+        return false;
+    return append_txt(service, "deviceid", device_id) &&
+           append_txt(service, "features", features) &&
+           append_txt(service, "flags", "0x4") &&
+           append_txt(service, "model", "AppleTV3,2") &&
+           append_txt(service, "pk", public_key) &&
+           append_txt(service, "pw", config->pin_required ? "true" : "false") &&
+           append_txt(service, "srcvers", "220.68") &&
+           append_txt(service, "vv", "2");
+}
+
+static bool build_service(unsigned suffix)
+{
+    char base[AIRPLAY_MDNS_INSTANCE_BASE_MAX + 1u];
     int written;
 
     memset(&g_mdns.service, 0, sizeof(g_mdns.service));
@@ -220,11 +246,7 @@ static bool build_service(unsigned suffix)
     else
         written = snprintf(g_mdns.service.instance_name,
                            sizeof(g_mdns.service.instance_name), "%s (%u)", base, suffix);
-    if (written <= 0 || (size_t)written >= sizeof(g_mdns.service.instance_name) ||
-        !format_hex(g_mdns.config.device_id, sizeof(g_mdns.config.device_id),
-                    device_id, sizeof(device_id), ':') ||
-        !format_hex(g_mdns.config.public_key, sizeof(g_mdns.config.public_key),
-                    public_key, sizeof(public_key), 0))
+    if (written <= 0 || (size_t)written >= sizeof(g_mdns.service.instance_name))
         return false;
     written = snprintf(g_mdns.service.host_name, sizeof(g_mdns.service.host_name),
                        "nx-cast-%02x%02x%02x%02x%02x%02x",
@@ -233,21 +255,25 @@ static bool build_service(unsigned suffix)
                        g_mdns.config.device_id[4], g_mdns.config.device_id[5]);
     if (written <= 0 || (size_t)written >= sizeof(g_mdns.service.host_name))
         return false;
-    written = snprintf(features, sizeof(features), "0x%X,0x%X",
-                       (unsigned)(g_mdns.config.features & UINT32_MAX),
-                       (unsigned)(g_mdns.config.features >> 32));
-    if (written <= 0 || (size_t)written >= sizeof(features))
-        return false;
     g_mdns.service.port = g_mdns.config.control_port;
     g_mdns.service.ipv4_address = g_mdns.config.ipv4_address;
-    return append_txt(&g_mdns.service, "deviceid", device_id) &&
-           append_txt(&g_mdns.service, "features", features) &&
-           append_txt(&g_mdns.service, "flags", "0x4") &&
-           append_txt(&g_mdns.service, "model", "AppleTV3,2") &&
-           append_txt(&g_mdns.service, "pk", public_key) &&
-           append_txt(&g_mdns.service, "pw", g_mdns.config.pin_required ? "true" : "false") &&
-           append_txt(&g_mdns.service, "srcvers", "220.68") &&
-           append_txt(&g_mdns.service, "vv", "2");
+    return build_txt_record(&g_mdns.config, &g_mdns.service);
+}
+
+bool airplay_mdns_build_txt_record(const AirPlayMdnsConfig *config,
+                                   uint8_t output[AIRPLAY_DNS_TXT_MAX],
+                                   size_t *output_size)
+{
+    AirPlayDnsService service = {0};
+
+    if (!config || !config->friendly_name || !output || !output_size ||
+        !config->friendly_name[0] || config->features == 0u)
+        return false;
+    if (!build_txt_record(config, &service))
+        return false;
+    memcpy(output, service.txt, service.txt_size);
+    *output_size = service.txt_size;
+    return true;
 }
 
 static bool address_is_local(uint32_t source, uint32_t local)

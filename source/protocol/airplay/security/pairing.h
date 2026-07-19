@@ -52,6 +52,10 @@ AirPlayPairingState airplay_pairing_session_state(const AirPlayRtspSession *sess
 bool airplay_pairing_session_verified(const AirPlayRtspSession *session);
 bool airplay_pairing_session_shared_secret(const AirPlayRtspSession *session,
                                            uint8_t output[32]);
+bool airplay_pairing_service_device_id(const AirPlayPairingService *service,
+                                       uint8_t output[6]);
+bool airplay_pairing_service_public_key(const AirPlayPairingService *service,
+                                        uint8_t output[32]);
 const char *airplay_pairing_state_name(AirPlayPairingState state);
 
 #endif

@@ -207,9 +207,21 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=7000)
     parser.add_argument("--server-bin", type=Path)
     parser.add_argument("--mdns", action="store_true")
+    parser.add_argument("--receiver", action="store_true")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
+    if args.receiver:
+        from smoke_airplay_receiver import run_smoke as run_receiver_smoke
+
+        receiver_binary = (
+            args.server_bin or root / "build" / "tests" / "airplay_receiver_smoke_server"
+        )
+        if not receiver_binary.is_file():
+            parser.error(f"server binary not found: {receiver_binary}; run make test-airplay first")
+        run_receiver_smoke(receiver_binary.resolve(), args.port)
+        print("AirPlay composed receiver smoke passed")
+        return 0
     if args.mdns:
         from smoke_airplay_mdns import run_smoke as run_mdns_smoke
 

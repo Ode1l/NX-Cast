@@ -618,6 +618,18 @@ bool airplay_pairing_session_shared_secret(const AirPlayRtspSession *session,
     return true;
 }
 
+bool airplay_pairing_service_device_id(const AirPlayPairingService *service,
+                                       uint8_t output[6])
+{
+    return service && output && airplay_identity_device_id(service->identity, output);
+}
+
+bool airplay_pairing_service_public_key(const AirPlayPairingService *service,
+                                        uint8_t output[32])
+{
+    return service && output && airplay_identity_public_key(service->identity, output);
+}
+
 const char *airplay_pairing_state_name(AirPlayPairingState state)
 {
     switch (state)

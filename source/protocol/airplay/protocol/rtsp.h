@@ -75,6 +75,7 @@ typedef struct
     uint32_t request_count;
     AirPlayRtspSessionState state;
     void *security_context;
+    void *protocol_context;
 } AirPlayRtspSession;
 
 typedef bool (*AirPlayRtspRouteHandler)(AirPlayRtspSession *session,
