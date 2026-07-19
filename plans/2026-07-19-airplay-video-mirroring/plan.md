@@ -207,6 +207,7 @@ None.
 - DLNA, IPTV, AirPlay remote video and mirroring now claim generation-bearing player leases; newer claims invalidate stale commands and release attempts, while host concurrency/sanitizer tests and the strict Switch build pass — verified host/build facts, Step 14.
 - AirPlay starts only after network/player readiness and is stopped before DLNA/player/UI/network teardown; real mixed-protocol switching and + exit remain a hardware acceptance blocker — verified source/order review and strict build, Step 14.
 - CI now installs official `switch-libsodium`, runs the complete AirPlay host suite, and requires Ed25519 in strict Switch builds; local scripts/YAML parse, while the actual Docker run is unavailable on this workstation — verified static/local facts, Step 15.
+- The first GitHub Actions Docker run built the image successfully and identified Debian's missing `mbedcrypto.pc`; Makefile host detection now has a header/library fallback while keeping pkg-config preferred — verified remote run 29694789656, Step 15.
 - The local package-layout archive preserves the 25,285,306-byte NRO and complete IPTV presets, adds only AirPlay/privacy/legal assets, and contains no runtime identities, pairings, keys, logs, traces, dumps, captures or reference source; publishable packages additionally require the strict release-build attestation — verified package staging/listing and negative gate test, Step 15.
 
 ## Implementation Log

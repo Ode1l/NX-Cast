@@ -136,6 +136,13 @@ HOST_MBEDTLS_PKG_CONFIG_PATH ?= $(HOST_MBEDTLS_PREFIX)/lib/pkgconfig
 HOST_MBEDTLS_FOUND := $(shell PKG_CONFIG_PATH="$(HOST_MBEDTLS_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --exists mbedcrypto >/dev/null 2>&1 && echo 1)
 HOST_MBEDTLS_CFLAGS := $(shell PKG_CONFIG_PATH="$(HOST_MBEDTLS_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --cflags mbedcrypto 2>/dev/null)
 HOST_MBEDTLS_LIBS := $(shell PKG_CONFIG_PATH="$(HOST_MBEDTLS_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --libs mbedcrypto 2>/dev/null)
+HOST_MBEDTLS_SYSTEM_FOUND := $(shell test -f /usr/include/mbedtls/version.h && test "$$($(HOST_CC) -print-file-name=libmbedcrypto.a)" != "libmbedcrypto.a" && echo 1)
+ifeq ($(HOST_MBEDTLS_FOUND),)
+ifeq ($(HOST_MBEDTLS_SYSTEM_FOUND),1)
+HOST_MBEDTLS_FOUND := 1
+HOST_MBEDTLS_LIBS := -lmbedcrypto
+endif
+endif
 MBEDTLS_FOUND := $(shell PKG_CONFIG_PATH="$(MBEDTLS_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exists mbedcrypto >/dev/null 2>&1 && echo 1)
 MBEDTLS_CFLAGS := $(shell PKG_CONFIG_PATH="$(MBEDTLS_PKG_CONFIG_PATH)" $(PKG_CONFIG) --cflags mbedcrypto 2>/dev/null)
 MBEDTLS_LIBS := $(shell PKG_CONFIG_PATH="$(MBEDTLS_PKG_CONFIG_PATH)" $(PKG_CONFIG) --libs mbedcrypto 2>/dev/null)

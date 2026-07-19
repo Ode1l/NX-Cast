@@ -40,6 +40,7 @@
 ## Implementation Notes
 - The Docker image installs native mbedTLS/libsodium/FFmpeg test dependencies and official devkitPro `switch-libsodium`. CI runs `make test-airplay` before a build that requires libmpv, deko3d, and Ed25519.
 - Local Docker validation was not possible because the workstation has no `docker` command. The workflow YAML and shell scripts parse, and the equivalent host/local build/package stages pass.
+- The first remote Docker run proved image creation and dependency installation, then exposed Debian's lack of `mbedcrypto.pc`; host dependency detection now falls back to the installed system header/library instead of reporting mbedTLS missing.
 - This workstation's Switch portlibs do not contain `switch-libsodium`; the new release gate correctly rejects `NXCAST_REQUIRE_AIRPLAY_ED25519=1`. The normal strict build still passes, and Docker/CI supplies the missing package.
 - `make release-build` records a four-feature attestation only after libmpv, deko3d, ImGui and Ed25519 gates pass. Packaging rejects a missing attestation by default; the local layout-only test used the explicit non-release override because this workstation cannot produce an Ed25519 Switch build.
 - Release staging includes `airplay/README.txt` but never runtime `identity.bin` or `pairings.bin`. It also rejects common private-key, log, trace, dump, and packet-capture suffixes.
