@@ -1,3 +1,6 @@
+#define _POSIX_C_SOURCE 200809L
+#define _DARWIN_C_SOURCE
+
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
