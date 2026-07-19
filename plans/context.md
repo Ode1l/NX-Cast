@@ -13,10 +13,11 @@
 | Step 3 | Added an independent persistent RTSP/HTTP server, bounded parser, session state and real TCP smoke tests. | `makefile`, `source/protocol/airplay/{server,protocol/rtsp}.[ch]`, RTSP test/smoke scripts, plan files |
 | Step 4 | Added atomic persistent identity and bounded mbedTLS/libsodium primitives with published vectors. | `makefile`, `source/protocol/airplay/security/{crypto,identity}.[ch]`, crypto tests, plan files |
 | Step 5 | Added Apple-compatible PIN Pair Setup/Verify, persisted trusted clients and TCP authorization/reconnect tests. | `makefile`, `source/protocol/airplay/security/{srp,pairing_store,pairing}.[ch]`, pairing tests/smoke, plan files |
+| Step 6 | Added compressed DNS-SD records and a native mDNS responder with announce/query/conflict/goodbye tests. | `makefile`, `source/protocol/airplay/discovery/{dns,mdns}.[ch]`, DNS test and UDP smoke, plan files |
 
 ## Current Step
-**Step 6: Native mDNS Discovery** — Status: IN_PROGRESS
-- Steps 1-5 normal tests, ASan/UBSan tests, static analysis, TCP smoke and strict Switch builds pass.
+**Step 7: Control Handshake Integration** — Status: IN_PROGRESS
+- Steps 1-6 normal tests, ASan/UBSan tests, static analysis, TCP/UDP smoke and strict Switch builds pass.
 - Runtime/release AirPlay remains gated on official `switch-libsodium`; Step 15 CI must enforce `NXCAST_REQUIRE_AIRPLAY_ED25519=1`.
 
 ## Key Learnings
@@ -28,8 +29,9 @@
 - mbedTLS 2.28 supplies all planned primitives except Ed25519; the audited libsodium backend is capability-gated and must be mandatory before runtime AirPlay is enabled.
 - Identity seeds remain private to `identity.c`; callers can obtain the public key/fingerprint and request signatures but cannot export the seed.
 - Pair Setup/Verify authorizes the RTSP session and later media-key derivation; the selected legacy behavior does not add a general encrypted record layer around every later RTSP message.
+- mDNS advertises only explicitly supplied feature bits; Step 6 uses legacy pairing only and defers screen/video/HLS bits to their accepted implementation phases.
 
 ## Next Actions
-1. Inventory the existing Switch network/mDNS API and reference TXT records without copying source.
-2. Implement bounded `_airplay._tcp` advertisement lifecycle, conflict handling and packet tests.
-3. Integrate discovery only after the control listener has a bound port; withdraw it before transport shutdown.
+1. Inventory current `/server-info`, SETUP, RECORD, GET/SET_PARAMETER and TEARDOWN behavior from both references.
+2. Add a runtime owner that loads pairing identity, starts RTSP, then mDNS, with reverse-order shutdown.
+3. Add sanitized control transcripts, state validation and trace-safe lifecycle logging.

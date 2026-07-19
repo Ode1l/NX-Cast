@@ -206,9 +206,19 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7000)
     parser.add_argument("--server-bin", type=Path)
+    parser.add_argument("--mdns", action="store_true")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
+    if args.mdns:
+        from smoke_airplay_mdns import run_smoke as run_mdns_smoke
+
+        mdns_binary = args.server_bin or root / "build" / "tests" / "airplay_mdns_smoke_server"
+        if not mdns_binary.is_file():
+            parser.error(f"server binary not found: {mdns_binary}; run make test-airplay first")
+        run_mdns_smoke(mdns_binary.resolve())
+        print("AirPlay mDNS lifecycle smoke passed")
+        return 0
     server_binary = args.server_bin or root / "build" / "tests" / "airplay_smoke_server"
     if not server_binary.is_file():
         parser.error(f"server binary not found: {server_binary}; run make test-airplay first")

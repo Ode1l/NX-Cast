@@ -56,8 +56,8 @@ None.
 | Step 3 | `steps/step-3.md` | COMPLETED | 实现独立持久 RTSP/HTTP 控制服务器和解析器 |
 | Step 4 | `steps/step-4.md` | COMPLETED | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
 | Step 5 | `steps/step-5.md` | COMPLETED | 实现 Pair Setup/Pair Verify 与加密控制会话 |
-| Step 6 | `steps/step-6.md` | IN_PROGRESS | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
-| Step 7 | `steps/step-7.md` | PENDING | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
+| Step 6 | `steps/step-6.md` | COMPLETED | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
+| Step 7 | `steps/step-7.md` | IN_PROGRESS | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
 | Step 8 | `steps/step-8.md` | PENDING | 实现镜像 H.264 接收、解密、重组和关键帧恢复 |
 | Step 9 | `steps/step-9.md` | PENDING | 建立 MPEG-TS 环形缓冲与 libmpv 自定义流桥接 |
 | Step 10 | `steps/step-10.md` | PENDING | 完成第一阶段 H.264 硬解镜像真机闭环 |
@@ -131,6 +131,8 @@ None.
 | `source/protocol/airplay/security/pairing.[ch]` | PIN Pair Setup, persisted client trust and Pair Verify state | unit transcript, reconnect smoke, sanitizers and strict build, Step 5 |
 | `source/protocol/airplay/security/pairing_store.[ch]` | Versioned and checksummed trusted-client persistence | reload/corruption/update tests and static analysis, Step 5 |
 | `scripts/smoke_airplay_pairing.py` | Real TCP authorization close/reconnect smoke | local requested/ephemeral port runs, Step 5 |
+| `source/protocol/airplay/discovery/dns.[ch]` | Bounded DNS-SD codec with compressed AirPlay record set | unit, sanitizer and static-analysis tests, Step 6 |
+| `source/protocol/airplay/discovery/mdns.[ch]` | Native multicast responder lifecycle and conflict handling | loopback UDP lifecycle smoke and strict build, Step 6 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -159,6 +161,8 @@ None.
 - The selected legacy PIN flow uses `/pair-pin-start`, three binary-plist `/pair-setup-pin` exchanges and two raw `/pair-verify` exchanges; later RTSP is authorized by verified session state rather than a separate encrypted record layer — verified from reference behavior inventory and transcript tests, Step 5.
 - Pair Setup/Verify passes an independent SRP fixture, persistent reconnect, wrong proof, malformed plist, replay and disconnect tests; real TCP smoke confirms protected SETUP returns generic 470/close and the listener accepts an immediate new connection — verified by normal/sanitizer tests and local smoke, Step 5.
 - Strict Switch builds pass with AirPlay trace disabled and enabled, but this workstation lacks `switch-libsodium`; release CI must enforce `NXCAST_REQUIRE_AIRPLAY_ED25519=1` after installing that official package — verified by build output and explicit dependency gate, Step 5.
+- `_airplay._tcp.local` DNS-SD packets contain compressed and mutually consistent PTR/SRV/TXT/A records, reject malformed/self-referential names, and cap packets at 1500 bytes — verified by C tests, ASan/UBSan and static analysis, Step 6.
+- The native responder honors QU queries, announces periodically, renames on conflicting unique records and emits TTL=0 goodbye before socket teardown — verified by isolated real UDP smoke, Step 6.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -168,3 +172,4 @@ None.
 | 2026-07-20 | Step 3 | Added and verified the independent persistent RTSP/HTTP server, bounded parser, session state and socket smoke suite. |
 | 2026-07-20 | Step 4 | Added and verified atomic device identity plus mbedTLS/libsodium crypto primitives and published-vector tests. |
 | 2026-07-20 | Step 5 | Added Apple-compatible PIN Pair Setup/Verify, persistent trusted clients, authorization routing and real TCP reconnect validation. |
+| 2026-07-20 | Step 6 | Added a bounded DNS-SD codec and native mDNS responder with query, announce, conflict and goodbye lifecycle tests. |
