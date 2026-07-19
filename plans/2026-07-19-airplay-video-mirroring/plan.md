@@ -50,7 +50,7 @@ None.
 ## Steps Overview
 | Step | File | Status | Goal |
 |------|------|--------|------|
-| Step 1 | `steps/step-1.md` | IN_PROGRESS | 建立 AirPlay 生命周期外壳、状态契约和主机测试入口 |
+| Step 1 | `steps/step-1.md` | COMPLETED | 建立 AirPlay 生命周期外壳、状态契约和主机测试入口 |
 | Step 2 | `steps/step-2.md` | PENDING | 实现最小 binary plist 编解码并以夹具锁定行为 |
 | Step 3 | `steps/step-3.md` | PENDING | 实现独立持久 RTSP/HTTP 控制服务器和解析器 |
 | Step 4 | `steps/step-4.md` | PENDING | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
@@ -100,8 +100,12 @@ None.
 | `source/player/backend/libmpv.c` | Register custom stream and preserve hardware playback | existing libmpv backend read/search |
 | `source/player/core/session.c` | Thread-safe player commands and media ownership integration | `rg -n player_set_uri source/player` |
 | `source/player/renderer.h` | URL/HLS phase public playback facade | `renderer_set_uri()` maps to player API |
-| `Makefile` | mbedTLS linkage, trace flag and host tests | `rg -n TRACE_MEDIA\|NXCAST_REQUIRE Makefile` |
+| `makefile` | mbedTLS linkage, trace flag and host tests | `rg -n TRACE_MEDIA\|NXCAST_REQUIRE makefile` |
 | `scripts/` | Host protocol tests and smoke tooling | existing DLNA/IPTV test scripts inspected |
+| `scripts/test_iptv_channel_list.c` | Existing dependency-light C host-test convention for Step 1 | direct source read, 2026-07-19 |
+| `scripts/test_airplay.c` | AirPlay lifecycle host test entry point | normal and ASan/UBSan test runs, Step 1 |
+| `source/protocol/airplay/airplay.h` | Public bounded lifecycle/status/callback contract | source read and strict Switch build, Step 1 |
+| `source/protocol/airplay/airplay.c` | Dependency-free lifecycle implementation | host tests and strict Switch build, Step 1 |
 | `/tmp/nxcast-airplay-ref.0dZrly/UxPlay` | Primary behavior reference only | shallow clone metadata and protocol file inventory |
 | `/tmp/nxcast-airplay-ref.0dZrly/RPiPlay` | Legacy behavior cross-check only | shallow clone metadata and protocol file inventory |
 
@@ -113,7 +117,12 @@ None.
 - mbedTLS headers, static libraries and pkg-config metadata are installed; OpenSSL/libplist are not part of the current Switch toolchain — verified from `/opt/devkitpro/portlibs/switch`, 2026-07-19.
 - UxPlay reference is newer and contains mirror plus remote-video protocol paths; RPiPlay is older and useful primarily for legacy cross-checks — verified from shallow clone history and file inventories, 2026-07-19.
 - Neither reference repository provides a usable protocol test suite for NX-Cast, so fixtures and transcript tests must be created locally — verified by repository inventory, 2026-07-19.
+- `source/main.c` does not call AirPlay startup and contains only a commented mDNS placeholder, so adding the Step 1 module cannot advertise a network service — verified by source read, 2026-07-19.
+- The makefile already scans `source/protocol/airplay/*.c`, while host tests use small standalone C executables with `-Isource` — verified by makefile and `scripts/test_iptv_channel_list.c`, 2026-07-19.
+- AirPlay lifecycle accepts only non-empty names up to 63 bytes and non-zero ports, copies configuration into bounded storage, emits isolated optional callbacks and clears state on stop — verified by `make test-airplay` plus ASan/UBSan, Step 1.
+- Adding `airplay.c` compiles into the required libmpv/deko3d Switch build without enabling runtime discovery because `main.c` remains unchanged — verified by strict build and source/status review, Step 1.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
+| 2026-07-19 | Step 1 | Added and verified the AirPlay lifecycle/status facade and `make test-airplay`; no network behavior enabled. |

@@ -79,6 +79,9 @@ TRACE_INPUT ?= 0
 NXCAST_REQUIRE_LIBMPV ?= 0
 NXCAST_REQUIRE_DEKO3D ?= 0
 NXCAST_USE_IMGUI_UI ?= 0
+HOST_CC ?= cc
+HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource
+AIRPLAY_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay
 
 ifeq ($(TRACE_MEDIA),1)
 CFLAGS	+=	-DNXCAST_MEDIA_TRACE_VERBOSE=1
@@ -262,7 +265,7 @@ ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
 endif
 
-.PHONY: $(BUILD) clean all
+.PHONY: $(BUILD) clean all test-airplay
 
 #---------------------------------------------------------------------------------
 all: sdmc_init $(BUILD)
@@ -289,6 +292,11 @@ ifeq ($(strip $(APP_JSON)),)
 else
 	@rm -fr $(BUILD) $(TARGET).nsp $(TARGET).nso $(TARGET).npdm $(TARGET).elf
 endif
+
+test-airplay:
+	@mkdir -p $(dir $(AIRPLAY_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/airplay.c scripts/test_airplay.c -o $(AIRPLAY_TEST_BIN)
+	@$(AIRPLAY_TEST_BIN)
 
 
 #---------------------------------------------------------------------------------
