@@ -414,6 +414,17 @@ static bool handle_play(AirPlayRemoteVideo *remote, uint64_t session_id,
                                    : 0.0;
     remote_mutex_unlock(&remote->mutex);
 
+    if (remote->ops.claim_owner &&
+        !remote->ops.claim_owner(session_id, remote->ops.user_data))
+    {
+        remote_mutex_lock(&remote->mutex);
+        if (remote->generation == generation &&
+            remote->owner_session_id == session_id)
+            clear_owner_locked(remote);
+        remote_mutex_unlock(&remote->mutex);
+        return airplay_rtsp_response_set_status(response, 409);
+    }
+
     accepted = remote->ops.load(play.url,
                                 play.metadata[0] ? play.metadata : NULL,
                                 remote->ops.user_data) &&
@@ -426,6 +437,8 @@ static bool handle_play(AirPlayRemoteVideo *remote, uint64_t session_id,
             clear_owner_locked(remote);
         remote_mutex_unlock(&remote->mutex);
         (void)remote->ops.stop(remote->ops.user_data);
+        if (remote->ops.release_owner)
+            remote->ops.release_owner(session_id, remote->ops.user_data);
         return airplay_rtsp_response_set_status(response, 503);
     }
     AIRPLAY_TRACE("[airplay-remote] session=%llu play url-bytes=%zu start=%s\n",
@@ -647,9 +660,10 @@ static bool handle_stop(AirPlayRemoteVideo *remote, uint64_t session_id,
     remote_mutex_unlock(&remote->mutex);
     if (!stop)
         return airplay_rtsp_response_set_status(response, 409);
-    return remote->ops.stop(remote->ops.user_data)
-               ? true
-               : airplay_rtsp_response_set_status(response, 503);
+    stop = remote->ops.stop(remote->ops.user_data);
+    if (remote->ops.release_owner)
+        remote->ops.release_owner(session_id, remote->ops.user_data);
+    return stop ? true : airplay_rtsp_response_set_status(response, 503);
 }
 
 bool airplay_remote_video_create(const AirPlayRemoteVideoOps *ops,
@@ -677,15 +691,21 @@ bool airplay_remote_video_create(const AirPlayRemoteVideoOps *ops,
 void airplay_remote_video_destroy(AirPlayRemoteVideo *remote)
 {
     bool stop;
+    uint64_t session_id;
 
     if (!remote)
         return;
     remote_mutex_lock(&remote->mutex);
     stop = remote->active;
+    session_id = remote->owner_session_id;
     clear_owner_locked(remote);
     remote_mutex_unlock(&remote->mutex);
     if (stop)
+    {
         (void)remote->ops.stop(remote->ops.user_data);
+        if (remote->ops.release_owner)
+            remote->ops.release_owner(session_id, remote->ops.user_data);
+    }
     if (remote->mutex_ready)
         remote_mutex_destroy(&remote->mutex);
     memset(remote, 0, sizeof(*remote));
@@ -733,5 +753,9 @@ void airplay_remote_video_session_closed(AirPlayRemoteVideo *remote,
     }
     remote_mutex_unlock(&remote->mutex);
     if (stop)
+    {
         (void)remote->ops.stop(remote->ops.user_data);
+        if (remote->ops.release_owner)
+            remote->ops.release_owner(session_id, remote->ops.user_data);
+    }
 }

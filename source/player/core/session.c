@@ -7,6 +7,7 @@
 
 #include "log/log.h"
 #include "player/backend.h"
+#include "player/core/ownership.h"
 #include "player/trace.h"
 
 #define PLAYER_EVENT_THREAD_STACK_SIZE 0x8000
@@ -353,6 +354,7 @@ const char *player_get_backend_name(void)
 void player_set_event_callback(PlayerEventCallback callback, void *user)
 {
     player_ensure_sync_primitives();
+    player_ownership_reset();
     mutexLock(&g_player_mutex);
     g_event_callback = callback;
     g_event_user = user;
@@ -437,7 +439,10 @@ bool player_init(void)
 void player_deinit(void)
 {
     if (!g_initialized)
+    {
+        player_ownership_reset();
         return;
+    }
 
     log_info("[player] deinit begin backend=%s thread_started=%d\n",
              player_get_backend_name(),
@@ -478,6 +483,7 @@ void player_deinit(void)
     log_info("[player] deinit end backend=%s\n", player_get_backend_name());
     g_backend = NULL;
     g_initialized = false;
+    player_ownership_reset();
 }
 
 bool player_set_uri(const char *uri, const char *metadata)

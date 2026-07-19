@@ -14,6 +14,13 @@
 
 #define AVTRANSPORT_COUNTER_UNKNOWN 2147483647
 #define AVTRANSPORT_TRACE_URL_MAX 160
+#define DLNA_PLAYER_OWNER_TOKEN 1u
+
+static bool avtransport_owns_player(void)
+{
+    return player_ownership_matches(PLAYER_MEDIA_OWNER_DLNA,
+                                    DLNA_PLAYER_OWNER_TOKEN);
+}
 
 static void avtransport_get_snapshot(RendererSnapshot *snapshot)
 {
@@ -21,6 +28,13 @@ static void avtransport_get_snapshot(RendererSnapshot *snapshot)
         return;
 
     memset(snapshot, 0, sizeof(*snapshot));
+    if (!avtransport_owns_player())
+    {
+        snapshot->has_media = dlna_protocol_state_view()->av_transport_uri[0] != '\0';
+        snapshot->state = snapshot->has_media ? PLAYER_STATE_STOPPED
+                                              : PLAYER_STATE_IDLE;
+        return;
+    }
     if (renderer_get_snapshot(snapshot))
         return;
 
@@ -254,7 +268,7 @@ static bool avtransport_seek_track_number(const DlnaProtocolStateView *state, So
         return false;
     }
 
-    if (!renderer_seek_ms(0))
+    if (!avtransport_owns_player() || !renderer_seek_ms(0))
     {
         soap_handler_set_fault(out, 701, "Transition not available");
         return false;
@@ -307,6 +321,7 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
     char *metadata = NULL;
     uint32_t seq = 0;
     char summary[AVTRANSPORT_TRACE_URL_MAX];
+    PlayerOwnershipLease lease = {0};
 
     if (!ctx || !out)
         return false;
@@ -340,8 +355,22 @@ bool avtransport_set_uri(const SoapActionContext *ctx, SoapActionOutput *out)
                      player_trace_uri_hash(uri),
                      player_trace_uri_summary(uri, summary, sizeof(summary)));
 
-    if (!renderer_set_uri(uri, metadata))
+    if (!player_ownership_claim(PLAYER_MEDIA_OWNER_DLNA,
+                                DLNA_PLAYER_OWNER_TOKEN, &lease, NULL))
     {
+        free(instance_id);
+        free(uri);
+        free(metadata);
+        soap_handler_set_fault(out, 501, "Action Failed");
+        return false;
+    }
+    if (renderer_get_state() != PLAYER_STATE_IDLE &&
+        renderer_get_state() != PLAYER_STATE_STOPPED)
+        (void)renderer_stop();
+
+    if (!player_ownership_validate(&lease) || !renderer_set_uri(uri, metadata))
+    {
+        (void)player_ownership_release(&lease);
         player_trace_warn("[media-trace] seq=%u t_ms=%llu layer=soap action=SetAVTransportURI phase=failed reason=renderer_set_uri url_hash=%08x url=%s\n",
                           seq,
                           (unsigned long long)player_trace_elapsed_ms(),
@@ -394,6 +423,14 @@ bool avtransport_play(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
+    if (!avtransport_owns_player())
+    {
+        free(instance_id);
+        free(speed);
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
     avtransport_log_trace("Play", "begin", state->av_transport_uri, speed);
     if (!renderer_play())
     {
@@ -431,6 +468,13 @@ bool avtransport_pause(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
     }
 
+    if (!avtransport_owns_player())
+    {
+        free(instance_id);
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
     avtransport_log_trace("Pause", "begin", state->av_transport_uri, "-");
     if (!renderer_pause())
     {
@@ -458,7 +502,7 @@ bool avtransport_stop(const SoapActionContext *ctx, SoapActionOutput *out)
         return false;
 
     avtransport_log_trace("Stop", "begin", dlna_protocol_state_view()->av_transport_uri, "-");
-    if (!renderer_stop())
+    if (!avtransport_owns_player() || !renderer_stop())
     {
         avtransport_log_trace("Stop", "failed", dlna_protocol_state_view()->av_transport_uri, "renderer_stop");
         free(instance_id);
@@ -765,6 +809,15 @@ bool avtransport_seek(const SoapActionContext *ctx, SoapActionOutput *out)
     }
 
     if (state->av_transport_uri[0] == '\0')
+    {
+        free(instance_id);
+        free(unit);
+        free(target);
+        soap_handler_set_fault(out, 701, "Transition not available");
+        return false;
+    }
+
+    if (!avtransport_owns_player())
     {
         free(instance_id);
         free(unit);

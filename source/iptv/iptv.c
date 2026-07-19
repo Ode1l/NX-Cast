@@ -1514,6 +1514,7 @@ void iptv_deinit(void)
     free(g_channels);
     g_channels = NULL;
     mutexUnlock(&g_mutex);
+    (void)player_ownership_release_current(PLAYER_MEDIA_OWNER_IPTV, 1u);
     avformat_network_deinit();
 }
 
@@ -2055,10 +2056,17 @@ static bool iptv_play_url_named(const char *url,
                                 uint32_t channel_id)
 {
     RendererState previous_state;
+    PlayerOwnershipLease lease = {0};
 
     if (!iptv_url_is_playable(url))
     {
         iptv_set_status("Invalid IPTV URL.");
+        return false;
+    }
+
+    if (!player_ownership_claim(PLAYER_MEDIA_OWNER_IPTV, 1u, &lease, NULL))
+    {
+        iptv_set_status("Player is busy with another media source.");
         return false;
     }
 
@@ -2071,8 +2079,11 @@ static bool iptv_play_url_named(const char *url,
             log_warn("[iptv] failed to stop previous stream before channel switch state=%d\n", (int)previous_state);
     }
 
-    if (!renderer_set_uri(url, display_title) || !renderer_play())
+    if (!player_ownership_validate(&lease) ||
+        !renderer_set_uri(url, display_title) ||
+        !player_ownership_validate(&lease) || !renderer_play())
     {
+        (void)player_ownership_release(&lease);
         iptv_set_status("Failed to start IPTV playback.");
         return false;
     }

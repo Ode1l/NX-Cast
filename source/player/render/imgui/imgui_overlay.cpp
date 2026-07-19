@@ -1636,14 +1636,14 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
 
     draw_home_grid(draw, width, height);
     draw_home_text(draw, x0, top, 24.0f, black, "NX-CAST / HOME");
-    draw_home_text(draw, width - 244.0f, top, 18.0f, muted, "DLNA RECEIVER");
+    draw_home_text(draw, width - 260.0f, top, 18.0f, muted, "DLNA + AIRPLAY");
     draw_home_text(draw, x0, top + 70.0f, 54.0f, black, "CAST MEDIA TO YOUR SWITCH");
     draw_home_text(draw, x0, top + 128.0f, 23.0f, muted, "Open a video app, choose NX-Cast, and let the Switch receive the stream.");
 
     draw_home_status_chip(draw, x0, 220.0f, "Storage", home.storage_ready);
     draw_home_status_chip(draw, x0 + 188.0f, 220.0f, "Network", home.network_ready);
     draw_home_status_chip(draw, x0 + 376.0f, 220.0f, "DLNA", home.dlna_running);
-    draw_home_status_chip(draw, x0 + 564.0f, 220.0f, "Player", home.video_ready);
+    draw_home_status_chip(draw, x0 + 564.0f, 220.0f, "AirPlay", home.airplay_running);
 
     if (home.has_error && home.error_line[0])
     {
@@ -1672,7 +1672,7 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
     draw->AddRect(ImVec2(x0, card_top), ImVec2(cast_right, card_bottom), border, 30.0f, 0, 1.0f);
     draw_home_text(draw, x0 + 30.0f, card_top + 24.0f, 16.0f, cyan, "CAST RECEIVER");
     draw_home_text(draw, x0 + 30.0f, card_top + 50.0f, 34.0f, black, "READY FOR YOUR PHONE");
-    draw_home_text(draw, x0 + 30.0f, card_top + 92.0f, 17.0f, muted, "Select NX-Cast from any DLNA-compatible video app.");
+    draw_home_text(draw, x0 + 30.0f, card_top + 92.0f, 17.0f, muted, "Select NX-Cast from a DLNA or AirPlay-compatible video app.");
 
     draw_home_phone(draw, ImVec2(x0 + 44.0f, card_top + 136.0f), ImVec2(66.0f, 112.0f), black);
     draw_home_monitor(draw, ImVec2(x0 + 146.0f, card_top + 149.0f), ImVec2(112.0f, 68.0f), black);
@@ -1687,8 +1687,29 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
                             red);
     draw_home_switch(draw, ImVec2(x0 + 520.0f, card_top + 143.0f), ImVec2(158.0f, 106.0f));
     draw_home_text(draw, x0 + 44.0f, card_top + 262.0f, 15.0f, muted, "PHONE / PC");
-    draw_home_text(draw, x0 + 366.0f, card_top + 262.0f, 15.0f, muted, "DLNA");
+    draw_home_text(draw, x0 + 338.0f, card_top + 262.0f, 15.0f, muted, "DLNA / AIRPLAY");
     draw_home_text(draw, x0 + 565.0f, card_top + 262.0f, 15.0f, muted, "NX-CAST");
+
+    if (home.airplay_pin_visible && home.airplay_pin[0])
+    {
+        draw->AddRectFilled(ImVec2(x0 + 1.0f, card_top + 1.0f),
+                            ImVec2(cast_right - 1.0f, card_bottom - 1.0f),
+                            IM_COL32(247, 250, 252, 252),
+                            29.0f);
+        draw_home_text(draw, x0 + 34.0f, card_top + 28.0f, 16.0f, cyan, "AIRPLAY PAIRING");
+        draw_home_text(draw, x0 + 34.0f, card_top + 62.0f, 31.0f, black, "ENTER THIS PIN ON YOUR IPHONE");
+        draw->AddRectFilled(ImVec2(x0 + 34.0f, card_top + 118.0f),
+                            ImVec2(cast_right - 34.0f, card_top + 224.0f),
+                            IM_COL32(15, 21, 29, 255),
+                            24.0f);
+        draw_sized_centered_text(draw,
+                                 home.airplay_pin,
+                                 ImVec2((x0 + cast_right) * 0.5f, card_top + 170.0f),
+                                 54.0f,
+                                 white);
+        draw_home_text(draw, x0 + 34.0f, card_top + 252.0f, 16.0f, muted,
+                       "The PIN is never written to logs or saved on the SD card.");
+    }
 
     draw->AddRectFilled(ImVec2(iptv_left, card_top), ImVec2(width - x0, card_bottom), cyan, 30.0f);
     draw->AddRectFilled(ImVec2(iptv_left, card_top), ImVec2(iptv_left + 10.0f, card_bottom), red, 5.0f);
@@ -1730,7 +1751,7 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
                    668.0f,
                    15.0f,
                    home.has_error ? red : muted,
-                   home.has_error ? error_preview : "Waiting for DLNA or IPTV playback.");
+                   home.has_error ? error_preview : "Waiting for DLNA, AirPlay, or IPTV playback.");
     if (home.playback_active)
     {
         const SwitchActionHint hints[] = {

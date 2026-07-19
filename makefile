@@ -102,6 +102,7 @@ AIRPLAY_MIRROR_RUNTIME_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_mirror_
 AIRPLAY_AUDIO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_audio
 AIRPLAY_CLOCK_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_clock
 AIRPLAY_REMOTE_VIDEO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_remote_video
+PLAYER_OWNERSHIP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_player_ownership
 AIRPLAY_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_smoke_server
 AIRPLAY_PAIRING_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_pairing_smoke_server
 AIRPLAY_MDNS_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_mdns_smoke_server
@@ -380,6 +381,7 @@ test-airplay:
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/audio.c source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/video.c source/protocol/airplay/media/stream_bridge.c scripts/test_airplay_audio.c $(HOST_MBEDTLS_LIBS) $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_AUDIO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/mirror/clock.c scripts/test_airplay_clock.c -o $(AIRPLAY_CLOCK_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/media/remote_video.c scripts/test_airplay_remote_video.c -o $(AIRPLAY_REMOTE_VIDEO_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/player/core/ownership.c scripts/test_player_ownership.c -o $(PLAYER_OWNERSHIP_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c scripts/airplay_smoke_server.c -o $(AIRPLAY_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/airplay_pairing_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) -DAIRPLAY_TESTING=1 source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c scripts/airplay_mdns_smoke_server.c -o $(AIRPLAY_MDNS_SMOKE_SERVER_BIN)
@@ -398,6 +400,7 @@ test-airplay:
 	@$(AIRPLAY_AUDIO_TEST_BIN)
 	@$(AIRPLAY_CLOCK_TEST_BIN)
 	@$(AIRPLAY_REMOTE_VIDEO_TEST_BIN)
+	@$(PLAYER_OWNERSHIP_TEST_BIN)
 	@python3 scripts/smoke_airplay.py --remote-hls
 
 

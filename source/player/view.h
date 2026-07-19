@@ -9,6 +9,8 @@
 #define PLAYER_HOME_IPTV_STATUS_MAX 192
 #define PLAYER_HOME_IPTV_NAME_MAX 128
 #define PLAYER_HOME_IPTV_FILTER_MAX 96
+#define PLAYER_HOME_AIRPLAY_STATUS_MAX 96
+#define PLAYER_HOME_AIRPLAY_PIN_SIZE 5
 
 typedef enum
 {
@@ -45,11 +47,15 @@ typedef struct
     bool storage_ready;
     bool network_ready;
     bool dlna_running;
+    bool airplay_running;
+    bool airplay_pin_visible;
     bool video_ready;
     bool playback_active;
     PlayerState playback_state;
     bool has_error;
     char error_line[PLAYER_HOME_ERROR_MAX];
+    char airplay_pin[PLAYER_HOME_AIRPLAY_PIN_SIZE];
+    char airplay_status[PLAYER_HOME_AIRPLAY_STATUS_MAX];
     bool iptv_ready;
     bool iptv_panel_open;
     bool iptv_sources_open;

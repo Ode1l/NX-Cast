@@ -38,12 +38,31 @@ typedef struct
     char url[AIRPLAY_REMOTE_VIDEO_URL_MAX + 1u];
     char metadata[AIRPLAY_REMOTE_VIDEO_METADATA_MAX + 1u];
     unsigned load_count;
+    unsigned claim_count;
+    unsigned release_count;
     unsigned play_count;
     unsigned pause_count;
     unsigned stop_count;
     unsigned seek_count;
     int last_seek_ms;
 } Recorder;
+
+static bool fake_claim(uint64_t session_id, void *user_data)
+{
+    Recorder *recorder = user_data;
+
+    CHECK(session_id == 10u || session_id == 11u);
+    recorder->claim_count++;
+    return true;
+}
+
+static void fake_release(uint64_t session_id, void *user_data)
+{
+    Recorder *recorder = user_data;
+
+    CHECK(session_id == 10u || session_id == 11u);
+    recorder->release_count++;
+}
 
 static bool fake_load(const char *url, const char *metadata, void *user_data)
 {
@@ -161,6 +180,8 @@ static void test_remote_video(void)
 {
     Recorder recorder = {0};
     AirPlayRemoteVideoOps ops = {
+        .claim_owner = fake_claim,
+        .release_owner = fake_release,
         .load = fake_load,
         .play = fake_play,
         .pause = fake_pause,
@@ -224,7 +245,7 @@ static void test_remote_video(void)
     CHECK(response.status_code == 409 && recorder.load_count == 1u);
     airplay_rtsp_response_clear(&response);
     airplay_remote_video_session_closed(remote, 10u);
-    CHECK(recorder.stop_count == 1u);
+    CHECK(recorder.stop_count == 1u && recorder.release_count == 1u);
 
     binary_body = binary_play_body(&binary_size);
     CHECK(binary_body != NULL);
@@ -249,7 +270,8 @@ static void test_remote_video(void)
     CHECK(recorder.last_seek_ms == 7250);
     airplay_rtsp_response_clear(&response);
     CHECK(dispatch(remote, 11u, "POST", "/stop", NULL, 0u, NULL, &response));
-    CHECK(response.status_code == 200 && recorder.stop_count == 2u);
+    CHECK(response.status_code == 200 && recorder.stop_count == 2u &&
+          recorder.claim_count == 2u && recorder.release_count == 2u);
     airplay_rtsp_response_clear(&response);
 
     static const char invalid_play[] =

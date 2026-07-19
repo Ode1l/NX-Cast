@@ -5,6 +5,7 @@
 
 #include <deko3d.h>
 
+#include "player/core/ownership.h"
 #include "types.h"
 
 typedef enum

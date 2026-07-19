@@ -31,6 +31,8 @@ typedef struct
 
 typedef struct
 {
+    bool (*claim_owner)(uint64_t session_id, void *user_data);
+    void (*release_owner)(uint64_t session_id, void *user_data);
     bool (*load)(const char *url, const char *metadata, void *user_data);
     bool (*play)(void *user_data);
     bool (*pause)(void *user_data);

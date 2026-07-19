@@ -16,6 +16,7 @@
 #include "player/ui/layout.h"
 #include "player/ui/ui.h"
 #include "player/view.h"
+#include "protocol/airplay/integration.h"
 #include "protocol/dlna_control.h"
 #include "protocol/dlna/description/resource_store.h"
 // #include "protocol/airplay/discovery/mdns.h"
@@ -345,6 +346,7 @@ static void build_home_view_state(PlayerHomeViewState *out,
                                   bool storage_ready,
                                   bool network_ready,
                                   bool dlna_running,
+                                  const AirPlayIntegrationStatus *airplay,
                                   bool video_ready,
                                   bool iptv_ready,
                                   bool iptv_panel_open,
@@ -360,6 +362,14 @@ static void build_home_view_state(PlayerHomeViewState *out,
     out->storage_ready = storage_ready;
     out->network_ready = network_ready;
     out->dlna_running = dlna_running;
+    out->airplay_running = airplay && airplay->running;
+    out->airplay_pin_visible = airplay && airplay->pin_visible;
+    if (airplay)
+    {
+        snprintf(out->airplay_pin, sizeof(out->airplay_pin), "%s", airplay->pin);
+        snprintf(out->airplay_status, sizeof(out->airplay_status), "%s",
+                 airplay->status);
+    }
     out->video_ready = video_ready;
     out->playback_active = main_snapshot_playback_active(snapshot);
     out->playback_state = snapshot ? snapshot->state : PLAYER_STATE_IDLE;
@@ -700,7 +710,7 @@ static void render_home_view(const PlayerHomeViewState *state)
 
     consoleClear();
     printf("\n");
-    printf(ANSI_ACCENT "  NX-CAST / HOME" ANSI_RESET "                                  " ANSI_TEXT "DLNA RECEIVER" ANSI_RESET "\n");
+    printf(ANSI_ACCENT "  NX-CAST / HOME" ANSI_RESET "                           " ANSI_TEXT "DLNA + AIRPLAY" ANSI_RESET "\n");
     printf(ANSI_ACCENT "  =======================================================================" ANSI_RESET "\n\n");
 
     printf(ANSI_TEXT "       CAST MEDIA TO YOUR SWITCH" ANSI_RESET "\n");
@@ -716,7 +726,7 @@ static void render_home_view(const PlayerHomeViewState *state)
 
     printf(ANSI_ACCENT "  [ QUICK START ]" ANSI_RESET "\n");
     printf("  1. Open a video app or IPTV page on your phone / desktop.\n");
-    printf("  2. Tap Cast, DLNA, or media renderer, then choose " ANSI_ACCENT "NX-Cast" ANSI_RESET ".\n");
+    printf("  2. Tap Cast, DLNA, or AirPlay, then choose " ANSI_ACCENT "NX-Cast" ANSI_RESET ".\n");
     printf("  3. Wait for the loading spinner; playback controls appear on touch.\n\n");
 
     printf(ANSI_ACCENT "  [ PLAYER CONTROLS ]" ANSI_RESET "\n");
@@ -745,10 +755,21 @@ static void render_home_view(const PlayerHomeViewState *state)
            state->dlna_running ? ANSI_ACCENT : ANSI_ERROR,
            ready_label(state->dlna_running),
            ANSI_RESET);
+    printf("AirPlay:%s%s%s  ",
+           state->airplay_running ? ANSI_ACCENT : ANSI_ERROR,
+           ready_label(state->airplay_running),
+           ANSI_RESET);
     printf("Player:%s%s%s\n\n",
            state->video_ready ? ANSI_ACCENT : ANSI_ERROR,
            ready_label(state->video_ready),
            ANSI_RESET);
+
+    if (state->airplay_pin_visible)
+    {
+        printf(ANSI_ACCENT "  [ AIRPLAY PAIRING ]" ANSI_RESET "\n");
+        printf("  Enter PIN " ANSI_TEXT "%s" ANSI_RESET " on your iPhone.\n\n",
+               state->airplay_pin);
+    }
 
     printf(ANSI_ACCENT "  [ DIAGNOSTICS ]" ANSI_RESET "\n");
     if (state->has_error)
@@ -866,6 +887,8 @@ int main(int argc, char* argv[])
     bool iptvReady = iptv_init();
     log_info("[iptv] init ready=%d network=%d root=%s\n", iptvReady ? 1 : 0, networkReady ? 1 : 0, IPTV_ROOT_DIR);
     bool dlnaRunning = false;
+    bool airplayRunning = false;
+    AirPlayIntegrationStatus airplayStatus = {0};
     bool videoPlatformReady = player_view_init();
     bool rendererPrestarted = false;
     bool videoRenderReady = false;
@@ -887,8 +910,10 @@ int main(int argc, char* argv[])
     if (networkReady)
     {
         dlnaRunning = dlna_control_start();
-        // mdns_discover_airplay();
+        if (rendererPrestarted && videoRenderReady)
+            airplayRunning = airplay_integration_start();
     }
+    (void)airplay_integration_get_status(&airplayStatus);
 
     padConfigureInput(8, HidNpadStyleSet_NpadStandard);
     hidInitializeTouchScreen();
@@ -924,12 +949,14 @@ int main(int argc, char* argv[])
         bool have_snapshot = false;
 
         padUpdate(&pad);
+        (void)airplay_integration_get_status(&airplayStatus);
         if (videoPlatformReady && player_get_snapshot(&snapshot))
             have_snapshot = true;
         build_home_view_state(&home_state,
                               storageReady,
                               networkReady,
                               dlnaRunning,
+                              &airplayStatus,
                               videoRenderReady,
                               iptvReady,
                               iptv_panel_open,
@@ -940,6 +967,8 @@ int main(int argc, char* argv[])
         if (videoPlatformReady)
         {
             player_view_set_home_state(&home_state);
+            if (airplayStatus.pin_visible)
+                (void)player_view_show_home();
             if (have_snapshot)
                 player_view_sync(&snapshot);
             player_view_begin_frame();
@@ -1214,6 +1243,7 @@ int main(int argc, char* argv[])
                                   storageReady,
                                   networkReady,
                                   dlnaRunning,
+                                  &airplayStatus,
                                   videoRenderReady,
                                   iptvReady,
                                   iptv_panel_open,
@@ -1531,6 +1561,7 @@ int main(int argc, char* argv[])
                                   storageReady,
                                   networkReady,
                                   dlnaRunning,
+                                  &airplayStatus,
                                   videoRenderReady,
                                   iptvReady,
                                   iptv_panel_open,
@@ -1566,20 +1597,64 @@ int main(int argc, char* argv[])
         exit_reason = EXIT_REASON_APPLET_LOOP_ENDED;
 
     log_set_stdio_mirror(false);
-    shutdown_stdio_trace("[INFO] [shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
+    shutdown_stdio_trace("[INFO] [shutdown] begin reason=%s network_ready=%d dlna_running=%d airplay_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
                          exit_reason_name(exit_reason),
                          networkReady ? 1 : 0,
                          dlnaRunning ? 1 : 0,
+                         airplayRunning ? 1 : 0,
                          videoRenderReady ? 1 : 0,
                          g_nxlinkSock,
                          storageReady ? 1 : 0);
-    log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
+    log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d airplay_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
              exit_reason_name(exit_reason),
              networkReady ? 1 : 0,
              dlnaRunning ? 1 : 0,
+             airplayRunning ? 1 : 0,
              videoRenderReady ? 1 : 0,
              g_nxlinkSock,
              storageReady ? 1 : 0);
+
+    if (networkReady)
+    {
+        if (airplayRunning)
+        {
+            shutdown_stdio_trace("[INFO] [shutdown] step=airplay_integration_stop begin\n");
+            log_info("[shutdown] step=airplay_integration_stop begin\n");
+            airplay_integration_stop();
+            shutdown_stdio_trace("[INFO] [shutdown] step=airplay_integration_stop done\n");
+            log_info("[shutdown] step=airplay_integration_stop done\n");
+        }
+        else
+        {
+            log_info("[shutdown] step=airplay_integration_stop skip reason=not-running\n");
+        }
+
+        if (dlnaRunning)
+        {
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop begin\n");
+            log_info("[shutdown] step=dlna_control_stop begin\n");
+            dlna_control_stop();
+            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop done\n");
+            log_info("[shutdown] step=dlna_control_stop done\n");
+        }
+        else
+        {
+            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
+        }
+    }
+    else
+    {
+        log_info("[shutdown] step=airplay_integration_stop skip reason=network-disabled\n");
+        log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
+    }
+
+    if (rendererPrestarted)
+    {
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_stop begin\n");
+        (void)player_stop();
+        player_ownership_reset();
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_stop done\n");
+    }
 
     shutdown_stdio_trace("[INFO] [shutdown] step=iptv_deinit begin\n");
     iptv_deinit();
@@ -1598,30 +1673,10 @@ int main(int argc, char* argv[])
         log_info("[shutdown] step=player_view_deinit skip reason=not-initialized\n");
     }
 
-    if (networkReady)
+    if (rendererPrestarted)
     {
-        if (dlnaRunning)
-        {
-            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop begin\n");
-            log_info("[shutdown] step=dlna_control_stop begin\n");
-            dlna_control_stop();
-            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop done\n");
-            log_info("[shutdown] step=dlna_control_stop done\n");
-        }
-        else
-        {
-            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
-        }
-    }
-    else
-    {
-        log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
-    }
-
-    if (rendererPrestarted && !dlnaRunning)
-    {
-        shutdown_stdio_trace("[INFO] [shutdown] step=player_deinit begin reason=prestarted-without-dlna\n");
-        log_info("[shutdown] step=player_deinit begin reason=prestarted-without-dlna\n");
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_deinit begin\n");
+        log_info("[shutdown] step=player_deinit begin\n");
         player_deinit();
         shutdown_stdio_trace("[INFO] [shutdown] step=player_deinit done\n");
         log_info("[shutdown] step=player_deinit done\n");

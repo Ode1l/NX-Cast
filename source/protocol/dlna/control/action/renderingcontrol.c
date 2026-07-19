@@ -7,6 +7,15 @@
 #include "../handler_internal.h"
 #include "player/renderer.h"
 
+static bool renderingcontrol_can_control_player(void)
+{
+    PlayerOwnershipLease owner = {0};
+
+    if (!player_ownership_current(&owner))
+        return true;
+    return owner.owner == PLAYER_MEDIA_OWNER_DLNA && owner.token == 1u;
+}
+
 bool renderingcontrol_get_brightness(const SoapActionContext *ctx, SoapActionOutput *out)
 {
     char *instance_id = NULL;
@@ -94,7 +103,7 @@ bool renderingcontrol_set_volume(const SoapActionContext *ctx, SoapActionOutput 
     if (vol > 100)
         vol = 100;
 
-    if (!renderer_set_volume((int)vol))
+    if (!renderingcontrol_can_control_player() || !renderer_set_volume((int)vol))
     {
         free(instance_id);
         free(channel);
@@ -158,7 +167,8 @@ bool renderingcontrol_select_preset(const SoapActionContext *ctx, SoapActionOutp
         return false;
     }
 
-    if (!renderer_set_volume(PLAYER_DEFAULT_VOLUME) || !renderer_set_mute(false))
+    if (!renderingcontrol_can_control_player() ||
+        !renderer_set_volume(PLAYER_DEFAULT_VOLUME) || !renderer_set_mute(false))
     {
         free(instance_id);
         free(preset_name);
@@ -230,7 +240,8 @@ bool renderingcontrol_set_mute(const SoapActionContext *ctx, SoapActionOutput *o
         return false;
     }
 
-    if (!renderer_set_mute(strcmp(desired, "0") != 0))
+    if (!renderingcontrol_can_control_player() ||
+        !renderer_set_mute(strcmp(desired, "0") != 0))
     {
         free(instance_id);
         free(channel);
