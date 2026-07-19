@@ -650,9 +650,9 @@ void airplay_rtsp_session_init(AirPlayRtspSession *session, uint64_t id)
     session->state = AIRPLAY_RTSP_SESSION_CONNECTED;
 }
 
-static bool rtsp_default_route(AirPlayRtspSession *session,
-                               const AirPlayRtspRequest *request,
-                               AirPlayRtspResponse *response)
+bool airplay_rtsp_default_route(AirPlayRtspSession *session,
+                                const AirPlayRtspRequest *request,
+                                AirPlayRtspResponse *response)
 {
     if (strcmp(request->method, "OPTIONS") == 0)
     {
@@ -729,7 +729,7 @@ bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
     }
     session->request_count++;
     handled = handler ? handler(session, request, response_out, user_data)
-                      : rtsp_default_route(session, request, response_out);
+                      : airplay_rtsp_default_route(session, request, response_out);
     if (!handled)
     {
         bool had_cseq = request->has_cseq;

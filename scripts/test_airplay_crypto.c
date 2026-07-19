@@ -56,6 +56,7 @@ static void test_hash_and_kdf_vectors(void)
 {
     uint8_t expected_sha256[32];
     uint8_t expected_sha512[64];
+    uint8_t expected_sha1[20];
     uint8_t digest[64];
     uint8_t hmac_key[20];
     uint8_t expected_hmac[32];
@@ -77,6 +78,11 @@ static void test_hash_and_kdf_vectors(void)
                      expected_sha512, sizeof(expected_sha512)));
     CHECK(airplay_crypto_sha512("abc", 3, digest));
     CHECK(airplay_crypto_equal(digest, expected_sha512, sizeof(expected_sha512)));
+
+    CHECK(decode_hex("a9993e364706816aba3e25717850c26c9cd0d89d",
+                     expected_sha1, sizeof(expected_sha1)));
+    CHECK(airplay_crypto_sha1("abc", 3, digest));
+    CHECK(airplay_crypto_equal(digest, expected_sha1, sizeof(expected_sha1)));
 
     memset(hmac_key, 0x0b, sizeof(hmac_key));
     CHECK(decode_hex("b0344c61d8db38535ca8afceaf0bf12b"
@@ -262,6 +268,33 @@ static void test_chachapoly_vector(void)
         CHECK(recovered[i] == 0);
 }
 
+static void test_aes_gcm_vector(void)
+{
+    uint8_t key[16] = {0};
+    uint8_t nonce[12] = {0};
+    uint8_t plaintext[16] = {0};
+    uint8_t expected_ciphertext[16];
+    uint8_t expected_tag[16];
+    uint8_t ciphertext[16];
+    uint8_t tag[16];
+    uint8_t recovered[16];
+
+    CHECK(decode_hex("0388dace60b6a392f328c2b971b2fe78",
+                     expected_ciphertext, sizeof(expected_ciphertext)));
+    CHECK(decode_hex("ab6e47d42cec13bdf53a67b21257bddf",
+                     expected_tag, sizeof(expected_tag)));
+    CHECK(airplay_crypto_aes_gcm_encrypt(key, nonce, sizeof(nonce), NULL, 0,
+                                         plaintext, sizeof(plaintext), ciphertext, tag));
+    CHECK(airplay_crypto_equal(ciphertext, expected_ciphertext, sizeof(ciphertext)));
+    CHECK(airplay_crypto_equal(tag, expected_tag, sizeof(tag)));
+    CHECK(airplay_crypto_aes_gcm_decrypt(key, nonce, sizeof(nonce), NULL, 0, tag,
+                                         ciphertext, sizeof(ciphertext), recovered));
+    CHECK(airplay_crypto_equal(recovered, plaintext, sizeof(plaintext)));
+    tag[0] ^= 1u;
+    CHECK(!airplay_crypto_aes_gcm_decrypt(key, nonce, sizeof(nonce), NULL, 0, tag,
+                                          ciphertext, sizeof(ciphertext), recovered));
+}
+
 static bool write_byte_at(const char *path, long offset, uint8_t value)
 {
     FILE *file = fopen(path, "r+b");
@@ -356,6 +389,7 @@ int main(void)
     test_ed25519_vector();
     test_aes_ctr_vector();
     test_chachapoly_vector();
+    test_aes_gcm_vector();
     test_rng_and_identity();
 
     if (g_failures != 0)

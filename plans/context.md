@@ -12,11 +12,12 @@
 | Step 2 | Added a bounded clean-room binary plist value tree/codec, malformed fixtures and interoperability tests. | `makefile`, `source/protocol/airplay/protocol/plist.[ch]`, `scripts/test_airplay_plist.c`, fixtures, plan files |
 | Step 3 | Added an independent persistent RTSP/HTTP server, bounded parser, session state and real TCP smoke tests. | `makefile`, `source/protocol/airplay/{server,protocol/rtsp}.[ch]`, RTSP test/smoke scripts, plan files |
 | Step 4 | Added atomic persistent identity and bounded mbedTLS/libsodium primitives with published vectors. | `makefile`, `source/protocol/airplay/security/{crypto,identity}.[ch]`, crypto tests, plan files |
+| Step 5 | Added Apple-compatible PIN Pair Setup/Verify, persisted trusted clients and TCP authorization/reconnect tests. | `makefile`, `source/protocol/airplay/security/{srp,pairing_store,pairing}.[ch]`, pairing tests/smoke, plan files |
 
 ## Current Step
-**Step 5: Pair Setup and Pair Verify** — Status: PENDING
-- Steps 1-4 normal tests, ASan/UBSan tests, static analysis and strict Switch builds pass.
-- Step 5 must install/use official `switch-libsodium`, enforce `NXCAST_REQUIRE_AIRPLAY_ED25519=1`, and build pairing over the opaque identity APIs.
+**Step 6: Native mDNS Discovery** — Status: IN_PROGRESS
+- Steps 1-5 normal tests, ASan/UBSan tests, static analysis, TCP smoke and strict Switch builds pass.
+- Runtime/release AirPlay remains gated on official `switch-libsodium`; Step 15 CI must enforce `NXCAST_REQUIRE_AIRPLAY_ED25519=1`.
 
 ## Key Learnings
 - `source/main.c` still has no AirPlay startup call, so the new lifecycle module has no runtime network side effects.
@@ -26,8 +27,9 @@
 - RTSP requests/responses live on each client worker's heap, socket closure has a single atomic owner, and disconnect callbacks provide the later secure-zero boundary.
 - mbedTLS 2.28 supplies all planned primitives except Ed25519; the audited libsodium backend is capability-gated and must be mandatory before runtime AirPlay is enabled.
 - Identity seeds remain private to `identity.c`; callers can obtain the public key/fingerprint and request signatures but cannot export the seed.
+- Pair Setup/Verify authorizes the RTSP session and later media-key derivation; the selected legacy behavior does not add a general encrypted record layer around every later RTSP message.
 
 ## Next Actions
-1. Inventory Pair Setup/Verify endpoints, plist fields and state ordering from current clean-room references.
-2. Implement transcript-bound pairing state and encrypted control framing over the Step 2-4 APIs.
-3. Add deterministic success/failure/replay/disconnect transcripts, sanitizer coverage and an Ed25519-required Switch build.
+1. Inventory the existing Switch network/mDNS API and reference TXT records without copying source.
+2. Implement bounded `_airplay._tcp` advertisement lifecycle, conflict handling and packet tests.
+3. Integrate discovery only after the control listener has a bound port; withdraw it before transport shutdown.

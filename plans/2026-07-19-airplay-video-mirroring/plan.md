@@ -55,8 +55,8 @@ None.
 | Step 2 | `steps/step-2.md` | COMPLETED | 实现最小 binary plist 编解码并以夹具锁定行为 |
 | Step 3 | `steps/step-3.md` | COMPLETED | 实现独立持久 RTSP/HTTP 控制服务器和解析器 |
 | Step 4 | `steps/step-4.md` | COMPLETED | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
-| Step 5 | `steps/step-5.md` | PENDING | 实现 Pair Setup/Pair Verify 与加密控制会话 |
-| Step 6 | `steps/step-6.md` | PENDING | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
+| Step 5 | `steps/step-5.md` | COMPLETED | 实现 Pair Setup/Pair Verify 与加密控制会话 |
+| Step 6 | `steps/step-6.md` | IN_PROGRESS | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
 | Step 7 | `steps/step-7.md` | PENDING | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
 | Step 8 | `steps/step-8.md` | PENDING | 实现镜像 H.264 接收、解密、重组和关键帧恢复 |
 | Step 9 | `steps/step-9.md` | PENDING | 建立 MPEG-TS 环形缓冲与 libmpv 自定义流桥接 |
@@ -127,6 +127,10 @@ None.
 | `source/protocol/airplay/security/crypto.[ch]` | Bounded mbedTLS primitives and libsodium Ed25519 facade | RFC vectors, ASan/UBSan, static analysis and strict Switch build, Step 4 |
 | `source/protocol/airplay/security/identity.[ch]` | Versioned atomic SD identity with secret-preserving signing API | create/reload/corrupt/unwritable tests and source review, Step 4 |
 | `scripts/test_airplay_crypto.c` | Published crypto vectors and identity persistence coverage | normal and sanitizer `make test-airplay`, Step 4 |
+| `source/protocol/airplay/security/srp.[ch]` | Apple-compatible bounded SRP server transcript | fixed independent transcript, negative tests and static analysis, Step 5 |
+| `source/protocol/airplay/security/pairing.[ch]` | PIN Pair Setup, persisted client trust and Pair Verify state | unit transcript, reconnect smoke, sanitizers and strict build, Step 5 |
+| `source/protocol/airplay/security/pairing_store.[ch]` | Versioned and checksummed trusted-client persistence | reload/corruption/update tests and static analysis, Step 5 |
+| `scripts/smoke_airplay_pairing.py` | Real TCP authorization close/reconnect smoke | local requested/ephemeral port runs, Step 5 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -152,6 +156,9 @@ None.
 - Switch and host mbedTLS are version 2.28.10 with Curve25519, AES, ChaCha20-Poly1305, HKDF and platform entropy enabled; Ed25519 is not implemented — verified from headers, pkg-config and RFC vector execution, Step 4.
 - The crypto facade passes SHA-2, HMAC, HKDF, X25519, AES-CTR, ChaCha20-Poly1305 and Ed25519 published vectors, rejects low-order X25519 and invalid AEAD tags, and clears failed outputs — verified by normal and ASan/UBSan tests, Step 4.
 - Device identity creation/reload, checksum corruption recovery and unwritable paths preserve the opaque seed boundary and deterministic public identity — verified by host tests and static analysis, Step 4.
+- The selected legacy PIN flow uses `/pair-pin-start`, three binary-plist `/pair-setup-pin` exchanges and two raw `/pair-verify` exchanges; later RTSP is authorized by verified session state rather than a separate encrypted record layer — verified from reference behavior inventory and transcript tests, Step 5.
+- Pair Setup/Verify passes an independent SRP fixture, persistent reconnect, wrong proof, malformed plist, replay and disconnect tests; real TCP smoke confirms protected SETUP returns generic 470/close and the listener accepts an immediate new connection — verified by normal/sanitizer tests and local smoke, Step 5.
+- Strict Switch builds pass with AirPlay trace disabled and enabled, but this workstation lacks `switch-libsodium`; release CI must enforce `NXCAST_REQUIRE_AIRPLAY_ED25519=1` after installing that official package — verified by build output and explicit dependency gate, Step 5.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -160,3 +167,4 @@ None.
 | 2026-07-20 | Step 2 | Added and verified a bounded clean-room binary plist codec, adversarial fixtures and independent interoperability checks. |
 | 2026-07-20 | Step 3 | Added and verified the independent persistent RTSP/HTTP server, bounded parser, session state and socket smoke suite. |
 | 2026-07-20 | Step 4 | Added and verified atomic device identity plus mbedTLS/libsodium crypto primitives and published-vector tests. |
+| 2026-07-20 | Step 5 | Added Apple-compatible PIN Pair Setup/Verify, persistent trusted clients, authorization routing and real TCP reconnect validation. |

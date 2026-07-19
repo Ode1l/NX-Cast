@@ -9,10 +9,12 @@
 #include <mbedtls/ecdh.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/hkdf.h>
+#include <mbedtls/gcm.h>
 #include <mbedtls/md.h>
 #include <mbedtls/platform_util.h>
 #include <mbedtls/sha256.h>
 #include <mbedtls/sha512.h>
+#include <mbedtls/sha1.h>
 
 #if defined(AIRPLAY_CRYPTO_HAVE_ED25519)
 #include <sodium.h>
@@ -131,6 +133,14 @@ bool airplay_crypto_sha512(const void *input, size_t input_size,
     if (!buffer_args_valid(input, input_size) || !output)
         return false;
     return mbedtls_sha512_ret(input, input_size, output, 0) == 0;
+}
+
+bool airplay_crypto_sha1(const void *input, size_t input_size,
+                         uint8_t output[AIRPLAY_CRYPTO_SHA1_SIZE])
+{
+    if (!buffer_args_valid(input, input_size) || !output)
+        return false;
+    return mbedtls_sha1_ret(input, input_size, output) == 0;
 }
 
 bool airplay_crypto_hmac_sha256(const uint8_t *key, size_t key_size,
@@ -417,6 +427,63 @@ void airplay_crypto_aes_ctr_deinit(AirPlayCryptoAesCtr *context)
         free(state);
     }
     airplay_crypto_secure_zero(context, sizeof(*context));
+}
+
+bool airplay_crypto_aes_gcm_encrypt(
+    const uint8_t key[16], const uint8_t *nonce, size_t nonce_size,
+    const uint8_t *aad, size_t aad_size,
+    const uint8_t *plaintext, size_t plaintext_size,
+    uint8_t *ciphertext, uint8_t tag[AIRPLAY_CRYPTO_AEAD_TAG_SIZE])
+{
+    mbedtls_gcm_context context;
+    int result;
+
+    if (!key || !buffer_args_valid(nonce, nonce_size) || nonce_size == 0 ||
+        !buffer_args_valid(aad, aad_size) || !buffer_args_valid(plaintext, plaintext_size) ||
+        !buffer_args_valid(ciphertext, plaintext_size) || !tag)
+        return false;
+    mbedtls_gcm_init(&context);
+    result = mbedtls_gcm_setkey(&context, MBEDTLS_CIPHER_ID_AES, key, 128);
+    if (result == 0)
+        result = mbedtls_gcm_crypt_and_tag(&context, MBEDTLS_GCM_ENCRYPT,
+                                          plaintext_size, nonce, nonce_size,
+                                          aad, aad_size, plaintext, ciphertext,
+                                          AIRPLAY_CRYPTO_AEAD_TAG_SIZE, tag);
+    mbedtls_gcm_free(&context);
+    if (result != 0)
+    {
+        airplay_crypto_secure_zero(ciphertext, plaintext_size);
+        airplay_crypto_secure_zero(tag, AIRPLAY_CRYPTO_AEAD_TAG_SIZE);
+    }
+    return result == 0;
+}
+
+bool airplay_crypto_aes_gcm_decrypt(
+    const uint8_t key[16], const uint8_t *nonce, size_t nonce_size,
+    const uint8_t *aad, size_t aad_size,
+    const uint8_t tag[AIRPLAY_CRYPTO_AEAD_TAG_SIZE],
+    const uint8_t *ciphertext, size_t ciphertext_size,
+    uint8_t *plaintext)
+{
+    mbedtls_gcm_context context;
+    int result;
+
+    if (!key || !buffer_args_valid(nonce, nonce_size) || nonce_size == 0 ||
+        !buffer_args_valid(aad, aad_size) || !tag ||
+        !buffer_args_valid(ciphertext, ciphertext_size) ||
+        !buffer_args_valid(plaintext, ciphertext_size))
+        return false;
+    mbedtls_gcm_init(&context);
+    result = mbedtls_gcm_setkey(&context, MBEDTLS_CIPHER_ID_AES, key, 128);
+    if (result == 0)
+        result = mbedtls_gcm_auth_decrypt(&context, ciphertext_size, nonce, nonce_size,
+                                          aad, aad_size, tag,
+                                          AIRPLAY_CRYPTO_AEAD_TAG_SIZE,
+                                          ciphertext, plaintext);
+    mbedtls_gcm_free(&context);
+    if (result != 0)
+        airplay_crypto_secure_zero(plaintext, ciphertext_size);
+    return result == 0;
 }
 
 bool airplay_crypto_chachapoly_encrypt(

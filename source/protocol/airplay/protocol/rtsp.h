@@ -111,5 +111,8 @@ bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
                            AirPlayRtspRouteHandler handler,
                            void *user_data,
                            AirPlayRtspResponse *response_out);
+bool airplay_rtsp_default_route(AirPlayRtspSession *session,
+                                const AirPlayRtspRequest *request,
+                                AirPlayRtspResponse *response);
 const char *airplay_rtsp_error_name(AirPlayRtspError error);
 const char *airplay_rtsp_session_state_name(AirPlayRtspSessionState state);

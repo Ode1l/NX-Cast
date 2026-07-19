@@ -8,6 +8,9 @@ typedef struct
     AirPlayStatus status;
     AirPlayStateCallback state_callback;
     void *state_user_data;
+    AirPlayPinDisplayCallback pin_display_callback;
+    AirPlayPinDismissCallback pin_dismiss_callback;
+    void *pin_user_data;
 } AirPlayRuntime;
 
 static AirPlayRuntime g_airplay = {
@@ -17,7 +20,10 @@ static AirPlayRuntime g_airplay = {
         .friendly_name = ""
     },
     .state_callback = NULL,
-    .state_user_data = NULL
+    .state_user_data = NULL,
+    .pin_display_callback = NULL,
+    .pin_dismiss_callback = NULL,
+    .pin_user_data = NULL
 };
 
 static bool airplay_friendly_name_valid(const char *friendly_name, size_t *length_out)
@@ -69,6 +75,9 @@ bool airplay_start(const AirPlayConfig *config)
     g_airplay.status.control_port = config->control_port;
     g_airplay.state_callback = config->state_callback;
     g_airplay.state_user_data = config->state_user_data;
+    g_airplay.pin_display_callback = config->pin_display_callback;
+    g_airplay.pin_dismiss_callback = config->pin_dismiss_callback;
+    g_airplay.pin_user_data = config->pin_user_data;
     g_airplay.status.state = AIRPLAY_STATE_RUNNING;
     airplay_emit_state(AIRPLAY_STATE_STOPPED);
     return true;
@@ -93,6 +102,9 @@ void airplay_stop(void)
     g_airplay.status.state = AIRPLAY_STATE_STOPPED;
     g_airplay.state_callback = NULL;
     g_airplay.state_user_data = NULL;
+    g_airplay.pin_display_callback = NULL;
+    g_airplay.pin_dismiss_callback = NULL;
+    g_airplay.pin_user_data = NULL;
 
     if (callback)
         callback(&event, user_data);

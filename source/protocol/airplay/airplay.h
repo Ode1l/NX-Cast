@@ -26,6 +26,8 @@ typedef struct
 } AirPlayStateEvent;
 
 typedef void (*AirPlayStateCallback)(const AirPlayStateEvent *event, void *user_data);
+typedef void (*AirPlayPinDisplayCallback)(const char pin[5], void *user_data);
+typedef void (*AirPlayPinDismissCallback)(void *user_data);
 
 typedef struct
 {
@@ -33,6 +35,9 @@ typedef struct
     uint16_t control_port;
     AirPlayStateCallback state_callback;
     void *state_user_data;
+    AirPlayPinDisplayCallback pin_display_callback;
+    AirPlayPinDismissCallback pin_dismiss_callback;
+    void *pin_user_data;
 } AirPlayConfig;
 
 /* Lifecycle access remains on the application thread until transport workers add synchronization. */

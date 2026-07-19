@@ -7,6 +7,7 @@
 
 #define AIRPLAY_CRYPTO_SHA256_SIZE 32u
 #define AIRPLAY_CRYPTO_SHA512_SIZE 64u
+#define AIRPLAY_CRYPTO_SHA1_SIZE 20u
 #define AIRPLAY_CRYPTO_X25519_KEY_SIZE 32u
 #define AIRPLAY_CRYPTO_CHACHA_KEY_SIZE 32u
 #define AIRPLAY_CRYPTO_CHACHA_NONCE_SIZE 12u
@@ -37,6 +38,8 @@ bool airplay_crypto_sha256(const void *input, size_t input_size,
                            uint8_t output[AIRPLAY_CRYPTO_SHA256_SIZE]);
 bool airplay_crypto_sha512(const void *input, size_t input_size,
                            uint8_t output[AIRPLAY_CRYPTO_SHA512_SIZE]);
+bool airplay_crypto_sha1(const void *input, size_t input_size,
+                         uint8_t output[AIRPLAY_CRYPTO_SHA1_SIZE]);
 bool airplay_crypto_hmac_sha256(const uint8_t *key, size_t key_size,
                                 const void *input, size_t input_size,
                                 uint8_t output[AIRPLAY_CRYPTO_SHA256_SIZE]);
@@ -78,6 +81,18 @@ bool airplay_crypto_aes_ctr_init(AirPlayCryptoAesCtr *context,
 bool airplay_crypto_aes_ctr_crypt(AirPlayCryptoAesCtr *context,
                                   const uint8_t *input, uint8_t *output, size_t size);
 void airplay_crypto_aes_ctr_deinit(AirPlayCryptoAesCtr *context);
+
+bool airplay_crypto_aes_gcm_encrypt(
+    const uint8_t key[16], const uint8_t *nonce, size_t nonce_size,
+    const uint8_t *aad, size_t aad_size,
+    const uint8_t *plaintext, size_t plaintext_size,
+    uint8_t *ciphertext, uint8_t tag[AIRPLAY_CRYPTO_AEAD_TAG_SIZE]);
+bool airplay_crypto_aes_gcm_decrypt(
+    const uint8_t key[16], const uint8_t *nonce, size_t nonce_size,
+    const uint8_t *aad, size_t aad_size,
+    const uint8_t tag[AIRPLAY_CRYPTO_AEAD_TAG_SIZE],
+    const uint8_t *ciphertext, size_t ciphertext_size,
+    uint8_t *plaintext);
 
 bool airplay_crypto_chachapoly_encrypt(
     const uint8_t key[AIRPLAY_CRYPTO_CHACHA_KEY_SIZE],
