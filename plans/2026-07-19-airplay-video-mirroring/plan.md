@@ -52,7 +52,7 @@ None.
 |------|------|--------|------|
 | Step 1 | `steps/step-1.md` | COMPLETED | 建立 AirPlay 生命周期外壳、状态契约和主机测试入口 |
 | Step 2 | `steps/step-2.md` | COMPLETED | 实现最小 binary plist 编解码并以夹具锁定行为 |
-| Step 3 | `steps/step-3.md` | PENDING | 实现独立持久 RTSP/HTTP 控制服务器和解析器 |
+| Step 3 | `steps/step-3.md` | COMPLETED | 实现独立持久 RTSP/HTTP 控制服务器和解析器 |
 | Step 4 | `steps/step-4.md` | PENDING | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
 | Step 5 | `steps/step-5.md` | PENDING | 实现 Pair Setup/Pair Verify 与加密控制会话 |
 | Step 6 | `steps/step-6.md` | PENDING | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
@@ -84,6 +84,7 @@ None.
 - Existing media path first: a custom libmpv stream avoids introducing GStreamer or a second renderer and preserves nvtegra/deko3d behavior.
 - Binary plist scope: implement only dict/array/string/data/uint/real/bool with fixed resource limits; fixtures are checked in as reviewable hex.
 - Binary plist integers preserve their raw encoded bit pattern as `uint64_t`, matching the reference API rather than applying a signed interpretation.
+- Persistent control transport uses a separate four-slot server; each worker serializes one connection/session and exposes route plus disconnect cleanup callbacks.
 
 ### Gotchas & Warnings
 - AirPlay compatibility contains undocumented and version-sensitive behavior; each advertised feature must be backed by iPhone packet traces and a real-device acceptance gate.
@@ -92,6 +93,7 @@ None.
 - Media callbacks, player commands and UI rendering run on different threads; direct player/UI calls from network threads are forbidden.
 - Trace logs must record sequence/state/length/hash only and must never log PINs, private keys, session keys or full decrypted payloads.
 - Generic plist readers can display a high-bit 64-bit integer as negative even though NX-Cast intentionally exposes the same bits as `uint64_t`.
+- macOS Control Center can own TCP 7000; host smoke tries the requested port first and uses an ephemeral port only for local test isolation.
 
 > Append only. Never delete or rewrite existing entries below — only add new rows/facts as steps complete.
 ### Working Set
@@ -116,6 +118,10 @@ None.
 | `scripts/test_airplay_plist.c` | Happy-path, limits, malformed-input and mutation coverage | normal and ASan/UBSan `make test-airplay`, Step 2 |
 | `scripts/fixtures/airplay/plist/*.bplist.hex` | Reviewable valid and malformed binary plist inputs | fixture read and host test execution, Step 2 |
 | `build/tests/airplay-plist-roundtrip.bplist` | Generated interoperability artifact, ignored by git | Python `plistlib` assertions and `plutil -lint`, Step 2 |
+| `source/protocol/airplay/protocol/rtsp.[ch]` | Bounded RTSP/HTTP parse, response and connection-state contract | full source read, unit tests, ASan/UBSan and static analysis, Step 3 |
+| `source/protocol/airplay/server.[ch]` | Portable persistent listener/client ownership and cancellation | TCP smoke, ASan/UBSan, static analysis and strict Switch build, Step 3 |
+| `scripts/test_airplay_rtsp.c` | Parser, response and session edge/error coverage | normal and sanitizer `make test-airplay`, Step 3 |
+| `scripts/smoke_airplay.py` | Real TCP fragmentation, pipelining, timeout, capacity and stop smoke | local runs on requested/ephemeral ports, Step 3 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -134,9 +140,14 @@ None.
 - The custom codec rejects invalid UTF-8, malformed tables/references, cycles, over-depth/over-size values and unsupported markers under fixed allocation limits — verified by fixture, truncation, mutation and ASan/UBSan tests, Step 2.
 - Encoded dictionaries, extended arrays, UTF-16 surrogate pairs, empty data and raw 64-bit integers decode correctly in NX-Cast; the generated file is also accepted by Python `plistlib` and macOS `plutil` — verified by host assertions and independent readers, Step 2.
 - `plist.c` compiles into the required libmpv/deko3d NRO without enabling AirPlay network behavior — verified by strict Switch build and unchanged runtime startup path, Step 2.
+- Existing DLNA HTTP handling is one-request/close and cannot preserve AirPlay CSeq/security state — verified by complete `http_server.c` lifecycle read, Step 3.
+- The RTSP parser caps headers at 32 KiB and bodies at 1 MiB, rejects ambiguous framing, and preserves pipelined bytes in order — verified by unit, truncation and real TCP smoke tests, Step 3.
+- Server stop atomically takes socket-close ownership, unblocks partial reads, joins all fixed client workers and invokes a disconnect cleanup hook — verified by ASan/UBSan saturation/shutdown smoke and source review, Step 3.
+- `server.c` and `rtsp.c` compile and link into the required libmpv/deko3d Switch NRO without starting a listener from `main.c` — verified by strict build and startup-path review, Step 3.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
 | 2026-07-19 | Step 1 | Added and verified the AirPlay lifecycle/status facade and `make test-airplay`; no network behavior enabled. |
 | 2026-07-20 | Step 2 | Added and verified a bounded clean-room binary plist codec, adversarial fixtures and independent interoperability checks. |
+| 2026-07-20 | Step 3 | Added and verified the independent persistent RTSP/HTTP server, bounded parser, session state and socket smoke suite. |
