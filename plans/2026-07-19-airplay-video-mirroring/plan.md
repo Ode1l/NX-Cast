@@ -2,7 +2,7 @@
 
 > Status: ACTIVE
 > Created: 2026-07-19
-> Last Updated: 2026-07-19
+> Last Updated: 2026-07-20
 
 ## Goal
 在不引入 UxPlay/RPiPlay 源码的前提下，用 NX-Cast 自有 C 模块和现有播放器接口实现同一局域网内 iPhone 到 Switch 的非 DRM H.264 屏幕镜像、AAC 同步音频以及 AirPlay URL/HLS 视频投送。
@@ -51,7 +51,7 @@ None.
 | Step | File | Status | Goal |
 |------|------|--------|------|
 | Step 1 | `steps/step-1.md` | COMPLETED | 建立 AirPlay 生命周期外壳、状态契约和主机测试入口 |
-| Step 2 | `steps/step-2.md` | PENDING | 实现最小 binary plist 编解码并以夹具锁定行为 |
+| Step 2 | `steps/step-2.md` | COMPLETED | 实现最小 binary plist 编解码并以夹具锁定行为 |
 | Step 3 | `steps/step-3.md` | PENDING | 实现独立持久 RTSP/HTTP 控制服务器和解析器 |
 | Step 4 | `steps/step-4.md` | PENDING | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
 | Step 5 | `steps/step-5.md` | PENDING | 实现 Pair Setup/Pair Verify 与加密控制会话 |
@@ -82,6 +82,8 @@ None.
 - UxPlay-first reference: its protocol core is current and includes remote-video handling; RPiPlay is retained only to detect regressions against older mirroring flows.
 - Separate control server: AirPlay requires persistent, encrypted, stateful sessions that conflict with the current DLNA server's one-request/close model.
 - Existing media path first: a custom libmpv stream avoids introducing GStreamer or a second renderer and preserves nvtegra/deko3d behavior.
+- Binary plist scope: implement only dict/array/string/data/uint/real/bool with fixed resource limits; fixtures are checked in as reviewable hex.
+- Binary plist integers preserve their raw encoded bit pattern as `uint64_t`, matching the reference API rather than applying a signed interpretation.
 
 ### Gotchas & Warnings
 - AirPlay compatibility contains undocumented and version-sensitive behavior; each advertised feature must be backed by iPhone packet traces and a real-device acceptance gate.
@@ -89,6 +91,7 @@ None.
 - Binary plist and RTSP lengths are attacker-controlled network input; every allocation and frame length needs a fixed upper bound.
 - Media callbacks, player commands and UI rendering run on different threads; direct player/UI calls from network threads are forbidden.
 - Trace logs must record sequence/state/length/hash only and must never log PINs, private keys, session keys or full decrypted payloads.
+- Generic plist readers can display a high-bit 64-bit integer as negative even though NX-Cast intentionally exposes the same bits as `uint64_t`.
 
 > Append only. Never delete or rewrite existing entries below — only add new rows/facts as steps complete.
 ### Working Set
@@ -106,8 +109,13 @@ None.
 | `scripts/test_airplay.c` | AirPlay lifecycle host test entry point | normal and ASan/UBSan test runs, Step 1 |
 | `source/protocol/airplay/airplay.h` | Public bounded lifecycle/status/callback contract | source read and strict Switch build, Step 1 |
 | `source/protocol/airplay/airplay.c` | Dependency-free lifecycle implementation | host tests and strict Switch build, Step 1 |
+| `/opt/devkitpro/portlibs/switch` | Dependency inventory for plist decision | focused `find` found no libplist installation, Step 2 |
 | `/tmp/nxcast-airplay-ref.0dZrly/UxPlay` | Primary behavior reference only | shallow clone metadata and protocol file inventory |
 | `/tmp/nxcast-airplay-ref.0dZrly/RPiPlay` | Legacy behavior cross-check only | shallow clone metadata and protocol file inventory |
+| `source/protocol/airplay/protocol/plist.[ch]` | Owned bounded binary plist value tree and codec | full source read, host tests, static analysis and strict Switch build, Step 2 |
+| `scripts/test_airplay_plist.c` | Happy-path, limits, malformed-input and mutation coverage | normal and ASan/UBSan `make test-airplay`, Step 2 |
+| `scripts/fixtures/airplay/plist/*.bplist.hex` | Reviewable valid and malformed binary plist inputs | fixture read and host test execution, Step 2 |
+| `build/tests/airplay-plist-roundtrip.bplist` | Generated interoperability artifact, ignored by git | Python `plistlib` assertions and `plutil -lint`, Step 2 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -121,8 +129,14 @@ None.
 - The makefile already scans `source/protocol/airplay/*.c`, while host tests use small standalone C executables with `-Isource` — verified by makefile and `scripts/test_iptv_channel_list.c`, 2026-07-19.
 - AirPlay lifecycle accepts only non-empty names up to 63 bytes and non-zero ports, copies configuration into bounded storage, emits isolated optional callbacks and clears state on stop — verified by `make test-airplay` plus ASan/UBSan, Step 1.
 - Adding `airplay.c` compiles into the required libmpv/deko3d Switch build without enabling runtime discovery because `main.c` remains unchanged — verified by strict build and source/status review, Step 1.
+- UxPlay and RPiPlay AirPlay handlers use only plist dict, array, string, data, unsigned integer, real and boolean constructors/getters — verified by focused `rg` over both reference `lib/` trees, Step 2.
+- The installed Switch portlibs contain no libplist headers, library or pkg-config file — verified by focused `find /opt/devkitpro/portlibs/switch`, Step 2.
+- The custom codec rejects invalid UTF-8, malformed tables/references, cycles, over-depth/over-size values and unsupported markers under fixed allocation limits — verified by fixture, truncation, mutation and ASan/UBSan tests, Step 2.
+- Encoded dictionaries, extended arrays, UTF-16 surrogate pairs, empty data and raw 64-bit integers decode correctly in NX-Cast; the generated file is also accepted by Python `plistlib` and macOS `plutil` — verified by host assertions and independent readers, Step 2.
+- `plist.c` compiles into the required libmpv/deko3d NRO without enabling AirPlay network behavior — verified by strict Switch build and unchanged runtime startup path, Step 2.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
 | 2026-07-19 | Step 1 | Added and verified the AirPlay lifecycle/status facade and `make test-airplay`; no network behavior enabled. |
+| 2026-07-20 | Step 2 | Added and verified a bounded clean-room binary plist codec, adversarial fixtures and independent interoperability checks. |

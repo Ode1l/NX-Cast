@@ -60,6 +60,7 @@ SOURCES		:=	source \
 			source/protocol/dlna/discovery \
 			source/protocol/dlna/description \
 			source/protocol/airplay \
+			source/protocol/airplay/protocol \
 			source/protocol/airplay/discovery
 DATA		:=	data
 INCLUDES	:=	include source
@@ -81,7 +82,8 @@ NXCAST_REQUIRE_DEKO3D ?= 0
 NXCAST_USE_IMGUI_UI ?= 0
 HOST_CC ?= cc
 HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource
-AIRPLAY_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay
+AIRPLAY_LIFECYCLE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay
+AIRPLAY_PLIST_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_plist
 
 ifeq ($(TRACE_MEDIA),1)
 CFLAGS	+=	-DNXCAST_MEDIA_TRACE_VERBOSE=1
@@ -294,9 +296,11 @@ else
 endif
 
 test-airplay:
-	@mkdir -p $(dir $(AIRPLAY_TEST_BIN))
-	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/airplay.c scripts/test_airplay.c -o $(AIRPLAY_TEST_BIN)
-	@$(AIRPLAY_TEST_BIN)
+	@mkdir -p $(dir $(AIRPLAY_LIFECYCLE_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/airplay.c scripts/test_airplay.c -o $(AIRPLAY_LIFECYCLE_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/plist.c scripts/test_airplay_plist.c -o $(AIRPLAY_PLIST_TEST_BIN)
+	@$(AIRPLAY_LIFECYCLE_TEST_BIN)
+	@$(AIRPLAY_PLIST_TEST_BIN)
 
 
 #---------------------------------------------------------------------------------
