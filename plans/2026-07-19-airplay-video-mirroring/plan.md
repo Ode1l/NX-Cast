@@ -1,6 +1,6 @@
 # Plan: AirPlay Video Mirroring for NX-Cast
 
-> Status: ACTIVE
+> Status: BLOCKED
 > Created: 2026-07-19
 > Last Updated: 2026-07-20
 
@@ -65,7 +65,7 @@ None.
 | Step 12 | `steps/step-12.md` | BLOCKED | 增加时钟、抖动缓冲和音画同步 |
 | Step 13 | `steps/step-13.md` | BLOCKED | 增加 AirPlay URL/HLS 投送与远程控制 |
 | Step 14 | `steps/step-14.md` | BLOCKED | 完成协议仲裁、UI 状态与安全退出集成 |
-| Step 15 | `steps/step-15.md` | PENDING | 完成兼容性、稳定性、CI、文档和发布验收 |
+| Step 15 | `steps/step-15.md` | BLOCKED | 完成兼容性、稳定性、CI、文档和发布验收 |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
@@ -155,6 +155,9 @@ None.
 | `source/player/core/ownership.[ch]` | Generation-bearing single-player ownership shared by all media protocols | concurrent/stale-lease host tests and strict build, Step 14 |
 | `source/protocol/airplay/integration.[ch]` | Switch composition root for receiver, remote video, mirror runtime, UI status and shutdown | source review and strict Switch build, Step 14 |
 | `scripts/test_player_ownership.c` | Concurrent claim and stale command/release regression coverage | normal and ASan/UBSan host runs, Step 14 |
+| `Dockerfile`, `.github/workflows/*.yml` | Native AirPlay tests plus strict Ed25519 Switch release gate | shell/YAML parse and source review, Step 15 |
+| `scripts/package_release.sh`, `assets/airplay/README.txt` | AirPlay SD skeleton and secret/capture exclusion gate | real archive staging and listing, Step 15 |
+| `docs/AIRPLAY_DEVELOPMENT.md` | Honest support, architecture, privacy, build and acceptance contract | documentation review, Step 15 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -203,6 +206,8 @@ None.
 - Host FFmpeg follows an HTTP redirect and resolves a relative HLS segment without any NX-Cast gateway or Content-Type rewrite; the strict Switch build passes, while real iPhone URL/HLS control remains an explicit hardware/Step 7 acceptance blocker — verified local smoke/build facts, Step 13.
 - DLNA, IPTV, AirPlay remote video and mirroring now claim generation-bearing player leases; newer claims invalidate stale commands and release attempts, while host concurrency/sanitizer tests and the strict Switch build pass — verified host/build facts, Step 14.
 - AirPlay starts only after network/player readiness and is stopped before DLNA/player/UI/network teardown; real mixed-protocol switching and + exit remain a hardware acceptance blocker — verified source/order review and strict build, Step 14.
+- CI now installs official `switch-libsodium`, runs the complete AirPlay host suite, and requires Ed25519 in strict Switch builds; local scripts/YAML parse, while the actual Docker run is unavailable on this workstation — verified static/local facts, Step 15.
+- The local package-layout archive preserves the 25,285,306-byte NRO and complete IPTV presets, adds only AirPlay/privacy/legal assets, and contains no runtime identities, pairings, keys, logs, traces, dumps, captures or reference source; publishable packages additionally require the strict release-build attestation — verified package staging/listing and negative gate test, Step 15.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -221,3 +226,4 @@ None.
 | 2026-07-20 | Step 12 | Added a shared wrap-safe media clock, sync/retransmit control handling and bounded drift/skew policy; deterministic validation passes while real soak remains blocked by Step 7. |
 | 2026-07-20 | Step 13 | Added session-owned AirPlay URL/HLS play, rate, scrub, info and stop endpoints with direct FFmpeg HLS redirect/relative-segment validation; real iPhone acceptance remains blocked. |
 | 2026-07-20 | Step 14 | Added single-player ownership arbitration, the Switch AirPlay composition/UI root and network-before-player shutdown ordering; host/build checks pass while the real mixed-protocol matrix remains blocked. |
+| 2026-07-20 | Step 15 | Added AirPlay host/Ed25519 CI gates, release secret scanning, SD/license assets and honest support documentation; Docker and physical iPhone/Switch acceptance remain blocked locally. |

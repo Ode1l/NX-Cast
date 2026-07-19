@@ -47,7 +47,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
             nx-cast-build:ci \
-            bash -lc 'make clean && make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j$(nproc)'
+            bash -lc 'set -euo pipefail; host_pc="/usr/lib/$(gcc -print-multiarch)/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig"; PKG_CONFIG_PATH="${host_pc}" make test-airplay; make RELEASE_JOBS=$(nproc) release-build'
 
       - name: Package SD card layout
         env:
@@ -57,7 +57,7 @@ jobs:
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v3
         with:
-          name: NX-Cast ${{ github.ref_name }} - DLNA + IPTV
+          name: NX-Cast ${{ github.ref_name }} - DLNA + IPTV + Experimental AirPlay
           body_path: .github/release-notes.md
           generate_release_notes: true
           overwrite_files: true

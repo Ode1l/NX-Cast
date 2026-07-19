@@ -4,7 +4,7 @@
   <img src="assets/icon/switch-screencast-logo.svg" alt="NX-Cast logo" width="180">
 </p>
 
-`NX-Cast` is a Nintendo Switch homebrew DLNA receiver and IPTV player for Atmosphere.
+`NX-Cast` is a Nintendo Switch homebrew DLNA receiver, IPTV player, and experimental AirPlay video receiver for Atmosphere.
 
 It accepts media URLs from phones, desktop players, and TV apps as a generic `DLNA DMR`, and it can independently browse and play local or remote M3U IPTV sources. Both paths use the same hardware-accelerated `libmpv` playback session.
 
@@ -24,9 +24,11 @@ The current baseline includes:
 - local/remote M3U source management, SD cache, and direct IPTV URL input
 - channel groups, search, favorites, recent history, logo cache, and XMLTV now/next EPG
 - controller and touch playback overlay
+- experimental AirPlay PIN pairing and direct URL/HLS playback path
+- generation-safe media ownership across DLNA, IPTV, and AirPlay
 - Docker and GitHub Actions release builds
 
-This project is still experimental Switch homebrew. Current development is focused on DLNA interoperability, playback stability, and the player UI.
+This project is still experimental Switch homebrew. DLNA and IPTV are the current release features. AirPlay URL/HLS is implemented but remains pending real iPhone/Switch compatibility testing; screen mirroring is not advertised.
 
 ## What It Is Not
 
@@ -34,7 +36,7 @@ This project is still experimental Switch homebrew. Current development is focus
 
 - a DLNA media server (`DMS`)
 - a DLNA media controller (`DMC`)
-- an AirPlay receiver
+- a complete, Apple-certified AirPlay or AirPlay 2 receiver
 - a source-native app or channel provider for iQiyi, MangoTV, CCTV, or Bilibili
 - a DRM bypass or site login implementation
 
@@ -47,6 +49,14 @@ IPTV is a supported release feature, not a separate experimental build. NX-Cast 
 The IPTV browser includes playlist groups, search, Favorites, Recent, persistent source management, asynchronous logo caching, and plain/gzip XMLTV current/next programme information. Users provide their own authorized playlists and optional programme-guide URLs; NX-Cast does not bundle subscription access or bypass DRM.
 
 See [docs/iptv.md](docs/iptv.md) for supported formats, SD-card paths, source configuration, controls, and current limitations.
+
+## Experimental AirPlay
+
+NX-Cast has an independent C implementation of AirPlay DNS-SD discovery, PIN pairing, persistent RTSP/HTTP control, and URL/HLS player commands. It passes deterministic host tests and strict Switch cross-compilation, but real iPhone compatibility has not yet completed the release matrix. Treat it as experimental rather than a guaranteed release feature.
+
+The internal H.264/AAC mirror transport and nvtegra/deko3d bridge are present, but standard iPhone screen mirroring remains disabled because the required proprietary FairPlay unwrap boundary has no independently audited implementation. AirPlay 2 multi-room audio, audio-only playback, AWDL, DRM, and Apple certification are out of scope.
+
+See [docs/AIRPLAY_DEVELOPMENT.md](docs/AIRPLAY_DEVELOPMENT.md) for the exact capability table, SD privacy rules, build requirements, and test matrix.
 
 ## Install
 
@@ -65,11 +75,13 @@ switch/
     dlna/
     fonts/
     iptv/
+    airplay/
+    licenses/
 ```
 
 `NX-Cast-sdmc.zip` is already laid out like the SD card. Extract it directly to the SD root; do not put it inside an extra nested folder.
 
-`switch/NX-Cast/dlna/` contains runtime DLNA XML, CSV, HTML, and icon assets. `switch/NX-Cast/fonts/` contains the packaged UI font and license notices. Put local `.m3u` or `.m3u8` playlists in `switch/NX-Cast/iptv/`.
+`switch/NX-Cast/dlna/` contains runtime DLNA XML, CSV, HTML, and icon assets. `switch/NX-Cast/fonts/` contains the packaged UI font. Put local `.m3u` or `.m3u8` playlists in `switch/NX-Cast/iptv/`. AirPlay identity and trusted pairings are generated privately in `switch/NX-Cast/airplay/` and must not be shared.
 
 For full install and troubleshooting details, see [docs/install.md](docs/install.md).
 
@@ -120,6 +132,10 @@ main
        -> description
        -> control
        -> protocol_state
+  -> protocol/airplay
+       -> discovery + persistent control + pairing
+       -> URL/HLS remote video
+       -> mirror media bridge (not advertised)
   -> protocol/http
   -> player
        -> core
@@ -165,6 +181,8 @@ The Docker build installs the current recommended `wiliwili` media packages:
 - `switch-ffmpeg`
 - `switch-libmpv_deko3d`
 
+It also installs official devkitPro `switch-libsodium` and runs the AirPlay host suite before the strict Switch build.
+
 ### Local devkitPro Build
 
 Requirements:
@@ -175,6 +193,13 @@ Requirements:
 - `switch-libmpv_deko3d`
 - `switch-ffmpeg`
 - `libuam`
+- `switch-libsodium`
+
+Install the official AirPlay crypto dependency through devkitPro pacman:
+
+```bash
+sudo dkp-pacman -S --needed switch-libsodium
+```
 
 Install the current recommended prebuilt media packages:
 
@@ -190,17 +215,17 @@ Build:
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
+make RELEASE_JOBS=2 release-build
 NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
-`NXCAST_USE_IMGUI_UI=1` enables the Dear ImGui + deko3d player overlay. Omit it to build the legacy C overlay path for fallback debugging. The strict flags prevent accidentally producing a tiny mock/fallback `NRO` without `libmpv/deko3d`.
+`release-build` requires Dear ImGui, libmpv, deko3d, and AirPlay Ed25519, then writes the build attestation required by the packaging script. This prevents a fallback or AirPlay-disabled NRO from being published accidentally. Use the individual flags only for development builds.
 
 Trace build for playback/input debugging:
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j2
+make TRACE_MEDIA=1 TRACE_INPUT=1 TRACE_AIRPLAY=1 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j2
 ```
 
 The trace flags are optional build variables, not the default build mode. Use them for reproducing UI stutter, touch handling, SOAP/player state drift, or hard-to-read playback failures.
@@ -228,7 +253,7 @@ git tag -a v0.2.0 -m "NX-Cast v0.2.0"
 git push origin v0.2.0
 ```
 
-The release workflow requires `libmpv/deko3d` and rejects obviously invalid small `NRO` outputs.
+The release workflow runs AirPlay host tests, requires `libmpv/deko3d` plus Ed25519, rejects obviously invalid small `NRO` outputs, and rejects packages containing runtime AirPlay secrets or diagnostic captures.
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and release details.
 
@@ -236,9 +261,11 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and release details.
 
 ```text
 assets/
+  airplay/     runtime storage/privacy notice
   dlna/        runtime DLNA templates copied to SD
   icon/        NRO icon sources
   iptv/        IPTV source examples and packaged presets
+  licenses/    packaged third-party notices
 docs/          design notes and implementation plans
 scripts/       build, packaging, nxlink, smoke tests
 source/
@@ -276,5 +303,6 @@ Recommended order:
 4. [docs/scpd-module.md](docs/scpd-module.md)
 5. [docs/iptv.md](docs/iptv.md)
 6. [docs/iptv-gui-plan.md](docs/iptv-gui-plan.md)
+7. [docs/AIRPLAY_DEVELOPMENT.md](docs/AIRPLAY_DEVELOPMENT.md)
 
 If documentation and source disagree, the current `source/` tree is authoritative.

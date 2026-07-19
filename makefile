@@ -85,6 +85,8 @@ NXCAST_REQUIRE_LIBMPV ?= 0
 NXCAST_REQUIRE_DEKO3D ?= 0
 NXCAST_REQUIRE_AIRPLAY_ED25519 ?= 0
 NXCAST_USE_IMGUI_UI ?= 0
+RELEASE_JOBS ?= 4
+RELEASE_ATTESTATION := $(CURDIR)/$(BUILD)/release-features.txt
 HOST_CC ?= cc
 HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource
 HOST_THREAD_FLAGS ?= -pthread
@@ -334,7 +336,7 @@ ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
 endif
 
-.PHONY: $(BUILD) clean all test-airplay
+.PHONY: $(BUILD) clean all release-build test-airplay
 
 #---------------------------------------------------------------------------------
 all: sdmc_init $(BUILD)
@@ -347,6 +349,10 @@ sdmc_init:
 	@if [ -d "$(CURDIR)/assets/fonts" ]; then cp -v $(CURDIR)/assets/fonts/* $(CURDIR)/sdmc/switch/NX-Cast/fonts/; else echo "Warning: assets/fonts not found"; fi
 	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/iptv
 	@if [ -d "$(CURDIR)/assets/iptv" ]; then cp -v $(CURDIR)/assets/iptv/* $(CURDIR)/sdmc/switch/NX-Cast/iptv/; else echo "Warning: assets/iptv not found"; fi
+	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/airplay
+	@if [ -d "$(CURDIR)/assets/airplay" ]; then cp -v $(CURDIR)/assets/airplay/* $(CURDIR)/sdmc/switch/NX-Cast/airplay/; else echo "Warning: assets/airplay not found"; fi
+	@mkdir -p $(CURDIR)/sdmc/switch/NX-Cast/licenses
+	@if [ -d "$(CURDIR)/assets/licenses" ]; then cp -v $(CURDIR)/assets/licenses/* $(CURDIR)/sdmc/switch/NX-Cast/licenses/; else echo "Warning: assets/licenses not found"; fi
 	@ls -la $(CURDIR)/sdmc/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
 
 $(BUILD):
@@ -361,6 +367,16 @@ ifeq ($(strip $(APP_JSON)),)
 else
 	@rm -fr $(BUILD) $(TARGET).nsp $(TARGET).nso $(TARGET).npdm $(TARGET).elf
 endif
+
+release-build:
+	@$(MAKE) clean
+	@$(MAKE) NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j$(RELEASE_JOBS)
+	@printf '%s\n' \
+		'nxcast-release-v1' \
+		'libmpv=1' \
+		'deko3d=1' \
+		'airplay-ed25519=1' > $(RELEASE_ATTESTATION)
+	@echo "release build attested at $(RELEASE_ATTESTATION)"
 
 test-airplay:
 	@test "$(HOST_MBEDTLS_FOUND)" = "1" || (printf '%s\n' "mbedTLS 2.x host development files are required (macOS: brew install mbedtls@2)" >&2; exit 1)

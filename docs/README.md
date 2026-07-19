@@ -14,6 +14,7 @@ All Markdown documents in this directory use English file names and English cont
 6. [soap-module.md](soap-module.md)
 7. [threading-design.md](threading-design.md)
 8. [source-compatibility.md](source-compatibility.md)
+9. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
 
 ## Build And Media Toolchain
 
@@ -28,6 +29,7 @@ Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra`
 - [scpd-module.md](scpd-module.md)
 - [soap-module.md](soap-module.md)
 - [connection-manager-sink-protocol-info.md](connection-manager-sink-protocol-info.md)
+- [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
 
 Use these when working on DLNA discovery, device/service description, SOAP actions, GENA, or protocol state sync.
 
