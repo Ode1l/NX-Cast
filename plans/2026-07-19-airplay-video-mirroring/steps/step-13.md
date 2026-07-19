@@ -20,7 +20,8 @@
 - [x] `write` `source/protocol/airplay/media/remote_video.[ch]` — validate URL, parse plist/text parameters and map commands.
 - [x] `edit` `source/protocol/airplay/protocol/handlers.c` — route remote-video endpoints and return playback state/time.
 - [x] `edit` `scripts/smoke_airplay.py` — test play/rate/scrub/info/stop sequences with a local HTTP/HLS fixture.
-- [ ] `bash` host smoke and Switch tests from Safari/video apps — host direct HLS is verified; real iPhone/Switch acceptance is unavailable.
+- [x] `bash` host endpoint/direct-HLS smoke and strict Docker release build — redirect and relative segments pass without a gateway.
+- [ ] `hardware` Safari/video-app control on iPhone/Switch — real-device acceptance is unavailable.
 
 ## Quality Checklist
 - [x] Evidence-before-edit: renderer API and AirPlay endpoint contracts documented.
@@ -31,7 +32,8 @@
 
 ## Validation Checklist
 - [x] `make test-airplay` and remote-video smoke exit 0.
-- [ ] Strict Switch build plays a direct MP4 and HLS URL controlled from an iPhone.
+- [x] Strict Docker release build links the remote-video path with libmpv/deko3d required.
+- [ ] A real iPhone controls direct MP4 and HLS playback on Switch.
 - [ ] Existing CCTV/iQiyi/DLNA/IPTV playback regression tests remain successful.
 
 ## Test Checklist

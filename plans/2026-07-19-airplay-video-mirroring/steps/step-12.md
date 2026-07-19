@@ -20,7 +20,8 @@
 - [x] `edit` audio/video modules and stream bridge — map timestamps once and enforce bounded skew/latency policy.
 - [x] `edit` `TRACE_AIRPLAY` logs — added periodic queue/skew/drift counters without packet payloads or secrets.
 - [x] `edit` host tests — simulate jitter, loss, clock wrap, jump and slow drift with deterministic timelines.
-- [ ] `bash` host tests and 30-minute Switch soak — host/sanitizer/strict builds pass; real soak is blocked by Step 7 FairPlay compatibility.
+- [x] `bash` host tests and strict Docker release build — deterministic timing tests and the required Switch link pass.
+- [ ] `hardware` 30-minute Switch soak — blocked by Step 7 FairPlay compatibility.
 
 ## Quality Checklist
 - [x] Evidence-before-edit: reference timing equations and observable packet units documented; real trace remains unavailable behind Step 7.
@@ -31,7 +32,8 @@
 
 ## Validation Checklist
 - [x] `make test-airplay` timing simulations exit 0, including ASan/UBSan.
-- [ ] Strict Switch build links successfully; 30-minute real-device drift/queue acceptance is blocked by Step 7.
+- [x] Strict Docker release build links successfully with the clock/audio/video path enabled.
+- [ ] 30-minute real-device drift/queue acceptance is blocked by Step 7.
 - [x] Deterministic disconnect/reconnect and source pause/resume simulations contain no old-clock state.
 
 ## Test Checklist

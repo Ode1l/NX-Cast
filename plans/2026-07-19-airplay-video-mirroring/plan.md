@@ -73,6 +73,7 @@ None.
 | AirPlay host tests | `make test-airplay` | Step 1 adds target following `scripts/test_iptv_channel_list.c` host-test style | yes |
 | Protocol smoke | `python3 scripts/smoke_airplay.py --host 127.0.0.1 --port 7000` | Planned local persistent-session smoke test | yes |
 | Strict Switch build | `make clean && make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j4` | Existing Makefile/toolchain contract | yes |
+| Attested release build | `make RELEASE_JOBS=4 release-build` | Requires libmpv, deko3d, ImGui and AirPlay Ed25519 before packaging | final step |
 | Release package | `./scripts/package_release.sh` | Existing release packaging path | final step |
 | Media fixture probe | `ffprobe -v error -show_streams build/tests/airplay-mirror.ts` | Planned Step 9 MPEG-TS fixture | yes |
 | Real-device acceptance | `TRACE_MEDIA=1 TRACE_AIRPLAY=1` build + iPhone/Switch test matrix | Planned protocol-specific trace mode; secrets redacted | phase gates |
@@ -209,6 +210,9 @@ None.
 - CI now installs official `switch-libsodium`, runs the complete AirPlay host suite, and requires Ed25519 in strict Switch builds; local scripts/YAML parse, while the actual Docker run is unavailable on this workstation — verified static/local facts, Step 15.
 - The first GitHub Actions Docker run built the image successfully and identified Debian's missing `mbedcrypto.pc`; Makefile host detection now has a header/library fallback while keeping pkg-config preferred — verified remote run 29694789656, Step 15.
 - The local package-layout archive preserves the 25,285,306-byte NRO and complete IPTV presets, adds only AirPlay/privacy/legal assets, and contains no runtime identities, pairings, keys, logs, traces, dumps, captures or reference source; publishable packages additionally require the strict release-build attestation — verified package staging/listing and negative gate test, Step 15.
+- `make test-airplay` now executes the persistent RTSP, pairing authorization, mDNS lifecycle, composed receiver and direct-HLS loopback smokes after all C tests; the complete target passes locally — verified run output, Step 15.
+- GitHub Actions run 29695349829 passes the Docker image, complete host suite, strict Ed25519/libmpv/deko3d/ImGui Switch build, SD package, artifact upload and continuous Release update — verified remote job 88215042401 and artifact 8444833939, Step 15.
+- The published continuous SD archive is 19,647,201 bytes with a 25,354,938-byte NRO, preserves the three intended IPTV source entries, and contains no runtime identity, pairing, key, log, trace, dump or capture file — verified downloaded archive SHA-256 `74a3a2814c7dd92cec4ec310858d31efb0c44678f77cd6a2128a309fbd04f8cb`, Step 15.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -228,3 +232,4 @@ None.
 | 2026-07-20 | Step 13 | Added session-owned AirPlay URL/HLS play, rate, scrub, info and stop endpoints with direct FFmpeg HLS redirect/relative-segment validation; real iPhone acceptance remains blocked. |
 | 2026-07-20 | Step 14 | Added single-player ownership arbitration, the Switch AirPlay composition/UI root and network-before-player shutdown ordering; host/build checks pass while the real mixed-protocol matrix remains blocked. |
 | 2026-07-20 | Step 15 | Added AirPlay host/Ed25519 CI gates, release secret scanning, SD/license assets and honest support documentation; Docker and physical iPhone/Switch acceptance remain blocked locally. |
+| 2026-07-20 | Step 15 hardening | Fixed GCC path diagnostics, Debian mbedTLS discovery, FFmpeg 5/8 AVIO compatibility and Linux feature macros; remote Docker release CI is green and all loopback network smokes now run under `make test-airplay`. |

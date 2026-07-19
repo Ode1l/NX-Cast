@@ -424,6 +424,10 @@ test-airplay:
 	@$(AIRPLAY_CLOCK_TEST_BIN)
 	@$(AIRPLAY_REMOTE_VIDEO_TEST_BIN)
 	@$(PLAYER_OWNERSHIP_TEST_BIN)
+	@python3 scripts/smoke_airplay.py --port 0
+	@python3 scripts/smoke_airplay_pairing.py --port 0
+	@python3 scripts/smoke_airplay.py --mdns
+	@python3 scripts/smoke_airplay.py --receiver --port 0
 	@python3 scripts/smoke_airplay.py --remote-hls
 
 

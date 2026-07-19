@@ -94,8 +94,9 @@ make test-airplay
 It covers plist and RTSP bounds, published crypto vectors, pairing, DNS-SD,
 receiver lifecycle, remote video controls, mirror H.264/AAC, MPEG-TS bridging,
 clock behavior, player ownership, reconnects, and direct HLS redirect/relative
-segment resolution. CI then performs the strict Switch build and package
-inspection.
+segment resolution. The same target also runs real loopback TCP/UDP smoke tests
+for persistent RTSP, pairing authorization, mDNS and the composed receiver. CI
+then performs the strict Switch build and package inspection.
 
 For redacted protocol/media traces:
 

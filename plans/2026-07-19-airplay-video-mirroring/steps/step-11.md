@@ -20,7 +20,8 @@
 - [x] `edit` `source/protocol/airplay/media/stream_bridge.c` — added AAC stream metadata and interleaved timestamped packets.
 - [x] `edit` `source/protocol/airplay/discovery/mdns.c` — inspected capability boundary and intentionally retained `_raop._tcp` as disabled until real audible validation.
 - [x] `write` audio packet fixtures and extend host coverage for loss, reorder, unsupported config, mute and reconnect.
-- [ ] `bash` tests, `ffprobe` dual-stream TS and Switch playback — host tests/probe and strict build pass; real audible Switch playback is blocked by Step 7 FairPlay compatibility.
+- [x] `bash` tests, `ffprobe` dual-stream TS and strict Switch release build — host/probe checks and the Docker Ed25519 build pass.
+- [ ] `hardware` audible Switch playback — blocked by Step 7 FairPlay compatibility and unavailable physical acceptance.
 
 ## Quality Checklist
 - [x] Evidence-before-edit: audio setup and packet format matrix recorded from both references; a real trace remains unavailable behind Step 7.
@@ -32,7 +33,8 @@
 ## Validation Checklist
 - [x] `make test-airplay` exits 0, including ASan/UBSan.
 - [x] `ffprobe` reports one H.264 and one AAC stream in the generated TS.
-- [ ] Strict Switch build links the audio path, but audible real-device playback cannot be accepted until Step 7 is resolved.
+- [x] Strict Docker release build links the audio path with libmpv, deko3d and Ed25519 required.
+- [ ] Audible real-device playback cannot be accepted until Step 7 is resolved.
 
 ## Test Checklist
 - [x] AAC fixtures cover normal packets, loss/reorder, malformed size, unsupported config, mute and reconnect.
