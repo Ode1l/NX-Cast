@@ -361,6 +361,27 @@ static void runtime_audio(const AirPlayMirrorAudioFrame *frame, void *user_data)
     }
 }
 
+static void runtime_audio_sync(uint32_t rtp_timestamp, uint64_t ntp_timestamp,
+                               void *user_data)
+{
+    AirPlayMirrorRuntime *runtime = user_data;
+    AirPlayStreamBridge *bridge = NULL;
+
+    runtime_mutex_lock(&runtime->mutex);
+    if (runtime->bridge)
+    {
+        bridge = runtime->bridge;
+        airplay_stream_bridge_retain(bridge);
+    }
+    runtime_mutex_unlock(&runtime->mutex);
+    if (!bridge)
+        return;
+    if (!airplay_stream_bridge_update_audio_sync(bridge, rtp_timestamp,
+                                                 ntp_timestamp))
+        AIRPLAY_TRACE_WARN("[airplay-clock] rejected audio sync metadata\n");
+    airplay_stream_bridge_release(bridge);
+}
+
 bool airplay_mirror_runtime_create(const AirPlayMirrorRuntimeConfig *config,
                                    AirPlayMirrorRuntime **runtime_out)
 {
@@ -534,6 +555,7 @@ bool airplay_mirror_runtime_audio_open(
     audio_config.samples_per_frame = format.samples_per_frame;
     audio_config.sample_rate = format.sample_rate;
     audio_config.callback = runtime_audio;
+    audio_config.sync_callback = runtime_audio_sync;
     audio_config.callback_user_data = runtime;
     if (!airplay_mirror_audio_create(&audio_config, &audio))
         goto cleanup;

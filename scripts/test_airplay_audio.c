@@ -32,6 +32,9 @@ typedef struct
     uint16_t sequences[16];
     bool discontinuities[16];
     atomic_size_t count;
+    atomic_uint sync_count;
+    atomic_uint sync_rtp;
+    atomic_uint_fast64_t sync_ntp;
 } AudioRecorder;
 
 typedef struct
@@ -117,6 +120,18 @@ static void record_audio(const AirPlayMirrorAudioFrame *frame, void *user_data)
     }
 }
 
+static void record_sync(uint32_t rtp_timestamp, uint64_t ntp_timestamp,
+                        void *user_data)
+{
+    AudioRecorder *recorder = user_data;
+
+    atomic_store_explicit(&recorder->sync_rtp, rtp_timestamp,
+                          memory_order_relaxed);
+    atomic_store_explicit(&recorder->sync_ntp, ntp_timestamp,
+                          memory_order_relaxed);
+    atomic_fetch_add_explicit(&recorder->sync_count, 1u, memory_order_release);
+}
+
 static bool encrypt_payload(const uint8_t key[16], const uint8_t iv[16],
                             const uint8_t *input, uint8_t *output, size_t size)
 {
@@ -191,6 +206,7 @@ static void test_audio_packets(const uint8_t *payload, size_t payload_size)
     config.samples_per_frame = 1024u;
     config.sample_rate = 44100u;
     config.callback = record_audio;
+    config.sync_callback = record_sync;
     config.callback_user_data = &recorder;
     CHECK(airplay_mirror_audio_create(&config, &audio));
     airplay_mirror_audio_set_recording(audio, true);
@@ -250,6 +266,36 @@ static void test_audio_packets(const uint8_t *payload, size_t payload_size)
     CHECK(airplay_mirror_audio_process_packet(audio, packet, packet_size));
     CHECK(atomic_load_explicit(&recorder.count, memory_order_acquire) == 6u &&
           recorder.sequences[5] == 107u);
+    memset(packet, 0, 20u);
+    packet[0] = 0x80u;
+    packet[1] = 0xd4u;
+    packet[4] = 0x12u;
+    packet[5] = 0x34u;
+    packet[6] = 0x56u;
+    packet[7] = 0x78u;
+    packet[8] = 0x00u;
+    packet[9] = 0x00u;
+    packet[10] = 0x00u;
+    packet[11] = 0x64u;
+    packet[12] = 0x80u;
+    CHECK(airplay_mirror_audio_process_control_packet(audio, packet, 20u));
+    CHECK(atomic_load_explicit(&recorder.sync_count, memory_order_acquire) == 1u);
+    CHECK(atomic_load_explicit(&recorder.sync_rtp, memory_order_relaxed) ==
+          UINT32_C(0x12345678));
+    CHECK(atomic_load_explicit(&recorder.sync_ntp, memory_order_relaxed) ==
+          UINT64_C(0x0000006480000000));
+    packet[1] = 0u;
+    CHECK(!airplay_mirror_audio_process_control_packet(audio, packet, 20u));
+    packet_size = make_packet(packet + 4u, sizeof(packet) - 4u, 108u, 52292u,
+                              payload, payload_size, key, iv);
+    packet[0] = 0x80u;
+    packet[1] = 0xd6u;
+    packet[2] = 0u;
+    packet[3] = 0u;
+    CHECK(airplay_mirror_audio_process_control_packet(audio, packet,
+                                                      packet_size + 4u));
+    CHECK(atomic_load_explicit(&recorder.count, memory_order_acquire) == 7u &&
+          recorder.sequences[6] == 108u);
     airplay_mirror_audio_destroy(audio);
 
     audio = NULL;
@@ -259,8 +305,8 @@ static void test_audio_packets(const uint8_t *payload, size_t payload_size)
     packet_size = make_packet(packet, sizeof(packet), 200u, 44100u, payload,
                               payload_size, key, iv);
     CHECK(airplay_mirror_audio_process_packet(audio, packet, packet_size));
-    CHECK(atomic_load_explicit(&recorder.count, memory_order_acquire) == 7u &&
-          recorder.sequences[6] == 200u);
+    CHECK(atomic_load_explicit(&recorder.count, memory_order_acquire) == 8u &&
+          recorder.sequences[7] == 200u);
     airplay_mirror_audio_destroy(audio);
 }
 
@@ -306,6 +352,8 @@ static void test_dual_stream(const uint8_t *aac, size_t aac_size)
     CHECK(airplay_mirror_audio_format(AIRPLAY_MIRROR_AUDIO_CT_AAC_LC, 1024u,
                                       44100u, &format));
     CHECK(airplay_stream_bridge_configure_audio(bridge, &format));
+    CHECK(airplay_stream_bridge_update_audio_sync(
+        bridge, 44100u, UINT64_C(1) << 32));
     video_frame.data = fixture.data;
     video_frame.size = fixture.size;
     video_frame.timestamp = UINT64_C(1) << 32;

@@ -32,6 +32,9 @@ typedef struct
 
 typedef void (*AirPlayMirrorAudioCallback)(const AirPlayMirrorAudioFrame *frame,
                                            void *user_data);
+typedef void (*AirPlayMirrorAudioSyncCallback)(uint32_t rtp_timestamp,
+                                               uint64_t ntp_timestamp,
+                                               void *user_data);
 
 typedef struct
 {
@@ -42,6 +45,7 @@ typedef struct
     uint16_t samples_per_frame;
     uint32_t sample_rate;
     AirPlayMirrorAudioCallback callback;
+    AirPlayMirrorAudioSyncCallback sync_callback;
     void *callback_user_data;
 } AirPlayMirrorAudioConfig;
 
@@ -60,5 +64,8 @@ uint16_t airplay_mirror_audio_control_port(const AirPlayMirrorAudio *audio);
 bool airplay_mirror_audio_process_packet(AirPlayMirrorAudio *audio,
                                          const uint8_t *packet,
                                          size_t packet_size);
+bool airplay_mirror_audio_process_control_packet(AirPlayMirrorAudio *audio,
+                                                 const uint8_t *packet,
+                                                 size_t packet_size);
 
 #endif

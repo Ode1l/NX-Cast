@@ -4,12 +4,15 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/error.h>
 #include <libavutil/mem.h>
+
+#include "protocol/airplay/trace.h"
 
 #ifdef __SWITCH__
 #include <switch.h>
@@ -47,11 +50,25 @@ struct AirPlayStreamBridge
     bool header_written;
     AVFormatContext *format;
     AVIOContext *avio;
+    AirPlayMirrorClock *clock;
     int stream_index;
     int audio_stream_index;
+    int64_t audio_frame_duration;
     int64_t last_pts;
-    int64_t last_audio_pts;
 };
+
+static uint64_t bridge_monotonic_us(void)
+{
+#ifdef __SWITCH__
+    return armTicksToNs(armGetSystemTick()) / 1000u;
+#else
+    struct timespec now;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+        return 0u;
+    return (uint64_t)now.tv_sec * 1000000u + (uint64_t)now.tv_nsec / 1000u;
+#endif
+}
 
 static bool bridge_mutex_init(AirPlayBridgeMutex *mutex)
 {
@@ -170,12 +187,7 @@ static bool bridge_ensure_header(AirPlayStreamBridge *bridge)
 
 int64_t airplay_stream_bridge_ntp_to_90k(uint64_t ntp_timestamp)
 {
-    uint64_t seconds = ntp_timestamp >> 32;
-    uint64_t fraction = ntp_timestamp & UINT32_MAX;
-    uint64_t ticks = seconds * UINT64_C(90000) +
-                     ((fraction * UINT64_C(90000)) >> 32);
-
-    return ticks > INT64_MAX ? INT64_MAX : (int64_t)ticks;
+    return airplay_mirror_clock_ntp_to_90k(ntp_timestamp);
 }
 
 static void bridge_destroy(AirPlayStreamBridge *bridge)
@@ -193,6 +205,7 @@ static void bridge_destroy(AirPlayStreamBridge *bridge)
         av_freep(&bridge->avio->buffer);
         avio_context_free(&bridge->avio);
     }
+    airplay_mirror_clock_destroy(bridge->clock);
     free(bridge->ring);
     bridge_cond_destroy(&bridge->readable);
     bridge_cond_destroy(&bridge->writable);
@@ -226,14 +239,13 @@ bool airplay_stream_bridge_create(size_t capacity,
     atomic_init(&bridge->cancelled, false);
     bridge->capacity = capacity;
     bridge->last_pts = -1;
-    bridge->last_audio_pts = -1;
     bridge->audio_stream_index = -1;
     ring_mutex_ready = bridge_mutex_init(&bridge->ring_mutex);
     mux_mutex_ready = ring_mutex_ready && bridge_mutex_init(&bridge->mux_mutex);
     readable_ready = mux_mutex_ready && bridge_cond_init(&bridge->readable);
     writable_ready = readable_ready && bridge_cond_init(&bridge->writable);
     bridge->ring = writable_ready ? malloc(capacity) : NULL;
-    if (!bridge->ring ||
+    if (!bridge->ring || !airplay_mirror_clock_create(&bridge->clock) ||
         avformat_alloc_output_context2(&bridge->format, NULL, "mpegts", NULL) < 0)
         goto failure;
     avio_buffer = av_malloc(AIRPLAY_STREAM_BRIDGE_AVIO_SIZE);
@@ -270,6 +282,7 @@ failure:
         av_freep(&bridge->avio->buffer);
         avio_context_free(&bridge->avio);
     }
+    airplay_mirror_clock_destroy(bridge->clock);
     free(bridge->ring);
     if (writable_ready)
         bridge_cond_destroy(&bridge->writable);
@@ -324,6 +337,7 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
                                       const AirPlayMirrorAccessUnit *access_unit)
 {
     AVPacket *packet;
+    AirPlayMirrorClockResult clock_result;
     int64_t pts;
     bool ok = false;
 
@@ -346,7 +360,14 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
         goto cleanup;
     }
     memcpy(packet->data, access_unit->data, access_unit->size);
-    pts = airplay_stream_bridge_ntp_to_90k(access_unit->timestamp);
+    clock_result = airplay_mirror_clock_map_video(
+        bridge->clock, access_unit->timestamp, bridge_monotonic_us(), &pts);
+    if (clock_result == AIRPLAY_MIRROR_CLOCK_OUT_OF_RANGE ||
+        clock_result == AIRPLAY_MIRROR_CLOCK_WAITING_FOR_SYNC)
+    {
+        av_packet_free(&packet);
+        goto cleanup;
+    }
     if (bridge->last_pts == INT64_MAX)
     {
         av_packet_free(&packet);
@@ -389,6 +410,9 @@ bool airplay_stream_bridge_configure_audio(
     if (bridge->header_written || bridge->mux_finished ||
         atomic_load(&bridge->cancelled) || bridge->audio_stream_index >= 0)
         goto cleanup;
+    if (!airplay_mirror_clock_set_audio_rate(bridge->clock,
+                                             format->sample_rate))
+        goto cleanup;
     extradata = av_mallocz(format->codec_config_size +
                            AV_INPUT_BUFFER_PADDING_SIZE);
     if (!extradata)
@@ -397,7 +421,7 @@ bool airplay_stream_bridge_configure_audio(
     stream = avformat_new_stream(bridge->format, NULL);
     if (!stream)
         goto cleanup;
-    stream->time_base = (AVRational){1, (int)format->sample_rate};
+    stream->time_base = (AVRational){1, AIRPLAY_MIRROR_CLOCK_TIME_BASE};
     stream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     stream->codecpar->codec_id = AV_CODEC_ID_AAC;
     stream->codecpar->codec_tag = 0u;
@@ -407,6 +431,9 @@ bool airplay_stream_bridge_configure_audio(
     extradata = NULL;
     stream->codecpar->extradata_size = (int)format->codec_config_size;
     bridge->audio_stream_index = stream->index;
+    bridge->audio_frame_duration =
+        (int64_t)format->samples_per_frame * AIRPLAY_MIRROR_CLOCK_TIME_BASE /
+        format->sample_rate;
     ok = true;
 
 cleanup:
@@ -419,6 +446,7 @@ bool airplay_stream_bridge_push_audio(AirPlayStreamBridge *bridge,
                                       const AirPlayMirrorAudioFrame *frame)
 {
     AVPacket *packet = NULL;
+    AirPlayMirrorClockResult clock_result;
     int64_t pts;
     bool ok = false;
 
@@ -429,31 +457,71 @@ bool airplay_stream_bridge_push_audio(AirPlayStreamBridge *bridge,
     if (bridge->audio_stream_index < 0 || bridge->mux_finished ||
         atomic_load(&bridge->cancelled) || !bridge_ensure_header(bridge))
         goto cleanup;
+    clock_result = airplay_mirror_clock_map_audio(
+        bridge->clock, frame->rtp_timestamp, bridge_monotonic_us(), &pts);
+    if (clock_result == AIRPLAY_MIRROR_CLOCK_WAITING_FOR_SYNC ||
+        clock_result == AIRPLAY_MIRROR_CLOCK_OUT_OF_RANGE)
+    {
+        ok = true;
+        goto cleanup;
+    }
+    if (clock_result != AIRPLAY_MIRROR_CLOCK_OK)
+        goto cleanup;
     packet = av_packet_alloc();
     if (!packet || av_new_packet(packet, (int)frame->size) < 0)
         goto cleanup;
     memcpy(packet->data, frame->data, frame->size);
-    pts = frame->rtp_timestamp;
-    if (pts <= bridge->last_audio_pts)
-        pts = bridge->last_audio_pts == INT64_MAX ? INT64_MAX :
-                                                    bridge->last_audio_pts + 1;
-    if (pts == INT64_MAX)
-        goto cleanup;
     packet->pts = pts;
     packet->dts = pts;
+    packet->duration = bridge->audio_frame_duration;
     packet->stream_index = bridge->audio_stream_index;
     ok = av_interleaved_write_frame(bridge->format, packet) >= 0;
     if (ok)
     {
         avio_flush(bridge->avio);
-        bridge->last_audio_pts = pts;
         bridge->audio_packets++;
+        if ((bridge->audio_packets & 0xffu) == 0u)
+        {
+            AirPlayMirrorClockStats stats;
+
+            if (airplay_mirror_clock_get_stats(bridge->clock, &stats))
+                AIRPLAY_TRACE(
+                    "[airplay-clock] generation=%u skew=%lld jitter-v=%llu "
+                    "jitter-a=%llu drift-ppm=%lld drops=%llu/%llu\n",
+                    stats.generation, (long long)stats.av_skew_ticks,
+                    (unsigned long long)stats.video_jitter_us,
+                    (unsigned long long)stats.audio_jitter_us,
+                    (long long)stats.drift_ppm,
+                    (unsigned long long)stats.unsynced_audio_drops,
+                    (unsigned long long)stats.skew_audio_drops);
+        }
     }
 
 cleanup:
     av_packet_free(&packet);
     bridge_mutex_unlock(&bridge->mux_mutex);
     return ok;
+}
+
+bool airplay_stream_bridge_update_audio_sync(AirPlayStreamBridge *bridge,
+                                             uint32_t rtp_timestamp,
+                                             uint64_t ntp_timestamp)
+{
+    AirPlayMirrorClockResult result;
+
+    if (!bridge || !ntp_timestamp)
+        return false;
+    bridge_mutex_lock(&bridge->mux_mutex);
+    if (bridge->mux_finished || atomic_load(&bridge->cancelled))
+    {
+        bridge_mutex_unlock(&bridge->mux_mutex);
+        return false;
+    }
+    result = airplay_mirror_clock_update_audio_sync(
+        bridge->clock, rtp_timestamp, ntp_timestamp, bridge_monotonic_us());
+    bridge_mutex_unlock(&bridge->mux_mutex);
+    return result == AIRPLAY_MIRROR_CLOCK_OK ||
+           result == AIRPLAY_MIRROR_CLOCK_DISCONTINUITY;
 }
 
 bool airplay_stream_bridge_finish(AirPlayStreamBridge *bridge)
@@ -543,6 +611,7 @@ bool airplay_stream_bridge_get_stats(AirPlayStreamBridge *bridge,
     stats_out->video_packets = bridge->video_packets;
     stats_out->audio_packets = bridge->audio_packets;
     stats_out->video_config_generation = bridge->video_config_generation;
+    (void)airplay_mirror_clock_get_stats(bridge->clock, &stats_out->clock);
     stats_out->eof = bridge->eof;
     stats_out->cancelled = atomic_load(&bridge->cancelled);
     stats_out->reader_claimed = bridge->reader_claimed;

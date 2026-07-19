@@ -62,7 +62,7 @@ None.
 | Step 9 | `steps/step-9.md` | COMPLETED | 建立 MPEG-TS 环形缓冲与 libmpv 自定义流桥接 |
 | Step 10 | `steps/step-10.md` | BLOCKED | 完成第一阶段 H.264 硬解镜像真机闭环 |
 | Step 11 | `steps/step-11.md` | BLOCKED | 增加镜像 AAC 接收和音轨输出 |
-| Step 12 | `steps/step-12.md` | PENDING | 增加时钟、抖动缓冲和音画同步 |
+| Step 12 | `steps/step-12.md` | BLOCKED | 增加时钟、抖动缓冲和音画同步 |
 | Step 13 | `steps/step-13.md` | PENDING | 增加 AirPlay URL/HLS 投送与远程控制 |
 | Step 14 | `steps/step-14.md` | PENDING | 完成协议仲裁、UI 状态与安全退出集成 |
 | Step 15 | `steps/step-15.md` | PENDING | 完成兼容性、稳定性、CI、文档和发布验收 |
@@ -147,6 +147,8 @@ None.
 | `scripts/test_airplay_mirror_runtime.c` | Real encrypted mirror TCP through first-IDR autoplay and teardown | normal and ASan/UBSan host runs, Step 10 |
 | `source/protocol/airplay/mirror/audio.[ch]` | Bounded mirror AAC RTP receive, CBC decrypt, reorder and discontinuity boundary | packet fixtures, UDP smoke, sanitizers and strict build, Step 11 |
 | `scripts/test_airplay_audio.c` | AAC packet loss/reorder/mute/reconnect and dual-stream mux coverage | normal/sanitizer runs and generated TS, Step 11 |
+| `source/protocol/airplay/mirror/clock.[ch]` | Shared wrap-safe video NTP/audio RTP to 90 kHz timeline and metrics | deterministic drift/jump/wrap simulations and strict build, Step 12 |
+| `scripts/test_airplay_clock.c` | Deterministic timing, jitter, drift, discontinuity, pause and restart simulation | normal and ASan/UBSan host runs, Step 12 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -189,6 +191,8 @@ None.
 - The traced strict Switch build contains the media runtime and existing nvtegra/deko3d backend, but real iPhone rendering cannot be claimed while standard FairPlay unwrap remains unavailable — verified build fact and inherited Step 7 blocker, Step 10.
 - Mirrored audio type 96 uses 12-byte RTP headers, AAC-LC (`ct=4`) or AAC-ELD (`ct=8`), a per-packet AES-CBC IV reset and a clear unaligned tail in both references — verified by focused clean-room behavior inventory, Step 11.
 - The generated dual-stream MPEG-TS is independently detected as 64x64 H.264 plus 44.1 kHz stereo AAC; loss/reorder/mute/reconnect tests, ASan/UBSan, static analysis and the strict Switch build pass, but audible iPhone acceptance remains blocked by Step 7 — verified host/build facts, Step 11.
+- Audio control type `0x54` maps a 32-bit 44.1 kHz RTP timestamp to remote NTP 32.32, while mirror video already carries the same remote NTP domain; mapping both once before muxing avoids player-side clock guessing — verified from both references and deterministic tests, Step 12.
+- The shared clock survives RTP and NTP wrap, bounds sync correction, resets audio on video discontinuity and exposes redacted jitter/skew/drift/drop counters; sanitizer/static/strict builds pass, while the 30-minute iPhone soak remains blocked by Step 7 — verified host/build facts, Step 12.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -204,3 +208,4 @@ None.
 | 2026-07-20 | Step 9 | Added the bounded MPEG-TS media bridge and refcounted libmpv custom stream registration with wrap, cancellation, sanitizer, ffprobe and strict Switch validation. |
 | 2026-07-20 | Step 10 | Added a generation-safe mirror media worker and first-IDR autoplay with ten encrypted reconnect tests; real iPhone hardware acceptance remains blocked by the Step 7 FairPlay boundary. |
 | 2026-07-20 | Step 11 | Added bounded mirror AAC RTP/decryption/reorder handling and dual-stream MPEG-TS output; host and Switch builds pass while real audible acceptance remains blocked by Step 7. |
+| 2026-07-20 | Step 12 | Added a shared wrap-safe media clock, sync/retransmit control handling and bounded drift/skew policy; deterministic validation passes while real soak remains blocked by Step 7. |
