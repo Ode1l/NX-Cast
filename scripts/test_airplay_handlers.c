@@ -23,6 +23,7 @@ typedef struct
     unsigned unwrap_count;
     unsigned prepare_count;
     unsigned open_count;
+    unsigned audio_open_count;
     unsigned record_count;
     unsigned stop_count;
     uint8_t prepared_key[16];
@@ -71,6 +72,23 @@ static bool fake_open(uint64_t session_id, const uint8_t key[16], uint64_t conne
     memcpy(recorder->opened_key, key, 16u);
     recorder->connection_id = connection_id;
     *data_port = 7100u;
+    return true;
+}
+
+static bool fake_audio_open(uint64_t session_id, const uint8_t key[16],
+                            const uint8_t iv[16], uint8_t compression_type,
+                            uint16_t samples_per_frame, uint32_t sample_rate,
+                            uint16_t *data_port, uint16_t *control_port,
+                            void *user_data)
+{
+    Recorder *recorder = user_data;
+
+    CHECK(session_id == 42u && key && iv);
+    CHECK(compression_type == 8u && samples_per_frame == 480u);
+    CHECK(sample_rate == 44100u);
+    recorder->audio_open_count++;
+    *data_port = 7200u;
+    *control_port = 7201u;
     return true;
 }
 
@@ -154,6 +172,7 @@ static AirPlayHandlers *create_handlers(Recorder *recorder)
         .shared_secret_callback = fake_shared,
         .transport_prepare_callback = fake_prepare,
         .mirror_open_callback = fake_open,
+        .audio_open_callback = fake_audio_open,
         .mirror_record_callback = fake_record,
         .mirror_stop_callback = fake_stop,
         .callback_user_data = recorder};
@@ -217,6 +236,7 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     AirPlayPlistValue *root;
     AirPlayPlistValue *streams;
     AirPlayPlistValue *stream;
+    AirPlayPlistValue *audio_stream;
     uint64_t value;
     static const uint8_t volume_query[] = "volume\r\n";
 
@@ -253,9 +273,14 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     root = airplay_plist_new_dict();
     streams = airplay_plist_new_array();
     stream = airplay_plist_new_dict();
-    CHECK(root && streams && stream &&
+    audio_stream = airplay_plist_new_dict();
+    CHECK(root && streams && stream && audio_stream &&
           dict_set(stream, "type", airplay_plist_new_uint(110u)) &&
           dict_set(stream, "streamConnectionID", airplay_plist_new_uint(123456u)) &&
+          dict_set(audio_stream, "type", airplay_plist_new_uint(96u)) &&
+          dict_set(audio_stream, "ct", airplay_plist_new_uint(8u)) &&
+          dict_set(audio_stream, "spf", airplay_plist_new_uint(480u)) &&
+          airplay_plist_array_append(streams, audio_stream) &&
           airplay_plist_array_append(streams, stream) &&
           airplay_plist_dict_set(root, "streams", streams) &&
           encode(root, &body, &body_size));
@@ -263,6 +288,7 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
                    "application/x-apple-binary-plist", &response));
     airplay_plist_buffer_free(body);
     CHECK(response.status_code == 200 && recorder->open_count == 1u);
+    CHECK(recorder->audio_open_count == 1u);
     CHECK(recorder->connection_id == 123456u);
     CHECK(memcmp(recorder->opened_key, expected_hash, 16u) == 0);
     root = decode_response(&response);

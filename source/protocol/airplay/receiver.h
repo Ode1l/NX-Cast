@@ -20,6 +20,7 @@ typedef struct
     AirPlayKeyUnwrapCallback unwrap_key_callback;
     AirPlayTransportPrepareCallback transport_prepare_callback;
     AirPlayMirrorOpenCallback mirror_open_callback;
+    AirPlayAudioOpenCallback audio_open_callback;
     AirPlayMirrorRecordCallback mirror_record_callback;
     AirPlayMirrorStopCallback mirror_stop_callback;
     void *media_user_data;

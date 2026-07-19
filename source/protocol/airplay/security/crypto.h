@@ -81,6 +81,10 @@ bool airplay_crypto_aes_ctr_init(AirPlayCryptoAesCtr *context,
 bool airplay_crypto_aes_ctr_crypt(AirPlayCryptoAesCtr *context,
                                   const uint8_t *input, uint8_t *output, size_t size);
 void airplay_crypto_aes_ctr_deinit(AirPlayCryptoAesCtr *context);
+bool airplay_crypto_aes_cbc_decrypt(
+    const uint8_t key[AIRPLAY_CRYPTO_AES_BLOCK_SIZE],
+    const uint8_t iv[AIRPLAY_CRYPTO_AES_BLOCK_SIZE],
+    const uint8_t *input, uint8_t *output, size_t size);
 
 bool airplay_crypto_aes_gcm_encrypt(
     const uint8_t key[16], const uint8_t *nonce, size_t nonce_size,

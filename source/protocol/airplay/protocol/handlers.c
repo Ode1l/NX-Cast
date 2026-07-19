@@ -18,6 +18,7 @@ typedef struct
     AirPlayFairPlay *fairplay;
     bool initial_setup;
     bool mirror_setup;
+    bool audio_setup;
     uint8_t aes_key[16];
     uint8_t aes_iv[16];
     uint64_t stream_connection_id;
@@ -371,48 +372,97 @@ static bool setup_streams(AirPlayHandlers *handlers,
     response_streams = airplay_plist_new_array();
     if (!response_streams)
         return false;
-    for (size_t index = 0u; index < count; ++index)
+    for (unsigned pass = 0u; pass < 2u; ++pass)
     {
-        const AirPlayPlistValue *stream = airplay_plist_array_get(streams, index);
-        uint64_t type;
-        uint64_t connection_id;
-        uint16_t data_port = 0u;
-        AirPlayPlistValue *response_stream;
+        uint64_t expected_type = pass == 0u ? 110u : 96u;
 
-        if (!airplay_plist_get_uint(airplay_plist_dict_get(stream, "type"), &type) ||
-            type != 110u ||
-            !airplay_plist_get_uint(airplay_plist_dict_get(stream, "streamConnectionID"),
-                                    &connection_id) ||
-            connection_id == 0u || context->mirror_setup ||
-            !handlers->config.mirror_open_callback ||
-            !handlers->config.mirror_open_callback(session->id, context->aes_key,
-                                                   connection_id, &data_port,
-                                                   handlers->config.callback_user_data) ||
-            data_port == 0u)
+        for (size_t index = 0u; index < count; ++index)
         {
-            airplay_plist_free(response_streams);
-            return false;
+            const AirPlayPlistValue *stream = airplay_plist_array_get(streams, index);
+            AirPlayPlistValue *response_stream = NULL;
+            uint64_t type;
+            uint64_t value;
+            uint16_t data_port = 0u;
+
+            if (!airplay_plist_get_uint(airplay_plist_dict_get(stream, "type"), &type) ||
+                (type != 110u && type != 96u))
+                goto failure;
+            if (type != expected_type)
+                continue;
+            if (type == 110u)
+            {
+                if (!airplay_plist_get_uint(
+                        airplay_plist_dict_get(stream, "streamConnectionID"), &value) ||
+                    value == 0u || context->mirror_setup ||
+                    !handlers->config.mirror_open_callback ||
+                    !handlers->config.mirror_open_callback(
+                        session->id, context->aes_key, value, &data_port,
+                        handlers->config.callback_user_data) ||
+                    data_port == 0u)
+                    goto failure;
+                context->stream_connection_id = value;
+                context->mirror_setup = true;
+                response_stream = airplay_plist_new_dict();
+            }
+            else
+            {
+                uint16_t control_port = 0u;
+                uint8_t compression_type;
+                uint16_t samples_per_frame;
+                uint32_t sample_rate = 44100u;
+
+                if (!context->mirror_setup || context->audio_setup ||
+                    !handlers->config.audio_open_callback ||
+                    !airplay_plist_get_uint(airplay_plist_dict_get(stream, "ct"),
+                                            &value) || value > UINT8_MAX)
+                    goto failure;
+                compression_type = (uint8_t)value;
+                if (!airplay_plist_get_uint(airplay_plist_dict_get(stream, "spf"),
+                                            &value) || value > UINT16_MAX)
+                    goto failure;
+                samples_per_frame = (uint16_t)value;
+                if (airplay_plist_get_uint(airplay_plist_dict_get(stream, "sr"),
+                                           &value))
+                {
+                    if (value > UINT32_MAX)
+                        goto failure;
+                    sample_rate = (uint32_t)value;
+                }
+                if (!handlers->config.audio_open_callback(
+                        session->id, context->aes_key, context->aes_iv,
+                        compression_type, samples_per_frame, sample_rate,
+                        &data_port, &control_port,
+                        handlers->config.callback_user_data) ||
+                    data_port == 0u || control_port == 0u)
+                    goto failure;
+                context->audio_setup = true;
+                response_stream = airplay_plist_new_dict();
+                if (!response_stream ||
+                    !dict_set(response_stream, "controlPort",
+                              airplay_plist_new_uint(control_port)))
+                {
+                    airplay_plist_free(response_stream);
+                    goto failure;
+                }
+            }
+            if (!response_stream ||
+                !dict_set(response_stream, "dataPort",
+                          airplay_plist_new_uint(data_port)) ||
+                !dict_set(response_stream, "type", airplay_plist_new_uint(type)) ||
+                !array_append(response_streams, response_stream))
+            {
+                airplay_plist_free(response_stream);
+                goto failure;
+            }
         }
-        response_stream = airplay_plist_new_dict();
-        if (!response_stream ||
-            !dict_set(response_stream, "dataPort", airplay_plist_new_uint(data_port)) ||
-            !dict_set(response_stream, "type", airplay_plist_new_uint(110u)))
-        {
-            airplay_plist_free(response_stream);
-            airplay_plist_free(response_streams);
-            return false;
-        }
-        if (!array_append(response_streams, response_stream))
-        {
-            airplay_plist_free(response_streams);
-            return false;
-        }
-        context->stream_connection_id = connection_id;
-        context->mirror_setup = true;
     }
     if (!dict_set(response_root, "streams", response_streams))
         return false;
     return true;
+
+failure:
+    airplay_plist_free(response_streams);
+    return false;
 }
 
 static bool handle_setup(AirPlayHandlers *handlers,
@@ -460,6 +510,7 @@ cleanup:
                                                   handlers->config.callback_user_data);
         context->initial_setup = false;
         context->mirror_setup = false;
+        context->audio_setup = false;
         context->stream_connection_id = 0u;
         airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
         airplay_crypto_secure_zero(context->aes_iv, sizeof(context->aes_iv));
@@ -518,6 +569,7 @@ static bool handle_teardown(AirPlayHandlers *handlers,
         handlers->config.mirror_stop_callback(session->id,
                                               handlers->config.callback_user_data);
     context->mirror_setup = false;
+    context->audio_setup = false;
     context->initial_setup = false;
     airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
     airplay_crypto_secure_zero(context->aes_iv, sizeof(context->aes_iv));

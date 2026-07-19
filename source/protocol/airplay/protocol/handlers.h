@@ -30,6 +30,11 @@ typedef bool (*AirPlayMirrorOpenCallback)(uint64_t session_id,
                                          uint64_t stream_connection_id,
                                          uint16_t *data_port_out,
                                          void *user_data);
+typedef bool (*AirPlayAudioOpenCallback)(
+    uint64_t session_id, const uint8_t key[16], const uint8_t iv[16],
+    uint8_t compression_type, uint16_t samples_per_frame,
+    uint32_t sample_rate, uint16_t *data_port_out,
+    uint16_t *control_port_out, void *user_data);
 typedef void (*AirPlayMirrorRecordCallback)(uint64_t session_id, void *user_data);
 typedef void (*AirPlayMirrorStopCallback)(uint64_t session_id, void *user_data);
 
@@ -46,6 +51,7 @@ typedef struct
     AirPlaySharedSecretCallback shared_secret_callback;
     AirPlayTransportPrepareCallback transport_prepare_callback;
     AirPlayMirrorOpenCallback mirror_open_callback;
+    AirPlayAudioOpenCallback audio_open_callback;
     AirPlayMirrorRecordCallback mirror_record_callback;
     AirPlayMirrorStopCallback mirror_stop_callback;
     void *callback_user_data;

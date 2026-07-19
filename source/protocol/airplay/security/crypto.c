@@ -429,6 +429,32 @@ void airplay_crypto_aes_ctr_deinit(AirPlayCryptoAesCtr *context)
     airplay_crypto_secure_zero(context, sizeof(*context));
 }
 
+bool airplay_crypto_aes_cbc_decrypt(
+    const uint8_t key[AIRPLAY_CRYPTO_AES_BLOCK_SIZE],
+    const uint8_t iv[AIRPLAY_CRYPTO_AES_BLOCK_SIZE],
+    const uint8_t *input, uint8_t *output, size_t size)
+{
+    mbedtls_aes_context context;
+    uint8_t working_iv[AIRPLAY_CRYPTO_AES_BLOCK_SIZE];
+    int result;
+
+    if (!key || !iv || !buffer_args_valid(input, size) ||
+        !buffer_args_valid(output, size) ||
+        size % AIRPLAY_CRYPTO_AES_BLOCK_SIZE != 0u)
+        return false;
+    memcpy(working_iv, iv, sizeof(working_iv));
+    mbedtls_aes_init(&context);
+    result = mbedtls_aes_setkey_dec(&context, key, 128u);
+    if (result == 0 && size != 0u)
+        result = mbedtls_aes_crypt_cbc(&context, MBEDTLS_AES_DECRYPT, size,
+                                       working_iv, input, output);
+    mbedtls_aes_free(&context);
+    airplay_crypto_secure_zero(working_iv, sizeof(working_iv));
+    if (result != 0)
+        airplay_crypto_secure_zero(output, size);
+    return result == 0;
+}
+
 bool airplay_crypto_aes_gcm_encrypt(
     const uint8_t key[16], const uint8_t *nonce, size_t nonce_size,
     const uint8_t *aad, size_t aad_size,

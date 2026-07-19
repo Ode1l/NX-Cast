@@ -213,6 +213,28 @@ static void test_aes_ctr_vector(void)
     airplay_crypto_aes_ctr_deinit(&decrypt);
 }
 
+static void test_aes_cbc_vector(void)
+{
+    uint8_t key[16];
+    uint8_t iv[16];
+    uint8_t ciphertext[32];
+    uint8_t expected[32];
+    uint8_t plaintext[32];
+
+    CHECK(decode_hex("2b7e151628aed2a6abf7158809cf4f3c", key, sizeof(key)));
+    CHECK(decode_hex("000102030405060708090a0b0c0d0e0f", iv, sizeof(iv)));
+    CHECK(decode_hex("7649abac8119b246cee98e9b12e9197d"
+                     "5086cb9b507219ee95db113a917678b2",
+                     ciphertext, sizeof(ciphertext)));
+    CHECK(decode_hex("6bc1bee22e409f96e93d7e117393172a"
+                     "ae2d8a571e03ac9c9eb76fac45af8e51",
+                     expected, sizeof(expected)));
+    CHECK(airplay_crypto_aes_cbc_decrypt(key, iv, ciphertext, plaintext,
+                                         sizeof(plaintext)));
+    CHECK(airplay_crypto_equal(plaintext, expected, sizeof(expected)));
+    CHECK(!airplay_crypto_aes_cbc_decrypt(key, iv, ciphertext, plaintext, 17u));
+}
+
 static void test_chachapoly_vector(void)
 {
     uint8_t key[32];
@@ -388,6 +410,7 @@ int main(void)
     test_x25519_vectors();
     test_ed25519_vector();
     test_aes_ctr_vector();
+    test_aes_cbc_vector();
     test_chachapoly_vector();
     test_aes_gcm_vector();
     test_rng_and_identity();

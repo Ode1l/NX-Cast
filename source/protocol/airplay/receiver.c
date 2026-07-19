@@ -154,6 +154,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     handlers_config.shared_secret_callback = receiver_shared_secret;
     handlers_config.transport_prepare_callback = config->transport_prepare_callback;
     handlers_config.mirror_open_callback = config->mirror_open_callback;
+    handlers_config.audio_open_callback = config->audio_open_callback;
     handlers_config.mirror_record_callback = config->mirror_record_callback;
     handlers_config.mirror_stop_callback = config->mirror_stop_callback;
     handlers_config.callback_user_data = config->media_user_data;
