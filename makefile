@@ -63,7 +63,8 @@ SOURCES		:=	source \
 			source/protocol/airplay/protocol \
 			source/protocol/airplay/security \
 			source/protocol/airplay/discovery \
-			source/protocol/airplay/mirror
+			source/protocol/airplay/mirror \
+			source/protocol/airplay/media
 DATA		:=	data
 INCLUDES	:=	include source
 
@@ -96,6 +97,7 @@ AIRPLAY_PAIRING_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_pairing
 AIRPLAY_DNS_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_dns
 AIRPLAY_HANDLERS_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_handlers
 AIRPLAY_MIRROR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_mirror
+AIRPLAY_STREAM_BRIDGE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_stream_bridge
 AIRPLAY_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_smoke_server
 AIRPLAY_PAIRING_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_pairing_smoke_server
 AIRPLAY_MDNS_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_mdns_smoke_server
@@ -135,6 +137,11 @@ HOST_SODIUM_PKG_CONFIG_PATH ?= $(HOST_SODIUM_PREFIX)/lib/pkgconfig
 HOST_SODIUM_FOUND := $(shell PKG_CONFIG_PATH="$(HOST_SODIUM_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --exists libsodium >/dev/null 2>&1 && echo 1)
 HOST_SODIUM_CFLAGS := $(shell PKG_CONFIG_PATH="$(HOST_SODIUM_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --cflags libsodium 2>/dev/null)
 HOST_SODIUM_LIBS := $(shell PKG_CONFIG_PATH="$(HOST_SODIUM_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --libs libsodium 2>/dev/null)
+HOST_FFMPEG_PREFIX ?= $(shell brew --prefix ffmpeg 2>/dev/null)
+HOST_FFMPEG_PKG_CONFIG_PATH ?= $(HOST_FFMPEG_PREFIX)/lib/pkgconfig
+HOST_FFMPEG_FOUND := $(shell PKG_CONFIG_PATH="$(HOST_FFMPEG_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --exists libavformat libavcodec libavutil >/dev/null 2>&1 && echo 1)
+HOST_FFMPEG_CFLAGS := $(shell PKG_CONFIG_PATH="$(HOST_FFMPEG_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --cflags libavformat libavcodec libavutil 2>/dev/null)
+HOST_FFMPEG_LIBS := $(shell PKG_CONFIG_PATH="$(HOST_FFMPEG_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --libs libavformat libavcodec libavutil 2>/dev/null)
 SODIUM_FOUND := $(shell PKG_CONFIG_PATH="$(PORTLIBS_PREFIX)/lib/pkgconfig" $(PKG_CONFIG) --exists libsodium >/dev/null 2>&1 && echo 1)
 SODIUM_CFLAGS := $(shell PKG_CONFIG_PATH="$(PORTLIBS_PREFIX)/lib/pkgconfig" $(PKG_CONFIG) --cflags libsodium 2>/dev/null)
 SODIUM_LIBS := $(shell PKG_CONFIG_PATH="$(PORTLIBS_PREFIX)/lib/pkgconfig" $(PKG_CONFIG) --libs libsodium 2>/dev/null)
@@ -353,6 +360,7 @@ endif
 test-airplay:
 	@test "$(HOST_MBEDTLS_FOUND)" = "1" || (printf '%s\n' "mbedTLS 2.x host development files are required (macOS: brew install mbedtls@2)" >&2; exit 1)
 	@test "$(HOST_SODIUM_FOUND)" = "1" || (printf '%s\n' "libsodium host development files are required (macOS: brew install libsodium)" >&2; exit 1)
+	@test "$(HOST_FFMPEG_FOUND)" = "1" || (printf '%s\n' "FFmpeg host development files are required (macOS: brew install ffmpeg)" >&2; exit 1)
 	@mkdir -p $(dir $(AIRPLAY_LIFECYCLE_TEST_BIN))
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/airplay.c scripts/test_airplay.c -o $(AIRPLAY_LIFECYCLE_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/plist.c scripts/test_airplay_plist.c -o $(AIRPLAY_PLIST_TEST_BIN)
@@ -363,6 +371,7 @@ test-airplay:
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/discovery/dns.c scripts/test_airplay_dns.c -o $(AIRPLAY_DNS_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c source/protocol/airplay/protocol/handlers.c scripts/test_airplay_handlers.c $(HOST_MBEDTLS_LIBS) -o $(AIRPLAY_HANDLERS_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c scripts/test_airplay_mirror.c $(HOST_MBEDTLS_LIBS) -o $(AIRPLAY_MIRROR_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/mirror/video.c source/protocol/airplay/media/stream_bridge.c scripts/test_airplay_stream_bridge.c $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_STREAM_BRIDGE_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c scripts/airplay_smoke_server.c -o $(AIRPLAY_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/airplay_pairing_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) -DAIRPLAY_TESTING=1 source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c scripts/airplay_mdns_smoke_server.c -o $(AIRPLAY_MDNS_SMOKE_SERVER_BIN)
@@ -376,6 +385,7 @@ test-airplay:
 	@$(AIRPLAY_DNS_TEST_BIN)
 	@$(AIRPLAY_HANDLERS_TEST_BIN)
 	@$(AIRPLAY_MIRROR_TEST_BIN)
+	@$(AIRPLAY_STREAM_BRIDGE_TEST_BIN)
 
 
 #---------------------------------------------------------------------------------

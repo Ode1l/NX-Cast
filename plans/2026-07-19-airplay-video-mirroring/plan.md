@@ -59,7 +59,7 @@ None.
 | Step 6 | `steps/step-6.md` | COMPLETED | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
 | Step 7 | `steps/step-7.md` | BLOCKED | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
 | Step 8 | `steps/step-8.md` | COMPLETED | 实现镜像 H.264 接收、解密、重组和关键帧恢复 |
-| Step 9 | `steps/step-9.md` | PENDING | 建立 MPEG-TS 环形缓冲与 libmpv 自定义流桥接 |
+| Step 9 | `steps/step-9.md` | COMPLETED | 建立 MPEG-TS 环形缓冲与 libmpv 自定义流桥接 |
 | Step 10 | `steps/step-10.md` | PENDING | 完成第一阶段 H.264 硬解镜像真机闭环 |
 | Step 11 | `steps/step-11.md` | PENDING | 增加镜像 AAC 接收和音轨输出 |
 | Step 12 | `steps/step-12.md` | PENDING | 增加时钟、抖动缓冲和音画同步 |
@@ -140,6 +140,9 @@ None.
 | `source/protocol/airplay/mirror/mirror_session.[ch]` | Bounded mirror TCP listener, continuous AES-CTR decryption and reconnect lifecycle | encrypted TCP fixture, sanitizer/static analysis and strict build, Step 8 |
 | `source/protocol/airplay/mirror/video.[ch]` | AVC configuration and length-prefixed NAL to Annex-B access-unit normalization | malformed/reorder/config-change tests and independent ffprobe, Step 8 |
 | `scripts/fixtures/airplay/mirror/` | Sanitized AVC config, IDR and truncated payload fixtures | parser and generated H.264 probe, Step 8 |
+| `source/protocol/airplay/media/stream_bridge.[ch]` | Bounded MPEG-TS mux ring with cancel, EOF, backpressure and monotonic PTS | wrap/cancel tests, sanitizers, ffprobe and strict build, Step 9 |
+| `source/player/backend/libmpv_airplay.h` | Refcounted bridge binding contract for the existing libmpv backend | callback lifetime review and strict build, Step 9 |
+| `scripts/test_airplay_stream_bridge.c` | Slow-consumer, wraparound, cancellation, EOF and restart coverage | normal and sanitizer host runs, Step 9 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -175,6 +178,9 @@ None.
 - Step 7 Switch builds pass with `TRACE_AIRPLAY=0` and `=1`; traces include only endpoint/state/sequence/length/result metadata and never payloads, PINs or keys — verified by strict builds and trace macro/source review, Step 7.
 - The mirror transport parses the observed 128-byte little-endian header, caps payloads at 8 MiB, derives stream AES key/IV with SHA-512 labels, preserves CTR state across video packets and resets it on TCP reconnect — verified by deterministic vectors, encrypted socket tests, sanitizers and source review, Step 8.
 - H.264 AVC configuration is converted to Annex B, configuration changes force IDR resynchronization, reordered/truncated/oversized access units are dropped or rejected, and the generated fixture is recognized as 64x64 Constrained Baseline H.264 by host `ffprobe` — verified by tests and independent probe, Step 8.
+- The AirPlay media bridge converts raw NTP 32.32 timestamps to monotonic 90 kHz MPEG-TS PTS, bounds queued output, and unblocks both producer and consumer on cancellation — verified by wrap/backpressure/cancel tests and ASan/UBSan, Step 9.
+- `airplay://mirror` is registered before `mpv_initialize()`; callbacks retain their bridge cookie, enforce one reader, and never call libmpv — verified against installed `stream_cb.h`, source review and strict Switch build, Step 9.
+- The generated 97,760-byte TS fixture is independently identified as 64x64 H.264 with a 1/90000 time base — verified by host `ffprobe`, Step 9.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -187,3 +193,4 @@ None.
 | 2026-07-20 | Step 6 | Added a bounded DNS-SD codec and native mDNS responder with query, announce, conflict and goodbye lifecycle tests. |
 | 2026-07-20 | Step 7 | Added the composed control handshake runtime and fail-closed FairPlay boundary; host and Switch checks pass, but a real iPhone RECORD flow remains blocked on independently unavailable FairPlay compatibility. |
 | 2026-07-20 | Step 8 | Added bounded H.264 mirror TCP/decrypt/reassembly modules, sanitized fixtures, IDR recovery and reconnect tests; real iPhone key material remains gated by Step 7. |
+| 2026-07-20 | Step 9 | Added the bounded MPEG-TS media bridge and refcounted libmpv custom stream registration with wrap, cancellation, sanitizer, ffprobe and strict Switch validation. |

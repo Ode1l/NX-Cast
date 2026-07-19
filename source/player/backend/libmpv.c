@@ -9,12 +9,15 @@
 #include <switch.h>
 
 #include "log/log.h"
+#include "player/backend/libmpv_airplay.h"
 #include "player/seek_target.h"
 #include "player/trace.h"
+#include "protocol/airplay/media/stream_bridge.h"
 
 #ifdef HAVE_LIBMPV
 #include <mpv/client.h>
 #include <mpv/render.h>
+#include <mpv/stream_cb.h>
 #ifdef HAVE_MPV_RENDER_GL
 #include <mpv/render_gl.h>
 #endif
@@ -76,6 +79,7 @@ static bool g_sync_ready = false;
 
 static mpv_handle *g_mpv = NULL;
 static mpv_render_context *g_render_ctx = NULL;
+static AirPlayStreamBridge *g_airplay_stream_bridge = NULL;
 static bool g_render_update_pending = false;
 
 typedef enum
@@ -141,6 +145,76 @@ static void libmpv_ensure_sync(void)
         return;
     mutexInit(&g_mutex);
     g_sync_ready = true;
+}
+
+static int64_t libmpv_airplay_stream_read(void *cookie, char *buffer,
+                                          uint64_t size)
+{
+    size_t request = size > SIZE_MAX ? SIZE_MAX : (size_t)size;
+
+    return airplay_stream_bridge_read(cookie, (uint8_t *)buffer, request);
+}
+
+static void libmpv_airplay_stream_cancel(void *cookie)
+{
+    airplay_stream_bridge_cancel(cookie);
+}
+
+static void libmpv_airplay_stream_close(void *cookie)
+{
+    AirPlayStreamBridge *bridge = cookie;
+
+    airplay_stream_bridge_cancel(bridge);
+    airplay_stream_bridge_release_reader(bridge);
+    airplay_stream_bridge_release(bridge);
+}
+
+static int libmpv_airplay_stream_open(void *user_data, char *uri,
+                                      mpv_stream_cb_info *info)
+{
+    AirPlayStreamBridge *bridge = NULL;
+
+    (void)user_data;
+    if (!uri || !info || strcmp(uri, PLAYER_LIBMPV_AIRPLAY_URI) != 0)
+        return MPV_ERROR_LOADING_FAILED;
+
+    mutexLock(&g_mutex);
+    bridge = g_airplay_stream_bridge;
+    if (bridge)
+        airplay_stream_bridge_retain(bridge);
+    mutexUnlock(&g_mutex);
+    if (!bridge || !airplay_stream_bridge_claim_reader(bridge))
+    {
+        airplay_stream_bridge_release(bridge);
+        return MPV_ERROR_LOADING_FAILED;
+    }
+
+    memset(info, 0, sizeof(*info));
+    info->cookie = bridge;
+    info->read_fn = libmpv_airplay_stream_read;
+    info->close_fn = libmpv_airplay_stream_close;
+    info->cancel_fn = libmpv_airplay_stream_cancel;
+    return 0;
+}
+
+bool player_libmpv_set_airplay_stream_bridge(AirPlayStreamBridge *bridge)
+{
+    AirPlayStreamBridge *previous;
+
+    libmpv_ensure_sync();
+    if (bridge)
+        airplay_stream_bridge_retain(bridge);
+    mutexLock(&g_mutex);
+    previous = g_airplay_stream_bridge;
+    g_airplay_stream_bridge = bridge;
+    mutexUnlock(&g_mutex);
+
+    if (previous)
+    {
+        airplay_stream_bridge_cancel(previous);
+        airplay_stream_bridge_release(previous);
+    }
+    return true;
 }
 
 static int libmpv_double_to_ms(double value)
@@ -1204,6 +1278,17 @@ static bool libmpv_init(void)
     libmpv_set_option_string_checked("audio-client-name", "NX-Cast");
     libmpv_set_option_string_checked("ao", "hos");
 
+    rc = mpv_stream_cb_add_ro(g_mpv, "airplay", NULL,
+                              libmpv_airplay_stream_open);
+    if (rc < 0)
+    {
+        log_error("[player-libmpv] AirPlay stream registration failed: %s\n",
+                  mpv_error_string(rc));
+        mpv_terminate_destroy(g_mpv);
+        g_mpv = NULL;
+        return false;
+    }
+
     rc = mpv_initialize(g_mpv);
     if (rc < 0)
     {
@@ -1244,6 +1329,7 @@ static void libmpv_deinit(void)
 {
     mpv_render_context *render_ctx = NULL;
     mpv_handle *mpv = NULL;
+    AirPlayStreamBridge *airplay_bridge = NULL;
 
     log_info("[player-libmpv] deinit begin\n");
     libmpv_flush_log_noise_summary();
@@ -1253,8 +1339,13 @@ static void libmpv_deinit(void)
     g_render_ctx = NULL;
     mpv = g_mpv;
     g_mpv = NULL;
+    airplay_bridge = g_airplay_stream_bridge;
+    g_airplay_stream_bridge = NULL;
     libmpv_reset_locked();
     mutexUnlock(&g_mutex);
+
+    if (airplay_bridge)
+        airplay_stream_bridge_cancel(airplay_bridge);
 
     if (render_ctx)
     {
@@ -1269,6 +1360,8 @@ static void libmpv_deinit(void)
         mpv_terminate_destroy(mpv);
         log_info("[player-libmpv] deinit step=terminate_destroy done\n");
     }
+
+    airplay_stream_bridge_release(airplay_bridge);
 
     libmpv_process_volume_shutdown();
 
@@ -2015,6 +2108,12 @@ const BackendOps g_libmpv_ops = {
 
 static bool libmpv_unavailable(void)
 {
+    return false;
+}
+
+bool player_libmpv_set_airplay_stream_bridge(AirPlayStreamBridge *bridge)
+{
+    (void)bridge;
     return false;
 }
 
