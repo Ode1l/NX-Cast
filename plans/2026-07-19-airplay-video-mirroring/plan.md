@@ -46,6 +46,7 @@ None.
 | 实时媒体接入 | 新播放器；GStreamer；libmpv 自定义流 | H.264/AAC 复用 FFmpeg MPEG-TS 封装、有限环形缓冲和 `mpv_stream_cb_add_ro()` | yes |
 | 能力广播 | 一次声明完整 AirPlay 2；按阶段声明 | 只广播已通过真机验收的功能位，阶段完成后再增加能力 | yes |
 | 播放器仲裁 | 多协议同时控制；最后命令获胜 | 单一活动媒体所有者，AirPlay/DLNA/IPTV 显式获取与释放会话 | yes |
+| Ed25519 后端 | 自行实现曲线；mbedTLS PSA；官方 libsodium | 使用 devkitPro/Homebrew libsodium；mbedTLS 2.28 不提供 Ed25519，禁止自写密码学替代 | yes |
 
 ## Steps Overview
 | Step | File | Status | Goal |
@@ -53,7 +54,7 @@ None.
 | Step 1 | `steps/step-1.md` | COMPLETED | 建立 AirPlay 生命周期外壳、状态契约和主机测试入口 |
 | Step 2 | `steps/step-2.md` | COMPLETED | 实现最小 binary plist 编解码并以夹具锁定行为 |
 | Step 3 | `steps/step-3.md` | COMPLETED | 实现独立持久 RTSP/HTTP 控制服务器和解析器 |
-| Step 4 | `steps/step-4.md` | PENDING | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
+| Step 4 | `steps/step-4.md` | COMPLETED | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
 | Step 5 | `steps/step-5.md` | PENDING | 实现 Pair Setup/Pair Verify 与加密控制会话 |
 | Step 6 | `steps/step-6.md` | PENDING | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
 | Step 7 | `steps/step-7.md` | PENDING | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
@@ -94,6 +95,7 @@ None.
 - Trace logs must record sequence/state/length/hash only and must never log PINs, private keys, session keys or full decrypted payloads.
 - Generic plist readers can display a high-bit 64-bit integer as negative even though NX-Cast intentionally exposes the same bits as `uint64_t`.
 - macOS Control Center can own TCP 7000; host smoke tries the requested port first and uses an ephemeral port only for local test isolation.
+- Ed25519 is absent from mbedTLS 2.28; release builds must install `switch-libsodium` and set `NXCAST_REQUIRE_AIRPLAY_ED25519=1` rather than silently using the unavailable backend.
 
 > Append only. Never delete or rewrite existing entries below — only add new rows/facts as steps complete.
 ### Working Set
@@ -122,6 +124,9 @@ None.
 | `source/protocol/airplay/server.[ch]` | Portable persistent listener/client ownership and cancellation | TCP smoke, ASan/UBSan, static analysis and strict Switch build, Step 3 |
 | `scripts/test_airplay_rtsp.c` | Parser, response and session edge/error coverage | normal and sanitizer `make test-airplay`, Step 3 |
 | `scripts/smoke_airplay.py` | Real TCP fragmentation, pipelining, timeout, capacity and stop smoke | local runs on requested/ephemeral ports, Step 3 |
+| `source/protocol/airplay/security/crypto.[ch]` | Bounded mbedTLS primitives and libsodium Ed25519 facade | RFC vectors, ASan/UBSan, static analysis and strict Switch build, Step 4 |
+| `source/protocol/airplay/security/identity.[ch]` | Versioned atomic SD identity with secret-preserving signing API | create/reload/corrupt/unwritable tests and source review, Step 4 |
+| `scripts/test_airplay_crypto.c` | Published crypto vectors and identity persistence coverage | normal and sanitizer `make test-airplay`, Step 4 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -144,6 +149,9 @@ None.
 - The RTSP parser caps headers at 32 KiB and bodies at 1 MiB, rejects ambiguous framing, and preserves pipelined bytes in order — verified by unit, truncation and real TCP smoke tests, Step 3.
 - Server stop atomically takes socket-close ownership, unblocks partial reads, joins all fixed client workers and invokes a disconnect cleanup hook — verified by ASan/UBSan saturation/shutdown smoke and source review, Step 3.
 - `server.c` and `rtsp.c` compile and link into the required libmpv/deko3d Switch NRO without starting a listener from `main.c` — verified by strict build and startup-path review, Step 3.
+- Switch and host mbedTLS are version 2.28.10 with Curve25519, AES, ChaCha20-Poly1305, HKDF and platform entropy enabled; Ed25519 is not implemented — verified from headers, pkg-config and RFC vector execution, Step 4.
+- The crypto facade passes SHA-2, HMAC, HKDF, X25519, AES-CTR, ChaCha20-Poly1305 and Ed25519 published vectors, rejects low-order X25519 and invalid AEAD tags, and clears failed outputs — verified by normal and ASan/UBSan tests, Step 4.
+- Device identity creation/reload, checksum corruption recovery and unwritable paths preserve the opaque seed boundary and deterministic public identity — verified by host tests and static analysis, Step 4.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -151,3 +159,4 @@ None.
 | 2026-07-19 | Step 1 | Added and verified the AirPlay lifecycle/status facade and `make test-airplay`; no network behavior enabled. |
 | 2026-07-20 | Step 2 | Added and verified a bounded clean-room binary plist codec, adversarial fixtures and independent interoperability checks. |
 | 2026-07-20 | Step 3 | Added and verified the independent persistent RTSP/HTTP server, bounded parser, session state and socket smoke suite. |
+| 2026-07-20 | Step 4 | Added and verified atomic device identity plus mbedTLS/libsodium crypto primitives and published-vector tests. |

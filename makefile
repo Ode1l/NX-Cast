@@ -61,6 +61,7 @@ SOURCES		:=	source \
 			source/protocol/dlna/description \
 			source/protocol/airplay \
 			source/protocol/airplay/protocol \
+			source/protocol/airplay/security \
 			source/protocol/airplay/discovery
 DATA		:=	data
 INCLUDES	:=	include source
@@ -79,6 +80,7 @@ TRACE_MEDIA ?= 0
 TRACE_INPUT ?= 0
 NXCAST_REQUIRE_LIBMPV ?= 0
 NXCAST_REQUIRE_DEKO3D ?= 0
+NXCAST_REQUIRE_AIRPLAY_ED25519 ?= 0
 NXCAST_USE_IMGUI_UI ?= 0
 HOST_CC ?= cc
 HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource
@@ -86,6 +88,7 @@ HOST_THREAD_FLAGS ?= -pthread
 AIRPLAY_LIFECYCLE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay
 AIRPLAY_PLIST_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_plist
 AIRPLAY_RTSP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_rtsp
+AIRPLAY_CRYPTO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_crypto
 AIRPLAY_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_smoke_server
 
 ifeq ($(TRACE_MEDIA),1)
@@ -104,6 +107,23 @@ LIBS	:= -lnx
 PKG_CONFIG	?= pkg-config
 MPV_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
 EGL_GLES_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
+MBEDTLS_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
+HOST_MBEDTLS_PREFIX ?= $(shell brew --prefix mbedtls@2 2>/dev/null)
+HOST_MBEDTLS_PKG_CONFIG_PATH ?= $(HOST_MBEDTLS_PREFIX)/lib/pkgconfig
+HOST_MBEDTLS_FOUND := $(shell PKG_CONFIG_PATH="$(HOST_MBEDTLS_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --exists mbedcrypto >/dev/null 2>&1 && echo 1)
+HOST_MBEDTLS_CFLAGS := $(shell PKG_CONFIG_PATH="$(HOST_MBEDTLS_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --cflags mbedcrypto 2>/dev/null)
+HOST_MBEDTLS_LIBS := $(shell PKG_CONFIG_PATH="$(HOST_MBEDTLS_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --libs mbedcrypto 2>/dev/null)
+MBEDTLS_FOUND := $(shell PKG_CONFIG_PATH="$(MBEDTLS_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exists mbedcrypto >/dev/null 2>&1 && echo 1)
+MBEDTLS_CFLAGS := $(shell PKG_CONFIG_PATH="$(MBEDTLS_PKG_CONFIG_PATH)" $(PKG_CONFIG) --cflags mbedcrypto 2>/dev/null)
+MBEDTLS_LIBS := $(shell PKG_CONFIG_PATH="$(MBEDTLS_PKG_CONFIG_PATH)" $(PKG_CONFIG) --libs mbedcrypto 2>/dev/null)
+HOST_SODIUM_PREFIX ?= $(shell brew --prefix libsodium 2>/dev/null)
+HOST_SODIUM_PKG_CONFIG_PATH ?= $(HOST_SODIUM_PREFIX)/lib/pkgconfig
+HOST_SODIUM_FOUND := $(shell PKG_CONFIG_PATH="$(HOST_SODIUM_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --exists libsodium >/dev/null 2>&1 && echo 1)
+HOST_SODIUM_CFLAGS := $(shell PKG_CONFIG_PATH="$(HOST_SODIUM_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --cflags libsodium 2>/dev/null)
+HOST_SODIUM_LIBS := $(shell PKG_CONFIG_PATH="$(HOST_SODIUM_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}" $(PKG_CONFIG) --libs libsodium 2>/dev/null)
+SODIUM_FOUND := $(shell PKG_CONFIG_PATH="$(PORTLIBS_PREFIX)/lib/pkgconfig" $(PKG_CONFIG) --exists libsodium >/dev/null 2>&1 && echo 1)
+SODIUM_CFLAGS := $(shell PKG_CONFIG_PATH="$(PORTLIBS_PREFIX)/lib/pkgconfig" $(PKG_CONFIG) --cflags libsodium 2>/dev/null)
+SODIUM_LIBS := $(shell PKG_CONFIG_PATH="$(PORTLIBS_PREFIX)/lib/pkgconfig" $(PKG_CONFIG) --libs libsodium 2>/dev/null)
 MPV_FOUND := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exists mpv >/dev/null 2>&1 && echo 1)
 MPV_STATIC_LIBS := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs mpv 2>/dev/null)
 MPV_RENDER_GL_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_gl.h" && echo 1)
@@ -114,6 +134,24 @@ MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND := $(shell strings "$(PORTLIBS_PREFIX)/lib/libm
 MPV_USES_UAM := $(shell printf '%s\n' "$(MPV_STATIC_LIBS)" | grep -q -- ' -luam' && echo 1)
 MPV_USES_DEKO3D := $(shell printf '%s\n' "$(MPV_STATIC_LIBS)" | grep -q -- ' -ldeko3d' && echo 1)
 EGL_GLES_LIBS := $(shell PKG_CONFIG_PATH="$(EGL_GLES_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs egl glesv2)
+
+ifeq ($(MBEDTLS_FOUND),)
+$(error mbedTLS mbedcrypto was not found in $(MBEDTLS_PKG_CONFIG_PATH). Install the devkitPro switch-mbedtls package)
+endif
+
+CFLAGS += $(MBEDTLS_CFLAGS)
+LIBS += $(MBEDTLS_LIBS)
+
+ifeq ($(SODIUM_FOUND),1)
+CFLAGS += $(SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1
+LIBS += $(SODIUM_LIBS)
+endif
+
+ifeq ($(NXCAST_REQUIRE_AIRPLAY_ED25519),1)
+ifeq ($(SODIUM_FOUND),)
+$(error NXCAST_REQUIRE_AIRPLAY_ED25519=1 but switch-libsodium was not found. Install it with dkp-pacman)
+endif
+endif
 
 ifeq ($(MPV_FOUND),1)
 CFLAGS	+=	-DHAVE_LIBMPV
@@ -299,14 +337,18 @@ else
 endif
 
 test-airplay:
+	@test "$(HOST_MBEDTLS_FOUND)" = "1" || (printf '%s\n' "mbedTLS 2.x host development files are required (macOS: brew install mbedtls@2)" >&2; exit 1)
+	@test "$(HOST_SODIUM_FOUND)" = "1" || (printf '%s\n' "libsodium host development files are required (macOS: brew install libsodium)" >&2; exit 1)
 	@mkdir -p $(dir $(AIRPLAY_LIFECYCLE_TEST_BIN))
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/airplay.c scripts/test_airplay.c -o $(AIRPLAY_LIFECYCLE_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/plist.c scripts/test_airplay_plist.c -o $(AIRPLAY_PLIST_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/rtsp.c scripts/test_airplay_rtsp.c -o $(AIRPLAY_RTSP_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c scripts/test_airplay_crypto.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_CRYPTO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c scripts/airplay_smoke_server.c -o $(AIRPLAY_SMOKE_SERVER_BIN)
 	@$(AIRPLAY_LIFECYCLE_TEST_BIN)
 	@$(AIRPLAY_PLIST_TEST_BIN)
 	@$(AIRPLAY_RTSP_TEST_BIN)
+	@$(AIRPLAY_CRYPTO_TEST_BIN)
 
 
 #---------------------------------------------------------------------------------
