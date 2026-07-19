@@ -1,3 +1,7 @@
+#if !defined(__SWITCH__) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE
+#endif
+
 #include "mdns.h"
 
 #include <arpa/inet.h>
