@@ -26,6 +26,12 @@ typedef pthread_cond_t AirPlayBridgeCond;
 
 #define AIRPLAY_STREAM_BRIDGE_AVIO_SIZE 4096u
 
+#if LIBAVFORMAT_VERSION_MAJOR >= 61
+typedef const uint8_t AirPlayAvioWriteByte;
+#else
+typedef uint8_t AirPlayAvioWriteByte;
+#endif
+
 struct AirPlayStreamBridge
 {
     atomic_uint references;
@@ -145,7 +151,7 @@ static void bridge_cond_wake_all(AirPlayBridgeCond *condition)
 #endif
 }
 
-static int bridge_avio_write(void *opaque, const uint8_t *input, int input_size)
+static int bridge_avio_write(void *opaque, AirPlayAvioWriteByte *input, int input_size)
 {
     AirPlayStreamBridge *bridge = opaque;
     size_t first;
