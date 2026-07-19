@@ -63,7 +63,7 @@ None.
 | Step 10 | `steps/step-10.md` | BLOCKED | 完成第一阶段 H.264 硬解镜像真机闭环 |
 | Step 11 | `steps/step-11.md` | BLOCKED | 增加镜像 AAC 接收和音轨输出 |
 | Step 12 | `steps/step-12.md` | BLOCKED | 增加时钟、抖动缓冲和音画同步 |
-| Step 13 | `steps/step-13.md` | PENDING | 增加 AirPlay URL/HLS 投送与远程控制 |
+| Step 13 | `steps/step-13.md` | BLOCKED | 增加 AirPlay URL/HLS 投送与远程控制 |
 | Step 14 | `steps/step-14.md` | PENDING | 完成协议仲裁、UI 状态与安全退出集成 |
 | Step 15 | `steps/step-15.md` | PENDING | 完成兼容性、稳定性、CI、文档和发布验收 |
 
@@ -149,6 +149,9 @@ None.
 | `scripts/test_airplay_audio.c` | AAC packet loss/reorder/mute/reconnect and dual-stream mux coverage | normal/sanitizer runs and generated TS, Step 11 |
 | `source/protocol/airplay/mirror/clock.[ch]` | Shared wrap-safe video NTP/audio RTP to 90 kHz timeline and metrics | deterministic drift/jump/wrap simulations and strict build, Step 12 |
 | `scripts/test_airplay_clock.c` | Deterministic timing, jitter, drift, discontinuity, pause and restart simulation | normal and ASan/UBSan host runs, Step 12 |
+| `source/protocol/airplay/media/remote_video.[ch]` | Session-owned URL/HLS endpoint parsing and player operation mapping | endpoint tests, sanitizer/static analysis and strict build, Step 13 |
+| `scripts/test_airplay_remote_video.c` | Classic/binary play, rate, scrub, info, stop and malformed input coverage | normal and ASan/UBSan host runs, Step 13 |
+| `scripts/smoke_airplay.py` | Persistent protocol smoke plus direct HLS redirect/relative-segment fixture | local FFmpeg H.264/AAC probe, Step 13 |
 
 ### Verified Facts
 - Current AirPlay implementation is only a `mdns_discover_airplay()` placeholder returning false — verified by `rg` and source read, 2026-07-19.
@@ -193,6 +196,8 @@ None.
 - The generated dual-stream MPEG-TS is independently detected as 64x64 H.264 plus 44.1 kHz stereo AAC; loss/reorder/mute/reconnect tests, ASan/UBSan, static analysis and the strict Switch build pass, but audible iPhone acceptance remains blocked by Step 7 — verified host/build facts, Step 11.
 - Audio control type `0x54` maps a 32-bit 44.1 kHz RTP timestamp to remote NTP 32.32, while mirror video already carries the same remote NTP domain; mapping both once before muxing avoids player-side clock guessing — verified from both references and deterministic tests, Step 12.
 - The shared clock survives RTP and NTP wrap, bounds sync correction, resets audio on video discontinuity and exposes redacted jitter/skew/drift/drop counters; sanitizer/static/strict builds pass, while the 30-minute iPhone soak remains blocked by Step 7 — verified host/build facts, Step 12.
+- AirPlay remote video accepts bounded credential-free HTTP(S) URLs, maps classic and binary-plist play/rate/scrub/info/stop requests to player operations, and isolates ownership by control session — verified endpoint, handler lifecycle and sanitizer tests, Step 13.
+- Host FFmpeg follows an HTTP redirect and resolves a relative HLS segment without any NX-Cast gateway or Content-Type rewrite; the strict Switch build passes, while real iPhone URL/HLS control remains an explicit hardware/Step 7 acceptance blocker — verified local smoke/build facts, Step 13.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -209,3 +214,4 @@ None.
 | 2026-07-20 | Step 10 | Added a generation-safe mirror media worker and first-IDR autoplay with ten encrypted reconnect tests; real iPhone hardware acceptance remains blocked by the Step 7 FairPlay boundary. |
 | 2026-07-20 | Step 11 | Added bounded mirror AAC RTP/decryption/reorder handling and dual-stream MPEG-TS output; host and Switch builds pass while real audible acceptance remains blocked by Step 7. |
 | 2026-07-20 | Step 12 | Added a shared wrap-safe media clock, sync/retransmit control handling and bounded drift/skew policy; deterministic validation passes while real soak remains blocked by Step 7. |
+| 2026-07-20 | Step 13 | Added session-owned AirPlay URL/HLS play, rate, scrub, info and stop endpoints with direct FFmpeg HLS redirect/relative-segment validation; real iPhone acceptance remains blocked. |

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "protocol/airplay/media/remote_video.h"
 #include "protocol/airplay/protocol/plist.h"
 #include "protocol/airplay/security/crypto.h"
 #include "protocol/airplay/trace.h"
@@ -595,6 +596,17 @@ bool airplay_handlers_route(AirPlayRtspSession *session,
                   (unsigned long long)session->id, session->request_count,
                   request->method, request->uri, request->body_length,
                   airplay_rtsp_session_state_name(session->state));
+    if (handlers->config.remote_video)
+    {
+        bool handled = false;
+
+        if (!airplay_remote_video_route(handlers->config.remote_video,
+                                        session->id, request, response,
+                                        &handled))
+            return false;
+        if (handled)
+            return true;
+    }
     if (strcmp(request->method, "OPTIONS") == 0)
         return airplay_rtsp_response_add_header(
             response, "Public",
@@ -650,6 +662,9 @@ void airplay_handlers_session_closed(AirPlayRtspSession *session, void *user_dat
     if (context->mirror_setup && handlers && handlers->config.mirror_stop_callback)
         handlers->config.mirror_stop_callback(session->id,
                                               handlers->config.callback_user_data);
+    if (handlers && handlers->config.remote_video)
+        airplay_remote_video_session_closed(handlers->config.remote_video,
+                                            session->id);
     airplay_fairplay_destroy(context->fairplay);
     airplay_crypto_secure_zero(context, sizeof(*context));
     free(context);

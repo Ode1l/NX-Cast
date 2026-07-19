@@ -432,6 +432,10 @@ static const char *rtsp_reason_phrase(int status_code)
         return "OK";
     case 400:
         return "Bad Request";
+    case 405:
+        return "Method Not Allowed";
+    case 409:
+        return "Conflict";
     case 404:
         return "Not Found";
     case 408:

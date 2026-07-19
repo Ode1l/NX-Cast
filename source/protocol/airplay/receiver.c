@@ -38,6 +38,17 @@ static bool requires_authorization(const char *method)
                       strcmp(method, "TEARDOWN") == 0);
 }
 
+static bool remote_video_uri(const char *uri)
+{
+    return uri && (strcmp(uri, "/play") == 0 ||
+                   strcmp(uri, "/rate") == 0 ||
+                   strncmp(uri, "/rate?", 6u) == 0 ||
+                   strcmp(uri, "/scrub") == 0 ||
+                   strncmp(uri, "/scrub?", 7u) == 0 ||
+                   strcmp(uri, "/playback-info") == 0 ||
+                   strcmp(uri, "/stop") == 0);
+}
+
 static bool receiver_route(AirPlayRtspSession *session,
                            const AirPlayRtspRequest *request,
                            AirPlayRtspResponse *response,
@@ -47,7 +58,8 @@ static bool receiver_route(AirPlayRtspSession *session,
 
     if (is_pairing_uri(request->uri))
         return airplay_pairing_route(session, request, response, receiver->pairing);
-    if (requires_authorization(request->method) &&
+    if ((requires_authorization(request->method) ||
+         remote_video_uri(request->uri)) &&
         !airplay_pairing_session_verified(session))
         return airplay_pairing_route(session, request, response, receiver->pairing);
     return airplay_handlers_route(session, request, response, receiver->handlers);
@@ -133,7 +145,9 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
         !config->mirror_open_callback)
         advertised_features &= ~(AIRPLAY_MDNS_FEATURE_SCREEN_MIRROR |
                                  AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE);
-    advertised_features &= ~(AIRPLAY_MDNS_FEATURE_VIDEO | AIRPLAY_MDNS_FEATURE_HLS);
+    if (!config->remote_video)
+        advertised_features &= ~(AIRPLAY_MDNS_FEATURE_VIDEO |
+                                 AIRPLAY_MDNS_FEATURE_HLS);
     mdns_config.friendly_name = config->friendly_name;
     mdns_config.control_port = config->control_port;
     memcpy(mdns_config.device_id, device_id, sizeof(device_id));
@@ -157,6 +171,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     handlers_config.audio_open_callback = config->audio_open_callback;
     handlers_config.mirror_record_callback = config->mirror_record_callback;
     handlers_config.mirror_stop_callback = config->mirror_stop_callback;
+    handlers_config.remote_video = config->remote_video;
     handlers_config.callback_user_data = config->media_user_data;
     if (!airplay_handlers_create(&handlers_config, &g_receiver.handlers))
         goto failure;

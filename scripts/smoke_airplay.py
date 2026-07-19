@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import selectors
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
+import threading
 import time
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
@@ -93,6 +98,76 @@ def launch_server(server_binary: Path, port: int) -> subprocess.Popen[str]:
         stderr=subprocess.PIPE,
         text=True,
     )
+
+
+class HlsFixtureHandler(SimpleHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path == "/redirect.m3u8":
+            self.send_response(302)
+            self.send_header("Location", "/master.m3u8")
+            self.end_headers()
+            return
+        super().do_GET()
+
+    def log_message(self, format: str, *args: object) -> None:
+        del format, args
+
+
+def run_remote_hls_smoke(root: Path) -> None:
+    fixture = root / "build" / "tests" / "airplay-mirror-av.ts"
+    ffprobe = shutil.which("ffprobe")
+
+    if not fixture.is_file():
+        raise AssertionError(f"fixture not found: {fixture}; run make test-airplay first")
+    if not ffprobe:
+        raise AssertionError("ffprobe is required for the AirPlay HLS smoke")
+    with tempfile.TemporaryDirectory(prefix="nxcast-airplay-hls-") as directory:
+        fixture_dir = Path(directory)
+        shutil.copy2(fixture, fixture_dir / "segment0.ts")
+        (fixture_dir / "master.m3u8").write_text(
+            "#EXTM3U\n"
+            "#EXT-X-VERSION:3\n"
+            "#EXT-X-TARGETDURATION:6\n"
+            "#EXT-X-MEDIA-SEQUENCE:0\n"
+            "#EXTINF:6.0,\n"
+            "segment0.ts\n"
+            "#EXT-X-ENDLIST\n",
+            encoding="ascii",
+        )
+        handler = lambda *args: HlsFixtureHandler(
+            *args, directory=str(fixture_dir)
+        )
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = server.server_address[1]
+            for path in ("master.m3u8", "redirect.m3u8"):
+                result = subprocess.run(
+                    [
+                        ffprobe,
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "stream=codec_type",
+                        "-of",
+                        "json",
+                        f"http://127.0.0.1:{port}/{path}",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=15.0,
+                )
+                stream_types = {
+                    stream.get("codec_type")
+                    for stream in json.loads(result.stdout).get("streams", [])
+                }
+                assert {"video", "audio"}.issubset(stream_types), stream_types
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2.0)
 
 
 def run_smoke(host: str, requested_port: int, server_binary: Path) -> None:
@@ -208,9 +283,14 @@ def main() -> int:
     parser.add_argument("--server-bin", type=Path)
     parser.add_argument("--mdns", action="store_true")
     parser.add_argument("--receiver", action="store_true")
+    parser.add_argument("--remote-hls", action="store_true")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
+    if args.remote_hls:
+        run_remote_hls_smoke(root)
+        print("AirPlay direct HLS redirect/relative segment smoke passed")
+        return 0
     if args.receiver:
         from smoke_airplay_receiver import run_smoke as run_receiver_smoke
 

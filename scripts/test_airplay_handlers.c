@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "protocol/airplay/media/remote_video.h"
 #include "protocol/airplay/protocol/handlers.h"
 #include "protocol/airplay/protocol/plist.h"
 #include "protocol/airplay/security/crypto.h"
@@ -31,6 +32,71 @@ typedef struct
     uint8_t opened_key[16];
     uint64_t connection_id;
 } Recorder;
+
+typedef struct
+{
+    AirPlayRemoteVideoSnapshot snapshot;
+    unsigned load_count;
+    unsigned play_count;
+    unsigned stop_count;
+} RemoteRecorder;
+
+static bool remote_load(const char *url, const char *metadata, void *user_data)
+{
+    RemoteRecorder *recorder = user_data;
+
+    CHECK(strcmp(url, "https://media.example/live.m3u8") == 0);
+    CHECK(metadata == NULL);
+    recorder->snapshot.has_media = true;
+    recorder->snapshot.seekable = true;
+    recorder->snapshot.duration_ms = 120000;
+    recorder->snapshot.state = AIRPLAY_REMOTE_VIDEO_LOADING;
+    recorder->load_count++;
+    return true;
+}
+
+static bool remote_play(void *user_data)
+{
+    RemoteRecorder *recorder = user_data;
+
+    recorder->snapshot.state = AIRPLAY_REMOTE_VIDEO_PLAYING;
+    recorder->play_count++;
+    return true;
+}
+
+static bool remote_pause(void *user_data)
+{
+    RemoteRecorder *recorder = user_data;
+
+    recorder->snapshot.state = AIRPLAY_REMOTE_VIDEO_PAUSED;
+    return true;
+}
+
+static bool remote_stop(void *user_data)
+{
+    RemoteRecorder *recorder = user_data;
+
+    recorder->snapshot.state = AIRPLAY_REMOTE_VIDEO_STOPPED;
+    recorder->stop_count++;
+    return true;
+}
+
+static bool remote_seek(int position_ms, void *user_data)
+{
+    RemoteRecorder *recorder = user_data;
+
+    recorder->snapshot.position_ms = position_ms;
+    return true;
+}
+
+static bool remote_snapshot(AirPlayRemoteVideoSnapshot *snapshot_out,
+                            void *user_data)
+{
+    RemoteRecorder *recorder = user_data;
+
+    *snapshot_out = recorder->snapshot;
+    return true;
+}
 
 static bool fake_unwrap(const uint8_t wrapped_key[72], uint8_t key_out[16], void *user_data)
 {
@@ -156,7 +222,8 @@ static AirPlayPlistValue *decode_response(const AirPlayRtspResponse *response)
     return root;
 }
 
-static AirPlayHandlers *create_handlers(Recorder *recorder)
+static AirPlayHandlers *create_handlers(Recorder *recorder,
+                                        AirPlayRemoteVideo *remote_video)
 {
     static uint8_t public_key[32];
     static const uint8_t txt[] = {7u, 'p', 'w', '=', 't', 'r', 'u', 'e'};
@@ -175,6 +242,7 @@ static AirPlayHandlers *create_handlers(Recorder *recorder)
         .audio_open_callback = fake_audio_open,
         .mirror_record_callback = fake_record,
         .mirror_stop_callback = fake_stop,
+        .remote_video = remote_video,
         .callback_user_data = recorder};
     AirPlayHandlers *handlers = NULL;
 
@@ -313,14 +381,51 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     CHECK(recorder->stop_count == 1u);
 }
 
+static void test_remote_video_route(AirPlayHandlers *handlers,
+                                    RemoteRecorder *recorder)
+{
+    AirPlayRtspSession session;
+    AirPlayRtspResponse response = {0};
+    static const uint8_t play[] =
+        "Content-Location: https://media.example/live.m3u8\r\n";
+
+    airplay_rtsp_session_init(&session, 50u);
+    CHECK(dispatch(handlers, &session, "POST", "/play", play,
+                   sizeof(play) - 1u, "text/parameters", &response));
+    CHECK(response.status_code == 200 && recorder->load_count == 1u &&
+          recorder->play_count == 1u);
+    airplay_rtsp_response_clear(&response);
+    CHECK(dispatch(handlers, &session, "GET", "/playback-info", NULL, 0u,
+                   NULL, &response));
+    CHECK(response.status_code == 200 && response.body_length != 0u);
+    airplay_rtsp_response_clear(&response);
+    airplay_handlers_session_closed(&session, handlers);
+    CHECK(recorder->stop_count == 1u);
+}
+
 int main(void)
 {
     Recorder recorder = {0};
-    AirPlayHandlers *handlers = create_handlers(&recorder);
+    RemoteRecorder remote_recorder = {0};
+    AirPlayRemoteVideoOps remote_ops = {
+        .load = remote_load,
+        .play = remote_play,
+        .pause = remote_pause,
+        .stop = remote_stop,
+        .seek_ms = remote_seek,
+        .snapshot = remote_snapshot,
+        .user_data = &remote_recorder};
+    AirPlayRemoteVideo *remote_video = NULL;
+    AirPlayHandlers *handlers;
+
+    CHECK(airplay_remote_video_create(&remote_ops, &remote_video));
+    handlers = create_handlers(&recorder, remote_video);
 
     test_info_and_fairplay(handlers);
     test_control_transcript(handlers, &recorder);
+    test_remote_video_route(handlers, &remote_recorder);
     airplay_handlers_destroy(handlers);
+    airplay_remote_video_destroy(remote_video);
     if (g_failures != 0)
     {
         fprintf(stderr, "AirPlay handler tests failed: %d\n", g_failures);
