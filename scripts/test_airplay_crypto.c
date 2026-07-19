@@ -333,10 +333,10 @@ static bool write_byte_at(const char *path, long offset, uint8_t value)
 static void test_rng_and_identity(void)
 {
     char temporary[] = "/tmp/nxcast-airplay-identity-XXXXXX";
-    char identity_path[512];
-    char corrupt_path[512];
-    char blocked_path[512];
-    char blocked_child[512];
+    char identity_path[sizeof(temporary) + sizeof("/identity.bin")];
+    char corrupt_path[sizeof(temporary) + sizeof("/identity.bin.corrupt")];
+    char blocked_path[sizeof(temporary) + sizeof("/not-a-directory")];
+    char blocked_child[sizeof(blocked_path) + sizeof("/airplay")];
     char device_id[18];
     uint8_t random_a[32];
     uint8_t random_b[32];
