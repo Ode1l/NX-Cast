@@ -217,6 +217,7 @@ static void test_stream_and_wrap(const AccessUnitFixture *fixture)
 static void test_cancel_and_restart(const AccessUnitFixture *fixture)
 {
     AirPlayStreamBridge *bridge = NULL;
+    AirPlayMirrorAccessUnit access_unit = {0};
     Producer producer = {0};
     pthread_t thread;
     uint8_t byte;
@@ -241,6 +242,13 @@ static void test_cancel_and_restart(const AccessUnitFixture *fixture)
     CHECK(airplay_stream_bridge_create(AIRPLAY_STREAM_BRIDGE_MIN_CAPACITY, &bridge));
     airplay_stream_bridge_retain(bridge);
     airplay_stream_bridge_release(bridge);
+    access_unit.data = fixture->data;
+    access_unit.size = fixture->size;
+    access_unit.timestamp = UINT64_C(1) << 32;
+    access_unit.config_generation = 2u;
+    CHECK(!airplay_stream_bridge_push_video(bridge, &access_unit));
+    access_unit.keyframe = true;
+    CHECK(airplay_stream_bridge_push_video(bridge, &access_unit));
     airplay_stream_bridge_cancel(bridge);
     airplay_stream_bridge_release(bridge);
 }

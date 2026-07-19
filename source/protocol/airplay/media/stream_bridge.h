@@ -17,6 +17,7 @@ typedef struct
     uint64_t bytes_written;
     uint64_t bytes_read;
     uint64_t video_packets;
+    uint32_t video_config_generation;
     bool eof;
     bool cancelled;
     bool reader_claimed;

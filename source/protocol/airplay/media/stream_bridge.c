@@ -37,6 +37,7 @@ struct AirPlayStreamBridge
     uint64_t bytes_written;
     uint64_t bytes_read;
     uint64_t video_packets;
+    uint32_t video_config_generation;
     bool reader_claimed;
     bool eof;
     atomic_bool cancelled;
@@ -317,6 +318,10 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
     bridge_mutex_lock(&bridge->mux_mutex);
     if (bridge->mux_finished || atomic_load(&bridge->cancelled))
         goto cleanup;
+    if (access_unit->config_generation < bridge->video_config_generation ||
+        (access_unit->config_generation > bridge->video_config_generation &&
+         !access_unit->keyframe))
+        goto cleanup;
     packet = av_packet_alloc();
     if (!packet || av_new_packet(packet, (int)access_unit->size) < 0)
     {
@@ -343,6 +348,7 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
     {
         avio_flush(bridge->avio);
         bridge->last_pts = pts;
+        bridge->video_config_generation = access_unit->config_generation;
         bridge->video_packets++;
     }
 
@@ -434,6 +440,7 @@ bool airplay_stream_bridge_get_stats(AirPlayStreamBridge *bridge,
     stats_out->bytes_written = bridge->bytes_written;
     stats_out->bytes_read = bridge->bytes_read;
     stats_out->video_packets = bridge->video_packets;
+    stats_out->video_config_generation = bridge->video_config_generation;
     stats_out->eof = bridge->eof;
     stats_out->cancelled = atomic_load(&bridge->cancelled);
     stats_out->reader_claimed = bridge->reader_claimed;
