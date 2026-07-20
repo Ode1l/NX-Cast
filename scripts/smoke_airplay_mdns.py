@@ -154,6 +154,7 @@ def validate_records(records: list[Record], instance: str, expected_ttl: int) ->
     assert b"features=0x8000000,0x0" in txt, txt
     assert b"pw=true" in txt, txt
     assert b"pk=" in txt, txt
+    assert b"pi=00112233-4455-4677-8899-aabbccddeeff" in txt, txt
     assert struct.unpack("!H", by_kind[33].data[4:6])[0] == 7000
     assert by_kind[1].data == socket.inet_aton("127.0.0.1")
 

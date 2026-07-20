@@ -2,7 +2,7 @@
 
 > Status: ACTIVE
 > Created: 2026-07-19
-> Last Updated: 2026-07-20
+> Last Updated: 2026-07-21
 
 ## Goal
 以 NX-Cast 自有 C 协议/媒体模块和现有播放器接口为主体，仅引入固定来源、许可证完整的 GPL PlayFair 兼容子库，实现同一局域网内 iPhone 到 Switch 的非 DRM H.264 屏幕镜像、AAC 同步音频以及 AirPlay URL/HLS 视频投送。
@@ -227,6 +227,7 @@ None.
 - GitHub Actions run `29745733797` passes the complete strict release pipeline for `c6fd4ca`; artifact `8462340191` is 32,615,208 bytes, and its 25,461,434-byte NRO was downloaded for the second discovery attempt — verified remote run, Release target and local SHA-256, Step 7 hardware attempt 1 fix.
 - Installing `switch-libsodium` exposed a separate startup abort: its generic sysrandom backend opens `/dev/urandom` and terminates through `sodium_misuse()` when unavailable on libnx. NX-Cast now installs a `randomGet()`-backed randombytes implementation before `sodium_init()` and attests the marker in release builds — verified package archive/disassembly, sanitizer tests, strict traced Switch build and final-binary inspection, Step 7 hardware attempt 2 fix.
 - GitHub Actions run `29748063877` passes the complete official build/package/release workflow for `bca12bc`; artifact `8463310854` is 32,614,837 bytes and the continuous Release contains the corrected 25,461,434-byte NRO — verified GitHub run, artifact and Release APIs, Step 7 hardware attempt 2 fix.
+- Hardware attempt 3 proved libsodium identity/TXT startup now succeeds but the queued trace ended at handler creation while the UI remained black for about five seconds. AirPlay initialization is now a cancellable/joined background worker, startup traces flush synchronously with timestamps, Switch address lookup uses NIFM, and DNS-SD includes the identity-derived `pi` plus audio/no-separate-RAOP capability parity — verified normal/TRACE/sanitizer host suites and non-TRACE/TRACE Switch builds, Step 7 hardware attempt 3 fix.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -256,3 +257,4 @@ None.
 | 2026-07-21 | Step 7 hardware attempt 1 fix | Run `29745733797` passed all strict CI stages and its continuous NRO replaced the incompatible local artifact; the next test can proceed directly with upload-only nxlink. |
 | 2026-07-21 | Step 7 hardware attempt 2 fix | Replaced libsodium's fatal `/dev/urandom` startup path with an atomic libnx `randomGet()` backend, added receiver startup boundaries and release attestation; physical startup/discovery retest remains. |
 | 2026-07-21 | Step 7 hardware attempt 2 CI | Run `29748063877` passed every host, Docker, strict Switch, package, artifact and continuous Release stage for code commit `bca12bc`; physical startup/discovery retest remains. |
+| 2026-07-21 | Step 7 hardware attempt 3 fix | Removed synchronous AirPlay work from the first-frame path, added crash-proof timed startup stages, replaced external-route address probing with NIFM, and aligned DNS-SD pairing/audio/RAOP metadata with UxPlay behavior; automated validation passes and physical discovery remains. |

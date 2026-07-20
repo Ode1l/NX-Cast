@@ -18,12 +18,18 @@
 #define AIRPLAY_CONTROL_PORT 7000u
 #define AIRPLAY_STREAM_CAPACITY (4u * 1024u * 1024u)
 #define AIRPLAY_STORAGE_DIRECTORY "sdmc:/switch/NX-Cast/airplay"
+#define AIRPLAY_START_THREAD_STACK_SIZE 0x40000u
+#define AIRPLAY_START_THREAD_PRIORITY 0x2cu
 
 typedef struct
 {
     Mutex mutex;
     bool mutex_ready;
     bool running;
+    bool starting;
+    bool stop_requested;
+    bool start_thread_started;
+    Thread start_thread;
     bool pin_visible;
     char pin[AIRPLAY_INTEGRATION_PIN_SIZE];
     char status[AIRPLAY_INTEGRATION_STATUS_MAX];
@@ -50,6 +56,17 @@ static void integration_set_status(const char *status)
     snprintf(g_airplay.status, sizeof(g_airplay.status), "%s",
              status ? status : "");
     mutexUnlock(&g_airplay.mutex);
+}
+
+static bool integration_stop_requested(void)
+{
+    bool requested;
+
+    integration_ensure_mutex();
+    mutexLock(&g_airplay.mutex);
+    requested = g_airplay.stop_requested;
+    mutexUnlock(&g_airplay.mutex);
+    return requested;
 }
 
 static PlayerOwnershipLease integration_remote_lease(void)
@@ -334,7 +351,7 @@ static void integration_pin_dismiss(void *user_data)
     mutexUnlock(&g_airplay.mutex);
 }
 
-bool airplay_integration_start(void)
+static bool integration_start_sync(void)
 {
     AirPlayMirrorRuntimeConfig mirror_config = {0};
     AirPlayRemoteVideoOps remote_ops = {0};
@@ -350,13 +367,21 @@ bool airplay_integration_start(void)
     }
     mutexUnlock(&g_airplay.mutex);
 
-    AIRPLAY_TRACE("[airplay] integration stage=ed25519 begin\n");
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=ed25519 begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!airplay_crypto_ed25519_available())
         goto failure;
-    AIRPLAY_TRACE("[airplay] integration stage=ed25519 done\n");
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=ed25519 done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    if (integration_stop_requested())
+    {
+        failure_stage = "cancelled";
+        goto failure;
+    }
 
     failure_stage = "mirror-runtime";
-    AIRPLAY_TRACE("[airplay] integration stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     mirror_config.stream_capacity = AIRPLAY_STREAM_CAPACITY;
     mirror_config.player.bind_stream = integration_mirror_bind;
     mirror_config.player.set_uri = integration_mirror_set_uri;
@@ -366,10 +391,17 @@ bool airplay_integration_start(void)
     if (!airplay_mirror_runtime_create(&mirror_config,
                                        &g_airplay.mirror_runtime))
         goto failure;
-    AIRPLAY_TRACE("[airplay] integration stage=%s done\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=%s done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
+    if (integration_stop_requested())
+    {
+        failure_stage = "cancelled";
+        goto failure;
+    }
 
     failure_stage = "remote-video";
-    AIRPLAY_TRACE("[airplay] integration stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     remote_ops.claim_owner = integration_remote_claim;
     remote_ops.release_owner = integration_remote_release;
     remote_ops.load = integration_remote_load;
@@ -380,17 +412,26 @@ bool airplay_integration_start(void)
     remote_ops.snapshot = integration_remote_snapshot;
     if (!airplay_remote_video_create(&remote_ops, &g_airplay.remote_video))
         goto failure;
-    AIRPLAY_TRACE("[airplay] integration stage=%s done\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=%s done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
+    if (integration_stop_requested())
+    {
+        failure_stage = "cancelled";
+        goto failure;
+    }
 
     failure_stage = "receiver";
-    AIRPLAY_TRACE("[airplay] integration stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     receiver_config.friendly_name = "NX-Cast";
     receiver_config.storage_directory = AIRPLAY_STORAGE_DIRECTORY;
     receiver_config.control_port = AIRPLAY_CONTROL_PORT;
     receiver_config.features = AIRPLAY_MDNS_FEATURE_VIDEO |
                                AIRPLAY_MDNS_FEATURE_HLS |
                                AIRPLAY_MDNS_FEATURE_SCREEN_MIRROR |
-                               AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE;
+                               AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE |
+                               AIRPLAY_MDNS_FEATURE_AUDIO |
+                               AIRPLAY_MDNS_FEATURE_RAOP_NOT_REQUIRED;
     receiver_config.enable_discovery = true;
     receiver_config.pin_display_callback = integration_pin_display;
     receiver_config.pin_dismiss_callback = integration_pin_dismiss;
@@ -403,7 +444,13 @@ bool airplay_integration_start(void)
     receiver_config.media_user_data = g_airplay.mirror_runtime;
     if (!airplay_receiver_start(&receiver_config))
         goto failure;
-    AIRPLAY_TRACE("[airplay] integration stage=%s done\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration stage=%s done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
+    if (integration_stop_requested())
+    {
+        failure_stage = "cancelled";
+        goto failure;
+    }
 
     mutexLock(&g_airplay.mutex);
     g_airplay.running = true;
@@ -415,16 +462,23 @@ bool airplay_integration_start(void)
     return true;
 
 failure:
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration failed stage=%s\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     airplay_receiver_stop();
     airplay_remote_video_destroy(g_airplay.remote_video);
     g_airplay.remote_video = NULL;
     airplay_mirror_runtime_destroy(g_airplay.mirror_runtime);
     g_airplay.mirror_runtime = NULL;
     mutexLock(&g_airplay.mutex);
-    snprintf(g_airplay.status, sizeof(g_airplay.status),
-             "AirPlay unavailable (%s)", failure_stage);
+    if (strcmp(failure_stage, "cancelled") == 0)
+        snprintf(g_airplay.status, sizeof(g_airplay.status), "AirPlay stopped");
+    else
+        snprintf(g_airplay.status, sizeof(g_airplay.status),
+                 "AirPlay unavailable (%s)", failure_stage);
     mutexUnlock(&g_airplay.mutex);
-    if (strcmp(failure_stage, "ed25519") == 0)
+    if (strcmp(failure_stage, "cancelled") == 0)
+        log_info("[airplay] integration start cancelled\n");
+    else if (strcmp(failure_stage, "ed25519") == 0)
         log_error("[airplay] integration start failed stage=ed25519; "
                   "install switch-libsodium and rebuild\n");
     else
@@ -433,12 +487,96 @@ failure:
     return false;
 }
 
+static void integration_start_thread_main(void *argument)
+{
+    bool started;
+
+    (void)argument;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration worker begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    started = integration_start_sync();
+    (void)started;
+    mutexLock(&g_airplay.mutex);
+    g_airplay.starting = false;
+    mutexUnlock(&g_airplay.mutex);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration worker done started=%u\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                       started ? 1u : 0u);
+}
+
+bool airplay_integration_start(void)
+{
+    return integration_start_sync();
+}
+
+bool airplay_integration_start_async(void)
+{
+    Result result;
+
+    integration_ensure_mutex();
+    mutexLock(&g_airplay.mutex);
+    if (g_airplay.running || g_airplay.starting ||
+        g_airplay.start_thread_started)
+    {
+        mutexUnlock(&g_airplay.mutex);
+        return true;
+    }
+    g_airplay.starting = true;
+    g_airplay.stop_requested = false;
+    snprintf(g_airplay.status, sizeof(g_airplay.status), "Starting AirPlay");
+    mutexUnlock(&g_airplay.mutex);
+
+    result = threadCreate(&g_airplay.start_thread,
+                          integration_start_thread_main,
+                          NULL,
+                          NULL,
+                          AIRPLAY_START_THREAD_STACK_SIZE,
+                          AIRPLAY_START_THREAD_PRIORITY,
+                          -2);
+    if (R_SUCCEEDED(result))
+        result = threadStart(&g_airplay.start_thread);
+    if (R_FAILED(result))
+    {
+        if (g_airplay.start_thread.handle)
+            threadClose(&g_airplay.start_thread);
+        mutexLock(&g_airplay.mutex);
+        g_airplay.starting = false;
+        snprintf(g_airplay.status, sizeof(g_airplay.status),
+                 "AirPlay unavailable (worker)");
+        mutexUnlock(&g_airplay.mutex);
+        log_error("[airplay] integration worker start failed rc=0x%08X\n", result);
+        return false;
+    }
+    mutexLock(&g_airplay.mutex);
+    g_airplay.start_thread_started = true;
+    mutexUnlock(&g_airplay.mutex);
+    return true;
+}
+
 void airplay_integration_stop(void)
 {
     PlayerOwnershipLease remote;
     PlayerOwnershipLease mirror;
+    bool join_start_thread;
 
     integration_ensure_mutex();
+    mutexLock(&g_airplay.mutex);
+    g_airplay.stop_requested = true;
+    join_start_thread = g_airplay.start_thread_started;
+    mutexUnlock(&g_airplay.mutex);
+    if (join_start_thread)
+    {
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration worker join begin\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+        threadWaitForExit(&g_airplay.start_thread);
+        threadClose(&g_airplay.start_thread);
+        mutexLock(&g_airplay.mutex);
+        g_airplay.start_thread_started = false;
+        g_airplay.starting = false;
+        mutexUnlock(&g_airplay.mutex);
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu integration worker join done\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    }
     airplay_receiver_stop();
     airplay_remote_video_destroy(g_airplay.remote_video);
     g_airplay.remote_video = NULL;
@@ -451,6 +589,8 @@ void airplay_integration_stop(void)
     (void)player_libmpv_set_airplay_stream_bridge(NULL);
     mutexLock(&g_airplay.mutex);
     g_airplay.running = false;
+    g_airplay.starting = false;
+    g_airplay.stop_requested = false;
     g_airplay.pin_visible = false;
     memset(g_airplay.pin, 0, sizeof(g_airplay.pin));
     memset(&g_airplay.remote_lease, 0, sizeof(g_airplay.remote_lease));

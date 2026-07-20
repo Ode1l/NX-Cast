@@ -887,7 +887,7 @@ int main(int argc, char* argv[])
     bool iptvReady = iptv_init();
     log_info("[iptv] init ready=%d network=%d root=%s\n", iptvReady ? 1 : 0, networkReady ? 1 : 0, IPTV_ROOT_DIR);
     bool dlnaRunning = false;
-    bool airplayRunning = false;
+    bool airplayRequested = false;
     AirPlayIntegrationStatus airplayStatus = {0};
     bool videoPlatformReady = player_view_init();
     bool rendererPrestarted = false;
@@ -911,7 +911,7 @@ int main(int argc, char* argv[])
     {
         dlnaRunning = dlna_control_start();
         if (rendererPrestarted && videoRenderReady)
-            airplayRunning = airplay_integration_start();
+            airplayRequested = airplay_integration_start_async();
     }
     (void)airplay_integration_get_status(&airplayStatus);
 
@@ -1601,7 +1601,7 @@ int main(int argc, char* argv[])
                          exit_reason_name(exit_reason),
                          networkReady ? 1 : 0,
                          dlnaRunning ? 1 : 0,
-                         airplayRunning ? 1 : 0,
+                         airplayRequested ? 1 : 0,
                          videoRenderReady ? 1 : 0,
                          g_nxlinkSock,
                          storageReady ? 1 : 0);
@@ -1609,14 +1609,14 @@ int main(int argc, char* argv[])
              exit_reason_name(exit_reason),
              networkReady ? 1 : 0,
              dlnaRunning ? 1 : 0,
-             airplayRunning ? 1 : 0,
+             airplayRequested ? 1 : 0,
              videoRenderReady ? 1 : 0,
              g_nxlinkSock,
              storageReady ? 1 : 0);
 
     if (networkReady)
     {
-        if (airplayRunning)
+        if (airplayRequested)
         {
             shutdown_stdio_trace("[INFO] [shutdown] step=airplay_integration_stop begin\n");
             log_info("[shutdown] step=airplay_integration_stop begin\n");

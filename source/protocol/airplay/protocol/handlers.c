@@ -106,6 +106,8 @@ bool airplay_handlers_create(const AirPlayHandlersConfig *config,
     AirPlayHandlers *handlers;
     size_t name_size;
 
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu handlers stage=validate begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!config || !handlers_out || *handlers_out || !config->friendly_name ||
         !config->device_id || !config->pairing_id || !config->public_key)
         return false;
@@ -116,9 +118,18 @@ bool airplay_handlers_create(const AirPlayHandlersConfig *config,
         config->airplay_txt_size > AIRPLAY_DNS_TXT_MAX ||
         (config->airplay_txt_size != 0u && !config->airplay_txt))
         return false;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu handlers stage=validate done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu handlers stage=allocate begin bytes=%zu\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), sizeof(*handlers));
     handlers = calloc(1, sizeof(*handlers));
     if (!handlers)
         return false;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu handlers stage=allocate done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu handlers stage=copy begin txt_bytes=%zu\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                       config->airplay_txt_size);
     handlers->config = *config;
     memcpy(handlers->friendly_name, config->friendly_name, name_size + 1u);
     memcpy(handlers->device_id, config->device_id, sizeof(handlers->device_id));
@@ -132,6 +143,8 @@ bool airplay_handlers_create(const AirPlayHandlersConfig *config,
     handlers->config.public_key = handlers->public_key;
     handlers->config.airplay_txt = handlers->airplay_txt;
     *handlers_out = handlers;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu handlers stage=copy done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     return true;
 }
 

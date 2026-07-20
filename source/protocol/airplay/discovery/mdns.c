@@ -120,6 +120,30 @@ static void mdns_close_socket(void)
 
 static bool determine_local_address(uint32_t *address_out)
 {
+#ifdef __SWITCH__
+    uint32_t address = 0u;
+    Result result;
+
+    if (!address_out)
+        return false;
+    result = nifmInitialize(NifmServiceType_User);
+    if (R_FAILED(result))
+    {
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns nifm init failed rc=0x%08X\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS(), result);
+        return false;
+    }
+    result = nifmGetCurrentIpAddress(&address);
+    nifmExit();
+    if (R_FAILED(result) || address == 0u)
+    {
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns nifm address failed rc=0x%08X\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS(), result);
+        return false;
+    }
+    *address_out = address;
+    return true;
+#else
     struct sockaddr_in remote;
     struct sockaddr_in local;
     socklen_t local_size = sizeof(local);
@@ -145,6 +169,7 @@ static bool determine_local_address(uint32_t *address_out)
         return false;
     *address_out = local.sin_addr.s_addr;
     return true;
+#endif
 }
 
 static size_t sanitize_label(const char *input, char *output, size_t capacity)
@@ -218,6 +243,7 @@ static bool build_txt_record(const AirPlayMdnsConfig *config,
     int written;
 
     if (!config || !service || config->features == 0u ||
+        strlen(config->pairing_id) != AIRPLAY_MDNS_PAIRING_ID_SIZE - 1u ||
         !format_hex(config->device_id, sizeof(config->device_id),
                     device_id, sizeof(device_id), ':') ||
         !format_hex(config->public_key, sizeof(config->public_key),
@@ -233,6 +259,7 @@ static bool build_txt_record(const AirPlayMdnsConfig *config,
            append_txt(service, "flags", "0x4") &&
            append_txt(service, "model", "AppleTV3,2") &&
            append_txt(service, "pk", public_key) &&
+           append_txt(service, "pi", config->pairing_id) &&
            append_txt(service, "pw", config->pin_required ? "true" : "false") &&
            append_txt(service, "srcvers", "220.68") &&
            append_txt(service, "vv", "2");
@@ -417,6 +444,8 @@ static bool create_socket(void)
 #if defined(AIRPLAY_TESTING)
     bind_port = g_mdns.config.test_bind_port;
 #endif
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=create begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0)
     {
@@ -424,6 +453,8 @@ static bool create_socket(void)
                                failure_stage, strerror(errno), errno);
         return false;
     }
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=create done fd=%d\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), socket_fd);
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 #ifdef SO_REUSEPORT
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &enabled, sizeof(enabled));
@@ -433,8 +464,12 @@ static bool create_socket(void)
     bind_address.sin_port = htons(bind_port);
     bind_address.sin_addr.s_addr = htonl(INADDR_ANY);
     failure_stage = "bind";
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=bind begin port=%u\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), bind_port);
     if (bind(socket_fd, (struct sockaddr *)&bind_address, sizeof(bind_address)) != 0)
         goto failure;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=bind done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
 
 #if defined(AIRPLAY_TESTING)
     if (!g_mdns.config.test_skip_multicast_join)
@@ -443,9 +478,13 @@ static bool create_socket(void)
         membership.imr_multiaddr.s_addr = inet_addr(AIRPLAY_MDNS_MULTICAST);
         membership.imr_interface.s_addr = g_mdns.config.ipv4_address;
         failure_stage = "multicast-join";
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=multicast-join begin\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
         if (setsockopt(socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                        &membership, sizeof(membership)) != 0)
             goto failure;
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=multicast-join done\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     }
     multicast_interface.s_addr = g_mdns.config.ipv4_address;
     setsockopt(socket_fd, IPPROTO_IP, IP_MULTICAST_IF,
@@ -494,12 +533,18 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
     atomic_init(&g_mdns.running, false);
     atomic_init(&g_mdns.socket_fd, -1);
     g_mdns.conflict_suffix = 1u;
-    if (g_mdns.config.ipv4_address == 0u &&
-        !determine_local_address(&g_mdns.config.ipv4_address))
+    if (g_mdns.config.ipv4_address == 0u)
     {
-        AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=local-address\n");
-        return false;
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=local-address begin\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+        if (!determine_local_address(&g_mdns.config.ipv4_address))
+        {
+            AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=local-address\n");
+            return false;
+        }
     }
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=local-address done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     {
         char local_address[INET_ADDRSTRLEN];
         struct in_addr address = {.s_addr = g_mdns.config.ipv4_address};
@@ -507,11 +552,15 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
         if (inet_ntop(AF_INET, &address, local_address, sizeof(local_address)))
             AIRPLAY_TRACE("[airplay-mdns] local-address=%s\n", local_address);
     }
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=service-record begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!build_service(g_mdns.conflict_suffix))
     {
         AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=service-record\n");
         return false;
     }
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=service-record done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     memset(&g_mdns.announcement_target, 0, sizeof(g_mdns.announcement_target));
     g_mdns.announcement_target.sin_family = AF_INET;
     g_mdns.announcement_target.sin_port = htons(AIRPLAY_MDNS_DEFAULT_PORT);
@@ -523,9 +572,15 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
         g_mdns.announcement_target.sin_addr.s_addr =
             g_mdns.config.test_announcement_address;
 #endif
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=socket begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!create_socket())
         return false;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=socket done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     atomic_store(&g_mdns.running, true);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=thread begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!mdns_thread_start(&g_mdns.thread, mdns_thread, NULL))
     {
         AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=thread\n");
@@ -534,7 +589,13 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
         return false;
     }
     g_mdns.thread_started = true;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=thread done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=announce begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     (void)send_announcement(AIRPLAY_MDNS_TTL);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=announce done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     AIRPLAY_TRACE("[airplay-mdns] announced %s on port %u\n",
                   g_mdns.service.instance_name, g_mdns.service.port);
     AIRPLAY_MDNS_LOG_INFO("[airplay-mdns] announced %s on port %u\n",

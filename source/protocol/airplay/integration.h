@@ -15,6 +15,7 @@ typedef struct
 } AirPlayIntegrationStatus;
 
 bool airplay_integration_start(void);
+bool airplay_integration_start_async(void);
 void airplay_integration_stop(void);
 bool airplay_integration_get_status(AirPlayIntegrationStatus *status_out);
 

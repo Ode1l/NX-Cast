@@ -44,6 +44,8 @@ int main(int argc, char **argv)
     config.ipv4_address = inet_addr("127.0.0.1");
     config.features = AIRPLAY_MDNS_FEATURE_LEGACY_PAIRING;
     config.pin_required = true;
+    snprintf(config.pairing_id, sizeof(config.pairing_id),
+             "00112233-4455-4677-8899-aabbccddeeff");
     for (size_t index = 0u; index < sizeof(config.device_id); ++index)
         config.device_id[index] = (uint8_t)(0x10u + index);
     for (size_t index = 0u; index < sizeof(config.public_key); ++index)

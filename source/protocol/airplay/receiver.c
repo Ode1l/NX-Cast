@@ -147,14 +147,16 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     pairing_config.pin_dismiss_callback = config->pin_dismiss_callback;
     pairing_config.pin_user_data = config->pin_user_data;
     failure_stage = "pairing-identity";
-    AIRPLAY_TRACE("[airplay] receiver stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     if (!airplay_pairing_service_create(&pairing_config, &g_receiver.pairing) ||
         !airplay_pairing_service_device_id(g_receiver.pairing, device_id) ||
         !airplay_pairing_service_public_key(g_receiver.pairing, public_key) ||
         !format_device_id(device_id, device_id_string) ||
         !make_pairing_id(public_key, pairing_id))
         goto failure;
-    AIRPLAY_TRACE("[airplay] receiver stage=%s done\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
 
     advertised_features = config->features | AIRPLAY_MDNS_FEATURE_LEGACY_PAIRING;
     if ((!config->unwrap_key_callback && !airplay_fairplay_is_available()) ||
@@ -165,17 +167,23 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     if (!config->remote_video)
         advertised_features &= ~(AIRPLAY_MDNS_FEATURE_VIDEO |
                                  AIRPLAY_MDNS_FEATURE_HLS);
+    if (!config->audio_open_callback)
+        advertised_features &= ~(AIRPLAY_MDNS_FEATURE_AUDIO |
+                                 AIRPLAY_MDNS_FEATURE_RAOP_NOT_REQUIRED);
     mdns_config.friendly_name = config->friendly_name;
     mdns_config.control_port = config->control_port;
     memcpy(mdns_config.device_id, device_id, sizeof(device_id));
     memcpy(mdns_config.public_key, public_key, sizeof(public_key));
+    memcpy(mdns_config.pairing_id, pairing_id, sizeof(pairing_id));
     mdns_config.features = advertised_features;
     mdns_config.pin_required = true;
     failure_stage = "dns-sd-txt";
-    AIRPLAY_TRACE("[airplay] receiver stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     if (!airplay_mdns_build_txt_record(&mdns_config, txt, &txt_size))
         goto failure;
-    AIRPLAY_TRACE("[airplay] receiver stage=%s done\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
 
     handlers_config.friendly_name = config->friendly_name;
     handlers_config.device_id = device_id_string;
@@ -194,21 +202,25 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     handlers_config.remote_video = config->remote_video;
     handlers_config.callback_user_data = config->media_user_data;
     failure_stage = "handlers";
-    AIRPLAY_TRACE("[airplay] receiver stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     if (!airplay_handlers_create(&handlers_config, &g_receiver.handlers))
         goto failure;
-    AIRPLAY_TRACE("[airplay] receiver stage=%s done\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
 
     server_config.port = config->control_port;
     server_config.route_handler = receiver_route;
     server_config.route_user_data = &g_receiver;
     server_config.session_closed_handler = receiver_session_closed;
     failure_stage = "control-server";
-    AIRPLAY_TRACE("[airplay] receiver stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     if (!airplay_server_start(&server_config))
         goto failure;
-    AIRPLAY_TRACE("[airplay] receiver stage=%s done port=%u\n",
-                  failure_stage, airplay_server_port());
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s done port=%u\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage,
+                       airplay_server_port());
     mdns_config.control_port = airplay_server_port();
     lifecycle_config.friendly_name = config->friendly_name;
     lifecycle_config.control_port = mdns_config.control_port;
@@ -216,19 +228,23 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     lifecycle_config.pin_dismiss_callback = config->pin_dismiss_callback;
     lifecycle_config.pin_user_data = config->pin_user_data;
     failure_stage = "lifecycle";
-    AIRPLAY_TRACE("[airplay] receiver stage=%s begin\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     if (!airplay_start(&lifecycle_config))
         goto failure;
     g_receiver.lifecycle_started = true;
-    AIRPLAY_TRACE("[airplay] receiver stage=%s done\n", failure_stage);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s done\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     if (config->enable_discovery)
     {
         failure_stage = "mdns";
-        AIRPLAY_TRACE("[airplay] receiver stage=%s begin\n", failure_stage);
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s begin\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
         if (!airplay_mdns_start(&mdns_config))
             goto failure;
         g_receiver.discovery_started = true;
-        AIRPLAY_TRACE("[airplay] receiver stage=%s done\n", failure_stage);
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s done\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     }
     g_receiver.running = true;
     airplay_crypto_secure_zero(public_key, sizeof(public_key));
@@ -238,6 +254,8 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     return true;
 
 failure:
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver failed stage=%s\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     AIRPLAY_RECEIVER_LOG_ERROR("[airplay] receiver start failed stage=%s\n",
                                failure_stage);
     airplay_crypto_secure_zero(public_key, sizeof(public_key));

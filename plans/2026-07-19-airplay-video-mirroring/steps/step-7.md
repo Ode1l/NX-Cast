@@ -41,6 +41,7 @@
 - [x] GitHub Actions run `29745733797` passes the strict release pipeline for `c6fd4ca`; its 25,461,434-byte NRO replaces the incompatible local artifact for the next physical test.
 - [x] Switch libsodium startup no longer uses its fatal `/dev/urandom` sysrandom path; the strict NRO registers the libnx `randomGet()` implementation before `sodium_init()`.
 - [x] GitHub Actions run `29748063877` passes the complete strict release pipeline and publishes the corrected 25,461,434-byte NRO to the continuous Release.
+- [x] Hardware attempt 3 startup is moved off the first-frame path, TRACE startup markers bypass the async logger, and mDNS parity adds the pairing identity plus truthful audio/no-separate-RAOP feature bits.
 - [ ] iPhone trace reaches RECORD and TEARDOWN without retry loop or leaked secret data.
 
 ## Test Checklist
@@ -61,6 +62,10 @@
 - Normal and ASan/UBSan host suites pass. A strict TRACE Switch build is 25,461,434 bytes with SHA-256 `8f3e243501f39cbb86027b3a8f6d6ced0af10213aff2f2842a3e6e372314af7a`; NRO strings and ELF disassembly verify the libnx marker and registration-before-initialization order.
 - The clean attested `release-build` and `scripts/package_release.sh` both pass with `airplay-randombytes=libnx`; the workspace was then rebuilt in strict TRACE mode without a release attestation for the physical retest.
 - GitHub Actions run `29748063877` produced artifact `8463310854` (32,614,837 bytes) and updated the continuous Release to code commit `bca12bc`, independently verifying the official Docker/Switch build and package path.
+- Hardware attempt 3 reached Ed25519, identity and TXT creation but reset nxlink before the queued handler completion marker. Since AirPlay startup ran synchronously before the first render loop and trace messages used the async logger, the log could neither distinguish the exact crash boundary nor avoid the observed black startup interval.
+- AirPlay startup now runs in a cancellable 256 KiB worker and shutdown joins it before receiver/player/network teardown. TRACE startup boundaries write and flush directly to stderr with monotonic timestamps, including handler allocation, control server, local address, mDNS bind/join/thread and announcement stages.
+- Switch mDNS now gets its address from libnx NIFM instead of probing an external `8.8.8.8` route. The AirPlay TXT record includes the identity-derived `pi`; advertised features include mirror audio and bit 30 because NX-Cast intentionally serves no separate RAOP/AirTunes music service.
+- Normal, TRACE and ASan/UBSan host suites, the attested non-TRACE release build and a strict TRACE Switch build pass after the hardware-attempt-3 changes. Physical discovery remains the acceptance gate.
 - Remaining gate: automated compatibility and Switch development builds pass, but a real iPhone/Switch must still prove discovery through RECORD/TEARDOWN and H.264/AAC playback before the feature can be called compatible.
 - The user selected the GPL open-source research route. Integration must identify UxPlay and PlayFair as upstream sources, retain GPL notices, and must not describe the imported algorithm as clean-room or Apple-authorized.
 
@@ -84,4 +89,9 @@
 - `scripts/run_nxlink.sh`
 - `source/protocol/airplay/integration.c`
 - `source/protocol/airplay/trace.h`
+- `source/main.c`
+- `source/protocol/airplay/integration.h`
+- `source/protocol/airplay/protocol/handlers.c`
+- `scripts/airplay_mdns_smoke_server.c`
+- `scripts/smoke_airplay_mdns.py`
 - `third_party/playfair/`
