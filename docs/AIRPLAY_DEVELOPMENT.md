@@ -80,6 +80,15 @@ gates pass. `scripts/package_release.sh` requires that attestation. Developers
 may set `NXCAST_ALLOW_UNVERIFIED_PACKAGE=1` only to inspect package layout from
 a non-release build; such an archive must not be published.
 
+The generic libsodium sysrandom backend attempts to open `/dev/urandom`, which
+is not a libnx device. NX-Cast therefore installs a Switch-only libsodium
+`randombytes_implementation` backed by libnx `randomGet()` before the first
+`sodium_init()`. Do not move `sodium_init()` ahead of that registration or call
+it directly elsewhere: libsodium treats failure to initialize its default
+random source as fatal. `release-build` checks the final NRO for the
+`libnx-kernel-chacha` implementation marker and records
+`airplay-randombytes=libnx` in its attestation.
+
 The pinned official `devkitpro/devkita64` image already contains
 `switch-libsodium` as part of `switch-portlibs`. The Dockerfile verifies the
 installed package locally with `dkp-pacman -Q`; it does not download packages

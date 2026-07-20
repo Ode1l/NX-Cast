@@ -1,5 +1,6 @@
 #include "crypto.h"
 
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,6 +19,10 @@
 
 #if defined(AIRPLAY_CRYPTO_HAVE_ED25519)
 #include <sodium.h>
+#include <sodium/randombytes.h>
+#if defined(__SWITCH__)
+#include <switch/kernel/random.h>
+#endif
 #endif
 
 typedef struct
@@ -30,6 +35,65 @@ typedef struct
 {
     mbedtls_aes_context aes;
 } AirPlayCryptoAesCtrState;
+
+#if defined(AIRPLAY_CRYPTO_HAVE_ED25519)
+static atomic_flag g_sodium_init_lock = ATOMIC_FLAG_INIT;
+static atomic_int g_sodium_init_state = 0;
+
+#if defined(__SWITCH__)
+static const char *switch_randombytes_name(void)
+{
+    return "libnx-kernel-chacha";
+}
+
+static uint32_t switch_randombytes_random(void)
+{
+    uint32_t value;
+
+    randomGet(&value, sizeof(value));
+    return value;
+}
+
+static void switch_randombytes_buf(void *const buffer, size_t size)
+{
+    randomGet(buffer, size);
+}
+
+static const randombytes_implementation g_switch_randombytes = {
+    .implementation_name = switch_randombytes_name,
+    .random = switch_randombytes_random,
+    .stir = NULL,
+    .uniform = NULL,
+    .buf = switch_randombytes_buf,
+    .close = NULL,
+};
+#endif
+
+static bool sodium_runtime_init(void)
+{
+    int state = atomic_load_explicit(&g_sodium_init_state, memory_order_acquire);
+
+    if (state != 0)
+        return state > 0;
+    while (atomic_flag_test_and_set_explicit(&g_sodium_init_lock,
+                                              memory_order_acquire))
+    {
+    }
+    state = atomic_load_explicit(&g_sodium_init_state, memory_order_relaxed);
+    if (state == 0)
+    {
+#if defined(__SWITCH__)
+        if (randombytes_set_implementation(&g_switch_randombytes) != 0)
+            state = -1;
+        else
+#endif
+            state = sodium_init() >= 0 ? 1 : -1;
+        atomic_store_explicit(&g_sodium_init_state, state, memory_order_release);
+    }
+    atomic_flag_clear_explicit(&g_sodium_init_lock, memory_order_release);
+    return state > 0;
+}
+#endif
 
 static bool buffer_args_valid(const void *buffer, size_t size)
 {
@@ -293,7 +357,7 @@ bool airplay_crypto_ed25519_public(
     uint8_t secret_key[crypto_sign_SECRETKEYBYTES];
     int result;
 
-    if (!seed || !public_key || sodium_init() < 0)
+    if (!seed || !public_key || !sodium_runtime_init())
         return false;
     result = crypto_sign_seed_keypair(public_key, secret_key, seed);
     airplay_crypto_secure_zero(secret_key, sizeof(secret_key));
@@ -311,7 +375,7 @@ bool airplay_crypto_ed25519_public(
 bool airplay_crypto_ed25519_available(void)
 {
 #if defined(AIRPLAY_CRYPTO_HAVE_ED25519)
-    return sodium_init() >= 0;
+    return sodium_runtime_init();
 #else
     return false;
 #endif
@@ -328,7 +392,8 @@ bool airplay_crypto_ed25519_sign(
     unsigned long long signature_size = 0;
     int result;
 
-    if (!seed || !buffer_args_valid(message, message_size) || !signature || sodium_init() < 0)
+    if (!seed || !buffer_args_valid(message, message_size) || !signature ||
+        !sodium_runtime_init())
         return false;
     result = crypto_sign_seed_keypair(public_key, secret_key, seed);
     if (result == 0)
@@ -358,7 +423,8 @@ bool airplay_crypto_ed25519_verify(
     const uint8_t signature[AIRPLAY_CRYPTO_ED25519_SIGNATURE_SIZE])
 {
 #if defined(AIRPLAY_CRYPTO_HAVE_ED25519)
-    if (!public_key || !buffer_args_valid(message, message_size) || !signature || sodium_init() < 0)
+    if (!public_key || !buffer_args_valid(message, message_size) || !signature ||
+        !sodium_runtime_init())
         return false;
     return crypto_sign_verify_detached(signature, message,
                                        (unsigned long long)message_size, public_key) == 0;

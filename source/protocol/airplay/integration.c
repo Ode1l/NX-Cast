@@ -13,6 +13,7 @@
 #include "protocol/airplay/media/remote_video.h"
 #include "protocol/airplay/receiver.h"
 #include "protocol/airplay/security/crypto.h"
+#include "protocol/airplay/trace.h"
 
 #define AIRPLAY_CONTROL_PORT 7000u
 #define AIRPLAY_STREAM_CAPACITY (4u * 1024u * 1024u)
@@ -349,10 +350,13 @@ bool airplay_integration_start(void)
     }
     mutexUnlock(&g_airplay.mutex);
 
+    AIRPLAY_TRACE("[airplay] integration stage=ed25519 begin\n");
     if (!airplay_crypto_ed25519_available())
         goto failure;
+    AIRPLAY_TRACE("[airplay] integration stage=ed25519 done\n");
 
     failure_stage = "mirror-runtime";
+    AIRPLAY_TRACE("[airplay] integration stage=%s begin\n", failure_stage);
     mirror_config.stream_capacity = AIRPLAY_STREAM_CAPACITY;
     mirror_config.player.bind_stream = integration_mirror_bind;
     mirror_config.player.set_uri = integration_mirror_set_uri;
@@ -362,8 +366,10 @@ bool airplay_integration_start(void)
     if (!airplay_mirror_runtime_create(&mirror_config,
                                        &g_airplay.mirror_runtime))
         goto failure;
+    AIRPLAY_TRACE("[airplay] integration stage=%s done\n", failure_stage);
 
     failure_stage = "remote-video";
+    AIRPLAY_TRACE("[airplay] integration stage=%s begin\n", failure_stage);
     remote_ops.claim_owner = integration_remote_claim;
     remote_ops.release_owner = integration_remote_release;
     remote_ops.load = integration_remote_load;
@@ -374,8 +380,10 @@ bool airplay_integration_start(void)
     remote_ops.snapshot = integration_remote_snapshot;
     if (!airplay_remote_video_create(&remote_ops, &g_airplay.remote_video))
         goto failure;
+    AIRPLAY_TRACE("[airplay] integration stage=%s done\n", failure_stage);
 
     failure_stage = "receiver";
+    AIRPLAY_TRACE("[airplay] integration stage=%s begin\n", failure_stage);
     receiver_config.friendly_name = "NX-Cast";
     receiver_config.storage_directory = AIRPLAY_STORAGE_DIRECTORY;
     receiver_config.control_port = AIRPLAY_CONTROL_PORT;
@@ -395,6 +403,7 @@ bool airplay_integration_start(void)
     receiver_config.media_user_data = g_airplay.mirror_runtime;
     if (!airplay_receiver_start(&receiver_config))
         goto failure;
+    AIRPLAY_TRACE("[airplay] integration stage=%s done\n", failure_stage);
 
     mutexLock(&g_airplay.mutex);
     g_airplay.running = true;

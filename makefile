@@ -387,11 +387,13 @@ endif
 release-build:
 	@$(MAKE) clean
 	@$(MAKE) NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j$(RELEASE_JOBS)
+	@strings $(CURDIR)/$(TARGET).nro | grep -Fxq 'libnx-kernel-chacha' || (printf '%s\n' 'Release NRO does not contain the libnx-backed libsodium random source.' >&2; exit 1)
 	@printf '%s\n' \
 		'nxcast-release-v1' \
 		'libmpv=1' \
 		'deko3d=1' \
 		'airplay-ed25519=1' \
+		'airplay-randombytes=libnx' \
 		'airplay-playfair=1' > $(RELEASE_ATTESTATION)
 	@echo "release build attested at $(RELEASE_ATTESTATION)"
 

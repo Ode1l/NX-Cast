@@ -19,6 +19,7 @@ if [ "${NXCAST_ALLOW_UNVERIFIED_PACKAGE:-0}" != "1" ]; then
        ! grep -Fxq 'libmpv=1' "${RELEASE_ATTESTATION}" || \
        ! grep -Fxq 'deko3d=1' "${RELEASE_ATTESTATION}" || \
        ! grep -Fxq 'airplay-ed25519=1' "${RELEASE_ATTESTATION}" || \
+       ! grep -Fxq 'airplay-randombytes=libnx' "${RELEASE_ATTESTATION}" || \
        ! grep -Fxq 'airplay-playfair=1' "${RELEASE_ATTESTATION}"; then
         echo "Release build attestation is missing or incomplete. Run make release-build first." >&2
         exit 1
