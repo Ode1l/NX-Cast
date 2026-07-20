@@ -20,6 +20,7 @@
 - GitHub Actions build 96 first failed only in the continuous Release API with `Error creating policy` during a GitHub service incident; attempt 2 passed without source changes.
 - CI no longer performs online `dkp-pacman -S` calls. The pinned official `devkita64` image already contains `switch-libsodium`; the Dockerfile verifies it locally with `dkp-pacman -Q`.
 - `make test-airplay` includes deterministic unit/sanitizer coverage and real loopback RTSP, pairing, mDNS, receiver and HLS smoke tests.
+- GitHub Actions build 98 passed the complete pipeline for capability/stack hardening commit `d1a4763`; artifact `8453509701` is 32,384,049 bytes.
 
 ## Next Actions
 1. Keep mirroring capability bits disabled until a lawful FairPlay-compatible boundary and real-device acceptance exist.

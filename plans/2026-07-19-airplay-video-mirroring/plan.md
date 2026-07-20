@@ -65,7 +65,7 @@ None.
 | Step 12 | `steps/step-12.md` | BLOCKED | 增加时钟、抖动缓冲和音画同步 |
 | Step 13 | `steps/step-13.md` | BLOCKED | 增加 AirPlay URL/HLS 投送与远程控制 |
 | Step 14 | `steps/step-14.md` | BLOCKED | 完成协议仲裁、UI 状态与安全退出集成 |
-| Step 15 | `steps/step-15.md` | IN_PROGRESS | 完成兼容性、稳定性、CI、文档和发布验收 |
+| Step 15 | `steps/step-15.md` | BLOCKED | 完成兼容性、稳定性、CI、文档和发布验收 |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
@@ -217,6 +217,7 @@ None.
 - GitHub Actions build 96 failed only while updating the continuous Release during a GitHub API incident (`Error creating policy`); rerunning the same commit completed the full build and release job successfully with no source change — verified run 29709604848 attempt 2, Step 15.
 - The composed receiver now has a regression that deliberately requests mirroring without a FairPlay unwrap backend and proves binary `/info` publishes only video, HLS and legacy pairing; mirror and rotation bits stay clear — verified composed receiver smoke, Step 15.
 - `airplay_server_send_error()` previously placed a roughly 100 KiB RTSP response on a 64 KiB Switch client-thread stack; moving it to the heap eliminates the ASan stack overflow and the complete ASan/UBSan, normal host and strict deko3d Switch builds pass — verified sanitizer and build output, Step 15.
+- GitHub Actions build 98 passes the complete host suite, official devkitPro Docker build, strict Ed25519/libmpv/deko3d/ImGui Switch build, package checks, artifact upload and continuous Release update for commit `d1a4763` — verified run `29724055626` and 32,384,049-byte artifact `8453509701`, Step 15.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -239,3 +240,4 @@ None.
 | 2026-07-20 | Step 15 hardening | Fixed GCC path diagnostics, Debian mbedTLS discovery, FFmpeg 5/8 AVIO compatibility and Linux feature macros; remote Docker release CI is green and all loopback network smokes now run under `make test-airplay`. |
 | 2026-07-20 | Step 15 CI policy | Removed the redundant online devkitPro package install, retained a local package assertion and documented build 96's transient GitHub Release API failure and successful rerun; only physical/FairPlay acceptance remains blocked. |
 | 2026-07-20 | Step 15 capability/stack hardening | Added fail-closed `/info` capability assertions and removed a real 64 KiB Switch worker-stack overflow from the RTSP error path; sanitizer, host and strict Switch validation pass. |
+| 2026-07-20 | Step 15 final CI | Build 98 passed every host, Docker, strict Switch, package, upload and continuous Release stage; the plan remains blocked only on proprietary FairPlay compatibility and physical-device acceptance. |

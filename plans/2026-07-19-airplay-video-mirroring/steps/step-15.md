@@ -1,6 +1,6 @@
 # Step 15: Hardening and Release Readiness
 
-> Status: IN_PROGRESS
+> Status: BLOCKED
 > Created: 2026-07-19
 
 ## Goal
@@ -55,6 +55,7 @@
 - GitHub Actions build 96 initially failed only at the continuous Release update with `Error creating policy` during a GitHub API incident. Attempt 2 of run `29709604848` completed successfully without a source change; its 30.9 MB artifact SHA-256 is `9f9da11c83a6a1401a4105395b1e3d119d21726ce86650d2cd23a4352a619d57`.
 - The composed receiver smoke deliberately requests URL/HLS and mirror/rotation features while omitting the FairPlay unwrap callback. Its binary `/info` response must advertise only video, HLS and legacy pairing, proving the release does not overclaim mirroring capability.
 - ASan exposed `airplay_server_send_error()` allocating an `AirPlayRtspResponse` of roughly 100 KiB on a Switch client thread configured with a 64 KiB stack. The response is now heap-backed, and the complete ASan/UBSan plus normal host suite and strict deko3d Switch build pass.
+- GitHub Actions build 98 (`29724055626`) passed the complete host suite, official devkitPro Docker build, strict Ed25519/libmpv/deko3d/ImGui Switch build, SD package checks, artifact upload and continuous Release update. Its artifact is 32,384,049 bytes.
 
 ## Files Changed
 - `Dockerfile`, `.github/workflows/build.yml`, `.github/workflows/release.yml`, `scripts/docker_build_release.sh`
