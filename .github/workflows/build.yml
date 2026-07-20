@@ -64,50 +64,33 @@ jobs:
             dist/NX-Cast-sdmc.zip
           if-no-files-found: error
 
-      - name: Update continuous GitHub Release
+      - name: Prepare continuous GitHub Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
         env:
-          GH_TOKEN: ${{ github.token }}
           CONTINUOUS_TAG: continuous
         run: |
           set -euo pipefail
-
-          retry_gh() {
-            local attempt=1
-            local max_attempts=4
-
-            until "$@"; do
-              if (( attempt >= max_attempts )); then
-                return 1
-              fi
-              sleep $((attempt * 5))
-              attempt=$((attempt + 1))
-            done
-          }
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -f "${CONTINUOUS_TAG}" "${GITHUB_SHA}"
           git push -f origin "refs/tags/${CONTINUOUS_TAG}"
 
-          notes_file="$(mktemp)"
+          notes_file="${RUNNER_TEMP}/nxcast-continuous-notes.md"
           cat .github/release-notes.md > "${notes_file}"
           printf '\n\n## Continuous Build\n\nAutomatic development build from `%s` at `%s`.\n' \
             "${GITHUB_REF_NAME}" "${GITHUB_SHA}" >> "${notes_file}"
-          if ! retry_gh gh release view "${CONTINUOUS_TAG}" >/dev/null 2>&1; then
-            if ! retry_gh gh release create "${CONTINUOUS_TAG}" \
-              --title "NX-Cast Continuous" \
-              --notes-file "${notes_file}" \
-              --prerelease \
-              --target "${GITHUB_SHA}"; then
-              retry_gh gh release view "${CONTINUOUS_TAG}" >/dev/null
-            fi
-          fi
-          retry_gh gh release upload "${CONTINUOUS_TAG}" \
-            dist/NX-Cast.nro \
-            dist/NX-Cast-sdmc.zip \
-            --clobber
-          retry_gh gh release edit "${CONTINUOUS_TAG}" \
-            --title "NX-Cast Continuous" \
-            --notes-file "${notes_file}" \
-            --prerelease
+
+      - name: Update continuous GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: continuous
+          target_commitish: ${{ github.sha }}
+          name: NX-Cast Continuous
+          body_path: ${{ runner.temp }}/nxcast-continuous-notes.md
+          prerelease: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/NX-Cast.nro
+            dist/NX-Cast-sdmc.zip
