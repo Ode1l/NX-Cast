@@ -79,9 +79,12 @@ gates pass. `scripts/package_release.sh` requires that attestation. Developers
 may set `NXCAST_ALLOW_UNVERIFIED_PACKAGE=1` only to inspect package layout from
 a non-release build; such an archive must not be published.
 
-The Dockerfile installs `switch-libsodium` through `dkp-pacman`. It also
-contains native Linux mbedTLS, libsodium, and FFmpeg development packages so
-the same image can run the host suite before cross-compiling.
+The pinned official `devkitpro/devkita64` image already contains
+`switch-libsodium` as part of `switch-portlibs`. The Dockerfile verifies the
+installed package locally with `dkp-pacman -Q`; it does not download packages
+from devkitPro servers during CI. Native Linux mbedTLS, libsodium, and FFmpeg
+development packages let the same image run the host suite before
+cross-compiling.
 
 ## Automated Validation
 

@@ -1,6 +1,6 @@
 # Step 15: Hardening and Release Readiness
 
-> Status: IN_PROGRESS
+> Status: BLOCKED
 > Created: 2026-07-19
 
 ## Goal
@@ -40,7 +40,7 @@
 - [ ] Physical regression covers DLNA/IPTV/AirPlay switching, iPhone reconnect and long soak.
 
 ## Implementation Notes
-- The Docker image installs native mbedTLS/libsodium/FFmpeg test dependencies and official devkitPro `switch-libsodium`. CI runs `make test-airplay` before a build that requires libmpv, deko3d, and Ed25519.
+- The Docker image installs native mbedTLS/libsodium/FFmpeg test dependencies. The pinned official devkitPro image already provides `switch-libsodium` through `switch-portlibs`; CI only verifies it with `dkp-pacman -Q` and never downloads packages from devkitPro servers.
 - Local Docker validation was not possible because the workstation has no `docker` command. GitHub Actions now provides the authoritative Docker execution evidence.
 - The first remote Docker run proved image creation and dependency installation, then exposed Debian's lack of `mbedcrypto.pc`; host dependency detection now falls back to the installed system header/library instead of reporting mbedTLS missing.
 - This workstation's Switch portlibs do not contain `switch-libsodium`; the new release gate correctly rejects `NXCAST_REQUIRE_AIRPLAY_ED25519=1`. The normal strict build still passes, and Docker/CI supplies the missing package.
@@ -49,6 +49,7 @@
 - URL/HLS remains explicitly experimental. Mirroring remains unadvertised and unsupported; the two-device, ten-reconnect and 60-minute matrix requires physical hardware.
 - GitHub Actions run `29695349829` passed host tests, strict Ed25519 Switch build, package generation, artifact upload and continuous Release update. The artifact is `nx-cast-04d0b98bb4c6f15442af69c362916cfe8cd76eb3` (32,384,206 bytes).
 - The downloaded continuous SD archive is 19,647,201 bytes and contains a 25,354,938-byte NRO plus the three packaged IPTV source entries. Its SHA-256 is `74a3a2814c7dd92cec4ec310858d31efb0c44678f77cd6a2128a309fbd04f8cb`.
+- GitHub Actions build 96 initially failed only at the continuous Release update with `Error creating policy` during a GitHub API incident. Attempt 2 of run `29709604848` completed successfully without a source change; its 30.9 MB artifact SHA-256 is `9f9da11c83a6a1401a4105395b1e3d119d21726ce86650d2cd23a4352a619d57`.
 
 ## Files Changed
 - `Dockerfile`, `.github/workflows/build.yml`, `.github/workflows/release.yml`, `scripts/docker_build_release.sh`

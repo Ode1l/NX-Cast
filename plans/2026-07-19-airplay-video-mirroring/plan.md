@@ -1,6 +1,6 @@
 # Plan: AirPlay Video Mirroring for NX-Cast
 
-> Status: ACTIVE
+> Status: BLOCKED
 > Created: 2026-07-19
 > Last Updated: 2026-07-20
 
@@ -65,7 +65,7 @@ None.
 | Step 12 | `steps/step-12.md` | BLOCKED | 增加时钟、抖动缓冲和音画同步 |
 | Step 13 | `steps/step-13.md` | BLOCKED | 增加 AirPlay URL/HLS 投送与远程控制 |
 | Step 14 | `steps/step-14.md` | BLOCKED | 完成协议仲裁、UI 状态与安全退出集成 |
-| Step 15 | `steps/step-15.md` | IN_PROGRESS | 完成兼容性、稳定性、CI、文档和发布验收 |
+| Step 15 | `steps/step-15.md` | BLOCKED | 完成兼容性、稳定性、CI、文档和发布验收 |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
@@ -213,6 +213,8 @@ None.
 - `make test-airplay` now executes the persistent RTSP, pairing authorization, mDNS lifecycle, composed receiver and direct-HLS loopback smokes after all C tests; the complete target passes locally — verified run output, Step 15.
 - GitHub Actions run 29695349829 passes the Docker image, complete host suite, strict Ed25519/libmpv/deko3d/ImGui Switch build, SD package, artifact upload and continuous Release update — verified remote job 88215042401 and artifact 8444833939, Step 15.
 - The published continuous SD archive is 19,647,201 bytes with a 25,354,938-byte NRO, preserves the three intended IPTV source entries, and contains no runtime identity, pairing, key, log, trace, dump or capture file — verified downloaded archive SHA-256 `74a3a2814c7dd92cec4ec310858d31efb0c44678f77cd6a2128a309fbd04f8cb`, Step 15.
+- The pinned official devkitPro image installs `switch-portlibs`, which has included `switch-libsodium` since 2019; CI now verifies that package locally and never runs an online `dkp-pacman -S`, avoiding devkitPro package-server policy failures — verified image metadata, official package history and Dockerfile audit, Step 15.
+- GitHub Actions build 96 failed only while updating the continuous Release during a GitHub API incident (`Error creating policy`); rerunning the same commit completed the full build and release job successfully with no source change — verified run 29709604848 attempt 2, Step 15.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -233,3 +235,4 @@ None.
 | 2026-07-20 | Step 14 | Added single-player ownership arbitration, the Switch AirPlay composition/UI root and network-before-player shutdown ordering; host/build checks pass while the real mixed-protocol matrix remains blocked. |
 | 2026-07-20 | Step 15 | Added AirPlay host/Ed25519 CI gates, release secret scanning, SD/license assets and honest support documentation; Docker and physical iPhone/Switch acceptance remain blocked locally. |
 | 2026-07-20 | Step 15 hardening | Fixed GCC path diagnostics, Debian mbedTLS discovery, FFmpeg 5/8 AVIO compatibility and Linux feature macros; remote Docker release CI is green and all loopback network smokes now run under `make test-airplay`. |
+| 2026-07-20 | Step 15 CI policy | Removed the redundant online devkitPro package install, retained a local package assertion and documented build 96's transient GitHub Release API failure and successful rerun; only physical/FairPlay acceptance remains blocked. |

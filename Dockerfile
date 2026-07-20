@@ -27,8 +27,6 @@ RUN apt-get update && \
       python3 && \
     rm -rf /var/lib/apt/lists/*
 
-RUN dkp-pacman -S --needed --noconfirm switch-libsodium
-
 RUN if [ "${NXCAST_MPV_VARIANT}" = "deko3d" ]; then \
       if dkp-pacman -Q switch-libmpv >/dev/null 2>&1; then dkp-pacman -Rdd --noconfirm switch-libmpv >/dev/null; fi; \
       if dkp-pacman -Q switch-ffmpeg >/dev/null 2>&1; then dkp-pacman -Rdd --noconfirm switch-ffmpeg >/dev/null; fi; \
