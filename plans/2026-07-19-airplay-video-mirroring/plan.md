@@ -1,6 +1,6 @@
 # Plan: AirPlay Video Mirroring for NX-Cast
 
-> Status: BLOCKED
+> Status: ACTIVE
 > Created: 2026-07-19
 > Last Updated: 2026-07-20
 
@@ -65,7 +65,7 @@ None.
 | Step 12 | `steps/step-12.md` | BLOCKED | 增加时钟、抖动缓冲和音画同步 |
 | Step 13 | `steps/step-13.md` | BLOCKED | 增加 AirPlay URL/HLS 投送与远程控制 |
 | Step 14 | `steps/step-14.md` | BLOCKED | 完成协议仲裁、UI 状态与安全退出集成 |
-| Step 15 | `steps/step-15.md` | BLOCKED | 完成兼容性、稳定性、CI、文档和发布验收 |
+| Step 15 | `steps/step-15.md` | IN_PROGRESS | 完成兼容性、稳定性、CI、文档和发布验收 |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
