@@ -1,6 +1,6 @@
 # Session Context
 
-> Last Updated: 2026-07-20 20:40 NZST
+> Last Updated: 2026-07-20 20:48 NZST
 
 ## Current Task
 以 NX-Cast 自有协议/媒体框架接入来源固定、许可证完整的 GPL PlayFair 后端，解除 AirPlay 镜像 FairPlay 阻塞并继续真机前验收。
@@ -21,8 +21,8 @@
 - CI no longer performs online `dkp-pacman -S` calls. The pinned official `devkita64` image already contains `switch-libsodium`; the Dockerfile verifies it locally with `dkp-pacman -Q`.
 - `make test-airplay` includes deterministic unit/sanitizer coverage and real loopback RTSP, pairing, mDNS, receiver and HLS smoke tests.
 - GitHub Actions build 98 passed the complete pipeline for capability/stack hardening commit `d1a4763`; artifact `8453509701` is 32,384,049 bytes.
+- GitHub Actions run `29728903616` passed the complete pipeline for GPL PlayFair commit `f5e21b2`; artifact `8455447635` is 32,614,855 bytes and the continuous Release points to that commit.
 
 ## Next Actions
-1. Push the GPL PlayFair integration and require the complete Docker/release CI pipeline to pass.
-2. Run discovery, PIN pairing, RECORD/TEARDOWN and first-frame playback on a real iPhone/Switch with redacted traces.
-3. Complete reconnect, mixed-protocol, shutdown and 60-minute A/V soak acceptance before claiming compatibility.
+1. Run discovery, PIN pairing, RECORD/TEARDOWN and first-frame playback on a real iPhone/Switch with redacted traces.
+2. Complete reconnect, mixed-protocol, shutdown and 60-minute A/V soak acceptance before claiming compatibility.

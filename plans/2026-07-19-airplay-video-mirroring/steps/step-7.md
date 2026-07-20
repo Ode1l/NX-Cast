@@ -35,6 +35,7 @@
 ## Validation Checklist
 - [x] `make test-airplay` and local control smoke exit 0.
 - [x] Strict Switch build exits 0 with `TRACE_AIRPLAY=0` and `=1`.
+- [x] GitHub Actions run `29728903616` passes host tests, the official devkitPro Docker build, strict Switch build, package checks, artifact upload and continuous Release publication for commit `f5e21b2`.
 - [ ] iPhone trace reaches RECORD and TEARDOWN without retry loop or leaked secret data.
 
 ## Test Checklist
@@ -46,6 +47,7 @@
 - The user-approved research route vendors only UxPlay's GPL PlayFair subset at commit `3ca7526387e894d6848b84c209de361c3bedd1ec`; the rest of the protocol, pairing, media, player, and UI remain NX-Cast implementations.
 - Stage-one modes, stage-two ordering/mode bounds, response capacity, secure state reset, wrapped-key output, and receiver capability publication have deterministic host coverage. Invalid mode input is rejected before entering the legacy algorithm.
 - Normal tests, ASan/UBSan, Clang static analysis, real TCP receiver/mDNS/pairing/transport smoke and strict Switch builds with trace disabled/enabled pass.
+- GitHub Actions run `29728903616` produced artifact `8455447635` and updated the continuous Release to the PlayFair integration commit, proving the pinned release environment builds and packages the backend.
 - Remaining gate: automated compatibility and Switch development builds pass, but a real iPhone/Switch must still prove discovery through RECORD/TEARDOWN and H.264/AAC playback before the feature can be called compatible.
 - The user selected the GPL open-source research route. Integration must identify UxPlay and PlayFair as upstream sources, retain GPL notices, and must not describe the imported algorithm as clean-room or Apple-authorized.
 
