@@ -4,7 +4,7 @@
 #if defined(NXCAST_AIRPLAY_TRACE_VERBOSE) && NXCAST_AIRPLAY_TRACE_VERBOSE
 #ifdef __SWITCH__
 #include "log/log.h"
-#define AIRPLAY_TRACE(...) log_info(__VA_ARGS__)
+#define AIRPLAY_TRACE(...) log_warn(__VA_ARGS__)
 #define AIRPLAY_TRACE_WARN(...) log_warn(__VA_ARGS__)
 #else
 #include <stdio.h>

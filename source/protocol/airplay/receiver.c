@@ -11,6 +11,13 @@
 #include "protocol/airplay/server.h"
 #include "protocol/airplay/trace.h"
 
+#ifdef __SWITCH__
+#include "log/log.h"
+#define AIRPLAY_RECEIVER_LOG_ERROR(...) log_error(__VA_ARGS__)
+#else
+#define AIRPLAY_RECEIVER_LOG_ERROR(...) ((void)fprintf(stderr, __VA_ARGS__))
+#endif
+
 typedef struct
 {
     AirPlayPairingService *pairing;
@@ -122,18 +129,24 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     char device_id_string[18];
     char pairing_id[37];
     uint64_t advertised_features;
+    const char *failure_stage = "config";
 
     if (g_receiver.running)
         return true;
     if (!config || !config->friendly_name || !config->storage_directory ||
         config->features == 0u)
+    {
+        AIRPLAY_RECEIVER_LOG_ERROR("[airplay] receiver start failed stage=%s\n",
+                                   failure_stage);
         return false;
+    }
     memset(&g_receiver, 0, sizeof(g_receiver));
     g_receiver.config = *config;
     pairing_config.storage_directory = config->storage_directory;
     pairing_config.pin_display_callback = config->pin_display_callback;
     pairing_config.pin_dismiss_callback = config->pin_dismiss_callback;
     pairing_config.pin_user_data = config->pin_user_data;
+    failure_stage = "pairing-identity";
     if (!airplay_pairing_service_create(&pairing_config, &g_receiver.pairing) ||
         !airplay_pairing_service_device_id(g_receiver.pairing, device_id) ||
         !airplay_pairing_service_public_key(g_receiver.pairing, public_key) ||
@@ -156,6 +169,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     memcpy(mdns_config.public_key, public_key, sizeof(public_key));
     mdns_config.features = advertised_features;
     mdns_config.pin_required = true;
+    failure_stage = "dns-sd-txt";
     if (!airplay_mdns_build_txt_record(&mdns_config, txt, &txt_size))
         goto failure;
 
@@ -175,6 +189,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     handlers_config.mirror_stop_callback = config->mirror_stop_callback;
     handlers_config.remote_video = config->remote_video;
     handlers_config.callback_user_data = config->media_user_data;
+    failure_stage = "handlers";
     if (!airplay_handlers_create(&handlers_config, &g_receiver.handlers))
         goto failure;
 
@@ -182,6 +197,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     server_config.route_handler = receiver_route;
     server_config.route_user_data = &g_receiver;
     server_config.session_closed_handler = receiver_session_closed;
+    failure_stage = "control-server";
     if (!airplay_server_start(&server_config))
         goto failure;
     mdns_config.control_port = airplay_server_port();
@@ -190,11 +206,13 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     lifecycle_config.pin_display_callback = config->pin_display_callback;
     lifecycle_config.pin_dismiss_callback = config->pin_dismiss_callback;
     lifecycle_config.pin_user_data = config->pin_user_data;
+    failure_stage = "lifecycle";
     if (!airplay_start(&lifecycle_config))
         goto failure;
     g_receiver.lifecycle_started = true;
     if (config->enable_discovery)
     {
+        failure_stage = "mdns";
         if (!airplay_mdns_start(&mdns_config))
             goto failure;
         g_receiver.discovery_started = true;
@@ -207,6 +225,8 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     return true;
 
 failure:
+    AIRPLAY_RECEIVER_LOG_ERROR("[airplay] receiver start failed stage=%s\n",
+                               failure_stage);
     airplay_crypto_secure_zero(public_key, sizeof(public_key));
     airplay_receiver_stop();
     return false;

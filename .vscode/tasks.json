@@ -19,7 +19,7 @@
     {
       "label": "NX-Cast: Build",
       "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j4",
+      "command": "source /opt/devkitpro/switchvars.sh && make NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j4",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -38,9 +38,9 @@
       ]
     },
     {
-      "label": "NX-Cast: Build (Trace Media+Input)",
+      "label": "NX-Cast: Build (Trace Media+Input+AirPlay)",
       "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 -j4",
+      "command": "source /opt/devkitpro/switchvars.sh && make TRACE_MEDIA=1 TRACE_INPUT=1 TRACE_AIRPLAY=1 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j4",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
@@ -64,11 +64,11 @@
       "problemMatcher": []
     },
     {
-      "label": "NX-Cast: Rebuild (Trace Media+Input)",
+      "label": "NX-Cast: Rebuild (Trace Media+Input+AirPlay)",
       "dependsOrder": "sequence",
       "dependsOn": [
         "NX-Cast: Clean",
-        "NX-Cast: Build (Trace Media+Input)"
+        "NX-Cast: Build (Trace Media+Input+AirPlay)"
       ],
       "problemMatcher": []
     },
@@ -139,7 +139,7 @@
       "label": "NX-Cast: Rebuild Trace + Nxlink Upload + Server",
       "dependsOrder": "sequence",
       "dependsOn": [
-        "NX-Cast: Rebuild (Trace Media+Input)",
+        "NX-Cast: Rebuild (Trace Media+Input+AirPlay)",
         "NX-Cast: Nxlink Upload + Server"
       ],
       "problemMatcher": []

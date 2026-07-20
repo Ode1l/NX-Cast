@@ -223,6 +223,7 @@ None.
 - A synthetic stage-two request initially exposed that the imported algorithm trusts `request[12]`; NX-Cast now rejects modes outside 0..3 before dispatch, and the legal mode-0 vector matches unmodified UxPlay under ASan/UBSan — verified by upstream comparison and sanitizer runs, Step 7 GPL backend.
 - The local Switch development build links the PlayFair sources and produces `NX-Cast.nro`; the attested release build remains delegated to CI because this workstation still lacks `switch-libsodium` — verified by local build and the existing dependency gate, Step 7 GPL backend.
 - GitHub Actions run `29728903616` passes the host suite, official devkitPro Docker build, strict Switch release build, package checks, artifact upload and continuous Release update for commit `f5e21b2`; artifact `8455447635` is 32,614,855 bytes — verified remote release fact, Step 7 GPL backend.
+- The first physical discovery test uploaded a 25,391,802-byte local NRO without `switch-libsodium`; Ed25519 identity creation failed before receiver/mDNS startup. Strict local launch gates and stage-specific WARN-visible diagnostics now prevent and identify this condition — verified nxlink log, local pkg-config inventory, normal/sanitizer host suites and traced Switch compile, Step 7 hardware attempt 1.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -248,3 +249,4 @@ None.
 | 2026-07-20 | Step 15 final CI | Build 98 passed every host, Docker, strict Switch, package, upload and continuous Release stage; the plan remains blocked only on proprietary FairPlay compatibility and physical-device acceptance. |
 | 2026-07-20 | Step 7 GPL backend | Vendored the fixed UxPlay PlayFair subset with provenance/license preservation, added bounded stage-one/stage-two/key adaptation, fixed two imported undefined-arithmetic cases, enabled truthful mirror capability publication, and passed normal/sanitizer/receiver/package/Switch development checks; physical iPhone/Switch acceptance remains. |
 | 2026-07-20 | Step 7 GPL backend CI | Run `29728903616` passed every host, Docker, strict Switch, package, artifact and continuous Release stage for `f5e21b2`; only physical iPhone/Switch protocol and playback acceptance remains. |
+| 2026-07-21 | Step 7 hardware attempt 1 | Explained the pre-discovery failure as an Ed25519-disabled local NRO, made VS Code/nxlink builds require `switch-libsodium`, exposed redacted startup stages, and verified normal/sanitizer/target builds; discovery must be retried with a strict artifact. |

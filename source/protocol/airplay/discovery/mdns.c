@@ -15,6 +15,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "protocol/airplay/trace.h"
+
 #ifdef __SWITCH__
 #include <switch.h>
 
@@ -409,13 +411,19 @@ static bool create_socket(void)
     int enabled = 1;
     unsigned char multicast_ttl = 255u;
     unsigned char multicast_loop = 0u;
+    const char *failure_stage = "socket";
+    int saved_errno;
 
 #if defined(AIRPLAY_TESTING)
     bind_port = g_mdns.config.test_bind_port;
 #endif
     socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0)
+    {
+        AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] socket setup failed stage=%s error=%s (%d)\n",
+                               failure_stage, strerror(errno), errno);
         return false;
+    }
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 #ifdef SO_REUSEPORT
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &enabled, sizeof(enabled));
@@ -424,6 +432,7 @@ static bool create_socket(void)
     bind_address.sin_family = AF_INET;
     bind_address.sin_port = htons(bind_port);
     bind_address.sin_addr.s_addr = htonl(INADDR_ANY);
+    failure_stage = "bind";
     if (bind(socket_fd, (struct sockaddr *)&bind_address, sizeof(bind_address)) != 0)
         goto failure;
 
@@ -433,6 +442,7 @@ static bool create_socket(void)
     {
         membership.imr_multiaddr.s_addr = inet_addr(AIRPLAY_MDNS_MULTICAST);
         membership.imr_interface.s_addr = g_mdns.config.ipv4_address;
+        failure_stage = "multicast-join";
         if (setsockopt(socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                        &membership, sizeof(membership)) != 0)
             goto failure;
@@ -447,6 +457,7 @@ static bool create_socket(void)
     {
         struct sockaddr_in actual;
         socklen_t actual_size = sizeof(actual);
+        failure_stage = "socket-name";
         if (getsockname(socket_fd, (struct sockaddr *)&actual, &actual_size) != 0)
             goto failure;
         g_mdns.bound_port = ntohs(actual.sin_port);
@@ -455,7 +466,10 @@ static bool create_socket(void)
     return true;
 
 failure:
+    saved_errno = errno;
     close(socket_fd);
+    AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] socket setup failed stage=%s error=%s (%d)\n",
+                           failure_stage, strerror(saved_errno), saved_errno);
     return false;
 }
 
@@ -467,7 +481,10 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
         return true;
     if (!config || !config->friendly_name || !config->friendly_name[0] ||
         config->control_port == 0u || config->features == 0u)
+    {
+        AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=config\n");
         return false;
+    }
     friendly_size = strlen(config->friendly_name);
     if (friendly_size > AIRPLAY_DNS_NAME_MAX)
         return false;
@@ -479,9 +496,22 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
     g_mdns.conflict_suffix = 1u;
     if (g_mdns.config.ipv4_address == 0u &&
         !determine_local_address(&g_mdns.config.ipv4_address))
+    {
+        AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=local-address\n");
         return false;
+    }
+    {
+        char local_address[INET_ADDRSTRLEN];
+        struct in_addr address = {.s_addr = g_mdns.config.ipv4_address};
+
+        if (inet_ntop(AF_INET, &address, local_address, sizeof(local_address)))
+            AIRPLAY_TRACE("[airplay-mdns] local-address=%s\n", local_address);
+    }
     if (!build_service(g_mdns.conflict_suffix))
+    {
+        AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=service-record\n");
         return false;
+    }
     memset(&g_mdns.announcement_target, 0, sizeof(g_mdns.announcement_target));
     g_mdns.announcement_target.sin_family = AF_INET;
     g_mdns.announcement_target.sin_port = htons(AIRPLAY_MDNS_DEFAULT_PORT);
@@ -498,12 +528,15 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
     atomic_store(&g_mdns.running, true);
     if (!mdns_thread_start(&g_mdns.thread, mdns_thread, NULL))
     {
+        AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=thread\n");
         atomic_store(&g_mdns.running, false);
         mdns_close_socket();
         return false;
     }
     g_mdns.thread_started = true;
     (void)send_announcement(AIRPLAY_MDNS_TTL);
+    AIRPLAY_TRACE("[airplay-mdns] announced %s on port %u\n",
+                  g_mdns.service.instance_name, g_mdns.service.port);
     AIRPLAY_MDNS_LOG_INFO("[airplay-mdns] announced %s on port %u\n",
                          g_mdns.service.instance_name, g_mdns.service.port);
     return true;

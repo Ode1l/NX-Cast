@@ -12,6 +12,7 @@
 #include "protocol/airplay/media/mirror_runtime.h"
 #include "protocol/airplay/media/remote_video.h"
 #include "protocol/airplay/receiver.h"
+#include "protocol/airplay/security/crypto.h"
 
 #define AIRPLAY_CONTROL_PORT 7000u
 #define AIRPLAY_STREAM_CAPACITY (4u * 1024u * 1024u)
@@ -337,6 +338,7 @@ bool airplay_integration_start(void)
     AirPlayMirrorRuntimeConfig mirror_config = {0};
     AirPlayRemoteVideoOps remote_ops = {0};
     AirPlayReceiverConfig receiver_config = {0};
+    const char *failure_stage = "ed25519";
 
     integration_ensure_mutex();
     mutexLock(&g_airplay.mutex);
@@ -347,6 +349,10 @@ bool airplay_integration_start(void)
     }
     mutexUnlock(&g_airplay.mutex);
 
+    if (!airplay_crypto_ed25519_available())
+        goto failure;
+
+    failure_stage = "mirror-runtime";
     mirror_config.stream_capacity = AIRPLAY_STREAM_CAPACITY;
     mirror_config.player.bind_stream = integration_mirror_bind;
     mirror_config.player.set_uri = integration_mirror_set_uri;
@@ -357,6 +363,7 @@ bool airplay_integration_start(void)
                                        &g_airplay.mirror_runtime))
         goto failure;
 
+    failure_stage = "remote-video";
     remote_ops.claim_owner = integration_remote_claim;
     remote_ops.release_owner = integration_remote_release;
     remote_ops.load = integration_remote_load;
@@ -368,6 +375,7 @@ bool airplay_integration_start(void)
     if (!airplay_remote_video_create(&remote_ops, &g_airplay.remote_video))
         goto failure;
 
+    failure_stage = "receiver";
     receiver_config.friendly_name = "NX-Cast";
     receiver_config.storage_directory = AIRPLAY_STORAGE_DIRECTORY;
     receiver_config.control_port = AIRPLAY_CONTROL_PORT;
@@ -393,7 +401,7 @@ bool airplay_integration_start(void)
     snprintf(g_airplay.status, sizeof(g_airplay.status),
              "Ready for AirPlay video");
     mutexUnlock(&g_airplay.mutex);
-    log_info("[airplay] integration started port=%u mirror_advertised=0\n",
+    log_info("[airplay] integration started port=%u mirror_advertised=1\n",
              airplay_receiver_port());
     return true;
 
@@ -403,8 +411,16 @@ failure:
     g_airplay.remote_video = NULL;
     airplay_mirror_runtime_destroy(g_airplay.mirror_runtime);
     g_airplay.mirror_runtime = NULL;
-    integration_set_status("AirPlay unavailable: check Ed25519 support");
-    log_warn("[airplay] integration unavailable; DLNA/IPTV remain active\n");
+    mutexLock(&g_airplay.mutex);
+    snprintf(g_airplay.status, sizeof(g_airplay.status),
+             "AirPlay unavailable (%s)", failure_stage);
+    mutexUnlock(&g_airplay.mutex);
+    if (strcmp(failure_stage, "ed25519") == 0)
+        log_error("[airplay] integration start failed stage=ed25519; "
+                  "install switch-libsodium and rebuild\n");
+    else
+        log_error("[airplay] integration start failed stage=%s; "
+                  "DLNA/IPTV remain active\n", failure_stage);
     return false;
 }
 

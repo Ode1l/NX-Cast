@@ -9,11 +9,11 @@
       "preLaunchTask": "NX-Cast: Rebuild"
     },
     {
-      "name": "NX-Cast: Rebuild (Trace Media+Input)",
+      "name": "NX-Cast: Rebuild (Trace Media+Input+AirPlay)",
       "type": "node-terminal",
       "request": "launch",
       "command": "echo \"[launch] NX-Cast trace rebuild finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild (Trace Media+Input)"
+      "preLaunchTask": "NX-Cast: Rebuild (Trace Media+Input+AirPlay)"
     },
     {
       "name": "NX-Cast: Rebuild & Upload",
