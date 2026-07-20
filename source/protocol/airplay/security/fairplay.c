@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "crypto.h"
+#include "playfair_decrypt.h"
+#include "replies.h"
 
 struct AirPlayFairPlay
 {
@@ -12,6 +14,11 @@ struct AirPlayFairPlay
 };
 
 static const uint8_t g_fairplay_magic[4] = {'F', 'P', 'L', 'Y'};
+
+bool airplay_fairplay_is_available(void)
+{
+    return true;
+}
 
 bool airplay_fairplay_create(AirPlayFairPlay **session_out)
 {
@@ -54,15 +61,26 @@ AirPlayFairPlayResult airplay_fairplay_setup(AirPlayFairPlay *session,
     if (!session || !request || !response || !response_size)
         return AIRPLAY_FAIRPLAY_INVALID_MESSAGE;
     *response_size = 0u;
+    if (request_size == AIRPLAY_FAIRPLAY_STAGE1_REQUEST_SIZE ||
+        request_size == AIRPLAY_FAIRPLAY_STAGE2_REQUEST_SIZE)
+    {
+        airplay_crypto_secure_zero(session->stage2_request,
+                                   sizeof(session->stage2_request));
+        session->stage2_complete = false;
+    }
     if (!fairplay_header_valid(request, request_size))
         return AIRPLAY_FAIRPLAY_INVALID_MESSAGE;
     if (request_size == AIRPLAY_FAIRPLAY_STAGE1_REQUEST_SIZE)
     {
-        /* The 142-byte response is proprietary and has no independent public derivation. */
-        return AIRPLAY_FAIRPLAY_UNSUPPORTED;
+        if (response_capacity < AIRPLAY_FAIRPLAY_STAGE1_RESPONSE_SIZE ||
+            request[14] >= 4u || !playfair_copy_reply(request[14], response))
+            return AIRPLAY_FAIRPLAY_INVALID_MESSAGE;
+        *response_size = AIRPLAY_FAIRPLAY_STAGE1_RESPONSE_SIZE;
+        return AIRPLAY_FAIRPLAY_OK;
     }
     if (request_size != AIRPLAY_FAIRPLAY_STAGE2_REQUEST_SIZE ||
-        response_capacity < AIRPLAY_FAIRPLAY_STAGE2_RESPONSE_SIZE)
+        response_capacity < AIRPLAY_FAIRPLAY_STAGE2_RESPONSE_SIZE ||
+        request[12] >= 4u)
         return AIRPLAY_FAIRPLAY_INVALID_MESSAGE;
     memcpy(session->stage2_request, request, request_size);
     session->stage2_complete = true;
@@ -77,13 +95,17 @@ AirPlayFairPlayResult airplay_fairplay_unwrap_key(
     const uint8_t wrapped_key[AIRPLAY_FAIRPLAY_WRAPPED_KEY_SIZE],
     uint8_t key_out[AIRPLAY_FAIRPLAY_AES_KEY_SIZE])
 {
+    uint8_t wrapped_copy[AIRPLAY_FAIRPLAY_WRAPPED_KEY_SIZE];
+
     if (!session || !wrapped_key || !key_out)
         return AIRPLAY_FAIRPLAY_INVALID_MESSAGE;
     memset(key_out, 0, AIRPLAY_FAIRPLAY_AES_KEY_SIZE);
     if (!session->stage2_complete)
         return AIRPLAY_FAIRPLAY_INVALID_STATE;
-    /* Key unwrap remains unavailable until independently specified or supplied by an audited backend. */
-    return AIRPLAY_FAIRPLAY_UNSUPPORTED;
+    memcpy(wrapped_copy, wrapped_key, sizeof(wrapped_copy));
+    playfair_decrypt(session->stage2_request, wrapped_copy, key_out);
+    airplay_crypto_secure_zero(wrapped_copy, sizeof(wrapped_copy));
+    return AIRPLAY_FAIRPLAY_OK;
 }
 
 const char *airplay_fairplay_result_name(AirPlayFairPlayResult result)

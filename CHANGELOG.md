@@ -7,14 +7,15 @@ All notable user-facing changes to NX-Cast are documented here.
 ### Added
 
 - Experimental AirPlay DNS-SD discovery, PIN pairing, URL/HLS controls, and private SD-card identity storage.
-- Internal H.264/AAC mirror receive, MPEG-TS bridge, media clock, and nvtegra/deko3d playback integration; mirroring remains unadvertised pending the FairPlay boundary.
+- Experimental H.264/AAC screen mirroring with a fixed-source GPL PlayFair compatibility backend, MPEG-TS bridge, media clock, and nvtegra/deko3d playback integration; real iPhone/Switch acceptance remains pending.
+- Deterministic PlayFair stage-one/key tests, receiver capability smoke coverage, provenance, and packaged GPL license text.
 - Generation-safe player ownership across DLNA, IPTV, AirPlay remote video, and AirPlay mirroring.
 - AirPlay host protocol/media tests and strict Ed25519 release-build enforcement.
 
 ### Changed
 
 - Shutdown now stops AirPlay/DLNA workers before player, UI, logs, and network teardown.
-- Release packages include an AirPlay storage notice and libsodium license while rejecting private identities, pairings, keys, logs, traces, dumps, and captures.
+- Release packages include AirPlay storage, libsodium, and PlayFair notices while rejecting private identities, pairings, keys, logs, traces, dumps, and captures.
 
 ## [0.2.0] - 2026-07-19
 

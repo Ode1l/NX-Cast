@@ -45,6 +45,7 @@ switch/
       LICENSE.NX-Cast.txt
       LICENSE.Dear-ImGui.txt
       LICENSE.libsodium.txt
+      LICENSE.PlayFair.GPLv3.txt
       THIRD-PARTY-NOTICE.txt
 ```
 

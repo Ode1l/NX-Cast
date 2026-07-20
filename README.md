@@ -28,7 +28,7 @@ The current baseline includes:
 - generation-safe media ownership across DLNA, IPTV, and AirPlay
 - Docker and GitHub Actions release builds
 
-This project is still experimental Switch homebrew. DLNA and IPTV are the current release features. AirPlay URL/HLS is implemented but remains pending real iPhone/Switch compatibility testing; screen mirroring is not advertised.
+This project is still experimental Switch homebrew. DLNA and IPTV are the current release features. AirPlay URL/HLS and screen mirroring are implemented and advertised by compatible builds, but both remain pending the real iPhone/Switch acceptance matrix.
 
 ## What It Is Not
 
@@ -54,7 +54,7 @@ See [docs/iptv.md](docs/iptv.md) for supported formats, SD-card paths, source co
 
 NX-Cast has an independent C implementation of AirPlay DNS-SD discovery, PIN pairing, persistent RTSP/HTTP control, and URL/HLS player commands. It passes deterministic host tests and strict Switch cross-compilation, but real iPhone compatibility has not yet completed the release matrix. Treat it as experimental rather than a guaranteed release feature.
 
-The internal H.264/AAC mirror transport and nvtegra/deko3d bridge are present, but standard iPhone screen mirroring remains disabled because the required proprietary FairPlay unwrap boundary has no independently audited implementation. AirPlay 2 multi-room audio, audio-only playback, AWDL, DRM, and Apple certification are out of scope.
+The H.264/AAC mirror transport and nvtegra/deko3d bridge now use an isolated GPL PlayFair compatibility backend sourced from a fixed UxPlay commit. Automated protocol, media, sanitizer, and Switch builds pass, but this does not establish real-iPhone compatibility or Apple authorization. AirPlay 2 multi-room audio, audio-only playback, AWDL, commercial FairPlay/DRM content, and Apple certification are out of scope.
 
 See [docs/AIRPLAY_DEVELOPMENT.md](docs/AIRPLAY_DEVELOPMENT.md) for the exact capability table, SD privacy rules, build requirements, and test matrix.
 
@@ -135,7 +135,7 @@ main
   -> protocol/airplay
        -> discovery + persistent control + pairing
        -> URL/HLS remote video
-       -> mirror media bridge (not advertised)
+       -> mirror media bridge (experimental)
   -> protocol/http
   -> player
        -> core
@@ -219,7 +219,7 @@ make RELEASE_JOBS=2 release-build
 NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
-`release-build` requires Dear ImGui, libmpv, deko3d, and AirPlay Ed25519, then writes the build attestation required by the packaging script. This prevents a fallback or AirPlay-disabled NRO from being published accidentally. Use the individual flags only for development builds.
+`release-build` requires Dear ImGui, libmpv, deko3d, AirPlay Ed25519, and the built-in PlayFair backend, then writes the build attestation required by the packaging script. This prevents a fallback or AirPlay-disabled NRO from being published accidentally. Use the individual flags only for development builds.
 
 Trace build for playback/input debugging:
 

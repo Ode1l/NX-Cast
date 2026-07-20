@@ -5,6 +5,7 @@
 
 #include "protocol/airplay/discovery/mdns.h"
 #include "protocol/airplay/security/crypto.h"
+#include "protocol/airplay/security/fairplay.h"
 #include "protocol/airplay/security/identity.h"
 #include "protocol/airplay/security/pairing.h"
 #include "protocol/airplay/server.h"
@@ -141,7 +142,8 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
         goto failure;
 
     advertised_features = config->features | AIRPLAY_MDNS_FEATURE_LEGACY_PAIRING;
-    if (!config->unwrap_key_callback || !config->transport_prepare_callback ||
+    if ((!config->unwrap_key_callback && !airplay_fairplay_is_available()) ||
+        !config->transport_prepare_callback ||
         !config->mirror_open_callback)
         advertised_features &= ~(AIRPLAY_MDNS_FEATURE_SCREEN_MIRROR |
                                  AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE);

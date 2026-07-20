@@ -9,6 +9,8 @@ IPTV_SOURCES="${ROOT_DIR}/assets/iptv/sources.txt"
 PACKAGED_IPTV_SOURCES="${SDMC_DIR}/switch/NX-Cast/iptv/sources.txt"
 AIRPLAY_README="${ROOT_DIR}/assets/airplay/README.txt"
 PACKAGED_AIRPLAY_README="${SDMC_DIR}/switch/NX-Cast/airplay/README.txt"
+PLAYFAIR_LICENSE="${ROOT_DIR}/assets/licenses/LICENSE.PlayFair.GPLv3.txt"
+PACKAGED_PLAYFAIR_LICENSE="${SDMC_DIR}/switch/NX-Cast/licenses/LICENSE.PlayFair.GPLv3.txt"
 RELEASE_ATTESTATION="${ROOT_DIR}/build/release-features.txt"
 
 if [ "${NXCAST_ALLOW_UNVERIFIED_PACKAGE:-0}" != "1" ]; then
@@ -16,7 +18,8 @@ if [ "${NXCAST_ALLOW_UNVERIFIED_PACKAGE:-0}" != "1" ]; then
        ! grep -Fxq 'nxcast-release-v1' "${RELEASE_ATTESTATION}" || \
        ! grep -Fxq 'libmpv=1' "${RELEASE_ATTESTATION}" || \
        ! grep -Fxq 'deko3d=1' "${RELEASE_ATTESTATION}" || \
-       ! grep -Fxq 'airplay-ed25519=1' "${RELEASE_ATTESTATION}"; then
+       ! grep -Fxq 'airplay-ed25519=1' "${RELEASE_ATTESTATION}" || \
+       ! grep -Fxq 'airplay-playfair=1' "${RELEASE_ATTESTATION}"; then
         echo "Release build attestation is missing or incomplete. Run make release-build first." >&2
         exit 1
     fi
@@ -50,6 +53,11 @@ if [ ! -s "${AIRPLAY_README}" ]; then
     exit 1
 fi
 
+if [ ! -s "${PLAYFAIR_LICENSE}" ]; then
+    echo "PlayFair GPL license is missing from assets/licenses." >&2
+    exit 1
+fi
+
 rm -rf "${SDMC_DIR}" "${PACKAGE}"
 mkdir -p "${SDMC_DIR}/switch/NX-Cast/dlna" \
     "${SDMC_DIR}/switch/NX-Cast/fonts" \
@@ -80,6 +88,12 @@ fi
 
 if [ ! -s "${PACKAGED_AIRPLAY_README}" ] || ! cmp -s "${AIRPLAY_README}" "${PACKAGED_AIRPLAY_README}"; then
     echo "AirPlay README was not copied intact into the staged SD package." >&2
+    exit 1
+fi
+
+if [ ! -s "${PACKAGED_PLAYFAIR_LICENSE}" ] || \
+   ! cmp -s "${PLAYFAIR_LICENSE}" "${PACKAGED_PLAYFAIR_LICENSE}"; then
+    echo "PlayFair GPL license was not copied intact into the staged SD package." >&2
     exit 1
 fi
 
@@ -145,6 +159,11 @@ if ! zip -sf "${PACKAGE}" | grep -Fq "  switch/NX-Cast/licenses/LICENSE.NX-Cast.
     exit 1
 fi
 
+if ! zip -sf "${PACKAGE}" | grep -Fq "  switch/NX-Cast/licenses/LICENSE.PlayFair.GPLv3.txt"; then
+    echo "PlayFair GPL license is missing from the release ZIP." >&2
+    exit 1
+fi
+
 echo "Verified IPTV presets in ${PACKAGE}"
-echo "Verified AirPlay storage skeleton and sensitive-file exclusions in ${PACKAGE}"
+echo "Verified AirPlay storage, PlayFair license, and sensitive-file exclusions in ${PACKAGE}"
 echo "Packaged ${PACKAGE}"

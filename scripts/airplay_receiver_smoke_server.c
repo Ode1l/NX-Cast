@@ -78,6 +78,34 @@ static bool remote_snapshot(AirPlayRemoteVideoSnapshot *snapshot_out,
     return true;
 }
 
+static bool mirror_prepare(uint64_t session_id, const uint8_t key[16],
+                           const uint8_t iv[16], uint16_t *timing_port_out,
+                           void *user_data)
+{
+    (void)session_id;
+    (void)key;
+    (void)iv;
+    (void)user_data;
+    if (!timing_port_out)
+        return false;
+    *timing_port_out = 7010u;
+    return true;
+}
+
+static bool mirror_open(uint64_t session_id, const uint8_t key[16],
+                        uint64_t stream_connection_id, uint16_t *data_port_out,
+                        void *user_data)
+{
+    (void)session_id;
+    (void)key;
+    (void)stream_connection_id;
+    (void)user_data;
+    if (!data_port_out)
+        return false;
+    *data_port_out = 7011u;
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     AirPlayReceiverConfig config = {0};
@@ -119,6 +147,8 @@ int main(int argc, char **argv)
                       AIRPLAY_MDNS_FEATURE_SCREEN_MIRROR |
                       AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE;
     config.enable_discovery = false;
+    config.transport_prepare_callback = mirror_prepare;
+    config.mirror_open_callback = mirror_open;
     config.remote_video = remote_video;
     if (!airplay_receiver_start(&config))
         goto cleanup;

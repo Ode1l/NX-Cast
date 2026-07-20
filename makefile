@@ -64,9 +64,10 @@ SOURCES		:=	source \
 			source/protocol/airplay/security \
 			source/protocol/airplay/discovery \
 			source/protocol/airplay/mirror \
-			source/protocol/airplay/media
+			source/protocol/airplay/media \
+			third_party/playfair
 DATA		:=	data
-INCLUDES	:=	include source
+INCLUDES	:=	include source third_party/playfair
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -88,8 +89,15 @@ NXCAST_USE_IMGUI_UI ?= 0
 RELEASE_JOBS ?= 4
 RELEASE_ATTESTATION := $(CURDIR)/$(BUILD)/release-features.txt
 HOST_CC ?= cc
-HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource
+HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource -Ithird_party/playfair
 HOST_THREAD_FLAGS ?= -pthread
+PLAYFAIR_SOURCES := third_party/playfair/hand_garble.c \
+	third_party/playfair/modified_md5.c \
+	third_party/playfair/omg_hax.c \
+	third_party/playfair/playfair_decrypt.c \
+	third_party/playfair/replies.c \
+	third_party/playfair/sap_hash.c
+PLAYFAIR_LIBS := -lm
 AIRPLAY_LIFECYCLE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay
 AIRPLAY_PLIST_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_plist
 AIRPLAY_RTSP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_rtsp
@@ -98,6 +106,7 @@ AIRPLAY_SRP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_srp
 AIRPLAY_PAIRING_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_pairing
 AIRPLAY_DNS_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_dns
 AIRPLAY_HANDLERS_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_handlers
+AIRPLAY_FAIRPLAY_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_fairplay
 AIRPLAY_MIRROR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_mirror
 AIRPLAY_STREAM_BRIDGE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_stream_bridge
 AIRPLAY_MIRROR_RUNTIME_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_mirror_runtime
@@ -125,7 +134,7 @@ endif
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:= -lnx
+LIBS	:= -lnx -lm
 
 PKG_CONFIG	?= pkg-config
 MPV_PKG_CONFIG_PATH := $(PORTLIBS_PREFIX)/lib/pkgconfig
@@ -382,7 +391,8 @@ release-build:
 		'nxcast-release-v1' \
 		'libmpv=1' \
 		'deko3d=1' \
-		'airplay-ed25519=1' > $(RELEASE_ATTESTATION)
+		'airplay-ed25519=1' \
+		'airplay-playfair=1' > $(RELEASE_ATTESTATION)
 	@echo "release build attested at $(RELEASE_ATTESTATION)"
 
 test-airplay:
@@ -397,7 +407,8 @@ test-airplay:
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/srp.c scripts/test_airplay_srp.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_SRP_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 -DAIRPLAY_TESTING=1 source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/test_airplay_pairing.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/discovery/dns.c scripts/test_airplay_dns.c -o $(AIRPLAY_DNS_TEST_BIN)
-	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c scripts/test_airplay_handlers.c $(HOST_MBEDTLS_LIBS) -o $(AIRPLAY_HANDLERS_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c scripts/test_airplay_handlers.c $(HOST_MBEDTLS_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_HANDLERS_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) scripts/test_airplay_fairplay.c $(HOST_MBEDTLS_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_FAIRPLAY_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c scripts/test_airplay_mirror.c $(HOST_MBEDTLS_LIBS) -o $(AIRPLAY_MIRROR_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/video.c source/protocol/airplay/media/stream_bridge.c scripts/test_airplay_stream_bridge.c $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_STREAM_BRIDGE_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/audio.c source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c source/protocol/airplay/media/stream_bridge.c source/protocol/airplay/media/mirror_runtime.c scripts/test_airplay_mirror_runtime.c $(HOST_MBEDTLS_LIBS) $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_MIRROR_RUNTIME_TEST_BIN)
@@ -408,7 +419,7 @@ test-airplay:
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c scripts/airplay_smoke_server.c -o $(AIRPLAY_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/airplay_pairing_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) -DAIRPLAY_TESTING=1 source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c scripts/airplay_mdns_smoke_server.c -o $(AIRPLAY_MDNS_SMOKE_SERVER_BIN)
-	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/airplay.c source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c source/protocol/airplay/security/fairplay.c source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c source/protocol/airplay/server.c source/protocol/airplay/receiver.c scripts/airplay_receiver_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_RECEIVER_SMOKE_SERVER_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/airplay.c source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c source/protocol/airplay/server.c source/protocol/airplay/receiver.c scripts/airplay_receiver_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_RECEIVER_SMOKE_SERVER_BIN)
 	@$(AIRPLAY_LIFECYCLE_TEST_BIN)
 	@$(AIRPLAY_PLIST_TEST_BIN)
 	@$(AIRPLAY_RTSP_TEST_BIN)
@@ -417,6 +428,7 @@ test-airplay:
 	@$(AIRPLAY_PAIRING_TEST_BIN)
 	@$(AIRPLAY_DNS_TEST_BIN)
 	@$(AIRPLAY_HANDLERS_TEST_BIN)
+	@$(AIRPLAY_FAIRPLAY_TEST_BIN)
 	@$(AIRPLAY_MIRROR_TEST_BIN)
 	@$(AIRPLAY_STREAM_BRIDGE_TEST_BIN)
 	@$(AIRPLAY_MIRROR_RUNTIME_TEST_BIN)

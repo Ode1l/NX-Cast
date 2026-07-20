@@ -4,7 +4,7 @@
 
 NX-Cast now combines its DLNA media receiver with an integrated IPTV player for Nintendo Switch homebrew.
 
-This build also includes an experimental AirPlay URL/HLS receiver path with PIN pairing. It has automated host and Switch build coverage but is not yet claimed as real-device compatible. Standard iPhone screen mirroring remains disabled at discovery because the FairPlay unwrap boundary is unresolved.
+This build also includes experimental AirPlay URL/HLS playback and iPhone screen mirroring with PIN pairing. Both paths have automated host and Switch build coverage but are not yet claimed as real-device compatible.
 
 ### IPTV
 
@@ -28,8 +28,9 @@ This build also includes an experimental AirPlay URL/HLS receiver path with PIN 
 
 - Native DNS-SD discovery, persistent RTSP/HTTP control, PIN pairing, and trusted-client storage.
 - Direct URL/HLS playback, pause, seek, rate, status, and stop commands through the existing hardware player.
+- Experimental H.264/AAC screen mirroring through an isolated, fixed-source GPL PlayFair compatibility backend and the existing nvtegra/deko3d player.
 - Runtime identity and pairing files remain private on the SD card and are excluded from release packages.
-- AirPlay 2 multi-room/audio-only playback, AWDL, DRM, and screen mirroring are not supported.
+- AirPlay 2 multi-room/audio-only playback, AWDL, commercial FairPlay/DRM content, and Apple certification are not supported.
 
 ### Install
 

@@ -5,14 +5,14 @@
 > Last Updated: 2026-07-20
 
 ## Goal
-在不引入 UxPlay/RPiPlay 源码的前提下，用 NX-Cast 自有 C 模块和现有播放器接口实现同一局域网内 iPhone 到 Switch 的非 DRM H.264 屏幕镜像、AAC 同步音频以及 AirPlay URL/HLS 视频投送。
+以 NX-Cast 自有 C 协议/媒体模块和现有播放器接口为主体，仅引入固定来源、许可证完整的 GPL PlayFair 兼容子库，实现同一局域网内 iPhone 到 Switch 的非 DRM H.264 屏幕镜像、AAC 同步音频以及 AirPlay URL/HLS 视频投送。
 
 ## Assumptions
 - 首个支持场景是 iPhone 与 Switch 连接同一 Wi-Fi；AWDL/点对点 AirPlay 不在本计划范围内。
 - 配对采用可在 Switch UI 显示的 PIN 流程，设备身份和长期密钥保存在 `sdmc:/switch/NX-Cast/airplay/`。
 - 现有 switch-libmpv、FFmpeg、nvtegra 和 deko3d 构建保持不变；实时镜像通过内部流桥接复用该播放链路。
 - 真机网络抓包和 iPhone 行为验证需要用户提供 Switch/iPhone 测试结果；主机端协议、解析、加密向量和媒体夹具由自动测试覆盖。
-- 仅依据公开协议资料、网络行为和两个参考项目的接口/状态机进行独立实现，不复制其源码、常量表或平台渲染代码。
+- 除 FairPlay 兼容边界外，协议、线程、存储和播放器代码继续依据公开行为独立实现；FairPlay 使用来源固定、许可证完整、与其余代码隔离的 GPL PlayFair 后端。
 
 ## Open Questions
 None.
@@ -28,7 +28,7 @@ None.
 
 ### Non-goals
 - 完整 AirPlay 2、多房间/多设备同步、HomeKit、独立音乐/纯音频接收器、Apple DRM/FairPlay 商业内容和 MFi 认证。
-- 引入 UxPlay、RPiPlay、GStreamer、OpenSSL、libplist 或其平台渲染器源码。
+- 引入 UxPlay/RPiPlay 的服务器、配对、媒体、GStreamer/OpenMAX 或平台渲染器代码；唯一例外是独立审计和归属明确的 GPL PlayFair 兼容子库。
 - 第一版支持 AWDL、蓝牙发现、互联网中继或跨子网自动发现。
 
 ### Edge Cases
@@ -40,7 +40,7 @@ None.
 ## Design Decisions
 | Decision | Options Considered | Chosen | Confirmed |
 |----------|--------------------|--------|-----------|
-| 参考实现策略 | 引入源码；仅参考 UxPlay；双实现等权参考 | UxPlay 当前行为为主，RPiPlay 仅校验旧镜像流程；全部用 NX-Cast C 代码重写 | yes |
+| 参考实现策略 | 完全 clean-room；完整引入 UxPlay/RPiPlay；仅引入 FairPlay 子库 | NX-Cast 保留自有 C 协议/媒体框架，仅接入固定来源和 GPL 归属的 PlayFair 后端 | yes |
 | 控制服务边界 | 扩展 DLNA HTTP server；独立 AirPlay server | 独立的持久 RTSP/HTTP 控制服务，避免改变 DLNA 的短连接语义 | yes |
 | plist 与加密依赖 | libplist+OpenSSL；自有 plist+mbedTLS | 实现所需最小 binary plist 子集，并复用 devkitPro mbedTLS | yes |
 | 实时媒体接入 | 新播放器；GStreamer；libmpv 自定义流 | H.264/AAC 复用 FFmpeg MPEG-TS 封装、有限环形缓冲和 `mpv_stream_cb_add_ro()` | yes |
@@ -57,7 +57,7 @@ None.
 | Step 4 | `steps/step-4.md` | COMPLETED | 实现持久设备身份、随机数和 mbedTLS 加密原语 |
 | Step 5 | `steps/step-5.md` | COMPLETED | 实现 Pair Setup/Pair Verify 与加密控制会话 |
 | Step 6 | `steps/step-6.md` | COMPLETED | 实现原生 mDNS 广播并让 iPhone 可发现设备 |
-| Step 7 | `steps/step-7.md` | BLOCKED | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
+| Step 7 | `steps/step-7.md` | IN_PROGRESS | 打通 iPhone 控制握手至 SETUP/RECORD/TEARDOWN |
 | Step 8 | `steps/step-8.md` | COMPLETED | 实现镜像 H.264 接收、解密、重组和关键帧恢复 |
 | Step 9 | `steps/step-9.md` | COMPLETED | 建立 MPEG-TS 环形缓冲与 libmpv 自定义流桥接 |
 | Step 10 | `steps/step-10.md` | BLOCKED | 完成第一阶段 H.264 硬解镜像真机闭环 |
@@ -81,6 +81,7 @@ None.
 ## Context & Learnings
 ### Key Decisions
 - Clean-room implementation: reference projects define expected wire behavior only; NX-Cast owns all code, threading, storage, player integration and tests.
+- FairPlay exception: the user selected the open-source research route on 2026-07-20; GPL PlayFair is accepted as an isolated third-party compatibility backend with exact provenance, license preservation and explicit legal-status disclosure.
 - UxPlay-first reference: its protocol core is current and includes remote-video handling; RPiPlay is retained only to detect regressions against older mirroring flows.
 - Separate control server: AirPlay requires persistent, encrypted, stateful sessions that conflict with the current DLNA server's one-request/close model.
 - Existing media path first: a custom libmpv stream avoids introducing GStreamer or a second renderer and preserves nvtegra/deko3d behavior.
@@ -218,6 +219,9 @@ None.
 - The composed receiver now has a regression that deliberately requests mirroring without a FairPlay unwrap backend and proves binary `/info` publishes only video, HLS and legacy pairing; mirror and rotation bits stay clear — verified composed receiver smoke, Step 15.
 - `airplay_server_send_error()` previously placed a roughly 100 KiB RTSP response on a 64 KiB Switch client-thread stack; moving it to the heap eliminates the ASan stack overflow and the complete ASan/UBSan, normal host and strict deko3d Switch builds pass — verified sanitizer and build output, Step 15.
 - GitHub Actions build 98 passes the complete host suite, official devkitPro Docker build, strict Ed25519/libmpv/deko3d/ImGui Switch build, package checks, artifact upload and continuous Release update for commit `d1a4763` — verified run `29724055626` and 32,384,049-byte artifact `8453509701`, Step 15.
+- Superseding the earlier fail-closed boundary, NX-Cast now vendors only UxPlay's GPL PlayFair subset at commit `3ca7526387e894d6848b84c209de361c3bedd1ec`; all four stage-one responses, legal stage-two modes, wrapped-key output, state reset and receiver feature publication pass deterministic tests — verified by strict host compilation, source diff and receiver smoke, Step 7 GPL backend.
+- A synthetic stage-two request initially exposed that the imported algorithm trusts `request[12]`; NX-Cast now rejects modes outside 0..3 before dispatch, and the legal mode-0 vector matches unmodified UxPlay under ASan/UBSan — verified by upstream comparison and sanitizer runs, Step 7 GPL backend.
+- The local Switch development build links the PlayFair sources and produces `NX-Cast.nro`; the attested release build remains delegated to CI because this workstation still lacks `switch-libsodium` — verified by local build and the existing dependency gate, Step 7 GPL backend.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -241,3 +245,4 @@ None.
 | 2026-07-20 | Step 15 CI policy | Removed the redundant online devkitPro package install, retained a local package assertion and documented build 96's transient GitHub Release API failure and successful rerun; only physical/FairPlay acceptance remains blocked. |
 | 2026-07-20 | Step 15 capability/stack hardening | Added fail-closed `/info` capability assertions and removed a real 64 KiB Switch worker-stack overflow from the RTSP error path; sanitizer, host and strict Switch validation pass. |
 | 2026-07-20 | Step 15 final CI | Build 98 passed every host, Docker, strict Switch, package, upload and continuous Release stage; the plan remains blocked only on proprietary FairPlay compatibility and physical-device acceptance. |
+| 2026-07-20 | Step 7 GPL backend | Vendored the fixed UxPlay PlayFair subset with provenance/license preservation, added bounded stage-one/stage-two/key adaptation, fixed two imported undefined-arithmetic cases, enabled truthful mirror capability publication, and passed normal/sanitizer/receiver/package/Switch development checks; physical iPhone/Switch acceptance remains. |

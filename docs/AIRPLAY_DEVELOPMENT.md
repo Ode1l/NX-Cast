@@ -15,13 +15,14 @@ AWDL, DRM, MFi certification, or Apple platform services.
 | HLS redirects and relative segments | Passed directly to FFmpeg/libmpv | Host-tested without an NX-Cast proxy |
 | H.264 mirror transport | Bounded receive, decrypt, Annex B reassembly and keyframe recovery | Internal path implemented |
 | AAC mirror audio and A/V clock | RTP reorder, MPEG-TS mux and bounded clock correction | Internal path implemented |
-| iPhone screen mirroring | Requires the remaining proprietary FairPlay unwrap boundary | Not advertised and not supported |
+| iPhone screen mirroring | GPL PlayFair key compatibility, H.264/AAC transport, MPEG-TS bridge, nvtegra/deko3d | Advertised experimentally; real iPhone/Switch acceptance pending |
 | AirPlay 2 multi-room/audio-only | Not planned | Unsupported |
 
 The distinction matters: passing host protocol tests does not establish iOS
-compatibility. Release notes must keep URL/HLS marked experimental until the
-real-device matrix passes. Screen mirroring must remain unadvertised while the
-FairPlay unwrap callback is absent.
+compatibility. Release notes must keep URL/HLS and screen mirroring marked
+experimental until the real-device matrix passes. Mirroring is advertised only
+when the built-in PlayFair backend or an external audited unwrap callback and
+the required media callbacks are available.
 
 ## Architecture
 
@@ -94,7 +95,8 @@ Run the deterministic host suite:
 make test-airplay
 ```
 
-It covers plist and RTSP bounds, published crypto vectors, pairing, DNS-SD,
+It covers plist and RTSP bounds, published crypto vectors, all four PlayFair
+stage-one replies, bounded stage-two/key unwrap behavior, pairing, DNS-SD,
 receiver lifecycle, remote video controls, mirror H.264/AAC, MPEG-TS bridging,
 clock behavior, player ownership, reconnects, and direct HLS redirect/relative
 segment resolution. The same target also runs real loopback TCP/UDP smoke tests
@@ -127,13 +129,22 @@ The following remains mandatory before calling AirPlay URL/HLS supported:
 6. Confirm the final archive contains no identity, pairing, key, trace, dump,
    or packet-capture files.
 
-Screen mirroring has a separate gate: no release may advertise mirroring until
-the FairPlay unwrap boundary has a legally usable, independently audited
-implementation and the H.264/AAC hardware path passes this matrix.
+Screen mirroring has a separate release claim gate: the current build may
+advertise its experimental GPL compatibility path, but documentation must not
+call it compatible or supported until the H.264/AAC hardware path passes this
+matrix. Commercial FairPlay/DRM streams remain outside the implementation.
 
 ## Reference Boundary
 
 UxPlay is used as the primary behavioral reference and RPiPlay only as a
-legacy cross-check. NX-Cast does not vendor or compile either project. Protocol
-parsers, security state, storage, networking, playback integration, and tests
-are NX-Cast C implementations adapted to libnx and the existing player APIs.
+legacy cross-check. NX-Cast does not vendor either project's server, pairing,
+media, renderer, or platform integration. It vendors only UxPlay's GPL
+PlayFair subset at commit `3ca7526387e894d6848b84c209de361c3bedd1ec`;
+provenance and local changes are recorded in
+`third_party/playfair/PROVENANCE.md`. Protocol parsers, security state,
+storage, networking, playback integration, and tests remain NX-Cast C code.
+
+UxPlay documents the legal status of PlayFair compatibility as unclear. This
+research/homebrew integration is not Apple-authorized, is not MFi-certified,
+does not support commercial FairPlay/DRM content, and may require a separate
+legal review before redistribution in a particular jurisdiction.

@@ -1,6 +1,6 @@
 # Step 7: iPhone Control Handshake Milestone
 
-> Status: BLOCKED
+> Status: IN_PROGRESS
 > Created: 2026-07-19
 
 ## Goal
@@ -20,6 +20,9 @@
 - [x] `write` `source/protocol/airplay/security/fairplay.[ch]` — isolate required session-key negotiation from pairing and media code.
 - [x] `edit` `Makefile` and logging configuration — add opt-in `TRACE_AIRPLAY` with mandatory secret redaction.
 - [x] `edit` `scripts/smoke_airplay.py` and fixtures — replay sanitized control transcript through teardown.
+- [x] `vendor` GPL PlayFair from a fixed UxPlay commit — preserve source, copyright, license and provenance without importing unrelated server/media code.
+- [x] `edit` `source/protocol/airplay/security/fairplay.[ch]` — adapt stage-one replies and wrapped-key decrypt through the isolated backend with bounded inputs and secure teardown.
+- [x] `test` deterministic FairPlay fixtures, malformed modes, state ordering and receiver capability advertisement with the real backend.
 - [ ] `bash` tests/build, then capture iPhone state/length/sequence trace — accept only a clean RECORD-to-TEARDOWN flow.
 
 ## Quality Checklist
@@ -40,9 +43,11 @@
 ## Implementation Notes
 - `/info`, `/server-info`, `/fp-setup`, OPTIONS, SETUP, RECORD, FLUSH, parameter and TEARDOWN handling now use explicit per-connection state and never call the player/UI directly.
 - The composed receiver owns pairing identity, TXT data, persistent control transport, lifecycle and optional mDNS in a deterministic start/stop order. Capability bits are removed when their callbacks are absent.
-- Independent behavior review found that the 16-byte FairPlay phase depends on a proprietary 142-byte response table/algorithm and wrapped-key derivation. Copying those constants from UxPlay/RPiPlay would violate the clean-room decision; the default backend therefore returns 501/fails closed, while tests inject an audited-key-backend-shaped callback.
+- The user-approved research route vendors only UxPlay's GPL PlayFair subset at commit `3ca7526387e894d6848b84c209de361c3bedd1ec`; the rest of the protocol, pairing, media, player, and UI remain NX-Cast implementations.
+- Stage-one modes, stage-two ordering/mode bounds, response capacity, secure state reset, wrapped-key output, and receiver capability publication have deterministic host coverage. Invalid mode input is rejected before entering the legacy algorithm.
 - Normal tests, ASan/UBSan, Clang static analysis, real TCP receiver/mDNS/pairing/transport smoke and strict Switch builds with trace disabled/enabled pass.
-- Blocker: a real iPhone cannot reach RECORD until a legally and technically acceptable FairPlay compatibility backend or an independently specified algorithm is available. No mirroring feature bit is advertised by the default runtime.
+- Remaining gate: automated compatibility and Switch development builds pass, but a real iPhone/Switch must still prove discovery through RECORD/TEARDOWN and H.264/AAC playback before the feature can be called compatible.
+- The user selected the GPL open-source research route. Integration must identify UxPlay and PlayFair as upstream sources, retain GPL notices, and must not describe the imported algorithm as clean-room or Apple-authorized.
 
 ## Files Changed
 - `makefile`
@@ -57,3 +62,5 @@
 - `scripts/airplay_receiver_smoke_server.c`
 - `scripts/smoke_airplay.py`
 - `scripts/smoke_airplay_receiver.py`
+- `scripts/test_airplay_fairplay.c`
+- `third_party/playfair/`

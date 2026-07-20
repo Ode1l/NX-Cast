@@ -286,7 +286,7 @@ static void test_info_and_fairplay(AirPlayHandlers *handlers)
     stage1[4] = 3u;
     CHECK(dispatch(handlers, &session, "POST", "/fp-setup", stage1, sizeof(stage1),
                    "application/octet-stream", &response));
-    CHECK(response.status_code == 501);
+    CHECK(response.status_code == 200 && response.body_length == 142u);
     airplay_rtsp_response_clear(&response);
     airplay_handlers_session_closed(&session, handlers);
 }

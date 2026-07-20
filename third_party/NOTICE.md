@@ -31,3 +31,19 @@ License: ISC, see `assets/licenses/LICENSE.libsodium.txt`.
 
 NX-Cast links libsodium for the Ed25519 operations required by AirPlay device
 identity and pairing. No libsodium source is vendored in this repository.
+
+PlayFair compatibility backend
+------------------------------
+
+Source: https://github.com/FDH2/UxPlay
+Commit: `3ca7526387e894d6848b84c209de361c3bedd1ec`
+License: GPL-3.0 for PlayFair; LGPL-2.1-or-later for the isolated response-table
+wrapper. See `third_party/playfair/LICENSE.md` and
+`third_party/playfair/PROVENANCE.md`.
+
+NX-Cast vendors only the PlayFair compatibility subset, not UxPlay's server,
+pairing, media, rendering, or platform code. The upstream project describes
+the legal status of this compatibility technique as unclear. Inclusion is for
+open-source research/homebrew interoperability and does not imply Apple
+authorization, MFi certification, DRM support, or legal suitability in every
+jurisdiction.

@@ -22,6 +22,7 @@ typedef enum
 
 typedef struct AirPlayFairPlay AirPlayFairPlay;
 
+bool airplay_fairplay_is_available(void);
 bool airplay_fairplay_create(AirPlayFairPlay **session_out);
 void airplay_fairplay_destroy(AirPlayFairPlay *session);
 AirPlayFairPlayResult airplay_fairplay_setup(AirPlayFairPlay *session,

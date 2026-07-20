@@ -37,14 +37,17 @@ def run_smoke(server_binary: Path, requested_port: int = 0) -> None:
             assert headers.get("content-type") == "application/x-apple-binary-plist"
             assert body.startswith(b"bplist00")
             info = plistlib.loads(body)
-            assert info["features"] == ((1 << 27) | (1 << 4) | (1 << 0))
-            assert info["features"] & ((1 << 7) | (1 << 8)) == 0
+            assert info["features"] == (
+                (1 << 27) | (1 << 8) | (1 << 7) | (1 << 4) | (1 << 0)
+            )
 
             stage1 = b"FPLY" + bytes((3,)) + bytes(11)
             request(connection, 2, "POST", "/fp-setup", stage1,
                     "application/octet-stream")
             _protocol, status, headers, body = reader.read()
-            assert status == 501 and headers.get("cseq") == "2" and body == b""
+            assert status == 200 and headers.get("cseq") == "2"
+            assert headers.get("content-type") == "application/octet-stream"
+            assert len(body) == 142 and body.startswith(b"FPLY")
 
             request(connection, 3, "SETUP", "/stream")
             _protocol, status, headers, body = reader.read()
