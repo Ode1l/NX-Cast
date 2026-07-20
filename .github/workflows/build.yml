@@ -72,6 +72,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          retry_gh() {
+            local attempt=1
+            local max_attempts=4
+
+            until "$@"; do
+              if (( attempt >= max_attempts )); then
+                return 1
+              fi
+              sleep $((attempt * 5))
+              attempt=$((attempt + 1))
+            done
+          }
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -f "${CONTINUOUS_TAG}" "${GITHUB_SHA}"
@@ -81,21 +94,20 @@ jobs:
           cat .github/release-notes.md > "${notes_file}"
           printf '\n\n## Continuous Build\n\nAutomatic development build from `%s` at `%s`.\n' \
             "${GITHUB_REF_NAME}" "${GITHUB_SHA}" >> "${notes_file}"
-          if gh release view "${CONTINUOUS_TAG}" >/dev/null 2>&1; then
-            gh release upload "${CONTINUOUS_TAG}" \
-              dist/NX-Cast.nro \
-              dist/NX-Cast-sdmc.zip \
-              --clobber
-            gh release edit "${CONTINUOUS_TAG}" \
-              --title "NX-Cast Continuous" \
-              --notes-file "${notes_file}" \
-              --prerelease
-          else
-            gh release create "${CONTINUOUS_TAG}" \
-              dist/NX-Cast.nro \
-              dist/NX-Cast-sdmc.zip \
+          if ! retry_gh gh release view "${CONTINUOUS_TAG}" >/dev/null 2>&1; then
+            if ! retry_gh gh release create "${CONTINUOUS_TAG}" \
               --title "NX-Cast Continuous" \
               --notes-file "${notes_file}" \
               --prerelease \
-              --target "${GITHUB_SHA}"
+              --target "${GITHUB_SHA}"; then
+              retry_gh gh release view "${CONTINUOUS_TAG}" >/dev/null
+            fi
           fi
+          retry_gh gh release upload "${CONTINUOUS_TAG}" \
+            dist/NX-Cast.nro \
+            dist/NX-Cast-sdmc.zip \
+            --clobber
+          retry_gh gh release edit "${CONTINUOUS_TAG}" \
+            --title "NX-Cast Continuous" \
+            --notes-file "${notes_file}" \
+            --prerelease
