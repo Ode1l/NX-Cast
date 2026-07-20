@@ -38,6 +38,7 @@
 - [x] GitHub Actions run `29728903616` passes host tests, the official devkitPro Docker build, strict Switch build, package checks, artifact upload and continuous Release publication for commit `f5e21b2`.
 - [x] The first physical-test log is explained before protocol traffic: the uploaded local NRO lacks Ed25519, and strict VS Code/nxlink build gates now prevent that artifact from being uploaded again.
 - [x] Normal and ASan/UBSan host suites, JSON/shell checks, expected missing-libsodium gate and a traced Switch development compile pass after startup diagnostic changes.
+- [x] GitHub Actions run `29745733797` passes the strict release pipeline for `c6fd4ca`; its 25,461,434-byte NRO replaces the incompatible local artifact for the next physical test.
 - [ ] iPhone trace reaches RECORD and TEARDOWN without retry loop or leaked secret data.
 
 ## Test Checklist
@@ -52,6 +53,7 @@
 - GitHub Actions run `29728903616` produced artifact `8455447635` and updated the continuous Release to the PlayFair integration commit, proving the pinned release environment builds and packages the backend.
 - The 2026-07-21 nxlink log contains only `integration unavailable` and no receiver/mDNS startup line. The uploaded NRO is 25,391,802 bytes and the local Switch pkg-config tree has no `libsodium.pc` or `libsodium.a`; therefore the failure is the known Ed25519 build dependency, not an observed mDNS or PlayFair protocol failure.
 - VS Code build tasks and `scripts/run_nxlink.sh` now set `NXCAST_REQUIRE_AIRPLAY_ED25519=1`; the all-trace task also sets `TRACE_AIRPLAY=1`. Integration, receiver and mDNS failures expose only stage/errno metadata, and opt-in traces use the visible WARN channel.
+- Run `29745733797` verifies the fix under the pinned release environment with Ed25519 enabled. The downloaded continuous NRO has SHA-256 `a07b9856af7cc33821e346f5a837f3c8b27d4a3cd649130d5c168213d1bceff7` and is ready for an upload-only discovery retest.
 - Remaining gate: automated compatibility and Switch development builds pass, but a real iPhone/Switch must still prove discovery through RECORD/TEARDOWN and H.264/AAC playback before the feature can be called compatible.
 - The user selected the GPL open-source research route. Integration must identify UxPlay and PlayFair as upstream sources, retain GPL notices, and must not describe the imported algorithm as clean-room or Apple-authorized.
 

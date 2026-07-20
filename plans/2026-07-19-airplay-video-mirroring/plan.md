@@ -224,6 +224,7 @@ None.
 - The local Switch development build links the PlayFair sources and produces `NX-Cast.nro`; the attested release build remains delegated to CI because this workstation still lacks `switch-libsodium` — verified by local build and the existing dependency gate, Step 7 GPL backend.
 - GitHub Actions run `29728903616` passes the host suite, official devkitPro Docker build, strict Switch release build, package checks, artifact upload and continuous Release update for commit `f5e21b2`; artifact `8455447635` is 32,614,855 bytes — verified remote release fact, Step 7 GPL backend.
 - The first physical discovery test uploaded a 25,391,802-byte local NRO without `switch-libsodium`; Ed25519 identity creation failed before receiver/mDNS startup. Strict local launch gates and stage-specific WARN-visible diagnostics now prevent and identify this condition — verified nxlink log, local pkg-config inventory, normal/sanitizer host suites and traced Switch compile, Step 7 hardware attempt 1.
+- GitHub Actions run `29745733797` passes the complete strict release pipeline for `c6fd4ca`; artifact `8462340191` is 32,615,208 bytes, and its 25,461,434-byte NRO was downloaded for the second discovery attempt — verified remote run, Release target and local SHA-256, Step 7 hardware attempt 1 fix.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -250,3 +251,4 @@ None.
 | 2026-07-20 | Step 7 GPL backend | Vendored the fixed UxPlay PlayFair subset with provenance/license preservation, added bounded stage-one/stage-two/key adaptation, fixed two imported undefined-arithmetic cases, enabled truthful mirror capability publication, and passed normal/sanitizer/receiver/package/Switch development checks; physical iPhone/Switch acceptance remains. |
 | 2026-07-20 | Step 7 GPL backend CI | Run `29728903616` passed every host, Docker, strict Switch, package, artifact and continuous Release stage for `f5e21b2`; only physical iPhone/Switch protocol and playback acceptance remains. |
 | 2026-07-21 | Step 7 hardware attempt 1 | Explained the pre-discovery failure as an Ed25519-disabled local NRO, made VS Code/nxlink builds require `switch-libsodium`, exposed redacted startup stages, and verified normal/sanitizer/target builds; discovery must be retried with a strict artifact. |
+| 2026-07-21 | Step 7 hardware attempt 1 fix | Run `29745733797` passed all strict CI stages and its continuous NRO replaced the incompatible local artifact; the next test can proceed directly with upload-only nxlink. |
