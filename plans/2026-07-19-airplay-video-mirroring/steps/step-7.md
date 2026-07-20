@@ -42,6 +42,7 @@
 - [x] Switch libsodium startup no longer uses its fatal `/dev/urandom` sysrandom path; the strict NRO registers the libnx `randomGet()` implementation before `sodium_init()`.
 - [x] GitHub Actions run `29748063877` passes the complete strict release pipeline and publishes the corrected 25,461,434-byte NRO to the continuous Release.
 - [x] Hardware attempt 3 startup is moved off the first-frame path, TRACE startup markers bypass the async logger, and mDNS parity adds the pairing identity plus truthful audio/no-separate-RAOP feature bits.
+- [x] GitHub Actions run `29750313369` passes the full host/container/package/release pipeline for `25cc6a3` and publishes the corrected 25,461,434-byte NRO.
 - [ ] iPhone trace reaches RECORD and TEARDOWN without retry loop or leaked secret data.
 
 ## Test Checklist
@@ -66,6 +67,7 @@
 - AirPlay startup now runs in a cancellable 256 KiB worker and shutdown joins it before receiver/player/network teardown. TRACE startup boundaries write and flush directly to stderr with monotonic timestamps, including handler allocation, control server, local address, mDNS bind/join/thread and announcement stages.
 - Switch mDNS now gets its address from libnx NIFM instead of probing an external `8.8.8.8` route. The AirPlay TXT record includes the identity-derived `pi`; advertised features include mirror audio and bit 30 because NX-Cast intentionally serves no separate RAOP/AirTunes music service.
 - Normal, TRACE and ASan/UBSan host suites, the attested non-TRACE release build and a strict TRACE Switch build pass after the hardware-attempt-3 changes. Physical discovery remains the acceptance gate.
+- GitHub Actions run `29750313369` produced artifact `8464258928` (32,613,962 bytes) and updated the continuous Release with a 25,461,434-byte NRO plus 19,768,260-byte SD package for commit `25cc6a3`.
 - Remaining gate: automated compatibility and Switch development builds pass, but a real iPhone/Switch must still prove discovery through RECORD/TEARDOWN and H.264/AAC playback before the feature can be called compatible.
 - The user selected the GPL open-source research route. Integration must identify UxPlay and PlayFair as upstream sources, retain GPL notices, and must not describe the imported algorithm as clean-room or Apple-authorized.
 
