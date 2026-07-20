@@ -40,6 +40,7 @@
 - [x] Normal and ASan/UBSan host suites, JSON/shell checks, expected missing-libsodium gate and a traced Switch development compile pass after startup diagnostic changes.
 - [x] GitHub Actions run `29745733797` passes the strict release pipeline for `c6fd4ca`; its 25,461,434-byte NRO replaces the incompatible local artifact for the next physical test.
 - [x] Switch libsodium startup no longer uses its fatal `/dev/urandom` sysrandom path; the strict NRO registers the libnx `randomGet()` implementation before `sodium_init()`.
+- [x] GitHub Actions run `29748063877` passes the complete strict release pipeline and publishes the corrected 25,461,434-byte NRO to the continuous Release.
 - [ ] iPhone trace reaches RECORD and TEARDOWN without retry loop or leaked secret data.
 
 ## Test Checklist
@@ -59,6 +60,7 @@
 - `crypto.c` now installs a process-wide `randombytes_implementation` backed by libnx `randomGet()` under an atomic one-time initialization gate. Integration and receiver startup expose pre/post stage markers so another pre-discovery failure can be localized without logging secrets.
 - Normal and ASan/UBSan host suites pass. A strict TRACE Switch build is 25,461,434 bytes with SHA-256 `8f3e243501f39cbb86027b3a8f6d6ced0af10213aff2f2842a3e6e372314af7a`; NRO strings and ELF disassembly verify the libnx marker and registration-before-initialization order.
 - The clean attested `release-build` and `scripts/package_release.sh` both pass with `airplay-randombytes=libnx`; the workspace was then rebuilt in strict TRACE mode without a release attestation for the physical retest.
+- GitHub Actions run `29748063877` produced artifact `8463310854` (32,614,837 bytes) and updated the continuous Release to code commit `bca12bc`, independently verifying the official Docker/Switch build and package path.
 - Remaining gate: automated compatibility and Switch development builds pass, but a real iPhone/Switch must still prove discovery through RECORD/TEARDOWN and H.264/AAC playback before the feature can be called compatible.
 - The user selected the GPL open-source research route. Integration must identify UxPlay and PlayFair as upstream sources, retain GPL notices, and must not describe the imported algorithm as clean-room or Apple-authorized.
 

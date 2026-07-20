@@ -226,6 +226,7 @@ None.
 - The first physical discovery test uploaded a 25,391,802-byte local NRO without `switch-libsodium`; Ed25519 identity creation failed before receiver/mDNS startup. Strict local launch gates and stage-specific WARN-visible diagnostics now prevent and identify this condition — verified nxlink log, local pkg-config inventory, normal/sanitizer host suites and traced Switch compile, Step 7 hardware attempt 1.
 - GitHub Actions run `29745733797` passes the complete strict release pipeline for `c6fd4ca`; artifact `8462340191` is 32,615,208 bytes, and its 25,461,434-byte NRO was downloaded for the second discovery attempt — verified remote run, Release target and local SHA-256, Step 7 hardware attempt 1 fix.
 - Installing `switch-libsodium` exposed a separate startup abort: its generic sysrandom backend opens `/dev/urandom` and terminates through `sodium_misuse()` when unavailable on libnx. NX-Cast now installs a `randomGet()`-backed randombytes implementation before `sodium_init()` and attests the marker in release builds — verified package archive/disassembly, sanitizer tests, strict traced Switch build and final-binary inspection, Step 7 hardware attempt 2 fix.
+- GitHub Actions run `29748063877` passes the complete official build/package/release workflow for `bca12bc`; artifact `8463310854` is 32,614,837 bytes and the continuous Release contains the corrected 25,461,434-byte NRO — verified GitHub run, artifact and Release APIs, Step 7 hardware attempt 2 fix.
 
 ## Implementation Log
 | Date | Step | Summary |
@@ -254,3 +255,4 @@ None.
 | 2026-07-21 | Step 7 hardware attempt 1 | Explained the pre-discovery failure as an Ed25519-disabled local NRO, made VS Code/nxlink builds require `switch-libsodium`, exposed redacted startup stages, and verified normal/sanitizer/target builds; discovery must be retried with a strict artifact. |
 | 2026-07-21 | Step 7 hardware attempt 1 fix | Run `29745733797` passed all strict CI stages and its continuous NRO replaced the incompatible local artifact; the next test can proceed directly with upload-only nxlink. |
 | 2026-07-21 | Step 7 hardware attempt 2 fix | Replaced libsodium's fatal `/dev/urandom` startup path with an atomic libnx `randomGet()` backend, added receiver startup boundaries and release attestation; physical startup/discovery retest remains. |
+| 2026-07-21 | Step 7 hardware attempt 2 CI | Run `29748063877` passed every host, Docker, strict Switch, package, artifact and continuous Release stage for code commit `bca12bc`; physical startup/discovery retest remains. |

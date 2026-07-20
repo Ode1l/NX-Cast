@@ -28,7 +28,7 @@
 - GitHub Actions build 98 passed the complete pipeline for capability/stack hardening commit `d1a4763`; artifact `8453509701` is 32,384,049 bytes.
 - GitHub Actions run `29728903616` passed the complete pipeline for GPL PlayFair commit `f5e21b2`; artifact `8455447635` is 32,614,855 bytes and the continuous Release points to that commit.
 - GitHub Actions run `29745733797` passed the strict Ed25519/deko3d/ImGui pipeline for discovery-build fix `c6fd4ca`; artifact `8462340191` is 32,615,208 bytes and the 25,461,434-byte continuous NRO was downloaded into the workspace for the next upload-only test.
-- The local corrected clean release build, SD package verification, normal host suite, ASan/UBSan suite and strict TRACE rebuild all pass; remote CI for this fix is pending push.
+- The local corrected clean release build, SD package verification, normal host suite, ASan/UBSan suite and strict TRACE rebuild all pass. GitHub Actions run `29748063877` also passed and updated the continuous Release to `bca12bc`.
 
 ## Next Actions
 1. Upload the corrected strict TRACE NRO and confirm startup reaches the `ed25519`, receiver and mDNS stage markers without resetting nxlink.
