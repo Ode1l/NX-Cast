@@ -1,6 +1,6 @@
 # Step 15: Hardening and Release Readiness
 
-> Status: BLOCKED
+> Status: IN_PROGRESS
 > Created: 2026-07-19
 
 ## Goal
@@ -21,6 +21,8 @@
 - [x] `write` `docs/AIRPLAY_DEVELOPMENT.md` — document architecture, phase support, test matrix, privacy/security and limitations.
 - [x] `edit` `README.md`, changelog and release notes — document experimental URL/HLS without Apple certification or mirroring claims.
 - [x] `bash` strict Docker build and release package checks — GitHub Actions run 29695349829 completed every build/package/release step successfully.
+- [x] `test` composed receiver capability downgrade — configure URL/HLS plus mirror features without a FairPlay unwrap backend and verify `/info` advertises URL/HLS only.
+- [x] `fix` AirPlay error-response stack budget — move the roughly 100 KiB RTSP response object off the 64 KiB Switch client-thread stack and rerun the complete suite under ASan/UBSan.
 - [ ] `hardware` 60-minute/10-reconnect real-device acceptance — physical iPhone/Switch acceptance remains pending behind Step 7.
 
 ## Quality Checklist
@@ -32,6 +34,7 @@
 
 ## Validation Checklist
 - [x] All host tests and strict local/Docker Switch builds exit 0; the remote build requires libmpv, deko3d, ImGui and AirPlay Ed25519.
+- [x] The complete host suite exits 0 under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection disabled because macOS does not support that ASan mode.
 - [x] Remote release archive contains the 25,354,938-byte NRO, intact IPTV presets including `sources.txt`, AirPlay notice/licenses, and no keys, pairings, traces, dumps, captures or reference source.
 - [x] Every unavailable real-device matrix cell is documented without claiming compatibility.
 
@@ -50,11 +53,14 @@
 - GitHub Actions run `29695349829` passed host tests, strict Ed25519 Switch build, package generation, artifact upload and continuous Release update. The artifact is `nx-cast-04d0b98bb4c6f15442af69c362916cfe8cd76eb3` (32,384,206 bytes).
 - The downloaded continuous SD archive is 19,647,201 bytes and contains a 25,354,938-byte NRO plus the three packaged IPTV source entries. Its SHA-256 is `74a3a2814c7dd92cec4ec310858d31efb0c44678f77cd6a2128a309fbd04f8cb`.
 - GitHub Actions build 96 initially failed only at the continuous Release update with `Error creating policy` during a GitHub API incident. Attempt 2 of run `29709604848` completed successfully without a source change; its 30.9 MB artifact SHA-256 is `9f9da11c83a6a1401a4105395b1e3d119d21726ce86650d2cd23a4352a619d57`.
+- The composed receiver smoke deliberately requests URL/HLS and mirror/rotation features while omitting the FairPlay unwrap callback. Its binary `/info` response must advertise only video, HLS and legacy pairing, proving the release does not overclaim mirroring capability.
+- ASan exposed `airplay_server_send_error()` allocating an `AirPlayRtspResponse` of roughly 100 KiB on a Switch client thread configured with a 64 KiB stack. The response is now heap-backed, and the complete ASan/UBSan plus normal host suite and strict deko3d Switch build pass.
 
 ## Files Changed
 - `Dockerfile`, `.github/workflows/build.yml`, `.github/workflows/release.yml`, `scripts/docker_build_release.sh`
 - `scripts/package_release.sh`, `makefile`, `assets/airplay/README.txt`, `assets/licenses/LICENSE.libsodium.txt`
 - `scripts/test_airplay_crypto.c`, `scripts/airplay_pairing_smoke_server.c`, `scripts/airplay_receiver_smoke_server.c`
+- `scripts/smoke_airplay_receiver.py`, `source/protocol/airplay/server.c`
 - `source/protocol/airplay/discovery/mdns.c`, `source/protocol/airplay/media/stream_bridge.c`
 - `README.md`, `docs/README.md`, `docs/install.md`, `docs/AIRPLAY_DEVELOPMENT.md`
 - `.github/release-notes.md`, `CHANGELOG.md`, `third_party/NOTICE.md`

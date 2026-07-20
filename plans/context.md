@@ -10,6 +10,7 @@
 - Steps 10-14 are implemented and covered by host/sanitizer/strict Switch builds, but their real-iPhone acceptance gates remain blocked by Step 7's standard FairPlay unwrap boundary.
 - Step 15 host tests, Docker build, strict Ed25519/libmpv/deko3d/ImGui build, package checks and continuous Release pipeline are automated and green.
 - Mirroring is intentionally not advertised; experimental non-DRM URL/HLS support remains the only AirPlay capability suitable for release claims.
+- The composed receiver verifies that missing FairPlay unwrap support clears mirror/rotation capability bits, and the RTSP error path no longer overflows the 64 KiB Switch client-thread stack.
 
 ## Current Blockers
 - A clean-room, legally usable implementation of the 142-byte FairPlay key unwrap boundary is unavailable, so a real iPhone cannot deliver usable standard mirror session keys.

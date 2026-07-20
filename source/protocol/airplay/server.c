@@ -180,13 +180,17 @@ static bool airplay_server_send_response(int socket_fd, AirPlayRtspResponse *res
 
 static void airplay_server_send_error(int socket_fd, int status_code)
 {
-    AirPlayRtspResponse response;
+    AirPlayRtspResponse *response = calloc(1, sizeof(*response));
 
-    if (!airplay_rtsp_response_init(&response, "RTSP/1.0", status_code))
+    if (!response)
         return;
-    response.close_connection = true;
-    (void)airplay_server_send_response(socket_fd, &response);
-    airplay_rtsp_response_clear(&response);
+    if (airplay_rtsp_response_init(response, "RTSP/1.0", status_code))
+    {
+        response->close_connection = true;
+        (void)airplay_server_send_response(socket_fd, response);
+        airplay_rtsp_response_clear(response);
+    }
+    free(response);
 }
 
 static bool airplay_server_grow_buffer(uint8_t **buffer, size_t *capacity, size_t used)

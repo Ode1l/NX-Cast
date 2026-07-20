@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import plistlib
 import socket
 import subprocess
 from pathlib import Path
@@ -35,6 +36,9 @@ def run_smoke(server_binary: Path, requested_port: int = 0) -> None:
             assert headers.get("cseq") == "1"
             assert headers.get("content-type") == "application/x-apple-binary-plist"
             assert body.startswith(b"bplist00")
+            info = plistlib.loads(body)
+            assert info["features"] == ((1 << 27) | (1 << 4) | (1 << 0))
+            assert info["features"] & ((1 << 7) | (1 << 8)) == 0
 
             stage1 = b"FPLY" + bytes((3,)) + bytes(11)
             request(connection, 2, "POST", "/fp-setup", stage1,

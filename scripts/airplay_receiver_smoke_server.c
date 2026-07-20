@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "protocol/airplay/discovery/mdns.h"
+#include "protocol/airplay/media/remote_video.h"
 #include "protocol/airplay/receiver.h"
 
 static volatile sig_atomic_t g_stop_requested;
@@ -45,9 +46,49 @@ static void remove_test_storage(const char *directory)
     rmdir(directory);
 }
 
+static bool remote_load(const char *url, const char *metadata, void *user_data)
+{
+    (void)url;
+    (void)metadata;
+    (void)user_data;
+    return true;
+}
+
+static bool remote_action(void *user_data)
+{
+    (void)user_data;
+    return true;
+}
+
+static bool remote_seek(int position_ms, void *user_data)
+{
+    (void)position_ms;
+    (void)user_data;
+    return true;
+}
+
+static bool remote_snapshot(AirPlayRemoteVideoSnapshot *snapshot_out,
+                            void *user_data)
+{
+    (void)user_data;
+    if (!snapshot_out)
+        return false;
+    memset(snapshot_out, 0, sizeof(*snapshot_out));
+    snapshot_out->state = AIRPLAY_REMOTE_VIDEO_STOPPED;
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     AirPlayReceiverConfig config = {0};
+    AirPlayRemoteVideoOps remote_ops = {
+        .load = remote_load,
+        .play = remote_action,
+        .pause = remote_action,
+        .stop = remote_action,
+        .seek_ms = remote_seek,
+        .snapshot = remote_snapshot};
+    AirPlayRemoteVideo *remote_video = NULL;
     char storage_template[] = "/tmp/nxcast-airplay-receiver-smoke.XXXXXX";
     char *storage_directory;
     unsigned long port = 0u;
@@ -68,11 +109,17 @@ int main(int argc, char **argv)
 
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
+    if (!airplay_remote_video_create(&remote_ops, &remote_video))
+        goto cleanup;
     config.friendly_name = "NX-Cast Test";
     config.storage_directory = storage_directory;
     config.control_port = (uint16_t)port;
-    config.features = AIRPLAY_MDNS_FEATURE_LEGACY_PAIRING;
+    config.features = AIRPLAY_MDNS_FEATURE_VIDEO |
+                      AIRPLAY_MDNS_FEATURE_HLS |
+                      AIRPLAY_MDNS_FEATURE_SCREEN_MIRROR |
+                      AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE;
     config.enable_discovery = false;
+    config.remote_video = remote_video;
     if (!airplay_receiver_start(&config))
         goto cleanup;
     printf("READY %u\n", airplay_receiver_port());
@@ -83,6 +130,7 @@ int main(int argc, char **argv)
 
 cleanup:
     airplay_receiver_stop();
+    airplay_remote_video_destroy(remote_video);
     remove_test_storage(storage_directory);
     return result;
 }
