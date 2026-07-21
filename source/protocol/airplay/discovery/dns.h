@@ -7,6 +7,7 @@
 
 #define AIRPLAY_DNS_PACKET_MAX 1500u
 #define AIRPLAY_DNS_NAME_MAX 255u
+#define AIRPLAY_DNS_SERVICE_NAME_MAX 31u
 #define AIRPLAY_DNS_TXT_MAX 512u
 
 #define AIRPLAY_DNS_TYPE_A 1u
@@ -17,6 +18,7 @@
 
 typedef struct
 {
+    char service_name[AIRPLAY_DNS_SERVICE_NAME_MAX + 1u];
     char instance_name[64];
     char host_name[64];
     uint16_t port;

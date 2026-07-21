@@ -73,6 +73,7 @@ typedef struct
 {
     uint64_t id;
     uint32_t request_count;
+    uint32_t peer_ipv4_address;
     AirPlayRtspSessionState state;
     void *security_context;
     void *protocol_context;
@@ -107,6 +108,8 @@ bool airplay_rtsp_response_encode(const AirPlayRtspResponse *response,
 void airplay_rtsp_response_clear(AirPlayRtspResponse *response);
 
 void airplay_rtsp_session_init(AirPlayRtspSession *session, uint64_t id);
+void airplay_rtsp_session_set_peer_ipv4(AirPlayRtspSession *session,
+                                        uint32_t address);
 bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
                            const AirPlayRtspRequest *request,
                            AirPlayRtspRouteHandler handler,

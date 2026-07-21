@@ -235,24 +235,31 @@ void player_view_sync(const PlayerSnapshot *snapshot)
     }
     else
     {
-        if (snapshot->has_media &&
-            (snapshot->state == PLAYER_STATE_STOPPED || snapshot->state == PLAYER_STATE_IDLE) &&
-            g_view.status.active_view == PLAYER_VIEW_VIDEO &&
-            g_view.last_video_state_ms > 0)
-        {
-            if (g_view.stop_hold_until_ms == 0)
-                g_view.stop_hold_until_ms = g_view.last_video_state_ms + PLAYER_VIEW_STOP_HOLD_MS;
-
-            keep_video_hold = now_ms < g_view.stop_hold_until_ms;
-        }
-
-        if (keep_video_hold)
-            g_view.status.desired_view = PLAYER_VIEW_VIDEO;
-        else
+        if (g_view.home_override)
         {
             g_view.stop_hold_until_ms = 0;
-            g_view.home_override = false;
             g_view.status.desired_view = PLAYER_VIEW_HOME;
+        }
+        else
+        {
+            if (snapshot->has_media &&
+                (snapshot->state == PLAYER_STATE_STOPPED || snapshot->state == PLAYER_STATE_IDLE) &&
+                g_view.status.active_view == PLAYER_VIEW_VIDEO &&
+                g_view.last_video_state_ms > 0)
+            {
+                if (g_view.stop_hold_until_ms == 0)
+                    g_view.stop_hold_until_ms = g_view.last_video_state_ms + PLAYER_VIEW_STOP_HOLD_MS;
+
+                keep_video_hold = now_ms < g_view.stop_hold_until_ms;
+            }
+
+            if (keep_video_hold)
+                g_view.status.desired_view = PLAYER_VIEW_VIDEO;
+            else
+            {
+                g_view.stop_hold_until_ms = 0;
+                g_view.status.desired_view = PLAYER_VIEW_HOME;
+            }
         }
     }
 

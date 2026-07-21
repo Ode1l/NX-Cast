@@ -142,21 +142,49 @@ def wait_for_ready(process: subprocess.Popen[str], timeout: float = 5.0) -> tupl
     raise AssertionError("timed out waiting for mDNS server")
 
 
-def validate_records(records: list[Record], instance: str, expected_ttl: int) -> None:
+def validate_records(
+    records: list[Record], instance: str, service: str, expected_ttl: int
+) -> None:
     assert len(records) == 4, records
     by_kind = {record.kind: record for record in records}
     assert set(by_kind) == {1, 12, 16, 33}, by_kind
     assert all(record.ttl == expected_ttl for record in records), records
-    assert by_kind[12].name.lower() == "_airplay._tcp.local"
-    assert by_kind[33].name == f"{instance}._airplay._tcp.local"
-    assert by_kind[16].name == f"{instance}._airplay._tcp.local"
+    assert by_kind[12].name.lower() == service
+    assert by_kind[33].name == f"{instance}.{service}"
+    assert by_kind[16].name == f"{instance}.{service}"
     txt = by_kind[16].data
-    assert b"features=0x8000000,0x0" in txt, txt
+    if service == "_airplay._tcp.local":
+        assert b"features=0x5A7FFEE6,0x0" in txt, txt
+        assert b"pi=00112233-4455-4677-8899-aabbccddeeff" in txt, txt
+    else:
+        assert b"ft=0x5A7FFEE6,0x0" in txt, txt
+        assert b"ch=2" in txt, txt
+        assert b"et=0,3,5" in txt, txt
+        assert b"sf=0x8c" in txt, txt
+        assert b"txtvers=1" in txt, txt
     assert b"pw=true" in txt, txt
     assert b"pk=" in txt, txt
-    assert b"pi=00112233-4455-4677-8899-aabbccddeeff" in txt, txt
     assert struct.unpack("!H", by_kind[33].data[4:6])[0] == 7000
     assert by_kind[1].data == socket.inet_aton("127.0.0.1")
+
+
+def receive_services(
+    sock: socket.socket,
+    expected: dict[str, str],
+    expected_ttl: int,
+    timeout: float = 3.0,
+) -> None:
+    remaining = dict(expected)
+    deadline = time.monotonic() + timeout
+    while remaining:
+        packet = receive_packet(sock, max(0.01, deadline - time.monotonic()))
+        transaction_id, flags, records = parse_packet(packet)
+        assert transaction_id == 0 and flags == 0x8400
+        ptr = next(record for record in records if record.kind == 12)
+        service = ptr.name.lower()
+        if service not in remaining:
+            continue
+        validate_records(records, remaining.pop(service), service, expected_ttl)
 
 
 def run_smoke(server_binary: Path) -> None:
@@ -172,9 +200,12 @@ def run_smoke(server_binary: Path) -> None:
     )
     try:
         port, instance = wait_for_ready(process)
-        transaction_id, flags, records = parse_packet(receive_packet(monitor))
-        assert transaction_id == 0 and flags == 0x8400
-        validate_records(records, instance, 120)
+        raop_instance = f"101112131415@{instance}"
+        services = {
+            "_airplay._tcp.local": instance,
+            "_raop._tcp.local": raop_instance,
+        }
+        receive_services(monitor, services, 120)
 
         query = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         query.bind(("127.0.0.1", 0))
@@ -182,17 +213,34 @@ def run_smoke(server_binary: Path) -> None:
             query.sendto(make_query("_airplay._tcp.local"), ("127.0.0.1", port))
             transaction_id, flags, records = parse_packet(receive_packet(query))
             assert transaction_id == 0x1234 and flags == 0x8400
-            validate_records(records, instance, 120)
+            validate_records(records, instance, "_airplay._tcp.local", 120)
+
+            query.sendto(make_query("_raop._tcp.local"), ("127.0.0.1", port))
+            transaction_id, flags, records = parse_packet(receive_packet(query))
+            assert transaction_id == 0x1234 and flags == 0x8400
+            validate_records(records, raop_instance, "_raop._tcp.local", 120)
 
             query.sendto(make_txt_conflict(instance), ("127.0.0.1", port))
-            _, _, renamed_records = parse_packet(receive_packet(monitor))
-            validate_records(renamed_records, f"{instance} (2)", 120)
+            receive_services(
+                monitor,
+                {
+                    "_airplay._tcp.local": f"{instance} (2)",
+                    "_raop._tcp.local": f"101112131415@{instance} (2)",
+                },
+                120,
+            )
         finally:
             query.close()
 
         process.terminate()
-        _, _, goodbye = parse_packet(receive_packet(monitor))
-        validate_records(goodbye, f"{instance} (2)", 0)
+        receive_services(
+            monitor,
+            {
+                "_airplay._tcp.local": f"{instance} (2)",
+                "_raop._tcp.local": f"101112131415@{instance} (2)",
+            },
+            0,
+        )
         process.wait(timeout=5.0)
     finally:
         monitor.close()

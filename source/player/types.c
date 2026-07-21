@@ -29,7 +29,7 @@ bool player_media_copy(PlayerMedia *out, const PlayerMedia *media)
         return false;
     if (!media)
     {
-        memset(out, 0, sizeof(*out));
+        player_media_clear(out);
         return true;
     }
 
@@ -91,7 +91,7 @@ bool player_event_copy(PlayerEvent *out, const PlayerEvent *event)
         return false;
     if (!event)
     {
-        memset(out, 0, sizeof(*out));
+        player_event_clear(out);
         return true;
     }
 

@@ -80,6 +80,7 @@ static bool g_sync_ready = false;
 static mpv_handle *g_mpv = NULL;
 static mpv_render_context *g_render_ctx = NULL;
 static AirPlayStreamBridge *g_airplay_stream_bridge = NULL;
+static bool g_airplay_stream_registered = false;
 static bool g_render_update_pending = false;
 
 typedef enum
@@ -199,15 +200,49 @@ static int libmpv_airplay_stream_open(void *user_data, char *uri,
 
 bool player_libmpv_set_airplay_stream_bridge(AirPlayStreamBridge *bridge)
 {
-    AirPlayStreamBridge *previous;
+    AirPlayStreamBridge *previous = NULL;
+    int registration_rc = 0;
+    bool registered_now = false;
+    bool player_available = false;
+    bool ok = true;
 
     libmpv_ensure_sync();
-    if (bridge)
-        airplay_stream_bridge_retain(bridge);
     mutexLock(&g_mutex);
-    previous = g_airplay_stream_bridge;
-    g_airplay_stream_bridge = bridge;
+    player_available = g_mpv != NULL;
+    if (bridge && !g_airplay_stream_registered)
+    {
+        if (!player_available)
+            ok = false;
+        else
+        {
+            registration_rc = mpv_stream_cb_add_ro(
+                g_mpv, "airplay", NULL, libmpv_airplay_stream_open);
+            ok = registration_rc >= 0;
+            if (ok)
+            {
+                g_airplay_stream_registered = true;
+                registered_now = true;
+            }
+        }
+    }
+    if (ok)
+    {
+        if (bridge)
+            airplay_stream_bridge_retain(bridge);
+        previous = g_airplay_stream_bridge;
+        g_airplay_stream_bridge = bridge;
+    }
     mutexUnlock(&g_mutex);
+
+    if (!ok)
+    {
+        log_error("[player-libmpv] AirPlay stream registration failed: %s\n",
+                  player_available ? mpv_error_string(registration_rc)
+                                   : "player unavailable");
+        return false;
+    }
+    if (registered_now)
+        log_info("[player-libmpv] AirPlay stream protocol registered on demand\n");
 
     if (previous)
     {
@@ -493,6 +528,10 @@ static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
         log_error("[player-libmpv][%s] %s\n", msg->prefix ? msg->prefix : "mpv", text);
     else if (msg->log_level <= MPV_LOG_LEVEL_WARN)
         log_warn("[player-libmpv][%s] %s\n", msg->prefix ? msg->prefix : "mpv", text);
+#if defined(NXCAST_MEDIA_TRACE_VERBOSE) && NXCAST_MEDIA_TRACE_VERBOSE
+    else if (msg->log_level <= MPV_LOG_LEVEL_INFO)
+        log_info("[player-libmpv][%s] %s\n", msg->prefix ? msg->prefix : "mpv", text);
+#endif
     else
         log_debug("[player-libmpv][%s] %s\n", msg->prefix ? msg->prefix : "mpv", text);
 
@@ -1231,6 +1270,7 @@ static bool libmpv_available(void)
 static bool libmpv_init(void)
 {
     int rc;
+    const char *mpv_log_level;
     bool process_volume = false;
     double neutral_volume = 100.0;
     int neutral_mute = 0;
@@ -1268,8 +1308,7 @@ static bool libmpv_init(void)
 #else
     libmpv_set_option_string_checked("hwdec", "yes");
 #endif
-    // Keep nvtegra hardware decoding, but do not let lavc reuse decoder-owned
-    // surfaces directly while deko3d may still be presenting the previous file.
+    // This is the v0.2.0-tested nvtegra/deko3d surface handoff policy.
     libmpv_set_option_string_checked("vd-lavc-dr", "no");
     libmpv_set_option_string_checked("vd-lavc-threads", "4");
     libmpv_set_option_string_checked("gpu-hwdec-interop", "auto");
@@ -1277,17 +1316,6 @@ static bool libmpv_init(void)
     libmpv_set_option_string_checked("audio-channels", "stereo");
     libmpv_set_option_string_checked("audio-client-name", "NX-Cast");
     libmpv_set_option_string_checked("ao", "hos");
-
-    rc = mpv_stream_cb_add_ro(g_mpv, "airplay", NULL,
-                              libmpv_airplay_stream_open);
-    if (rc < 0)
-    {
-        log_error("[player-libmpv] AirPlay stream registration failed: %s\n",
-                  mpv_error_string(rc));
-        mpv_terminate_destroy(g_mpv);
-        g_mpv = NULL;
-        return false;
-    }
 
     rc = mpv_initialize(g_mpv);
     if (rc < 0)
@@ -1307,7 +1335,18 @@ static bool libmpv_init(void)
             process_volume = false;
     }
 
-    mpv_request_log_messages(g_mpv, log_get_mpv_level());
+#if defined(NXCAST_MEDIA_TRACE_VERBOSE) && NXCAST_MEDIA_TRACE_VERBOSE
+    mpv_log_level = "info";
+#else
+    mpv_log_level = log_get_mpv_level();
+#endif
+    rc = mpv_request_log_messages(g_mpv, mpv_log_level);
+    if (rc < 0)
+        log_warn("[player-libmpv] log subscription level=%s failed: %s\n",
+                 mpv_log_level, mpv_error_string(rc));
+    else
+        log_info("[player-libmpv] log subscription level=%s\n",
+                 mpv_log_level);
     if (!process_volume)
         mpv_observe_property(g_mpv, LIBMPV_OBS_VOLUME, "volume", MPV_FORMAT_DOUBLE);
     mpv_observe_property(g_mpv, LIBMPV_OBS_TIME_POS, "time-pos", MPV_FORMAT_DOUBLE);
@@ -1341,6 +1380,7 @@ static void libmpv_deinit(void)
     g_mpv = NULL;
     airplay_bridge = g_airplay_stream_bridge;
     g_airplay_stream_bridge = NULL;
+    g_airplay_stream_registered = false;
     libmpv_reset_locked();
     mutexUnlock(&g_mutex);
 
@@ -1383,7 +1423,9 @@ static bool libmpv_set_media(const PlayerMedia *media)
         return false;
 
     libmpv_log_trace("set_media", "begin", "-", media->uri);
+    libmpv_log_trace("set_media", "mutex-wait", "-", media->uri);
     mutexLock(&g_mutex);
+    libmpv_log_trace("set_media", "mutex-acquired", "-", media->uri);
     previous_uri = g_uri;
     previous_has_media = g_has_media;
     previous_last_error = g_last_error;
@@ -1421,7 +1463,9 @@ static bool libmpv_play(void)
 {
     LibmpvPendingEvents pending = {0};
 
+    libmpv_log_trace("Play", "mutex-wait", "-", NULL);
     mutexLock(&g_mutex);
+    libmpv_log_trace("Play", "mutex-acquired", "-", g_uri);
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0')
     {
         mutexUnlock(&g_mutex);
@@ -1505,7 +1549,9 @@ static bool libmpv_stop(void)
     int rc;
     LibmpvPendingEvents pending = {0};
 
+    libmpv_log_trace("Stop", "mutex-wait", "-", NULL);
     mutexLock(&g_mutex);
+    libmpv_log_trace("Stop", "mutex-acquired", "-", g_uri);
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0')
     {
         mutexUnlock(&g_mutex);

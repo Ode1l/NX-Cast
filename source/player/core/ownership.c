@@ -11,6 +11,7 @@ typedef pthread_mutex_t PlayerOwnershipMutex;
 #endif
 
 static PlayerOwnershipMutex g_mutex;
+static PlayerOwnershipMutex g_transition_mutex;
 static PlayerOwnershipLease g_current;
 static uint32_t g_next_generation;
 static bool g_ready;
@@ -21,8 +22,10 @@ static void ownership_init(void)
         return;
 #ifdef __SWITCH__
     mutexInit(&g_mutex);
+    mutexInit(&g_transition_mutex);
 #else
     (void)pthread_mutex_init(&g_mutex, NULL);
+    (void)pthread_mutex_init(&g_transition_mutex, NULL);
 #endif
     g_ready = true;
 }
@@ -43,6 +46,25 @@ static void ownership_unlock(void)
     mutexUnlock(&g_mutex);
 #else
     pthread_mutex_unlock(&g_mutex);
+#endif
+}
+
+void player_ownership_transition_begin(void)
+{
+    ownership_init();
+#ifdef __SWITCH__
+    mutexLock(&g_transition_mutex);
+#else
+    pthread_mutex_lock(&g_transition_mutex);
+#endif
+}
+
+void player_ownership_transition_end(void)
+{
+#ifdef __SWITCH__
+    mutexUnlock(&g_transition_mutex);
+#else
+    pthread_mutex_unlock(&g_transition_mutex);
 #endif
 }
 

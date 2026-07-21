@@ -9,11 +9,11 @@
       "preLaunchTask": "NX-Cast: Rebuild"
     },
     {
-      "name": "NX-Cast: Rebuild (Trace Media+Input+AirPlay)",
+      "name": "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)",
       "type": "node-terminal",
       "request": "launch",
       "command": "echo \"[launch] NX-Cast trace rebuild finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild (Trace Media+Input+AirPlay)"
+      "preLaunchTask": "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)"
     },
     {
       "name": "NX-Cast: Rebuild & Upload",
@@ -30,11 +30,18 @@
       "preLaunchTask": "NX-Cast: Rebuild + Nxlink Upload + Server"
     },
     {
-      "name": "NX-Cast: Trace Rebuild & Upload + nxlink server",
+      "name": "NX-Cast: Playback Baseline Trace (AirPlay Off) Rebuild & Upload + nxlink server",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "echo \"[launch] NX-Cast playback baseline trace session finished\"",
+      "preLaunchTask": "NX-Cast: Rebuild Playback Baseline Trace + Nxlink Upload + Server"
+    },
+    {
+      "name": "NX-Cast: Full Trace (DLNA+IPTV+AirPlay) Rebuild & Upload + nxlink server",
       "type": "node-terminal",
       "request": "launch",
       "command": "echo \"[launch] NX-Cast trace rebuild and nxlink server session finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild Trace + Nxlink Upload + Server"
+      "preLaunchTask": "NX-Cast: Rebuild Full Trace + Nxlink Upload + Server"
     },
     {
       "name": "NX-Cast: Upload",

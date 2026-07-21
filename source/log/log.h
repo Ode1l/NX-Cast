@@ -13,10 +13,33 @@ typedef enum
     LOG_LEVEL_ERROR
 } LogLevel;
 
+typedef struct
+{
+    uint64_t enqueued;
+    uint64_t processed;
+    uint64_t queue_dropped;
+    uint64_t mirror_dropped;
+    uint64_t mirror_failures;
+    size_t queue_depth;
+    size_t queue_high_watermark;
+    uint64_t worker_heartbeat_age_ms;
+    bool worker_running;
+    bool worker_waiting;
+    bool socket_mirror_enabled;
+} LogRuntimeStats;
+
+#ifndef NXCAST_LOG_LEVEL_DEFAULT
+#if defined(NXCAST_TRACE_BUILD) && NXCAST_TRACE_BUILD
+#define NXCAST_LOG_LEVEL_DEFAULT LOG_LEVEL_INFO
+#else
 #define NXCAST_LOG_LEVEL_DEFAULT LOG_LEVEL_WARN
+#endif
+#endif
 
 bool log_runtime_init(void);
 void log_runtime_shutdown(void);
+void log_set_socket_mirror(int socket_fd);
+bool log_get_runtime_stats(LogRuntimeStats *stats_out);
 
 void log_debug(const char *fmt, ...);
 void log_info(const char *fmt, ...);

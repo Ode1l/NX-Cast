@@ -163,7 +163,8 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
         !config->transport_prepare_callback ||
         !config->mirror_open_callback)
         advertised_features &= ~(AIRPLAY_MDNS_FEATURE_SCREEN_MIRROR |
-                                 AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE);
+                                 AIRPLAY_MDNS_FEATURE_SCREEN_ROTATE |
+                                 AIRPLAY_MDNS_FEATURES_FAIRPLAY_AUTH);
     if (!config->remote_video)
         advertised_features &= ~(AIRPLAY_MDNS_FEATURE_VIDEO |
                                  AIRPLAY_MDNS_FEATURE_HLS);
@@ -248,9 +249,6 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     }
     g_receiver.running = true;
     airplay_crypto_secure_zero(public_key, sizeof(public_key));
-    AIRPLAY_TRACE("[airplay] receiver started port=%u discovery=%u features=%llx\n",
-                  airplay_server_port(), config->enable_discovery ? 1u : 0u,
-                  (unsigned long long)advertised_features);
     return true;
 
 failure:

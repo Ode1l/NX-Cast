@@ -12,10 +12,13 @@
 #include <libavformat/avformat.h>
 #include <switch.h>
 
+#include "app/protocol_coordinator.h"
 #include "iptv/fetch.h"
+#include "iptv/url.h"
 #include "iptv/xmltv.h"
 #include "log/log.h"
 #include "player/renderer.h"
+#include "player/trace.h"
 
 #define IPTV_BASE_DIR "sdmc:/switch/NX-Cast"
 #define IPTV_CACHE_DIR IPTV_ROOT_DIR "/cache"
@@ -81,6 +84,7 @@ static char g_search[IPTV_SEARCH_MAX];
 static char g_status[IPTV_STATUS_MAX];
 static char g_last_name[IPTV_NAME_MAX];
 static char g_last_url[IPTV_URL_MAX];
+static uint64_t g_playback_token;
 static bool g_preinstalled_refresh_needed;
 static int g_preinstalled_changed_count;
 
@@ -217,25 +221,6 @@ bool iptv_url_looks_like_playlist(const char *url)
            iptv_url_has_query_token(url, "playlist=m3u");
 }
 
-static bool iptv_url_has_scheme(const char *url)
-{
-    const char *separator;
-
-    if (!url || !url[0])
-        return false;
-    if (strncasecmp(url, "sdmc:/", 6) == 0 || url[0] == '/')
-        return true;
-    separator = strstr(url, "://");
-    if (!separator || separator == url)
-        return false;
-    for (const char *p = url; p < separator; ++p)
-    {
-        if (!isalnum((unsigned char)*p) && *p != '+' && *p != '-' && *p != '.')
-            return false;
-    }
-    return true;
-}
-
 static bool iptv_url_is_playable(const char *url)
 {
     if (!url || !url[0])
@@ -250,73 +235,6 @@ static bool iptv_url_is_playable(const char *url)
            strncasecmp(url, "file://", 7) == 0 ||
            strncasecmp(url, "sdmc:/", 6) == 0 ||
            url[0] == '/';
-}
-
-static void iptv_path_dirname(const char *path, char *out, size_t out_size)
-{
-    const char *slash;
-    size_t length;
-
-    if (!out || out_size == 0)
-        return;
-    out[0] = '\0';
-    slash = path ? strrchr(path, '/') : NULL;
-    if (!slash)
-        return;
-    length = (size_t)(slash - path);
-    if (length >= out_size)
-        length = out_size - 1;
-    memcpy(out, path, length);
-    out[length] = '\0';
-}
-
-static void iptv_resolve_url(const char *base, const char *reference, char *out, size_t out_size)
-{
-    const char *authority;
-    const char *path;
-    char directory[IPTV_URL_MAX];
-
-    if (!out || out_size == 0)
-        return;
-    out[0] = '\0';
-    if (!reference || !reference[0])
-        return;
-    if (!base || !base[0])
-    {
-        iptv_copy(out, out_size, reference);
-        return;
-    }
-    if (iptv_url_is_remote(base))
-    {
-        authority = strstr(base, "://");
-        path = authority ? strchr(authority + 3, '/') : NULL;
-        if (reference[0] == '/' && reference[1] == '/' && authority)
-        {
-            size_t scheme_length = (size_t)(authority - base);
-            snprintf(out, out_size, "%.*s:%s", (int)scheme_length, base, reference);
-            return;
-        }
-        if (reference[0] == '/' && authority)
-        {
-            size_t prefix = path ? (size_t)(path - base) : strlen(base);
-            if (prefix >= out_size)
-                prefix = out_size - 1;
-            memcpy(out, base, prefix);
-            out[prefix] = '\0';
-            strncat(out, reference, out_size - strlen(out) - 1);
-            return;
-        }
-    }
-    if (iptv_url_has_scheme(reference))
-    {
-        iptv_copy(out, out_size, reference);
-        return;
-    }
-    iptv_path_dirname(base, directory, sizeof(directory));
-    if (directory[0])
-        snprintf(out, out_size, "%s/%s", directory, reference);
-    else
-        iptv_copy(out, out_size, reference);
 }
 
 static bool iptv_contains_casefold(const char *haystack, const char *needle)
@@ -897,7 +815,8 @@ static int iptv_parse_playlist(IptvCatalog *catalog,
             char epg[IPTV_URL_MAX];
             iptv_parse_m3u_header_epg(line, epg, sizeof(epg));
             if (epg[0])
-                iptv_resolve_url(source->url, epg, source->epg_url, sizeof(source->epg_url));
+                (void)iptv_url_resolve(source->url, epg, source->epg_url,
+                                       sizeof(source->epg_url));
             continue;
         }
         if (strncasecmp(line, "#EXTINF", 7) == 0)
@@ -918,8 +837,15 @@ static int iptv_parse_playlist(IptvCatalog *catalog,
 
         char playable[IPTV_URL_MAX];
         char resolved_logo[IPTV_LOGO_URL_MAX];
-        iptv_resolve_url(source->url, line, playable, sizeof(playable));
-        iptv_resolve_url(source->url, pending_logo, resolved_logo, sizeof(resolved_logo));
+        if (!iptv_url_resolve(source->url, line, playable, sizeof(playable)))
+        {
+            log_warn("[iptv] skipped channel with oversized or invalid URL\n");
+            pending_name[0] = pending_group[0] = pending_tvg_id[0] =
+                pending_logo[0] = '\0';
+            continue;
+        }
+        (void)iptv_url_resolve(source->url, pending_logo, resolved_logo,
+                               sizeof(resolved_logo));
         iptv_catalog_add_channel(catalog,
                                  source,
                                  pending_name,
@@ -1239,7 +1165,7 @@ static bool iptv_find_playlist_guide_url(const IptvSource *source, char *out, si
             break;
         iptv_parse_m3u_header_epg(line, declared, sizeof(declared));
         if (declared[0])
-            iptv_resolve_url(source->url, declared, out, out_size);
+            (void)iptv_url_resolve(source->url, declared, out, out_size);
         break;
     }
     fclose(file);
@@ -1493,6 +1419,8 @@ bool iptv_init(void)
 
 void iptv_deinit(void)
 {
+    uint64_t playback_token;
+
     if (!g_sync_initialized)
         return;
     mutexLock(&g_mutex);
@@ -1511,10 +1439,13 @@ void iptv_deinit(void)
     g_refreshing = false;
     g_channel_count = g_source_count = g_visible_count = 0;
     g_status[0] = g_last_name[0] = g_last_url[0] = '\0';
+    playback_token = g_playback_token;
     free(g_channels);
     g_channels = NULL;
     mutexUnlock(&g_mutex);
-    (void)player_ownership_release_current(PLAYER_MEDIA_OWNER_IPTV, 1u);
+    if (playback_token != 0u)
+        (void)protocol_coordinator_media_release_current(
+            PLAYER_MEDIA_OWNER_IPTV, playback_token);
     avformat_network_deinit();
 }
 
@@ -2055,8 +1986,13 @@ static bool iptv_play_url_named(const char *url,
                                 const char *display_title,
                                 uint32_t channel_id)
 {
-    RendererState previous_state;
-    PlayerOwnershipLease lease = {0};
+    ProtocolMediaTransaction transaction;
+    PlayerCommandRequest request;
+    PlayerCommandStatus command_status;
+    uint64_t playback_token;
+    uint32_t seq;
+    uint32_t url_hash;
+    const char *failure_phase = NULL;
 
     if (!iptv_url_is_playable(url))
     {
@@ -2064,29 +2000,54 @@ static bool iptv_play_url_named(const char *url,
         return false;
     }
 
-    if (!player_ownership_claim(PLAYER_MEDIA_OWNER_IPTV, 1u, &lease, NULL))
+    url_hash = player_trace_uri_hash(url);
+    seq = player_trace_begin_media("IPTVPlay", url, display_title);
+    log_info("[iptv-play] seq=%u phase=begin channel_id=%08x url_hash=%08x\n",
+             seq, channel_id, url_hash);
+
+    log_info("[iptv-play] seq=%u phase=claim begin url_hash=%08x\n",
+             seq, url_hash);
+    mutexLock(&g_mutex);
+    ++g_playback_token;
+    if (g_playback_token == 0u)
+        ++g_playback_token;
+    playback_token = g_playback_token;
+    mutexUnlock(&g_mutex);
+    if (!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_IPTV,
+                                          playback_token,
+                                          &transaction))
     {
+        log_info("[iptv-play] seq=%u phase=claim failed url_hash=%08x\n",
+                 seq, url_hash);
         iptv_set_status("Player is busy with another media source.");
         return false;
     }
+    log_info("[iptv-play] seq=%u phase=claim done generation=%u "
+             "previous_owner=%s url_hash=%08x\n",
+             seq, transaction.lease.generation,
+             player_media_owner_name(transaction.previous.owner), url_hash);
 
-    previous_state = renderer_get_state();
-    if (previous_state != PLAYER_STATE_IDLE && previous_state != PLAYER_STATE_STOPPED)
+    memset(&request, 0, sizeof(request));
+    request.kind = PLAYER_COMMAND_OPEN;
+    request.source = PLAYER_COMMAND_SOURCE_IPTV;
+    request.lease = transaction.lease;
+    request.uri = url;
+    request.metadata = display_title;
+    request.flag = true;
+    log_info("[iptv-play] seq=%u phase=enqueue-open-autoplay begin "
+             "generation=%u token=%llu url_hash=%08x\n",
+             seq, transaction.lease.generation,
+             (unsigned long long)transaction.lease.token, url_hash);
+    command_status = player_submit_command_async(&request);
+    if (!player_command_status_succeeded(command_status))
     {
-        // Queue an explicit stop before replacing a live stream so mpv tears
-        // down the old demuxer/decoder before opening the next channel.
-        if (!renderer_stop())
-            log_warn("[iptv] failed to stop previous stream before channel switch state=%d\n", (int)previous_state);
+        failure_phase = player_command_status_name(command_status);
+        goto failure;
     }
-
-    if (!player_ownership_validate(&lease) ||
-        !renderer_set_uri(url, display_title) ||
-        !player_ownership_validate(&lease) || !renderer_play())
-    {
-        (void)player_ownership_release(&lease);
-        iptv_set_status("Failed to start IPTV playback.");
-        return false;
-    }
+    log_info("[iptv-play] seq=%u phase=enqueue-open-autoplay done "
+             "status=%s url_hash=%08x\n",
+             seq, player_command_status_name(command_status), url_hash);
+    protocol_coordinator_media_end(&transaction);
     mutexLock(&g_mutex);
     iptv_copy(g_last_url, sizeof(g_last_url), url);
     iptv_copy(g_last_name, sizeof(g_last_name), name && name[0] ? name : "Direct IPTV URL");
@@ -2118,7 +2079,18 @@ static bool iptv_play_url_named(const char *url,
         iptv_rebuild_visible_locked(channel_id);
     }
     mutexUnlock(&g_mutex);
+    log_info("[iptv-play] seq=%u phase=done channel_id=%08x url_hash=%08x\n",
+             seq, channel_id, url_hash);
     return true;
+
+failure:
+    log_warn("[iptv-play] seq=%u phase=failed stage=%s channel_id=%08x "
+             "url_hash=%08x\n",
+             seq, failure_phase ? failure_phase : "unknown", channel_id,
+             url_hash);
+    protocol_coordinator_media_abort(&transaction);
+    iptv_set_status("Failed to start IPTV playback.");
+    return false;
 }
 
 bool iptv_play_channel(int index)

@@ -25,6 +25,19 @@ static uint64_t monotonic_time_ms(void)
     return armTicksToNs(armGetSystemTick()) / 1000000ULL;
 }
 
+static bool submit_ui_command(PlayerCommandKind kind, int value, bool flag)
+{
+    PlayerCommandRequest request = {
+        .kind = kind,
+        .source = PLAYER_COMMAND_SOURCE_UI,
+        .value = value,
+        .flag = flag,
+    };
+
+    return player_command_status_succeeded(
+        player_submit_command_async(&request));
+}
+
 static void update_overlay_timing(PlayerUiState *state, uint64_t now_ms, int duration, bool interaction)
 {
     if (!state)
@@ -59,13 +72,13 @@ bool player_ui_controls_toggle_pause(PlayerUiState *state, const PlayerSnapshot 
 
     if (snapshot->state == PLAYER_STATE_PLAYING || snapshot->state == PLAYER_STATE_BUFFERING || snapshot->state == PLAYER_STATE_SEEKING)
     {
-        ok = player_pause();
+        ok = submit_ui_command(PLAYER_COMMAND_PAUSE, 0, false);
         if (ok)
             duration = player_ui_controls_show_help(snapshot, true);
     }
     else
     {
-        ok = player_play();
+        ok = submit_ui_command(PLAYER_COMMAND_PLAY, 0, false);
         if (ok)
             duration = player_ui_controls_show_help(snapshot, false);
     }
@@ -107,7 +120,7 @@ bool player_ui_controls_seek(PlayerUiState *state, const PlayerSnapshot *snapsho
     if (duration_ms > 0 && target_ms > duration_ms)
         target_ms = duration_ms;
 
-    if (!player_seek_ms(target_ms))
+    if (!submit_ui_command(PLAYER_COMMAND_SEEK_MS, target_ms, false))
     {
         duration = player_ui_overlay_show_message("Seek failed", NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
@@ -190,7 +203,7 @@ bool player_ui_controls_seek_to(PlayerUiState *state, const PlayerSnapshot *snap
     }
 
     target_ms = clamp_int(target_ms, 0, snapshot->duration_ms);
-    if (!player_seek_ms(target_ms))
+    if (!submit_ui_command(PLAYER_COMMAND_SEEK_MS, target_ms, false))
     {
         duration = player_ui_overlay_show_message("Seek failed", NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
@@ -225,9 +238,9 @@ bool player_ui_controls_change_volume(PlayerUiState *state, const PlayerSnapshot
 
     target_volume = clamp_int(current_volume + delta, 0, 100);
     if (snapshot->mute && target_volume > 0)
-        (void)player_set_mute(false);
+        (void)submit_ui_command(PLAYER_COMMAND_SET_MUTE, 0, false);
 
-    if (!player_set_volume(target_volume))
+    if (!submit_ui_command(PLAYER_COMMAND_SET_VOLUME, target_volume, false))
     {
         duration = player_ui_overlay_show_message("Volume failed", NULL, PLAYER_UI_OSD_SHORT_MS);
         update_overlay_timing(state, now_ms, duration, true);

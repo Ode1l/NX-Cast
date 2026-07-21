@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "app/protocol_coordinator.h"
 #include "iptv/iptv.h"
 #include "log/log.h"
 #include "player/player.h"
@@ -16,6 +17,7 @@
 #include "player/ui/layout.h"
 #include "player/ui/ui.h"
 #include "player/view.h"
+#include "protocol/airplay/discovery/mdns.h"
 #include "protocol/airplay/integration.h"
 #include "protocol/dlna_control.h"
 #include "protocol/dlna/description/resource_store.h"
@@ -48,9 +50,17 @@ typedef struct
 #define TOUCH_TAP_MAX_DURATION_MS 650ULL
 #define TOUCH_TAP_MAX_MOVE_PX 24
 #define TOUCH_TAP_DEBOUNCE_MS 350ULL
+#define RETURN_HOME_STOP_GRACE_MS 250ULL
+#define RUNTIME_HEARTBEAT_INTERVAL_MS 2000ULL
+
+#ifndef NXCAST_DIAG_PROFILE_ID
+#define NXCAST_DIAG_PROFILE_ID 0
+#endif
+#ifndef NXCAST_DIAG_PROFILE_NAME
+#define NXCAST_DIAG_PROFILE_NAME "normal"
+#endif
 
 static int g_nxlinkSock = -1;
-static bool g_nxlinkWasActive = false;
 static bool g_networkInitialized = false;
 static bool g_consoleInitialized = false;
 static const char g_shutdownTraceDirParent[] = "sdmc:/switch";
@@ -97,13 +107,98 @@ static const char *main_player_state_name(PlayerState state)
     }
 }
 
+static void main_log_protocol_transition(
+    const ProtocolCoordinatorSnapshot *previous,
+    const ProtocolCoordinatorSnapshot *current)
+{
+    if (!previous || !current || previous->revision == current->revision)
+        return;
+
+    log_info("[protocol-coordinator] revision=%u->%u state=%s->%s "
+             "iptv=%s->%s dlna=%s->%s airplay=%s->%s "
+             "owner=%s->%s token=%llu generation=%u pin_visible=%d "
+             "airplay_running=%d airplay_starting=%d status=%s\n",
+             previous->revision,
+             current->revision,
+             protocol_coordinator_state_name(previous->state),
+             protocol_coordinator_state_name(current->state),
+             protocol_service_state_name(previous->services[PROTOCOL_SERVICE_IPTV]),
+             protocol_service_state_name(current->services[PROTOCOL_SERVICE_IPTV]),
+             protocol_service_state_name(previous->services[PROTOCOL_SERVICE_DLNA]),
+             protocol_service_state_name(current->services[PROTOCOL_SERVICE_DLNA]),
+             protocol_service_state_name(previous->services[PROTOCOL_SERVICE_AIRPLAY]),
+             protocol_service_state_name(current->services[PROTOCOL_SERVICE_AIRPLAY]),
+             player_media_owner_name(previous->active_media.owner),
+             player_media_owner_name(current->active_media.owner),
+             (unsigned long long)current->active_media.token,
+             current->active_media.generation,
+             current->airplay.pin_visible ? 1 : 0,
+             current->airplay.running ? 1 : 0,
+             current->airplay.starting ? 1 : 0,
+             current->airplay.status[0] ? current->airplay.status : "none");
+}
+
+static bool main_request_player_home(const PlayerSnapshot *snapshot,
+                                     uint64_t now_ms,
+                                     bool *pending,
+                                     uint64_t *ready_ms,
+                                     bool *stop_dispatched)
+{
+    bool playback_active;
+
+    if (!pending || !ready_ms || !stop_dispatched)
+        return false;
+    *stop_dispatched = false;
+    playback_active = snapshot && snapshot->has_media &&
+                      snapshot->state != PLAYER_STATE_IDLE &&
+                      snapshot->state != PLAYER_STATE_STOPPED;
+    log_info("[return-home] phase=request t_ms=%llu playback_active=%d "
+             "state=%s media=%d\n",
+             (unsigned long long)now_ms, playback_active ? 1 : 0,
+             snapshot ? main_player_state_name(snapshot->state) : "none",
+             snapshot && snapshot->has_media ? 1 : 0);
+    if (!playback_active)
+    {
+        bool shown;
+
+        *pending = false;
+        log_info("[return-home] phase=show-home begin reason=no-active-media\n");
+        shown = player_view_show_home();
+        log_info("[return-home] phase=show-home done ok=%d reason=no-active-media\n",
+                 shown ? 1 : 0);
+        return shown;
+    }
+    log_info("[return-home] phase=player-stop begin state=%s\n",
+             main_player_state_name(snapshot->state));
+    {
+        PlayerCommandRequest stop_request = {
+            .kind = PLAYER_COMMAND_STOP_ANY,
+            .source = PLAYER_COMMAND_SOURCE_UI,
+        };
+        PlayerCommandStatus stop_status =
+            player_submit_command_async(&stop_request);
+
+        if (!player_command_status_succeeded(stop_status))
+        {
+            log_info("[return-home] phase=player-stop failed state=%s status=%s\n",
+                     main_player_state_name(snapshot->state),
+                     player_command_status_name(stop_status));
+            return false;
+        }
+    }
+    log_info("[return-home] phase=player-stop done state=%s\n",
+             main_player_state_name(snapshot->state));
+    *stop_dispatched = true;
+    *pending = true;
+    *ready_ms = now_ms + RETURN_HOME_STOP_GRACE_MS;
+    log_info("[return-home] phase=wait-player-stopped ready_ms=%llu\n",
+             (unsigned long long)*ready_ms);
+    return true;
+}
+
 static LogLevel main_input_trace_level(void)
 {
-#if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
-    return LOG_LEVEL_WARN;
-#else
     return LOG_LEVEL_INFO;
-#endif
 }
 
 static void main_input_trace(const char *fmt, ...)
@@ -345,10 +440,8 @@ static bool main_snapshot_playback_active(const PlayerSnapshot *snapshot)
 static void build_home_view_state(PlayerHomeViewState *out,
                                   bool storage_ready,
                                   bool network_ready,
-                                  bool dlna_running,
-                                  const AirPlayIntegrationStatus *airplay,
+                                  const ProtocolCoordinatorSnapshot *protocols,
                                   bool video_ready,
-                                  bool iptv_ready,
                                   bool iptv_panel_open,
                                   bool iptv_sources_open,
                                   const PlayerSnapshot *snapshot)
@@ -361,14 +454,17 @@ static void build_home_view_state(PlayerHomeViewState *out,
     memset(out, 0, sizeof(*out));
     out->storage_ready = storage_ready;
     out->network_ready = network_ready;
-    out->dlna_running = dlna_running;
-    out->airplay_running = airplay && airplay->running;
-    out->airplay_pin_visible = airplay && airplay->pin_visible;
-    if (airplay)
+    out->dlna_running = protocols &&
+                        protocols->services[PROTOCOL_SERVICE_DLNA] ==
+                            PROTOCOL_SERVICE_RUNNING;
+    out->airplay_running = protocols && protocols->airplay.running;
+    out->airplay_pin_visible = protocols && protocols->airplay.pin_visible;
+    if (protocols)
     {
-        snprintf(out->airplay_pin, sizeof(out->airplay_pin), "%s", airplay->pin);
+        snprintf(out->airplay_pin, sizeof(out->airplay_pin), "%s",
+                 protocols->airplay.pin);
         snprintf(out->airplay_status, sizeof(out->airplay_status), "%s",
-                 airplay->status);
+                 protocols->airplay.status);
     }
     out->video_ready = video_ready;
     out->playback_active = main_snapshot_playback_active(snapshot);
@@ -378,7 +474,10 @@ static void build_home_view_state(PlayerHomeViewState *out,
     out->iptv_sources_open = iptv_sources_open;
     if (iptv_get_state(&iptv_state))
     {
-        out->iptv_ready = iptv_ready && iptv_state.initialized && iptv_state.loaded;
+        out->iptv_ready = protocols &&
+                          protocols->services[PROTOCOL_SERVICE_IPTV] ==
+                              PROTOCOL_SERVICE_RUNNING &&
+                          iptv_state.initialized && iptv_state.loaded;
         out->iptv_refreshing = iptv_state.refreshing;
         out->iptv_source_count = iptv_state.source_count;
         out->iptv_channel_count = iptv_state.channel_count;
@@ -394,6 +493,66 @@ static void build_home_view_state(PlayerHomeViewState *out,
         snprintf(out->iptv_status, sizeof(out->iptv_status), "%s", iptv_state.status);
         snprintf(out->iptv_last_name, sizeof(out->iptv_last_name), "%s", iptv_state.last_name);
     }
+}
+
+static bool main_protocol_iptv_start(void *context)
+{
+    (void)context;
+    return iptv_init();
+}
+
+static void main_protocol_iptv_stop(void *context)
+{
+    (void)context;
+    iptv_deinit();
+}
+
+static bool main_protocol_dlna_start(void *context)
+{
+    (void)context;
+    return dlna_control_start();
+}
+
+static void main_protocol_dlna_stop(void *context)
+{
+    (void)context;
+    dlna_control_stop();
+}
+
+static bool main_protocol_airplay_start(void *context)
+{
+    (void)context;
+    return airplay_integration_start();
+}
+
+static void main_protocol_airplay_request_stop(void *context)
+{
+    (void)context;
+    airplay_integration_request_stop();
+}
+
+static void main_protocol_airplay_stop(void *context)
+{
+    (void)context;
+    airplay_integration_stop();
+}
+
+static bool main_protocol_airplay_get_status(void *context,
+                                             ProtocolAirPlayStatus *status_out)
+{
+    AirPlayIntegrationStatus status = {0};
+
+    (void)context;
+    if (!status_out || !airplay_integration_get_status(&status))
+        return false;
+
+    memset(status_out, 0, sizeof(*status_out));
+    status_out->running = status.running;
+    status_out->starting = status.starting;
+    status_out->pin_visible = status.pin_visible;
+    memcpy(status_out->pin, status.pin, sizeof(status_out->pin));
+    snprintf(status_out->status, sizeof(status_out->status), "%s", status.status);
+    return true;
 }
 
 typedef enum
@@ -797,7 +956,7 @@ static bool initialize_network(void)
     return true;
 }
 
-static void enable_nxlink_stdio(bool network_ready)
+static void enable_nxlink_logging(bool network_ready)
 {
     if (!network_ready)
         return;
@@ -812,12 +971,16 @@ static void enable_nxlink_stdio(bool network_ready)
     g_nxlinkSock = nxlinkStdioForDebug();
     if (g_nxlinkSock >= 0)
     {
-        g_nxlinkWasActive = true;
+        // Keep the logger on stderr's duplicated descriptor. This is the
+        // libnx path used by the known-good release and survives closure or
+        // reuse of the original low-numbered nxlink descriptor.
+        log_set_socket_mirror(STDERR_FILENO);
         log_set_stdio_mirror(true);
-        log_info("[log] nxlink stderr connected host=%s port=%d fd=%d stdout=local\n",
+        log_info("[log] nxlink logger connected host=%s port=%d fd=%d mirror_fd=%d stdout=local\n",
                  inet_ntoa(__nxlink_host),
                  NXLINK_CLIENT_PORT,
-                 g_nxlinkSock);
+                 g_nxlinkSock,
+                 STDERR_FILENO);
         return;
     }
 
@@ -838,9 +1001,6 @@ void userAppExit(void)
     {
         int nxlink_fd = g_nxlinkSock;
         g_nxlinkSock = -1;
-        fflush(stdout);
-        fflush(stderr);
-        consoleDebugInit(debugDevice_NULL);
         shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit nxlink_close begin fd=%d\n", nxlink_fd);
         close(nxlink_fd);
         shutdown_stdio_trace("[INFO] [shutdown] step=userAppExit nxlink_close done\n");
@@ -868,11 +1028,9 @@ int main(int argc, char* argv[])
     g_consoleInitialized = true;
     shutdown_trace_reset();
     shutdown_stdio_trace("[INFO] [shutdown] trace_build=exit-userAppExit-v1\n");
-    
+
     if (!log_runtime_init())
-    {
         printf("[ERROR] [log] log_runtime_init failed\n");
-    }
     set_power_policy(true, true);
 
     bool storageReady = dlna_resource_store_ensure_defaults();
@@ -883,37 +1041,77 @@ int main(int argc, char* argv[])
 
     bool networkReady = initialize_network();
     g_networkInitialized = networkReady;
-    enable_nxlink_stdio(networkReady);
-    bool iptvReady = iptv_init();
-    log_info("[iptv] init ready=%d network=%d root=%s\n", iptvReady ? 1 : 0, networkReady ? 1 : 0, IPTV_ROOT_DIR);
-    bool dlnaRunning = false;
-    bool airplayRequested = false;
-    AirPlayIntegrationStatus airplayStatus = {0};
+    enable_nxlink_logging(networkReady);
+    log_info("[diagnostic] profile_id=%d profile=%s protocol_start=%s\n",
+             NXCAST_DIAG_PROFILE_ID, NXCAST_DIAG_PROFILE_NAME,
+#if defined(NXCAST_PROTOCOL_START_SERIAL) && NXCAST_PROTOCOL_START_SERIAL
+             "serial"
+#else
+             "parallel"
+#endif
+    );
+    ProtocolCoordinatorSnapshot protocolStatus = {0};
+    ProtocolCoordinatorSnapshot loggedProtocolStatus = {0};
     bool videoPlatformReady = player_view_init();
     bool rendererPrestarted = false;
     bool videoRenderReady = false;
+    bool playerActivationAttempted = false;
+    bool playerCommandsActive = false;
+    bool protocolCoordinatorStartAttempted = false;
+    bool protocolCoordinatorStarted = false;
+    bool airplayRuntimeAllowed = true;
 
     if (videoPlatformReady)
     {
         rendererPrestarted = player_init();
-        if (rendererPrestarted)
+        if (!rendererPrestarted)
         {
-            videoRenderReady = player_view_prepare_video();
-            log_info("[ui] video render prepare=%d before_media_url=1\n", videoRenderReady ? 1 : 0);
+            playerActivationAttempted = true;
+            log_warn("[ui] player actor start failed; media actions may fail.\n");
         }
-        else
-        {
-            log_warn("[ui] renderer init failed before DLNA/IPTV start; media actions may fail.\n");
-        }
+    }
+    else
+    {
+        playerActivationAttempted = true;
     }
 
-    if (networkReady)
-    {
-        dlnaRunning = dlna_control_start();
-        if (rendererPrestarted && videoRenderReady)
-            airplayRequested = airplay_integration_start_async();
-    }
-    (void)airplay_integration_get_status(&airplayStatus);
+    ProtocolCoordinatorConfig protocolConfig = {
+        .enabled = {
+            [PROTOCOL_SERVICE_IPTV] = true,
+            [PROTOCOL_SERVICE_DLNA] = networkReady,
+            [PROTOCOL_SERVICE_AIRPLAY] = false
+        },
+#if defined(NXCAST_PROTOCOL_START_SERIAL) && NXCAST_PROTOCOL_START_SERIAL
+        .serial_startup = true,
+#endif
+    };
+    ProtocolCoordinatorOperations protocolOperations = {
+        .context = NULL,
+        .services = {
+            [PROTOCOL_SERVICE_IPTV] = {
+                .start = main_protocol_iptv_start,
+                .stop = main_protocol_iptv_stop,
+                .stop_after_start_attempt = true
+            },
+            [PROTOCOL_SERVICE_DLNA] = {
+                .start = main_protocol_dlna_start,
+                .stop = main_protocol_dlna_stop
+            },
+            [PROTOCOL_SERVICE_AIRPLAY] = {
+                .start = main_protocol_airplay_start,
+                .request_stop = main_protocol_airplay_request_stop,
+                .stop = main_protocol_airplay_stop
+            }
+        },
+        .airplay_get_status = main_protocol_airplay_get_status
+    };
+#if defined(NXCAST_DISABLE_AIRPLAY_RUNTIME) && NXCAST_DISABLE_AIRPLAY_RUNTIME
+    airplayRuntimeAllowed = false;
+    log_warn("[airplay] runtime disabled by playback baseline build\n");
+#endif
+    protocol_coordinator_reset();
+    (void)protocol_coordinator_get_snapshot(&protocolStatus);
+    loggedProtocolStatus = protocolStatus;
 
     padConfigureInput(8, HidNpadStyleSet_NpadStandard);
     hidInitializeTouchScreen();
@@ -933,6 +1131,13 @@ int main(int argc, char* argv[])
     bool have_logged_view = false;
     bool iptv_panel_open = false;
     bool iptv_sources_open = false;
+    bool return_home_pending = false;
+    bool airplay_pin_was_visible = false;
+    uint64_t return_home_ready_ms = 0;
+#if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
+    uint64_t runtime_heartbeat_due_ms = main_monotonic_time_ms();
+    uint64_t runtime_frame = 0;
+#endif
     ExitReason exit_reason = EXIT_REASON_UNKNOWN;
     PlayerUiState video_ui;
     player_ui_reset(&video_ui);
@@ -947,33 +1152,206 @@ int main(int argc, char* argv[])
         PlayerSnapshot snapshot = {0};
         PlayerHomeViewState home_state;
         bool have_snapshot = false;
+        uint64_t input_now_ms = main_monotonic_time_ms();
+
+#if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
+        runtime_frame++;
+#endif
 
         padUpdate(&pad);
-        (void)airplay_integration_get_status(&airplayStatus);
+        if (rendererPrestarted && !playerActivationAttempted)
+        {
+            PlayerRuntimeHealth player_health = {0};
+
+            if (player_get_runtime_health(&player_health))
+            {
+                if (player_health.backend_ready)
+                {
+                    videoRenderReady = player_view_prepare_video();
+                    playerCommandsActive = player_activate();
+                    playerActivationAttempted = true;
+                    log_info("[ui] video render prepare=%d player_activate=%d before_media_url=1\n",
+                             videoRenderReady ? 1 : 0,
+                             playerCommandsActive ? 1 : 0);
+                }
+                else if (player_health.initialization_failed ||
+                         (!player_health.running &&
+                          !player_health.initializing))
+                {
+                    playerActivationAttempted = true;
+                    log_error("[ui] player backend initialization failed; media actions unavailable.\n");
+                }
+            }
+        }
+        if (!protocolCoordinatorStartAttempted && playerActivationAttempted)
+        {
+            protocolConfig.enabled[PROTOCOL_SERVICE_AIRPLAY] =
+                airplayRuntimeAllowed && networkReady && playerCommandsActive &&
+                videoRenderReady;
+            protocolCoordinatorStarted =
+                protocol_coordinator_start(&protocolConfig,
+                                           &protocolOperations);
+            protocolCoordinatorStartAttempted = true;
+            (void)protocol_coordinator_get_snapshot(&protocolStatus);
+            loggedProtocolStatus = protocolStatus;
+            log_info("[protocol-coordinator] start accepted=%d state=%s iptv=%s dlna=%s airplay=%s network=%d root=%s\n",
+                     protocolCoordinatorStarted ? 1 : 0,
+                     protocol_coordinator_state_name(protocolStatus.state),
+                     protocol_service_state_name(protocolStatus.services[PROTOCOL_SERVICE_IPTV]),
+                     protocol_service_state_name(protocolStatus.services[PROTOCOL_SERVICE_DLNA]),
+                     protocol_service_state_name(protocolStatus.services[PROTOCOL_SERVICE_AIRPLAY]),
+                     networkReady ? 1 : 0,
+                     IPTV_ROOT_DIR);
+        }
+        protocol_coordinator_tick();
+        (void)protocol_coordinator_get_snapshot(&protocolStatus);
+        main_log_protocol_transition(&loggedProtocolStatus, &protocolStatus);
+        if (loggedProtocolStatus.revision != protocolStatus.revision)
+            loggedProtocolStatus = protocolStatus;
         if (videoPlatformReady && player_get_snapshot(&snapshot))
             have_snapshot = true;
+        if (videoPlatformReady && protocolStatus.airplay.pin_visible &&
+            !airplay_pin_was_visible)
+        {
+            bool stop_dispatched = false;
+            bool ok = main_request_player_home(have_snapshot ? &snapshot : NULL,
+                                               input_now_ms,
+                                               &return_home_pending,
+                                               &return_home_ready_ms,
+                                               &stop_dispatched);
+            main_input_trace("[input] action=airplay-pin-home ok=%d stop=%d state=%s\n",
+                             ok ? 1 : 0,
+                             stop_dispatched ? 1 : 0,
+                             have_snapshot ? main_player_state_name(snapshot.state) : "none");
+            airplay_pin_was_visible = ok;
+        }
+        else
+        {
+            airplay_pin_was_visible = protocolStatus.airplay.pin_visible;
+        }
+        if (videoPlatformReady && return_home_pending &&
+            input_now_ms >= return_home_ready_ms &&
+            (!have_snapshot || !snapshot.has_media ||
+             snapshot.state == PLAYER_STATE_IDLE ||
+             snapshot.state == PLAYER_STATE_STOPPED))
+        {
+            log_info("[return-home] phase=show-home begin reason=player-stopped "
+                     "state=%s media=%d\n",
+                     have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                     have_snapshot && snapshot.has_media ? 1 : 0);
+            bool ok = player_view_show_home();
+            if (ok)
+                return_home_pending = false;
+            log_info("[return-home] phase=show-home done ok=%d "
+                     "reason=player-stopped pending=%d\n",
+                     ok ? 1 : 0, return_home_pending ? 1 : 0);
+            main_input_trace("[input] action=return-home-complete ok=%d state=%s\n",
+                             ok ? 1 : 0,
+                             have_snapshot ? main_player_state_name(snapshot.state) : "none");
+        }
         build_home_view_state(&home_state,
                               storageReady,
                               networkReady,
-                              dlnaRunning,
-                              &airplayStatus,
+                              &protocolStatus,
                               videoRenderReady,
-                              iptvReady,
                               iptv_panel_open,
                               iptv_sources_open,
                               have_snapshot ? &snapshot : NULL);
 
         PlayerViewMode active_view = PLAYER_VIEW_HOME;
-        if (videoPlatformReady)
+        if (videoRenderReady)
         {
             player_view_set_home_state(&home_state);
-            if (airplayStatus.pin_visible)
-                (void)player_view_show_home();
             if (have_snapshot)
                 player_view_sync(&snapshot);
             player_view_begin_frame();
             active_view = player_view_get_mode();
         }
+
+#if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
+        if (input_now_ms >= runtime_heartbeat_due_ms)
+        {
+            LogRuntimeStats log_stats = {0};
+            PlayerRuntimeHealth player_health = {0};
+            AirPlayMdnsDiagnostics mdns_diagnostics = {0};
+
+            (void)log_get_runtime_stats(&log_stats);
+            (void)player_get_runtime_health(&player_health);
+            (void)airplay_mdns_get_diagnostics(&mdns_diagnostics);
+            log_info("[runtime-heartbeat] t_ms=%llu frame=%llu view=%s "
+                     "player_state=%s media=%d return_home_pending=%d "
+                     "protocol_state=%s owner=%s generation=%u "
+                     "service_workers=%d,%d,%d service_age_ms=%llu,%llu,%llu "
+                     "media_queue=%zu media_high=%zu media_command=%llu "
+                     "media_kind=%d media_producer=%d media_token=%llu "
+                     "media_generation=%u "
+                     "media_command_age_ms=%llu media_heartbeat_age_ms=%llu "
+                     "media_full=%llu media_stale=%llu media_timeout=%llu "
+                     "media_coalesced=%llu media_accepting=%d "
+                     "media_lifecycle=%d,%d,%d,%d "
+                     "log_queue=%zu enqueued=%llu processed=%llu "
+                     "log_high=%zu log_heartbeat_age_ms=%llu log_waiting=%d "
+                     "queue_dropped=%llu mirror_dropped=%llu "
+                     "mirror_failures=%llu mirror=%d worker=%d "
+                     "mdns_phase=%s mdns_mode=%d mdns_running=%d "
+                     "mdns_socket=%d mdns_heartbeat_age_ms=%llu "
+                     "mdns_select=%llu mdns_recv=%llu mdns_sent=%llu\n",
+                     (unsigned long long)input_now_ms,
+                     (unsigned long long)runtime_frame,
+                     player_view_mode_name(active_view),
+                     have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                     have_snapshot && snapshot.has_media ? 1 : 0,
+                     return_home_pending ? 1 : 0,
+                     protocol_coordinator_state_name(protocolStatus.state),
+                     player_media_owner_name(protocolStatus.active_media.owner),
+                     protocolStatus.active_media.generation,
+                     protocolStatus.service_worker_active[PROTOCOL_SERVICE_IPTV] ? 1 : 0,
+                     protocolStatus.service_worker_active[PROTOCOL_SERVICE_DLNA] ? 1 : 0,
+                     protocolStatus.service_worker_active[PROTOCOL_SERVICE_AIRPLAY] ? 1 : 0,
+                     (unsigned long long)protocolStatus.service_transition_age_ms[PROTOCOL_SERVICE_IPTV],
+                     (unsigned long long)protocolStatus.service_transition_age_ms[PROTOCOL_SERVICE_DLNA],
+                     (unsigned long long)protocolStatus.service_transition_age_ms[PROTOCOL_SERVICE_AIRPLAY],
+                     player_health.queue_depth,
+                     player_health.queue_high_watermark,
+                     (unsigned long long)player_health.current_command_id,
+                     player_health.current_command_kind,
+                     player_health.current_command_producer,
+                     (unsigned long long)player_health.current_session_token,
+                     player_health.current_generation,
+                     (unsigned long long)player_health.current_command_age_ms,
+                     (unsigned long long)player_health.heartbeat_age_ms,
+                     (unsigned long long)player_health.rejected_full,
+                     (unsigned long long)player_health.rejected_stale,
+                     (unsigned long long)player_health.timed_out,
+                     (unsigned long long)player_health.coalesced,
+                     player_health.accepting ? 1 : 0,
+                     player_health.initializing ? 1 : 0,
+                     player_health.backend_ready ? 1 : 0,
+                     player_health.initialization_failed ? 1 : 0,
+                     player_health.dispatch_enabled ? 1 : 0,
+                     log_stats.queue_depth,
+                     (unsigned long long)log_stats.enqueued,
+                     (unsigned long long)log_stats.processed,
+                     log_stats.queue_high_watermark,
+                     (unsigned long long)log_stats.worker_heartbeat_age_ms,
+                     log_stats.worker_waiting ? 1 : 0,
+                     (unsigned long long)log_stats.queue_dropped,
+                     (unsigned long long)log_stats.mirror_dropped,
+                     (unsigned long long)log_stats.mirror_failures,
+                     log_stats.socket_mirror_enabled ? 1 : 0,
+                     log_stats.worker_running ? 1 : 0,
+                     airplay_mdns_phase_name(mdns_diagnostics.phase),
+                     mdns_diagnostics.mode,
+                     mdns_diagnostics.running ? 1 : 0,
+                     mdns_diagnostics.socket_open ? 1 : 0,
+                     (unsigned long long)mdns_diagnostics.worker_heartbeat_age_ms,
+                     (unsigned long long)mdns_diagnostics.select_iterations,
+                     (unsigned long long)mdns_diagnostics.packets_received,
+                     (unsigned long long)mdns_diagnostics.packets_sent);
+            runtime_heartbeat_due_ms = input_now_ms +
+                                       RUNTIME_HEARTBEAT_INTERVAL_MS;
+        }
+#endif
 
         u64 kDown = main_normalize_controller_buttons(padGetButtonsDown(&pad));
         u64 kHeld = main_normalize_controller_buttons(padGetButtons(&pad));
@@ -990,8 +1368,6 @@ int main(int argc, char* argv[])
         s32 touch_swipe_start_y = 0;
         s32 touch_swipe_end_x = 0;
         s32 touch_swipe_end_y = 0;
-        uint64_t input_now_ms = main_monotonic_time_ms();
-
         if (!have_logged_view || active_view != last_logged_view)
         {
             main_input_trace("[input] active_view=%s state=%s media=%d snapshot=%d\n",
@@ -1242,10 +1618,8 @@ int main(int argc, char* argv[])
             build_home_view_state(&home_state,
                                   storageReady,
                                   networkReady,
-                                  dlnaRunning,
-                                  &airplayStatus,
+                                  &protocolStatus,
                                   videoRenderReady,
-                                  iptvReady,
                                   iptv_panel_open,
                                   iptv_sources_open,
                                   have_snapshot ? &snapshot : NULL);
@@ -1351,11 +1725,17 @@ int main(int argc, char* argv[])
                                                    touch_tap_x >= 1131 && touch_tap_x <= 1279;
                         if (home_button_hit)
                         {
-                            bool ok = player_view_show_home();
+                            bool stop_dispatched = false;
+                            bool ok = main_request_player_home(&snapshot,
+                                                               input_now_ms,
+                                                               &return_home_pending,
+                                                               &return_home_ready_ms,
+                                                               &stop_dispatched);
                             player_ui_hide_overlay(&video_ui);
                             touch_seek.active = false;
-                            main_input_trace("[input] action=touch-home ok=%d x=%d y=%d\n",
+                            main_input_trace("[input] action=touch-home ok=%d stop=%d x=%d y=%d\n",
                                              ok ? 1 : 0,
+                                             stop_dispatched ? 1 : 0,
                                              (int)touch_tap_x,
                                              (int)touch_tap_y);
                         }
@@ -1417,11 +1797,17 @@ int main(int argc, char* argv[])
 
                     if (kDown & HidNpadButton_B)
                     {
-                        bool ok = player_view_show_home();
+                        bool stop_dispatched = false;
+                        bool ok = main_request_player_home(&snapshot,
+                                                           input_now_ms,
+                                                           &return_home_pending,
+                                                           &return_home_ready_ms,
+                                                           &stop_dispatched);
                         player_ui_hide_overlay(&video_ui);
                         touch_seek.active = false;
-                        main_input_trace("[input] action=return-home ok=%d state=%s\n",
+                        main_input_trace("[input] action=return-home ok=%d stop=%d state=%s\n",
                                          ok ? 1 : 0,
+                                         stop_dispatched ? 1 : 0,
                                          main_player_state_name(snapshot.state));
                     }
 
@@ -1560,10 +1946,8 @@ int main(int argc, char* argv[])
             build_home_view_state(&home_state,
                                   storageReady,
                                   networkReady,
-                                  dlnaRunning,
-                                  &airplayStatus,
+                                  &protocolStatus,
                                   videoRenderReady,
-                                  iptvReady,
                                   iptv_panel_open,
                                   iptv_sources_open,
                                   have_snapshot ? &snapshot : NULL);
@@ -1600,65 +1984,67 @@ int main(int argc, char* argv[])
     shutdown_stdio_trace("[INFO] [shutdown] begin reason=%s network_ready=%d dlna_running=%d airplay_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
                          exit_reason_name(exit_reason),
                          networkReady ? 1 : 0,
-                         dlnaRunning ? 1 : 0,
-                         airplayRequested ? 1 : 0,
+                         protocolStatus.services[PROTOCOL_SERVICE_DLNA] ==
+                                 PROTOCOL_SERVICE_RUNNING ? 1 : 0,
+                         protocolStatus.airplay.running ? 1 : 0,
                          videoRenderReady ? 1 : 0,
                          g_nxlinkSock,
                          storageReady ? 1 : 0);
     log_info("[shutdown] begin reason=%s network_ready=%d dlna_running=%d airplay_running=%d video_ready=%d nxlink_fd=%d storage_ready=%d\n",
              exit_reason_name(exit_reason),
              networkReady ? 1 : 0,
-             dlnaRunning ? 1 : 0,
-             airplayRequested ? 1 : 0,
+             protocolStatus.services[PROTOCOL_SERVICE_DLNA] ==
+                     PROTOCOL_SERVICE_RUNNING ? 1 : 0,
+             protocolStatus.airplay.running ? 1 : 0,
              videoRenderReady ? 1 : 0,
              g_nxlinkSock,
              storageReady ? 1 : 0);
 
-    if (networkReady)
-    {
-        if (airplayRequested)
-        {
-            shutdown_stdio_trace("[INFO] [shutdown] step=airplay_integration_stop begin\n");
-            log_info("[shutdown] step=airplay_integration_stop begin\n");
-            airplay_integration_stop();
-            shutdown_stdio_trace("[INFO] [shutdown] step=airplay_integration_stop done\n");
-            log_info("[shutdown] step=airplay_integration_stop done\n");
-        }
-        else
-        {
-            log_info("[shutdown] step=airplay_integration_stop skip reason=not-running\n");
-        }
-
-        if (dlnaRunning)
-        {
-            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop begin\n");
-            log_info("[shutdown] step=dlna_control_stop begin\n");
-            dlna_control_stop();
-            shutdown_stdio_trace("[INFO] [shutdown] step=dlna_control_stop done\n");
-            log_info("[shutdown] step=dlna_control_stop done\n");
-        }
-        else
-        {
-            log_info("[shutdown] step=dlna_control_stop skip reason=not-running\n");
-        }
-    }
-    else
-    {
-        log_info("[shutdown] step=airplay_integration_stop skip reason=network-disabled\n");
-        log_info("[shutdown] step=dlna_control_stop skip reason=network-disabled\n");
-    }
+    shutdown_stdio_trace("[INFO] [shutdown] step=protocol_coordinator_stop begin state=%s owner=%s generation=%u\n",
+                         protocol_coordinator_state_name(protocolStatus.state),
+                         player_media_owner_name(protocolStatus.active_media.owner),
+                         protocolStatus.active_media.generation);
+    log_info("[shutdown] step=protocol_coordinator_stop begin state=%s owner=%s generation=%u\n",
+             protocol_coordinator_state_name(protocolStatus.state),
+             player_media_owner_name(protocolStatus.active_media.owner),
+             protocolStatus.active_media.generation);
+    protocol_coordinator_stop();
+    (void)protocol_coordinator_get_snapshot(&protocolStatus);
+    shutdown_stdio_trace("[INFO] [shutdown] step=protocol_coordinator_stop done state=%s\n",
+                         protocol_coordinator_state_name(protocolStatus.state));
+    log_info("[shutdown] step=protocol_coordinator_stop done state=%s\n",
+             protocol_coordinator_state_name(protocolStatus.state));
 
     if (rendererPrestarted)
     {
-        shutdown_stdio_trace("[INFO] [shutdown] step=player_stop begin\n");
-        (void)player_stop();
-        player_ownership_reset();
-        shutdown_stdio_trace("[INFO] [shutdown] step=player_stop done\n");
-    }
+        PlayerCommandRequest stop_request = {
+            .kind = PLAYER_COMMAND_STOP_ANY,
+            .source = PLAYER_COMMAND_SOURCE_APP,
+        };
+        PlayerCommandStatus stop_status;
+        bool actor_idle;
 
-    shutdown_stdio_trace("[INFO] [shutdown] step=iptv_deinit begin\n");
-    iptv_deinit();
-    shutdown_stdio_trace("[INFO] [shutdown] step=iptv_deinit done\n");
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_stop begin\n");
+        stop_status = player_submit_command_wait(&stop_request, 2000u);
+        shutdown_stdio_trace("[INFO] [shutdown] step=player_stop done status=%s\n",
+                             player_command_status_name(stop_status));
+        log_info("[shutdown] step=player_quiesce begin\n");
+        player_quiesce();
+        actor_idle = player_wait_idle(2000u);
+        if (!actor_idle)
+        {
+            PlayerRuntimeHealth health = {0};
+
+            (void)player_get_runtime_health(&health);
+            log_error("[shutdown] phase=player-drain stalled command=%llu command_age_ms=%llu heartbeat_age_ms=%llu queue=%zu\n",
+                      (unsigned long long)health.current_command_id,
+                      (unsigned long long)health.current_command_age_ms,
+                      (unsigned long long)health.heartbeat_age_ms,
+                      health.queue_depth);
+            (void)player_wait_idle(UINT32_MAX);
+        }
+        log_info("[shutdown] step=player_quiesce done idle=1\n");
+    }
 
     if (videoPlatformReady)
     {

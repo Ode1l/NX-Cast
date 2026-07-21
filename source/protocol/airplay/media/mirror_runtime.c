@@ -25,6 +25,7 @@ typedef void *(*AirPlayRuntimeThreadEntry)(void *argument);
 
 #include "protocol/airplay/mirror/mirror_session.h"
 #include "protocol/airplay/mirror/audio.h"
+#include "protocol/airplay/mirror/timing.h"
 #include "protocol/airplay/trace.h"
 #include "player/backend/libmpv_airplay.h"
 
@@ -57,7 +58,9 @@ struct AirPlayMirrorRuntime
     size_t command_count;
     AirPlayMirrorSession *mirror;
     AirPlayMirrorAudio *audio;
+    AirPlayMirrorTiming *timing;
     AirPlayStreamBridge *bridge;
+    uint64_t transport_session_id;
     uint64_t session_id;
     uint32_t generation;
     AirPlayMirrorRuntimeStatus status;
@@ -436,17 +439,49 @@ void airplay_mirror_runtime_destroy(AirPlayMirrorRuntime *runtime)
 bool airplay_mirror_runtime_transport_prepare(uint64_t session_id,
                                               const uint8_t key[16],
                                               const uint8_t iv[16],
+                                              uint32_t peer_ipv4_address,
+                                              uint16_t peer_timing_port,
+                                              bool uses_ntp_timing,
                                               uint16_t *timing_port_out,
                                               void *user_data)
 {
-    (void)session_id;
+    AirPlayMirrorRuntime *runtime = user_data;
+    AirPlayMirrorTiming *timing = NULL;
+    bool accepted = false;
+
     (void)key;
     (void)iv;
-    (void)user_data;
-    if (!timing_port_out)
+    if (!runtime || !timing_port_out || session_id == 0u ||
+        (uses_ntp_timing &&
+         (peer_ipv4_address == 0u || peer_timing_port == 0u)))
         return false;
     *timing_port_out = 0u;
-    return true;
+    if (uses_ntp_timing &&
+        !airplay_mirror_timing_create(peer_ipv4_address, peer_timing_port,
+                                      &timing))
+        return false;
+
+    runtime_mutex_lock(&runtime->mutex);
+    if (runtime->transport_session_id == 0u && runtime->session_id == 0u &&
+        !runtime->timing)
+    {
+        runtime->transport_session_id = session_id;
+        runtime->timing = timing;
+        accepted = true;
+    }
+    runtime_mutex_unlock(&runtime->mutex);
+    if (!accepted)
+    {
+        airplay_mirror_timing_destroy(timing);
+        return false;
+    }
+    if (timing)
+        *timing_port_out = airplay_mirror_timing_port(timing);
+    AIRPLAY_TRACE("[airplay-timing] session=%llu protocol=%s local=%u remote=%u\n",
+                  (unsigned long long)session_id,
+                  uses_ntp_timing ? "NTP" : "none", *timing_port_out,
+                  peer_timing_port);
+    return !uses_ntp_timing || *timing_port_out != 0u;
 }
 
 bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],
@@ -464,7 +499,9 @@ bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],
         stream_connection_id == 0u)
         return false;
     runtime_mutex_lock(&runtime->mutex);
-    if (runtime->opening || runtime->session_id != 0u)
+    if (runtime->opening || runtime->session_id != 0u ||
+        (runtime->transport_session_id != 0u &&
+         runtime->transport_session_id != session_id))
     {
         runtime_mutex_unlock(&runtime->mutex);
         return false;
@@ -488,6 +525,7 @@ bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],
     {
         runtime->mirror = mirror;
         runtime->bridge = bridge;
+        runtime->transport_session_id = session_id;
         runtime->session_id = session_id;
         runtime->recording = false;
         runtime->play_queued = false;
@@ -615,34 +653,51 @@ void airplay_mirror_runtime_stop(uint64_t session_id, void *user_data)
     AirPlayMirrorRuntime *runtime = user_data;
     AirPlayMirrorSession *mirror;
     AirPlayMirrorAudio *audio;
+    AirPlayMirrorTiming *timing;
     AirPlayStreamBridge *bridge;
     AirPlayRuntimeCommand command;
+    bool had_media;
 
     if (!runtime)
         return;
     runtime_mutex_lock(&runtime->mutex);
-    if (runtime->session_id == 0u ||
-        (session_id != 0u && runtime->session_id != session_id))
+    if (runtime->session_id == 0u && runtime->transport_session_id == 0u)
     {
         runtime_mutex_unlock(&runtime->mutex);
         return;
     }
+    if (session_id != 0u && runtime->session_id != session_id &&
+        runtime->transport_session_id != session_id)
+    {
+        runtime_mutex_unlock(&runtime->mutex);
+        return;
+    }
+    had_media = runtime->session_id != 0u;
     mirror = runtime->mirror;
     audio = runtime->audio;
+    timing = runtime->timing;
     bridge = runtime->bridge;
     runtime->mirror = NULL;
     runtime->audio = NULL;
+    runtime->timing = NULL;
     runtime->bridge = NULL;
+    runtime->transport_session_id = 0u;
     runtime->session_id = 0u;
     runtime->recording = false;
     runtime->play_queued = false;
-    command = (AirPlayRuntimeCommand){
-        .type = AIRPLAY_RUNTIME_COMMAND_STOP,
-        .generation = runtime->generation};
-    (void)runtime_enqueue_locked(runtime, command);
-    runtime_set_status_locked(runtime, AIRPLAY_MIRROR_RUNTIME_DISCONNECTED);
+    if (had_media)
+    {
+        command = (AirPlayRuntimeCommand){
+            .type = AIRPLAY_RUNTIME_COMMAND_STOP,
+            .generation = runtime->generation};
+        (void)runtime_enqueue_locked(runtime, command);
+        runtime_set_status_locked(runtime, AIRPLAY_MIRROR_RUNTIME_DISCONNECTED);
+    }
     runtime_mutex_unlock(&runtime->mutex);
 
+    airplay_mirror_timing_destroy(timing);
+    if (!had_media)
+        return;
     airplay_stream_bridge_cancel(bridge);
     airplay_mirror_audio_destroy(audio);
     airplay_mirror_session_destroy(mirror);

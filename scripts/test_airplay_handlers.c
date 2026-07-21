@@ -30,6 +30,9 @@ typedef struct
     uint8_t prepared_key[16];
     uint8_t prepared_iv[16];
     uint8_t opened_key[16];
+    uint32_t peer_ipv4_address;
+    uint16_t peer_timing_port;
+    bool uses_ntp_timing;
     uint64_t connection_id;
 } Recorder;
 
@@ -117,14 +120,17 @@ static bool fake_shared(const AirPlayRtspSession *session, uint8_t output[32], v
     return true;
 }
 
-static bool fake_prepare(uint64_t session_id, const uint8_t key[16], const uint8_t iv[16],
+static bool fake_prepare(const AirPlayTransportSetup *setup,
                          uint16_t *timing_port, void *user_data)
 {
     Recorder *recorder = user_data;
-    CHECK(session_id == 42u);
+    CHECK(setup && setup->session_id == 42u);
     recorder->prepare_count++;
-    memcpy(recorder->prepared_key, key, 16u);
-    memcpy(recorder->prepared_iv, iv, 16u);
+    memcpy(recorder->prepared_key, setup->key, 16u);
+    memcpy(recorder->prepared_iv, setup->iv, 16u);
+    recorder->peer_ipv4_address = setup->peer_ipv4_address;
+    recorder->peer_timing_port = setup->peer_timing_port;
+    recorder->uses_ntp_timing = setup->uses_ntp_timing;
     *timing_port = 7010u;
     return true;
 }
@@ -232,7 +238,7 @@ static AirPlayHandlers *create_handlers(Recorder *recorder,
         .device_id = "10:11:12:13:14:15",
         .pairing_id = "10111213-1415-4617-9819-1a1b1c1d1e1f",
         .public_key = public_key,
-        .features = UINT64_C(1) << 7,
+        .features = (UINT64_C(1) << 7) | (UINT64_C(1) << 9),
         .airplay_txt = txt,
         .airplay_txt_size = sizeof(txt),
         .unwrap_key_callback = fake_unwrap,
@@ -257,7 +263,10 @@ static void test_info_and_fairplay(AirPlayHandlers *handlers)
     AirPlayRtspSession session;
     AirPlayRtspResponse response = {0};
     AirPlayPlistValue *root;
+    const AirPlayPlistValue *display;
     uint64_t features = 0u;
+    double refresh_rate = 0.0;
+    bool keepalive_stats = false;
     uint8_t stage2[164] = {0};
     uint8_t stage1[16] = {0};
 
@@ -267,8 +276,20 @@ static void test_info_and_fairplay(AirPlayHandlers *handlers)
     root = decode_response(&response);
     CHECK(strcmp(airplay_plist_get_string(airplay_plist_dict_get(root, "name")), "NX-Cast") == 0);
     CHECK(airplay_plist_get_uint(airplay_plist_dict_get(root, "features"), &features));
-    CHECK(features == (UINT64_C(1) << 7));
+    CHECK(features == ((UINT64_C(1) << 7) | (UINT64_C(1) << 9)));
+    CHECK(airplay_plist_get_bool(
+        airplay_plist_dict_get(root, "keepAliveSendStatsAsBody"),
+        &keepalive_stats));
+    CHECK(keepalive_stats);
+    CHECK(airplay_plist_array_size(
+              airplay_plist_dict_get(root, "audioLatencies")) == 2u);
+    CHECK(airplay_plist_array_size(
+              airplay_plist_dict_get(root, "audioFormats")) == 2u);
     CHECK(airplay_plist_array_size(airplay_plist_dict_get(root, "displays")) == 1u);
+    display = airplay_plist_array_get(airplay_plist_dict_get(root, "displays"), 0u);
+    CHECK(airplay_plist_get_real(airplay_plist_dict_get(display, "refreshRate"),
+                                 &refresh_rate));
+    CHECK(refresh_rate > 0.016 && refresh_rate < 0.017);
     airplay_plist_free(root);
     airplay_rtsp_response_clear(&response);
 
@@ -313,6 +334,7 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     for (size_t index = 0u; index < sizeof(iv); ++index)
         iv[index] = (uint8_t)(0x40u + index);
     airplay_rtsp_session_init(&session, 42u);
+    airplay_rtsp_session_set_peer_ipv4(&session, UINT32_C(0x11223344));
     CHECK(dispatch(handlers, &session, "RECORD", "/stream", NULL, 0u, NULL, &response));
     CHECK(response.status_code == 455);
     airplay_rtsp_response_clear(&response);
@@ -320,6 +342,8 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     root = airplay_plist_new_dict();
     CHECK(root && dict_set(root, "ekey", airplay_plist_new_data(wrapped, sizeof(wrapped))) &&
           dict_set(root, "eiv", airplay_plist_new_data(iv, sizeof(iv))) &&
+          dict_set(root, "timingProtocol", airplay_plist_new_string("NTP")) &&
+          dict_set(root, "timingPort", airplay_plist_new_uint(7001u)) &&
           encode(root, &body, &body_size));
     CHECK(dispatch(handlers, &session, "SETUP", "/stream", body, body_size,
                    "application/x-apple-binary-plist", &response));
@@ -337,6 +361,13 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     CHECK(airplay_crypto_sha256(expected_input, sizeof(expected_input), expected_hash));
     CHECK(memcmp(recorder->prepared_key, expected_hash, 16u) == 0);
     CHECK(memcmp(recorder->prepared_iv, iv, sizeof(iv)) == 0);
+    CHECK(recorder->peer_ipv4_address == UINT32_C(0x11223344));
+    CHECK(recorder->peer_timing_port == 7001u);
+    CHECK(recorder->uses_ntp_timing);
+
+    CHECK(dispatch(handlers, &session, "RECORD", "/stream", NULL, 0u, NULL, &response));
+    CHECK(response.status_code == 200 && recorder->record_count == 0u);
+    airplay_rtsp_response_clear(&response);
 
     root = airplay_plist_new_dict();
     streams = airplay_plist_new_array();
@@ -364,6 +395,7 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
         airplay_plist_dict_get(root, "streams"), 0u);
     CHECK(airplay_plist_get_uint(airplay_plist_dict_get(stream, "dataPort"), &value));
     CHECK(value == 7100u);
+    CHECK(recorder->record_count == 1u);
     airplay_plist_free(root);
     airplay_rtsp_response_clear(&response);
 

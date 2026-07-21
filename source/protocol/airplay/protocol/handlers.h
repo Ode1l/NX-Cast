@@ -20,9 +20,16 @@ typedef bool (*AirPlayKeyUnwrapCallback)(
 typedef bool (*AirPlaySharedSecretCallback)(const AirPlayRtspSession *session,
                                             uint8_t secret_out[32],
                                             void *user_data);
-typedef bool (*AirPlayTransportPrepareCallback)(uint64_t session_id,
-                                                const uint8_t key[16],
-                                                const uint8_t iv[16],
+typedef struct
+{
+    uint64_t session_id;
+    uint32_t peer_ipv4_address;
+    uint16_t peer_timing_port;
+    bool uses_ntp_timing;
+    const uint8_t *key;
+    const uint8_t *iv;
+} AirPlayTransportSetup;
+typedef bool (*AirPlayTransportPrepareCallback)(const AirPlayTransportSetup *setup,
                                                 uint16_t *timing_port_out,
                                                 void *user_data);
 typedef bool (*AirPlayMirrorOpenCallback)(uint64_t session_id,

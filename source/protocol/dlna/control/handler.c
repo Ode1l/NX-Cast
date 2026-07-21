@@ -7,6 +7,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "app/protocol_coordinator.h"
 #include "event_server.h"
 #include "handler_internal.h"
 #include "log/log.h"
@@ -216,9 +217,14 @@ char *soap_handler_xml_escape_alloc(const char *value)
 
 static void soap_handler_on_renderer_event(const RendererEvent *event, void *user)
 {
+    PlayerOwnershipLease owner = {0};
+
     (void)user;
 
     if (!event)
+        return;
+    if (protocol_coordinator_media_current(&owner) &&
+        (owner.owner != PLAYER_MEDIA_OWNER_DLNA || owner.token != 1u))
         return;
     dlna_protocol_state_on_renderer_event(event);
     event_server_on_renderer_event(event);
@@ -492,11 +498,6 @@ void soap_handler_init(void)
     dlna_protocol_state_init();
 
     renderer_set_event_callback(soap_handler_on_renderer_event, NULL);
-    if (!renderer_init())
-    {
-        log_warn("[soap-handler] renderer init failed, actions may not work.\n");
-        return;
-    }
     dlna_protocol_state_sync_from_renderer();
 }
 
@@ -504,9 +505,6 @@ void soap_handler_shutdown(void)
 {
     log_info("[soap-handler] shutdown begin\n");
     renderer_set_event_callback(NULL, NULL);
-    log_info("[soap-handler] shutdown step=renderer_deinit begin\n");
-    renderer_deinit();
-    log_info("[soap-handler] shutdown step=renderer_deinit done\n");
     dlna_protocol_state_reset();
     log_info("[soap-handler] shutdown step=protocol_state_reset done\n");
 }

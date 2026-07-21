@@ -187,8 +187,8 @@ static void test_malformed_queries(void)
     AirPlayDnsService service = make_service();
     uint8_t query[32] = {0};
     uint8_t response[AIRPLAY_DNS_PACKET_MAX];
-    size_t response_size = 0u;
-    bool unicast = false;
+    size_t response_size = 123u;
+    bool unicast = true;
 
     query[5] = 1u;
     query[12] = 0xc0u;
@@ -199,7 +199,47 @@ static void test_malformed_queries(void)
     query[17] = 1u;
     CHECK(!airplay_dns_build_query_response(&service, query, 18u, 120u,
                                             response, &response_size, &unicast));
+    CHECK(response_size == 0u);
+    CHECK(!unicast);
     CHECK(!airplay_dns_build_query_response(&service, query, 11u, 120u,
+                                            response, &response_size, &unicast));
+}
+
+static void test_invalid_service_boundaries(void)
+{
+    AirPlayDnsService service = make_service();
+    uint8_t packet[AIRPLAY_DNS_PACKET_MAX];
+    size_t packet_size = 123u;
+
+    service.txt_size = sizeof(service.txt) + 1u;
+    CHECK(!airplay_dns_build_announcement(&service, 120u,
+                                          packet, &packet_size));
+    CHECK(packet_size == 0u);
+}
+
+static void test_raop_service_name(void)
+{
+    AirPlayDnsService service = make_service();
+    uint8_t query[AIRPLAY_DNS_PACKET_MAX];
+    uint8_t response[AIRPLAY_DNS_PACKET_MAX];
+    size_t query_size;
+    size_t response_size = 0u;
+    bool unicast = false;
+
+    snprintf(service.service_name, sizeof(service.service_name),
+             "_raop._tcp.local");
+    snprintf(service.instance_name, sizeof(service.instance_name),
+             "001122334455@NX-Cast");
+    query_size = build_query(query, sizeof(query), 0x4321u,
+                             "_raop._tcp.local", AIRPLAY_DNS_TYPE_PTR, true);
+    CHECK(airplay_dns_build_query_response(&service, query, query_size, 120u,
+                                           response, &response_size, &unicast));
+    CHECK(unicast && read_u16(response) == 0x4321u);
+    check_record_ttls(response, response_size, 120u);
+
+    query_size = build_query(query, sizeof(query), 0x1234u,
+                             "_airplay._tcp.local", AIRPLAY_DNS_TYPE_PTR, true);
+    CHECK(!airplay_dns_build_query_response(&service, query, query_size, 120u,
                                             response, &response_size, &unicast));
 }
 
@@ -207,6 +247,8 @@ int main(void)
 {
     test_records_and_queries();
     test_malformed_queries();
+    test_invalid_service_boundaries();
+    test_raop_service_name();
     if (g_failures != 0)
     {
         fprintf(stderr, "AirPlay DNS tests failed: %d\n", g_failures);

@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -124,11 +125,18 @@ static bool parse_hhmmss_ms(const char *start, const char *end, int *out_ms)
     if (dot && !parse_fraction_ms(dot + 1, end, &fraction_ms))
         return false;
 
-    total_ms = ((hour * 3600LL) + (minute * 60LL) + second) * 1000LL + (long long)fraction_ms;
-    if (fraction_ms >= 1000)
-        total_ms += 1000 - fraction_ms;
-    if (total_ms < 0 || total_ms > INT_MAX)
+    if (hour > INT_MAX / 3600000LL)
         return false;
+    total_ms = hour * 3600000LL;
+    if (minute > (INT_MAX - total_ms) / 60000LL)
+        return false;
+    total_ms += minute * 60000LL;
+    if (second > (INT_MAX - total_ms) / 1000LL)
+        return false;
+    total_ms += second * 1000LL;
+    if (fraction_ms > INT_MAX - total_ms)
+        return false;
+    total_ms += fraction_ms;
 
     *out_ms = (int)total_ms;
     return true;
@@ -139,6 +147,7 @@ static bool parse_numeric_seconds_ms(const char *start, const char *end, int *ou
     char *buffer;
     char *tail = NULL;
     double seconds;
+    double milliseconds;
     long long total_ms;
 
     if (!start || !end || !out_ms || start >= end)
@@ -151,13 +160,15 @@ static bool parse_numeric_seconds_ms(const char *start, const char *end, int *ou
     buffer[end - start] = '\0';
 
     seconds = strtod(buffer, &tail);
-    if (!tail || *tail != '\0' || seconds < 0.0)
+    milliseconds = seconds * 1000.0;
+    if (!tail || *tail != '\0' || !isfinite(milliseconds) ||
+        milliseconds < 0.0 || milliseconds > (double)INT_MAX)
     {
         free(buffer);
         return false;
     }
 
-    total_ms = (long long)(seconds * 1000.0 + 0.5);
+    total_ms = (long long)(milliseconds + 0.5);
     free(buffer);
     if (total_ms < 0 || total_ms > INT_MAX)
         return false;

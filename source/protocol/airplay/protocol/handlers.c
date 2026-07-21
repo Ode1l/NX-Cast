@@ -20,6 +20,8 @@ typedef struct
     bool initial_setup;
     bool mirror_setup;
     bool audio_setup;
+    bool record_requested;
+    bool mirror_recording;
     uint8_t aes_key[16];
     uint8_t aes_iv[16];
     uint64_t stream_connection_id;
@@ -34,6 +36,18 @@ struct AirPlayHandlers
     uint8_t public_key[32];
     uint8_t airplay_txt[AIRPLAY_DNS_TXT_MAX];
 };
+
+static size_t bounded_string_length(const char *value, size_t capacity)
+{
+    size_t length;
+
+    if (!value)
+        return capacity;
+    for (length = 0u; length < capacity && value[length] != '\0'; ++length)
+    {
+    }
+    return length;
+}
 
 static bool content_type_is(const AirPlayRtspRequest *request, const char *expected)
 {
@@ -105,16 +119,23 @@ bool airplay_handlers_create(const AirPlayHandlersConfig *config,
 {
     AirPlayHandlers *handlers;
     size_t name_size;
+    size_t device_id_size;
+    size_t pairing_id_size;
 
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu handlers stage=validate begin\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!config || !handlers_out || *handlers_out || !config->friendly_name ||
         !config->device_id || !config->pairing_id || !config->public_key)
         return false;
-    name_size = strlen(config->friendly_name);
+    name_size = bounded_string_length(config->friendly_name,
+                                      AIRPLAY_HANDLER_NAME_MAX + 1u);
+    device_id_size = bounded_string_length(
+        config->device_id, AIRPLAY_HANDLER_DEVICE_ID_STRING_SIZE);
+    pairing_id_size = bounded_string_length(
+        config->pairing_id, AIRPLAY_HANDLER_PAIRING_ID_SIZE);
     if (name_size == 0u || name_size > AIRPLAY_HANDLER_NAME_MAX ||
-        strlen(config->device_id) != AIRPLAY_HANDLER_DEVICE_ID_STRING_SIZE - 1u ||
-        strlen(config->pairing_id) != AIRPLAY_HANDLER_PAIRING_ID_SIZE - 1u ||
+        device_id_size != AIRPLAY_HANDLER_DEVICE_ID_STRING_SIZE - 1u ||
+        pairing_id_size != AIRPLAY_HANDLER_PAIRING_ID_SIZE - 1u ||
         config->airplay_txt_size > AIRPLAY_DNS_TXT_MAX ||
         (config->airplay_txt_size != 0u && !config->airplay_txt))
         return false;
@@ -187,12 +208,14 @@ static bool add_display_info(AirPlayPlistValue *root)
         return false;
     }
     ok = dict_set(display, "uuid", airplay_plist_new_string("5f45580b-6a34-45df-9b3f-006e78636173")) &&
+         dict_set(display, "widthPhysical", airplay_plist_new_uint(0u)) &&
+         dict_set(display, "heightPhysical", airplay_plist_new_uint(0u)) &&
          dict_set(display, "width", airplay_plist_new_uint(1280u)) &&
          dict_set(display, "height", airplay_plist_new_uint(720u)) &&
          dict_set(display, "widthPixels", airplay_plist_new_uint(1280u)) &&
          dict_set(display, "heightPixels", airplay_plist_new_uint(720u)) &&
          dict_set(display, "rotation", airplay_plist_new_bool(false)) &&
-         dict_set(display, "refreshRate", airplay_plist_new_real(60.0)) &&
+         dict_set(display, "refreshRate", airplay_plist_new_real(1.0 / 60.0)) &&
          dict_set(display, "maxFPS", airplay_plist_new_uint(60u)) &&
          dict_set(display, "overscanned", airplay_plist_new_bool(false)) &&
          dict_set(display, "features", airplay_plist_new_uint(14u));
@@ -210,6 +233,76 @@ static bool add_display_info(AirPlayPlistValue *root)
     if (!dict_set(root, "displays", displays))
         return false;
     return ok;
+}
+
+static AirPlayPlistValue *new_audio_latency(uint64_t type)
+{
+    AirPlayPlistValue *latency = airplay_plist_new_dict();
+
+    if (!latency ||
+        !dict_set(latency, "type", airplay_plist_new_uint(type)) ||
+        !dict_set(latency, "inputLatencyMicros", airplay_plist_new_uint(0u)) ||
+        !dict_set(latency, "audioType", airplay_plist_new_string("default")) ||
+        !dict_set(latency, "outputLatencyMicros", airplay_plist_new_uint(0u)))
+    {
+        airplay_plist_free(latency);
+        return NULL;
+    }
+    return latency;
+}
+
+static AirPlayPlistValue *new_audio_format(uint64_t type)
+{
+    AirPlayPlistValue *format = airplay_plist_new_dict();
+
+    if (!format ||
+        !dict_set(format, "type", airplay_plist_new_uint(type)) ||
+        !dict_set(format, "audioInputFormats",
+                  airplay_plist_new_uint(UINT64_C(0x3fffffc))) ||
+        !dict_set(format, "audioOutputFormats",
+                  airplay_plist_new_uint(UINT64_C(0x3fffffc))))
+    {
+        airplay_plist_free(format);
+        return NULL;
+    }
+    return format;
+}
+
+static bool add_audio_info(AirPlayPlistValue *root)
+{
+    AirPlayPlistValue *latencies = airplay_plist_new_array();
+    AirPlayPlistValue *formats = airplay_plist_new_array();
+    AirPlayPlistValue *item = NULL;
+
+    if (!latencies || !formats)
+        goto failure;
+    item = new_audio_latency(100u);
+    if (!item || !array_append(latencies, item))
+        goto failure;
+    item = new_audio_latency(101u);
+    if (!item || !array_append(latencies, item))
+        goto failure;
+    item = new_audio_format(100u);
+    if (!item || !array_append(formats, item))
+        goto failure;
+    item = new_audio_format(101u);
+    if (!item || !array_append(formats, item))
+        goto failure;
+    item = NULL;
+    if (!dict_set(root, "initialVolume", airplay_plist_new_real(0.0)) ||
+        !dict_set(root, "audioLatencies", latencies))
+        goto failure;
+    latencies = NULL;
+    if (!dict_set(root, "audioFormats", formats))
+        goto failure;
+    formats = NULL;
+    return true;
+
+failure:
+    airplay_plist_free(item);
+    airplay_plist_free(latencies);
+    airplay_plist_free(formats);
+    return false;
 }
 
 static bool handle_info(AirPlayHandlers *handlers,
@@ -239,8 +332,11 @@ static bool handle_info(AirPlayHandlers *handlers,
              dict_set(root, "vv", airplay_plist_new_uint(2u)) &&
              dict_set(root, "statusFlags", airplay_plist_new_uint(68u)) &&
              dict_set(root, "keepAliveLowPower", airplay_plist_new_uint(1u)) &&
+             dict_set(root, "keepAliveSendStatsAsBody", airplay_plist_new_bool(true)) &&
              dict_set(root, "sourceVersion", airplay_plist_new_string("220.68")) &&
              dict_set(root, "model", airplay_plist_new_string("AppleTV3,2"));
+        if (ok && (handlers->config.features & (UINT64_C(1) << 9)) != 0u)
+            ok = add_audio_info(root);
         if (ok && (handlers->config.features & (UINT64_C(1) << 7)) != 0u)
             ok = add_display_info(root);
     }
@@ -347,8 +443,11 @@ static bool setup_initial(AirPlayHandlers *handlers,
 {
     const uint8_t *wrapped_key;
     const uint8_t *iv;
+    const char *timing_protocol;
     size_t wrapped_size;
     size_t iv_size;
+    uint64_t peer_timing_port = 0u;
+    AirPlayTransportSetup transport = {0};
     uint16_t timing_port = 0u;
 
     wrapped_key = airplay_plist_get_data(airplay_plist_dict_get(root, "ekey"),
@@ -359,9 +458,22 @@ static bool setup_initial(AirPlayHandlers *handlers,
         !derive_session_key(handlers, context, session, wrapped_key, context->aes_key))
         return false;
     memcpy(context->aes_iv, iv, sizeof(context->aes_iv));
+    timing_protocol = airplay_plist_get_string(
+        airplay_plist_dict_get(root, "timingProtocol"));
+    if (airplay_plist_get_uint(airplay_plist_dict_get(root, "timingPort"),
+                               &peer_timing_port) &&
+        peer_timing_port > UINT16_MAX)
+        return false;
+    transport.session_id = session->id;
+    transport.peer_ipv4_address = session->peer_ipv4_address;
+    transport.peer_timing_port = (uint16_t)peer_timing_port;
+    transport.uses_ntp_timing = peer_timing_port != 0u &&
+                                (!timing_protocol ||
+                                 strcmp(timing_protocol, "NTP") == 0);
+    transport.key = context->aes_key;
+    transport.iv = context->aes_iv;
     if (handlers->config.transport_prepare_callback &&
-        !handlers->config.transport_prepare_callback(session->id, context->aes_key,
-                                                     context->aes_iv, &timing_port,
+        !handlers->config.transport_prepare_callback(&transport, &timing_port,
                                                      handlers->config.callback_user_data))
         return false;
     context->initial_setup = true;
@@ -479,6 +591,64 @@ failure:
     return false;
 }
 
+static void trace_setup_metadata(const AirPlayRtspSession *session,
+                                 const AirPlayPlistValue *root,
+                                 const AirPlayPlistValue *streams,
+                                 bool has_initial)
+{
+    const char *timing_protocol = airplay_plist_get_string(
+        airplay_plist_dict_get(root, "timingProtocol"));
+    const char *timing_label = "missing";
+    uint64_t timing_port = 0u;
+    bool remote_control_only = false;
+    bool has_mirror = false;
+    bool has_audio = false;
+    size_t stream_count = airplay_plist_array_size(streams);
+
+    if (timing_protocol)
+    {
+        if (strcmp(timing_protocol, "NTP") == 0)
+            timing_label = "NTP";
+        else if (strcmp(timing_protocol, "None") == 0)
+            timing_label = "None";
+        else
+            timing_label = "other";
+    }
+    (void)airplay_plist_get_uint(airplay_plist_dict_get(root, "timingPort"),
+                                 &timing_port);
+    (void)airplay_plist_get_bool(
+        airplay_plist_dict_get(root, "isRemoteControlOnly"),
+        &remote_control_only);
+    for (size_t index = 0u; index < stream_count; ++index)
+    {
+        const AirPlayPlistValue *stream =
+            airplay_plist_array_get(streams, index);
+        uint64_t type = 0u;
+
+        if (!airplay_plist_get_uint(airplay_plist_dict_get(stream, "type"),
+                                    &type))
+            continue;
+        has_mirror = has_mirror || type == 110u;
+        has_audio = has_audio || type == 96u;
+    }
+    (void)session;
+    (void)has_initial;
+    (void)timing_label;
+    (void)timing_port;
+    (void)remote_control_only;
+    (void)has_mirror;
+    (void)has_audio;
+    AIRPLAY_TRACE_SYNC(
+        "[airplay] t_ms=%llu setup metadata session=%llu keys=%zu "
+        "initial=%u timing=%s timing_port=%llu remote_control=%u "
+        "streams=%zu mirror=%u audio=%u\n",
+        (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+        (unsigned long long)session->id, airplay_plist_dict_size(root),
+        has_initial ? 1u : 0u, timing_label,
+        (unsigned long long)timing_port, remote_control_only ? 1u : 0u,
+        stream_count, has_mirror ? 1u : 0u, has_audio ? 1u : 0u);
+}
+
 static bool handle_setup(AirPlayHandlers *handlers,
                          AirPlayHandlerSession *context,
                          AirPlayRtspSession *session,
@@ -489,17 +659,21 @@ static bool handle_setup(AirPlayHandlers *handlers,
     AirPlayPlistValue *response_root = NULL;
     const AirPlayPlistValue *streams;
     bool has_initial;
+    bool was_recording;
     bool ok = false;
 
     if (session->state != AIRPLAY_RTSP_SESSION_CONNECTED &&
-        session->state != AIRPLAY_RTSP_SESSION_SETUP)
+        session->state != AIRPLAY_RTSP_SESSION_SETUP &&
+        session->state != AIRPLAY_RTSP_SESSION_RECORDING)
         return airplay_rtsp_response_set_status(response, 455);
+    was_recording = session->state == AIRPLAY_RTSP_SESSION_RECORDING;
     root = decode_dict(request);
     response_root = airplay_plist_new_dict();
     if (!root || !response_root)
         goto cleanup;
     has_initial = airplay_plist_dict_get(root, "ekey") || airplay_plist_dict_get(root, "eiv");
     streams = airplay_plist_dict_get(root, "streams");
+    trace_setup_metadata(session, root, streams, has_initial);
     if (!has_initial && !streams)
         goto cleanup;
     if (has_initial && !setup_initial(handlers, context, session, root, response_root))
@@ -508,23 +682,36 @@ static bool handle_setup(AirPlayHandlers *handlers,
         goto cleanup;
     if (!set_plist_body(response, response_root))
         goto cleanup;
-    session->state = AIRPLAY_RTSP_SESSION_SETUP;
+    session->state = was_recording ? AIRPLAY_RTSP_SESSION_RECORDING
+                                   : AIRPLAY_RTSP_SESSION_SETUP;
+    if (context->record_requested && context->mirror_setup &&
+        !context->mirror_recording)
+    {
+        context->mirror_recording = true;
+        if (handlers->config.mirror_record_callback)
+            handlers->config.mirror_record_callback(
+                session->id, handlers->config.callback_user_data);
+    }
     ok = true;
 
 cleanup:
     airplay_plist_free(root);
     airplay_plist_free(response_root);
-    AIRPLAY_TRACE("[airplay] session=%llu method=SETUP initial=%u mirror=%u result=%s\n",
+    AIRPLAY_TRACE("[airplay] session=%llu method=SETUP initial=%u mirror=%u record=%u result=%s\n",
                   (unsigned long long)session->id, context->initial_setup ? 1u : 0u,
-                  context->mirror_setup ? 1u : 0u, ok ? "ok" : "failed");
+                  context->mirror_setup ? 1u : 0u,
+                  context->record_requested ? 1u : 0u,
+                  ok ? "ok" : "failed");
     if (!ok)
     {
-        if (context->mirror_setup && handlers->config.mirror_stop_callback)
+        if (context->initial_setup && handlers->config.mirror_stop_callback)
             handlers->config.mirror_stop_callback(session->id,
                                                   handlers->config.callback_user_data);
         context->initial_setup = false;
         context->mirror_setup = false;
         context->audio_setup = false;
+        context->record_requested = false;
+        context->mirror_recording = false;
         context->stream_connection_id = 0u;
         airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
         airplay_crypto_secure_zero(context->aes_iv, sizeof(context->aes_iv));
@@ -538,12 +725,23 @@ static bool handle_record(AirPlayHandlers *handlers,
                           AirPlayRtspSession *session,
                           AirPlayRtspResponse *response)
 {
-    if (session->state != AIRPLAY_RTSP_SESSION_SETUP || !context->mirror_setup)
+    if ((session->state != AIRPLAY_RTSP_SESSION_SETUP &&
+         session->state != AIRPLAY_RTSP_SESSION_RECORDING) ||
+        !context->initial_setup)
         return airplay_rtsp_response_set_status(response, 455);
+    context->record_requested = true;
     session->state = AIRPLAY_RTSP_SESSION_RECORDING;
-    if (handlers->config.mirror_record_callback)
-        handlers->config.mirror_record_callback(session->id,
-                                                handlers->config.callback_user_data);
+    if (context->mirror_setup && !context->mirror_recording)
+    {
+        context->mirror_recording = true;
+        if (handlers->config.mirror_record_callback)
+            handlers->config.mirror_record_callback(
+                session->id, handlers->config.callback_user_data);
+    }
+    AIRPLAY_TRACE("[airplay] session=%llu method=RECORD mirror=%u deferred=%u\n",
+                  (unsigned long long)session->id,
+                  context->mirror_setup ? 1u : 0u,
+                  context->mirror_recording ? 0u : 1u);
     return airplay_rtsp_response_add_header(response, "Audio-Latency", "0") &&
            airplay_rtsp_response_add_header(response, "Audio-Jack-Status",
                                             "connected; type=analog");
@@ -579,12 +777,14 @@ static bool handle_teardown(AirPlayHandlers *handlers,
 {
     if (session->state == AIRPLAY_RTSP_SESSION_CLOSED)
         return airplay_rtsp_response_set_status(response, 455);
-    if (context->mirror_setup && handlers->config.mirror_stop_callback)
+    if (context->initial_setup && handlers->config.mirror_stop_callback)
         handlers->config.mirror_stop_callback(session->id,
                                               handlers->config.callback_user_data);
     context->mirror_setup = false;
     context->audio_setup = false;
     context->initial_setup = false;
+    context->record_requested = false;
+    context->mirror_recording = false;
     airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
     airplay_crypto_secure_zero(context->aes_iv, sizeof(context->aes_iv));
     session->state = AIRPLAY_RTSP_SESSION_CLOSED;
@@ -672,7 +872,7 @@ void airplay_handlers_session_closed(AirPlayRtspSession *session, void *user_dat
     session->protocol_context = NULL;
     if (!context)
         return;
-    if (context->mirror_setup && handlers && handlers->config.mirror_stop_callback)
+    if (context->initial_setup && handlers && handlers->config.mirror_stop_callback)
         handlers->config.mirror_stop_callback(session->id,
                                               handlers->config.callback_user_data);
     if (handlers && handlers->config.remote_video)

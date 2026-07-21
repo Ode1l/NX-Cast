@@ -29,6 +29,10 @@ bool iptv_fetch_to_file(const char *url,
     size_t total = 0;
     bool ok = false;
     int rc;
+    int written;
+
+    if (error && error_size > 0u)
+        error[0] = '\0';
 
     if (!url || !url[0] || !destination || !destination[0] || maximum_size == 0)
     {
@@ -36,7 +40,12 @@ bool iptv_fetch_to_file(const char *url,
         return false;
     }
 
-    snprintf(temporary, sizeof(temporary), "%s.tmp", destination);
+    written = snprintf(temporary, sizeof(temporary), "%s.tmp", destination);
+    if (written < 0 || (size_t)written >= sizeof(temporary))
+    {
+        fetch_set_error(error, error_size, "cache path is too long");
+        return false;
+    }
     remove(temporary);
     av_dict_set(&options, "user_agent", "NX-Cast/0.1 IPTV", 0);
     av_dict_set(&options, "rw_timeout", "15000000", 0);
@@ -80,7 +89,7 @@ bool iptv_fetch_to_file(const char *url,
         }
         if (rc == 0)
             continue;
-        if (total + (size_t)rc > maximum_size)
+        if (total > maximum_size || (size_t)rc > maximum_size - total)
         {
             fetch_set_error(error, error_size, "download exceeds cache size limit");
             break;
@@ -95,7 +104,10 @@ bool iptv_fetch_to_file(const char *url,
 
 cleanup:
     if (output && fclose(output) != 0)
+    {
         ok = false;
+        fetch_set_error(error, error_size, "failed to close cache file");
+    }
     if (input)
         avio_closep(&input);
     if (!ok)

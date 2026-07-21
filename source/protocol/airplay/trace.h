@@ -15,8 +15,9 @@ static inline uint64_t airplay_trace_now_ms(void)
     return armTicksToNs(armGetSystemTick()) / UINT64_C(1000000);
 }
 
-#define AIRPLAY_TRACE(...) log_warn(__VA_ARGS__)
+#define AIRPLAY_TRACE(...) log_info(__VA_ARGS__)
 #define AIRPLAY_TRACE_WARN(...) log_warn(__VA_ARGS__)
+#define AIRPLAY_TRACE_SYNC(...) log_info(__VA_ARGS__)
 #else
 #include <time.h>
 
@@ -32,15 +33,13 @@ static inline uint64_t airplay_trace_now_ms(void)
 
 #define AIRPLAY_TRACE(...) ((void)fprintf(stderr, __VA_ARGS__))
 #define AIRPLAY_TRACE_WARN(...) ((void)fprintf(stderr, __VA_ARGS__))
-#endif
-
-// Startup traces bypass the async logger so a crash cannot hide the last stage.
 #define AIRPLAY_TRACE_SYNC(...)                                                 \
     do                                                                          \
     {                                                                           \
         (void)fprintf(stderr, __VA_ARGS__);                                      \
         (void)fflush(stderr);                                                    \
     } while (0)
+#endif
 #define AIRPLAY_TRACE_NOW_MS() airplay_trace_now_ms()
 #else
 #define AIRPLAY_TRACE(...) ((void)0)

@@ -60,10 +60,13 @@ typedef struct
     bool seekable;
 } PlayerSnapshot;
 
+/* Destinations must be zero-initialized or already owned by these APIs. */
 void player_media_clear(PlayerMedia *media);
+/* Copy/set replace only after allocation succeeds; NULL media clears out. */
 bool player_media_copy(PlayerMedia *out, const PlayerMedia *media);
 bool player_media_set(PlayerMedia *media, const char *uri, const char *metadata);
 void player_event_clear(PlayerEvent *event);
+/* Event copy is failure-atomic; a NULL source clears the destination. */
 bool player_event_copy(PlayerEvent *out, const PlayerEvent *event);
 void player_snapshot_clear(PlayerSnapshot *snapshot);
 bool player_snapshot_copy(PlayerSnapshot *out, const PlayerSnapshot *snapshot);

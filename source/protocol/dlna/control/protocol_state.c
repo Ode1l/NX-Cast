@@ -8,6 +8,7 @@
 
 #include "log/log.h"
 #include "protocol/dlna/description/template_resource.h"
+#include "util/size.h"
 
 #define DLNA_COUNTER_UNKNOWN 2147483647
 #define DLNA_SERVICE_XML_COUNT 3
@@ -356,15 +357,19 @@ static bool ensure_state_capacity(size_t capacity)
 {
     DlnaStateVariable *next_items;
     size_t next_capacity;
+    size_t allocation_size;
+    const size_t maximum_capacity = SIZE_MAX / sizeof(*next_items);
 
     if (capacity <= g_state_store.capacity)
         return true;
 
-    next_capacity = g_state_store.capacity == 0 ? DLNA_PROTOCOL_STATE_INITIAL_CAPACITY : g_state_store.capacity * 2;
-    while (next_capacity < capacity)
-        next_capacity *= 2;
-
-    next_items = realloc(g_state_store.items, next_capacity * sizeof(*next_items));
+    if (!nxcast_size_grow(g_state_store.capacity, capacity,
+                          DLNA_PROTOCOL_STATE_INITIAL_CAPACITY,
+                          maximum_capacity, &next_capacity) ||
+        !nxcast_size_multiply(next_capacity, sizeof(*next_items),
+                              &allocation_size))
+        return false;
+    next_items = realloc(g_state_store.items, allocation_size);
     if (!next_items)
         return false;
 
@@ -481,6 +486,8 @@ static bool add_allowed_value(DlnaStateVariable *variable, const char *value)
 {
     char **next_items;
     char *copy;
+    size_t next_count;
+    size_t allocation_size;
 
     if (!variable || !value)
         return false;
@@ -489,8 +496,13 @@ static bool add_allowed_value(DlnaStateVariable *variable, const char *value)
     if (!copy)
         return false;
 
-    next_items = realloc(variable->owned_allowed_values,
-                         (variable->view.allowed_value_count + 1) * sizeof(*next_items));
+    if (!nxcast_size_add(variable->view.allowed_value_count, 1u, &next_count) ||
+        !nxcast_size_multiply(next_count, sizeof(*next_items), &allocation_size))
+    {
+        free(copy);
+        return false;
+    }
+    next_items = realloc(variable->owned_allowed_values, allocation_size);
     if (!next_items)
     {
         free(copy);
@@ -500,7 +512,7 @@ static bool add_allowed_value(DlnaStateVariable *variable, const char *value)
     variable->owned_allowed_values = next_items;
     variable->owned_allowed_values[variable->view.allowed_value_count] = copy;
     variable->view.allowed_values = (const char *const *)variable->owned_allowed_values;
-    variable->view.allowed_value_count += 1;
+    variable->view.allowed_value_count = next_count;
     return true;
 }
 
@@ -517,6 +529,7 @@ static bool add_state_variable(DlnaProtocolService service,
 {
     DlnaStateVariable *existing;
     DlnaStateVariable *variable;
+    size_t required_capacity;
 
     if (!name || name[0] == '\0')
         return false;
@@ -528,14 +541,15 @@ static bool add_state_variable(DlnaProtocolService service,
         return true;
     }
 
-    if (!ensure_state_capacity(g_state_store.count + 1))
+    if (!nxcast_size_add(g_state_store.count, 1u, &required_capacity) ||
+        !ensure_state_capacity(required_capacity))
         return false;
 
     variable = &g_state_store.items[g_state_store.count];
     memset(variable, 0, sizeof(*variable));
     variable->view.name = strdup(name);
     if (!variable->view.name)
-        return false;
+        goto failure;
 
     variable->view.service = service;
     variable->view.send_events = send_events;
@@ -559,13 +573,13 @@ static bool add_state_variable(DlnaProtocolService service,
 
             allowed_value = dup_range(value_start, value_end);
             if (!allowed_value)
-                return false;
+                goto failure;
             trim_in_place(allowed_value);
 
             if (!add_allowed_value(variable, allowed_value))
             {
                 free(allowed_value);
-                return false;
+                goto failure;
             }
 
             if (datatype == DLNA_STATE_TYPE_STRING &&
@@ -575,7 +589,7 @@ static bool add_state_variable(DlnaProtocolService service,
                 if (!set_state_string_value(variable, allowed_value))
                 {
                     free(allowed_value);
-                    return false;
+                    goto failure;
                 }
             }
 
@@ -599,14 +613,16 @@ static bool add_state_variable(DlnaProtocolService service,
     default:
         if (!variable->view.string_value &&
             !set_state_string_value(variable, default_value ? default_value : ""))
-        {
-            return false;
-        }
+            goto failure;
         break;
     }
 
     g_state_store.count += 1;
     return true;
+
+failure:
+    free_state_variable(variable);
+    return false;
 }
 
 static bool parse_state_variable_block(const char *block_start,

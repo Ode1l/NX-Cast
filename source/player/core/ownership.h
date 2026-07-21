@@ -20,6 +20,8 @@ typedef struct
     uint32_t generation;
 } PlayerOwnershipLease;
 
+void player_ownership_transition_begin(void);
+void player_ownership_transition_end(void);
 bool player_ownership_claim(PlayerMediaOwner owner, uint64_t token,
                             PlayerOwnershipLease *lease_out,
                             PlayerOwnershipLease *previous_out);

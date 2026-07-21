@@ -38,7 +38,24 @@
       ]
     },
     {
-      "label": "NX-Cast: Build (Trace Media+Input+AirPlay)",
+      "label": "NX-Cast: Build (Playback Baseline Trace, AirPlay Off)",
+      "type": "shell",
+      "command": "source /opt/devkitpro/switchvars.sh && make TRACE_MEDIA=1 TRACE_INPUT=1 NXCAST_AIRPLAY_RUNTIME=0 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j4",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "NX-Cast: Build (Full Trace DLNA+IPTV+AirPlay)",
       "type": "shell",
       "command": "source /opt/devkitpro/switchvars.sh && make TRACE_MEDIA=1 TRACE_INPUT=1 TRACE_AIRPLAY=1 NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j4",
       "options": {
@@ -64,11 +81,20 @@
       "problemMatcher": []
     },
     {
-      "label": "NX-Cast: Rebuild (Trace Media+Input+AirPlay)",
+      "label": "NX-Cast: Rebuild (Playback Baseline Trace, AirPlay Off)",
       "dependsOrder": "sequence",
       "dependsOn": [
         "NX-Cast: Clean",
-        "NX-Cast: Build (Trace Media+Input+AirPlay)"
+        "NX-Cast: Build (Playback Baseline Trace, AirPlay Off)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Clean",
+        "NX-Cast: Build (Full Trace DLNA+IPTV+AirPlay)"
       ],
       "problemMatcher": []
     },
@@ -136,10 +162,19 @@
       "problemMatcher": []
     },
     {
-      "label": "NX-Cast: Rebuild Trace + Nxlink Upload + Server",
+      "label": "NX-Cast: Rebuild Playback Baseline Trace + Nxlink Upload + Server",
       "dependsOrder": "sequence",
       "dependsOn": [
-        "NX-Cast: Rebuild (Trace Media+Input+AirPlay)",
+        "NX-Cast: Rebuild (Playback Baseline Trace, AirPlay Off)",
+        "NX-Cast: Nxlink Upload + Server"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "NX-Cast: Rebuild Full Trace + Nxlink Upload + Server",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)",
         "NX-Cast: Nxlink Upload + Server"
       ],
       "problemMatcher": []

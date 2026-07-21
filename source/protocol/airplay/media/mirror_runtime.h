@@ -42,6 +42,9 @@ void airplay_mirror_runtime_destroy(AirPlayMirrorRuntime *runtime);
 bool airplay_mirror_runtime_transport_prepare(uint64_t session_id,
                                               const uint8_t key[16],
                                               const uint8_t iv[16],
+                                              uint32_t peer_ipv4_address,
+                                              uint16_t peer_timing_port,
+                                              bool uses_ntp_timing,
                                               uint16_t *timing_port_out,
                                               void *user_data);
 bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],

@@ -268,6 +268,12 @@ static void run_cycle(AirPlayMirrorRuntime *runtime, FakePlayer *player,
     CHECK(airplay_mirror_runtime_open(session_id, session_key, connection_id,
                                       &port, runtime));
     CHECK(port != 0u);
+    pthread_mutex_lock(&player->mutex);
+    CHECK(player->bind_count == cycle * 2u);
+    CHECK(player->set_uri_count == cycle);
+    CHECK(player->play_count == cycle);
+    CHECK(player->stop_count == cycle);
+    pthread_mutex_unlock(&player->mutex);
     airplay_mirror_runtime_record(session_id, runtime);
     CHECK(wait_for_count(player, &player->set_uri_count, expected_load));
     pthread_mutex_lock(&player->mutex);

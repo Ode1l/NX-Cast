@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "protocol/airplay/trace.h"
+#include "util/size.h"
 
 #ifdef __SWITCH__
 #include <switch.h>
@@ -46,16 +47,36 @@ typedef void *(*AirPlayMdnsThreadEntry)(void *argument);
 #define AIRPLAY_MDNS_ANNOUNCE_INTERVAL_MS 60000u
 #define AIRPLAY_MDNS_THREAD_STACK_SIZE 0x10000u
 #define AIRPLAY_MDNS_POLL_MS 200u
-#define AIRPLAY_MDNS_INSTANCE_BASE_MAX 55u
+#define AIRPLAY_MDNS_FRIENDLY_BASE_MAX 45u
 #define AIRPLAY_MDNS_CONFLICT_SUFFIX_MAX 99u
+#define AIRPLAY_MDNS_AIRPLAY_SERVICE "_airplay._tcp.local"
+#define AIRPLAY_MDNS_RAOP_SERVICE "_raop._tcp.local"
+
+#define AIRPLAY_MDNS_DIAG_FULL 0
+#define AIRPLAY_MDNS_DIAG_SOCKET_ONLY 1
+#define AIRPLAY_MDNS_DIAG_IDLE_THREAD 2
+#define AIRPLAY_MDNS_DIAG_RECEIVE_ONLY 3
+
+#ifndef NXCAST_AIRPLAY_MDNS_DIAG_MODE
+#define NXCAST_AIRPLAY_MDNS_DIAG_MODE AIRPLAY_MDNS_DIAG_FULL
+#endif
+#ifndef NXCAST_AIRPLAY_MDNS_THREAD_PRIORITY
+#define NXCAST_AIRPLAY_MDNS_THREAD_PRIORITY 0x2b
+#endif
+#if NXCAST_AIRPLAY_MDNS_DIAG_MODE < AIRPLAY_MDNS_DIAG_FULL || \
+    NXCAST_AIRPLAY_MDNS_DIAG_MODE > AIRPLAY_MDNS_DIAG_RECEIVE_ONLY
+#error "NXCAST_AIRPLAY_MDNS_DIAG_MODE is invalid"
+#endif
 
 typedef struct
 {
     AirPlayMdnsConfig config;
     char friendly_name[AIRPLAY_DNS_NAME_MAX + 1u];
     AirPlayDnsService service;
+    AirPlayDnsService raop_service;
     struct sockaddr_in announcement_target;
     AirPlayMdnsThread thread;
+    bool started;
     bool thread_started;
     atomic_bool running;
     atomic_int socket_fd;
@@ -63,7 +84,20 @@ typedef struct
     unsigned conflict_suffix;
 } AirPlayMdnsState;
 
+typedef struct
+{
+    atomic_int phase;
+    atomic_bool running;
+    atomic_bool socket_open;
+    atomic_uint_fast64_t worker_heartbeat_ms;
+    atomic_uint_fast64_t select_iterations;
+    atomic_uint_fast64_t packets_received;
+    atomic_uint_fast64_t packets_sent;
+} AirPlayMdnsDiagnosticState;
+
 static AirPlayMdnsState g_mdns;
+/* Never memset this state: the main loop reads it while mDNS is starting. */
+static AirPlayMdnsDiagnosticState g_mdns_diagnostics;
 
 static uint64_t mdns_now_ms(void)
 {
@@ -77,16 +111,44 @@ static uint64_t mdns_now_ms(void)
 #endif
 }
 
+static void mdns_sleep_ms(unsigned int duration_ms)
+{
+#ifdef __SWITCH__
+    svcSleepThread((int64_t)duration_ms * 1000000LL);
+#else
+    struct timespec duration = {
+        .tv_sec = (time_t)(duration_ms / 1000u),
+        .tv_nsec = (long)(duration_ms % 1000u) * 1000000L,
+    };
+
+    while (nanosleep(&duration, &duration) != 0 && errno == EINTR)
+    {
+    }
+#endif
+}
+
 static bool mdns_thread_start(AirPlayMdnsThread *thread,
                               AirPlayMdnsThreadEntry entry,
                               void *argument)
 {
 #ifdef __SWITCH__
-    Result result = threadCreate(thread, entry, argument, NULL,
-                                 AIRPLAY_MDNS_THREAD_STACK_SIZE, 0x2b, -2);
+    Result result;
+
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns thread-create begin stack=%u\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                       AIRPLAY_MDNS_THREAD_STACK_SIZE);
+    result = threadCreate(thread, entry, argument, NULL,
+                          AIRPLAY_MDNS_THREAD_STACK_SIZE,
+                          NXCAST_AIRPLAY_MDNS_THREAD_PRIORITY, -2);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns thread-create done rc=0x%08X\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), result);
     if (R_FAILED(result))
         return false;
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns thread-start begin\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     result = threadStart(thread);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns thread-start done rc=0x%08X\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), result);
     if (R_FAILED(result))
     {
         threadClose(thread);
@@ -116,34 +178,21 @@ static void mdns_close_socket(void)
         shutdown(socket_fd, SHUT_RDWR);
         close(socket_fd);
     }
+    atomic_store(&g_mdns_diagnostics.socket_open, false);
+}
+
+static void mdns_set_phase(AirPlayMdnsPhase phase)
+{
+    atomic_store(&g_mdns_diagnostics.phase, (int)phase);
+}
+
+static void mdns_worker_heartbeat(void)
+{
+    atomic_store(&g_mdns_diagnostics.worker_heartbeat_ms, mdns_now_ms());
 }
 
 static bool determine_local_address(uint32_t *address_out)
 {
-#ifdef __SWITCH__
-    uint32_t address = 0u;
-    Result result;
-
-    if (!address_out)
-        return false;
-    result = nifmInitialize(NifmServiceType_User);
-    if (R_FAILED(result))
-    {
-        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns nifm init failed rc=0x%08X\n",
-                           (unsigned long long)AIRPLAY_TRACE_NOW_MS(), result);
-        return false;
-    }
-    result = nifmGetCurrentIpAddress(&address);
-    nifmExit();
-    if (R_FAILED(result) || address == 0u)
-    {
-        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns nifm address failed rc=0x%08X\n",
-                           (unsigned long long)AIRPLAY_TRACE_NOW_MS(), result);
-        return false;
-    }
-    *address_out = address;
-    return true;
-#else
     struct sockaddr_in remote;
     struct sockaddr_in local;
     socklen_t local_size = sizeof(local);
@@ -169,7 +218,6 @@ static bool determine_local_address(uint32_t *address_out)
         return false;
     *address_out = local.sin_addr.s_addr;
     return true;
-#endif
 }
 
 static size_t sanitize_label(const char *input, char *output, size_t capacity)
@@ -197,13 +245,18 @@ static bool append_txt(AirPlayDnsService *service, const char *key, const char *
     size_t key_size;
     size_t value_size;
     size_t item_size;
+    size_t stored_size;
 
     if (!service || !key || !value)
         return false;
     key_size = strlen(key);
     value_size = strlen(value);
-    item_size = key_size + 1u + value_size;
-    if (item_size > 255u || item_size + 1u > sizeof(service->txt) - service->txt_size)
+    if (service->txt_size > sizeof(service->txt) ||
+        !nxcast_size_add(key_size, 1u, &item_size) ||
+        !nxcast_size_add(item_size, value_size, &item_size) ||
+        item_size > UINT8_MAX ||
+        !nxcast_size_add(item_size, 1u, &stored_size) ||
+        stored_size > sizeof(service->txt) - service->txt_size)
         return false;
     service->txt[service->txt_size++] = (uint8_t)item_size;
     memcpy(service->txt + service->txt_size, key, key_size);
@@ -218,10 +271,13 @@ static bool format_hex(const uint8_t *input, size_t input_size, char *output,
                        size_t output_size, char separator)
 {
     static const char hex[] = "0123456789ABCDEF";
-    size_t needed = input_size * 2u + (separator ? input_size - 1u : 0u) + 1u;
+    size_t needed;
     size_t offset = 0u;
 
-    if (!input || !output || input_size == 0u || needed > output_size)
+    if (!input || !output || input_size == 0u ||
+        !nxcast_size_multiply(input_size, 2u, &needed) ||
+        (separator && !nxcast_size_add(needed, input_size - 1u, &needed)) ||
+        !nxcast_size_add(needed, 1u, &needed) || needed > output_size)
         return false;
     for (size_t index = 0u; index < input_size; ++index)
     {
@@ -234,8 +290,8 @@ static bool format_hex(const uint8_t *input, size_t input_size, char *output,
     return true;
 }
 
-static bool build_txt_record(const AirPlayMdnsConfig *config,
-                             AirPlayDnsService *service)
+static bool build_airplay_txt_record(const AirPlayMdnsConfig *config,
+                                     AirPlayDnsService *service)
 {
     char device_id[18];
     char public_key[65];
@@ -265,13 +321,62 @@ static bool build_txt_record(const AirPlayMdnsConfig *config,
            append_txt(service, "vv", "2");
 }
 
+static bool build_raop_txt_record(const AirPlayMdnsConfig *config,
+                                  AirPlayDnsService *service)
+{
+    char public_key[65];
+    char features[32];
+    int written;
+
+    if (!config || !service || config->features == 0u ||
+        !format_hex(config->public_key, sizeof(config->public_key),
+                    public_key, sizeof(public_key), 0))
+        return false;
+    written = snprintf(features, sizeof(features), "0x%X,0x%X",
+                       (unsigned)(config->features & UINT32_MAX),
+                       (unsigned)(config->features >> 32));
+    if (written <= 0 || (size_t)written >= sizeof(features))
+        return false;
+    return append_txt(service, "ch", "2") &&
+           append_txt(service, "cn", "0,1,2,3") &&
+           append_txt(service, "da", "true") &&
+           append_txt(service, "et", "0,3,5") &&
+           append_txt(service, "vv", "2") &&
+           append_txt(service, "ft", features) &&
+           append_txt(service, "am", "AppleTV3,2") &&
+           append_txt(service, "md", "0,1,2") &&
+           append_txt(service, "rhd", "5.6.0.0") &&
+           append_txt(service, "pw", config->pin_required ? "true" : "false") &&
+           append_txt(service, "sf", config->pin_required ? "0x8c" : "0x4") &&
+           append_txt(service, "sr", "44100") &&
+           append_txt(service, "ss", "16") &&
+           append_txt(service, "sv", "false") &&
+           append_txt(service, "tp", "UDP") &&
+           append_txt(service, "txtvers", "1") &&
+           append_txt(service, "vs", "220.68") &&
+           append_txt(service, "vn", "65537") &&
+           append_txt(service, "pk", public_key);
+}
+
 static bool build_service(unsigned suffix)
 {
-    char base[AIRPLAY_MDNS_INSTANCE_BASE_MAX + 1u];
+    char base[AIRPLAY_MDNS_FRIENDLY_BASE_MAX + 1u];
+    char raop_device_id[13];
     int written;
 
     memset(&g_mdns.service, 0, sizeof(g_mdns.service));
+    memset(&g_mdns.raop_service, 0, sizeof(g_mdns.raop_service));
     if (!sanitize_label(g_mdns.friendly_name, base, sizeof(base)))
+        return false;
+    written = snprintf(g_mdns.service.service_name,
+                       sizeof(g_mdns.service.service_name), "%s",
+                       AIRPLAY_MDNS_AIRPLAY_SERVICE);
+    if (written <= 0 || (size_t)written >= sizeof(g_mdns.service.service_name))
+        return false;
+    written = snprintf(g_mdns.raop_service.service_name,
+                       sizeof(g_mdns.raop_service.service_name), "%s",
+                       AIRPLAY_MDNS_RAOP_SERVICE);
+    if (written <= 0 || (size_t)written >= sizeof(g_mdns.raop_service.service_name))
         return false;
     if (suffix <= 1u)
         written = snprintf(g_mdns.service.instance_name,
@@ -281,6 +386,14 @@ static bool build_service(unsigned suffix)
                            sizeof(g_mdns.service.instance_name), "%s (%u)", base, suffix);
     if (written <= 0 || (size_t)written >= sizeof(g_mdns.service.instance_name))
         return false;
+    if (!format_hex(g_mdns.config.device_id, sizeof(g_mdns.config.device_id),
+                    raop_device_id, sizeof(raop_device_id), 0))
+        return false;
+    written = snprintf(g_mdns.raop_service.instance_name,
+                       sizeof(g_mdns.raop_service.instance_name), "%s@%s",
+                       raop_device_id, g_mdns.service.instance_name);
+    if (written <= 0 || (size_t)written >= sizeof(g_mdns.raop_service.instance_name))
+        return false;
     written = snprintf(g_mdns.service.host_name, sizeof(g_mdns.service.host_name),
                        "nx-cast-%02x%02x%02x%02x%02x%02x",
                        g_mdns.config.device_id[0], g_mdns.config.device_id[1],
@@ -288,9 +401,17 @@ static bool build_service(unsigned suffix)
                        g_mdns.config.device_id[4], g_mdns.config.device_id[5]);
     if (written <= 0 || (size_t)written >= sizeof(g_mdns.service.host_name))
         return false;
+    written = snprintf(g_mdns.raop_service.host_name,
+                       sizeof(g_mdns.raop_service.host_name), "%s",
+                       g_mdns.service.host_name);
+    if (written <= 0 || (size_t)written >= sizeof(g_mdns.raop_service.host_name))
+        return false;
     g_mdns.service.port = g_mdns.config.control_port;
     g_mdns.service.ipv4_address = g_mdns.config.ipv4_address;
-    return build_txt_record(&g_mdns.config, &g_mdns.service);
+    g_mdns.raop_service.port = g_mdns.config.control_port;
+    g_mdns.raop_service.ipv4_address = g_mdns.config.ipv4_address;
+    return build_airplay_txt_record(&g_mdns.config, &g_mdns.service) &&
+           build_raop_txt_record(&g_mdns.config, &g_mdns.raop_service);
 }
 
 bool airplay_mdns_build_txt_record(const AirPlayMdnsConfig *config,
@@ -302,7 +423,7 @@ bool airplay_mdns_build_txt_record(const AirPlayMdnsConfig *config,
     if (!config || !config->friendly_name || !output || !output_size ||
         !config->friendly_name[0] || config->features == 0u)
         return false;
-    if (!build_txt_record(config, &service))
+    if (!build_airplay_txt_record(config, &service))
         return false;
     memcpy(output, service.txt, service.txt_size);
     *output_size = service.txt_size;
@@ -337,28 +458,53 @@ static bool send_packet(const uint8_t *packet, size_t packet_size,
         return false;
     sent = sendto(socket_fd, packet, packet_size, 0,
                   (const struct sockaddr *)target, sizeof(*target));
-    return sent == (ssize_t)packet_size;
+    if (sent != (ssize_t)packet_size)
+        return false;
+    atomic_fetch_add(&g_mdns_diagnostics.packets_sent, 1u);
+    return true;
 }
 
 static bool send_announcement(uint32_t ttl)
 {
     uint8_t packet[AIRPLAY_DNS_PACKET_MAX];
     size_t packet_size;
+    bool airplay_sent;
+    bool raop_sent;
 
-    return airplay_dns_build_announcement(&g_mdns.service, ttl, packet, &packet_size) &&
-           send_packet(packet, packet_size, &g_mdns.announcement_target);
+    airplay_sent = airplay_dns_build_announcement(&g_mdns.service, ttl,
+                                                  packet, &packet_size) &&
+                   send_packet(packet, packet_size, &g_mdns.announcement_target);
+    raop_sent = airplay_dns_build_announcement(&g_mdns.raop_service, ttl,
+                                               packet, &packet_size) &&
+                send_packet(packet, packet_size, &g_mdns.announcement_target);
+    return airplay_sent && raop_sent;
 }
 
-static void handle_packet(const uint8_t *packet, size_t packet_size,
-                          const struct sockaddr_in *sender)
+static void send_query_response(const AirPlayDnsService *service,
+                                const uint8_t *packet, size_t packet_size,
+                                const struct sockaddr_in *sender)
 {
     uint8_t response[AIRPLAY_DNS_PACKET_MAX];
     size_t response_size;
     bool unicast;
 
+    if (!airplay_dns_build_query_response(service, packet, packet_size,
+                                          AIRPLAY_MDNS_TTL, response, &response_size,
+                                          &unicast))
+        return;
+    if (unicast || ntohs(sender->sin_port) != AIRPLAY_MDNS_DEFAULT_PORT)
+        (void)send_packet(response, response_size, sender);
+    else
+        (void)send_packet(response, response_size, &g_mdns.announcement_target);
+}
+
+static void handle_packet(const uint8_t *packet, size_t packet_size,
+                          const struct sockaddr_in *sender)
+{
     if (!address_is_local(sender->sin_addr.s_addr, g_mdns.config.ipv4_address))
         return;
-    if (airplay_dns_packet_conflicts(&g_mdns.service, packet, packet_size))
+    if (airplay_dns_packet_conflicts(&g_mdns.service, packet, packet_size) ||
+        airplay_dns_packet_conflicts(&g_mdns.raop_service, packet, packet_size))
     {
         if (g_mdns.conflict_suffix < AIRPLAY_MDNS_CONFLICT_SUFFIX_MAX)
         {
@@ -372,20 +518,43 @@ static void handle_packet(const uint8_t *packet, size_t packet_size,
         }
         return;
     }
-    if (!airplay_dns_build_query_response(&g_mdns.service, packet, packet_size,
-                                          AIRPLAY_MDNS_TTL, response, &response_size,
-                                          &unicast))
-        return;
-    if (unicast || ntohs(sender->sin_port) != AIRPLAY_MDNS_DEFAULT_PORT)
-        (void)send_packet(response, response_size, sender);
-    else
-        (void)send_packet(response, response_size, &g_mdns.announcement_target);
+    send_query_response(&g_mdns.service, packet, packet_size, sender);
+    send_query_response(&g_mdns.raop_service, packet, packet_size, sender);
 }
 
 static AIRPLAY_MDNS_THREAD_RETURN mdns_thread(void *argument)
 {
-    uint64_t next_announcement = mdns_now_ms() + AIRPLAY_MDNS_ANNOUNCE_INTERVAL_MS;
+    uint64_t next_announcement;
+
     (void)argument;
+    mdns_worker_heartbeat();
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns worker entered\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns worker mode=%d priority=0x%x\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                       NXCAST_AIRPLAY_MDNS_DIAG_MODE,
+                       NXCAST_AIRPLAY_MDNS_THREAD_PRIORITY);
+    if (NXCAST_AIRPLAY_MDNS_DIAG_MODE == AIRPLAY_MDNS_DIAG_IDLE_THREAD)
+    {
+        mdns_set_phase(AIRPLAY_MDNS_PHASE_IDLE);
+        while (atomic_load(&g_mdns.running))
+        {
+            mdns_worker_heartbeat();
+            mdns_sleep_ms(AIRPLAY_MDNS_POLL_MS);
+        }
+        AIRPLAY_MDNS_THREAD_FINISH();
+    }
+    if (NXCAST_AIRPLAY_MDNS_DIAG_MODE == AIRPLAY_MDNS_DIAG_FULL)
+    {
+        mdns_set_phase(AIRPLAY_MDNS_PHASE_ANNOUNCING);
+        mdns_worker_heartbeat();
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns worker announce begin\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+        (void)send_announcement(AIRPLAY_MDNS_TTL);
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns worker announce done\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    }
+    next_announcement = mdns_now_ms() + AIRPLAY_MDNS_ANNOUNCE_INTERVAL_MS;
 
     while (atomic_load(&g_mdns.running))
     {
@@ -396,11 +565,15 @@ static AIRPLAY_MDNS_THREAD_RETURN mdns_thread(void *argument)
 
         if (socket_fd < 0)
             break;
+        mdns_set_phase(AIRPLAY_MDNS_PHASE_WAITING);
+        mdns_worker_heartbeat();
         FD_ZERO(&read_set);
         FD_SET(socket_fd, &read_set);
         timeout.tv_sec = 0;
         timeout.tv_usec = AIRPLAY_MDNS_POLL_MS * 1000u;
         result = select(socket_fd + 1, &read_set, NULL, NULL, &timeout);
+        atomic_fetch_add(&g_mdns_diagnostics.select_iterations, 1u);
+        mdns_worker_heartbeat();
         if (result < 0)
         {
             if (errno == EINTR)
@@ -417,9 +590,17 @@ static AIRPLAY_MDNS_THREAD_RETURN mdns_thread(void *argument)
             ssize_t received = recvfrom(socket_fd, packet, sizeof(packet), 0,
                                         (struct sockaddr *)&sender, &sender_size);
             if (received > 0)
-                handle_packet(packet, (size_t)received, &sender);
+            {
+                atomic_fetch_add(&g_mdns_diagnostics.packets_received, 1u);
+                mdns_set_phase(AIRPLAY_MDNS_PHASE_PROCESSING);
+                mdns_worker_heartbeat();
+                if (NXCAST_AIRPLAY_MDNS_DIAG_MODE == AIRPLAY_MDNS_DIAG_FULL)
+                    handle_packet(packet, (size_t)received, &sender);
+                mdns_worker_heartbeat();
+            }
         }
-        if (mdns_now_ms() >= next_announcement)
+        if (NXCAST_AIRPLAY_MDNS_DIAG_MODE == AIRPLAY_MDNS_DIAG_FULL &&
+            mdns_now_ms() >= next_announcement)
         {
             (void)send_announcement(AIRPLAY_MDNS_TTL);
             next_announcement = mdns_now_ms() + AIRPLAY_MDNS_ANNOUNCE_INTERVAL_MS;
@@ -502,6 +683,7 @@ static bool create_socket(void)
         g_mdns.bound_port = ntohs(actual.sin_port);
     }
     atomic_store(&g_mdns.socket_fd, socket_fd);
+    atomic_store(&g_mdns_diagnostics.socket_open, true);
     return true;
 
 failure:
@@ -532,6 +714,13 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
     memcpy(g_mdns.friendly_name, config->friendly_name, friendly_size + 1u);
     atomic_init(&g_mdns.running, false);
     atomic_init(&g_mdns.socket_fd, -1);
+    atomic_store(&g_mdns_diagnostics.phase, AIRPLAY_MDNS_PHASE_STARTING);
+    atomic_store(&g_mdns_diagnostics.running, false);
+    atomic_store(&g_mdns_diagnostics.socket_open, false);
+    atomic_store(&g_mdns_diagnostics.worker_heartbeat_ms, 0u);
+    atomic_store(&g_mdns_diagnostics.select_iterations, 0u);
+    atomic_store(&g_mdns_diagnostics.packets_received, 0u);
+    atomic_store(&g_mdns_diagnostics.packets_sent, 0u);
     g_mdns.conflict_suffix = 1u;
     if (g_mdns.config.ipv4_address == 0u)
     {
@@ -539,6 +728,7 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
                            (unsigned long long)AIRPLAY_TRACE_NOW_MS());
         if (!determine_local_address(&g_mdns.config.ipv4_address))
         {
+            mdns_set_phase(AIRPLAY_MDNS_PHASE_FAILED);
             AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=local-address\n");
             return false;
         }
@@ -556,6 +746,7 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!build_service(g_mdns.conflict_suffix))
     {
+        mdns_set_phase(AIRPLAY_MDNS_PHASE_FAILED);
         AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=service-record\n");
         return false;
     }
@@ -575,52 +766,78 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=socket begin\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     if (!create_socket())
+    {
+        mdns_set_phase(AIRPLAY_MDNS_PHASE_FAILED);
         return false;
+    }
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=socket done\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    g_mdns.started = true;
     atomic_store(&g_mdns.running, true);
+    atomic_store(&g_mdns_diagnostics.running, true);
+    mdns_set_phase(AIRPLAY_MDNS_PHASE_SOCKET_READY);
+    if (NXCAST_AIRPLAY_MDNS_DIAG_MODE == AIRPLAY_MDNS_DIAG_SOCKET_ONLY)
+    {
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns diagnostic socket-only ready\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+        return true;
+    }
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=thread begin\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
+    mdns_set_phase(AIRPLAY_MDNS_PHASE_THREAD_STARTING);
     if (!mdns_thread_start(&g_mdns.thread, mdns_thread, NULL))
     {
         AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=thread\n");
         atomic_store(&g_mdns.running, false);
+        atomic_store(&g_mdns_diagnostics.running, false);
         mdns_close_socket();
+        g_mdns.started = false;
+        mdns_set_phase(AIRPLAY_MDNS_PHASE_FAILED);
         return false;
     }
     g_mdns.thread_started = true;
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=thread done\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
-    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=announce begin\n",
-                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
-    (void)send_announcement(AIRPLAY_MDNS_TTL);
-    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=announce done\n",
-                       (unsigned long long)AIRPLAY_TRACE_NOW_MS());
-    AIRPLAY_TRACE("[airplay-mdns] announced %s on port %u\n",
-                  g_mdns.service.instance_name, g_mdns.service.port);
-    AIRPLAY_MDNS_LOG_INFO("[airplay-mdns] announced %s on port %u\n",
-                         g_mdns.service.instance_name, g_mdns.service.port);
+    AIRPLAY_TRACE("[airplay-mdns] started airplay=%s raop=%s port=%u features=0x%X,0x%X\n",
+                  g_mdns.service.instance_name,
+                  g_mdns.raop_service.instance_name,
+                  g_mdns.service.port,
+                  (unsigned)(g_mdns.config.features & UINT32_MAX),
+                  (unsigned)(g_mdns.config.features >> 32));
+    AIRPLAY_MDNS_LOG_INFO("[airplay-mdns] started airplay=%s raop=%s port=%u features=0x%X,0x%X\n",
+                         g_mdns.service.instance_name,
+                         g_mdns.raop_service.instance_name,
+                         g_mdns.service.port,
+                         (unsigned)(g_mdns.config.features & UINT32_MAX),
+                         (unsigned)(g_mdns.config.features >> 32));
     return true;
 }
 
 void airplay_mdns_stop(void)
 {
-    if (!g_mdns.thread_started)
+    if (!g_mdns.started)
         return;
-    (void)send_announcement(0u);
+    mdns_set_phase(AIRPLAY_MDNS_PHASE_STOPPING);
+    if (NXCAST_AIRPLAY_MDNS_DIAG_MODE == AIRPLAY_MDNS_DIAG_FULL)
+        (void)send_announcement(0u);
     atomic_store(&g_mdns.running, false);
+    atomic_store(&g_mdns_diagnostics.running, false);
     mdns_close_socket();
-    mdns_thread_join(&g_mdns.thread);
+    if (g_mdns.thread_started)
+        mdns_thread_join(&g_mdns.thread);
+    g_mdns.started = false;
     g_mdns.thread_started = false;
     g_mdns.bound_port = 0u;
     memset(&g_mdns.config, 0, sizeof(g_mdns.config));
     memset(&g_mdns.service, 0, sizeof(g_mdns.service));
+    memset(&g_mdns.raop_service, 0, sizeof(g_mdns.raop_service));
     memset(g_mdns.friendly_name, 0, sizeof(g_mdns.friendly_name));
+    mdns_set_phase(AIRPLAY_MDNS_PHASE_STOPPED);
 }
 
 bool airplay_mdns_is_running(void)
 {
-    return g_mdns.thread_started && atomic_load(&g_mdns.running);
+    return g_mdns.started && atomic_load(&g_mdns.running);
 }
 
 uint16_t airplay_mdns_bound_port(void)
@@ -639,4 +856,59 @@ bool airplay_mdns_instance_name(char *output, size_t output_size)
         return false;
     memcpy(output, g_mdns.service.instance_name, size + 1u);
     return true;
+}
+
+bool airplay_mdns_get_diagnostics(AirPlayMdnsDiagnostics *diagnostics_out)
+{
+    uint64_t heartbeat_ms;
+    uint64_t now_ms;
+
+    if (!diagnostics_out)
+        return false;
+    memset(diagnostics_out, 0, sizeof(*diagnostics_out));
+    diagnostics_out->phase =
+        (AirPlayMdnsPhase)atomic_load(&g_mdns_diagnostics.phase);
+    diagnostics_out->mode = NXCAST_AIRPLAY_MDNS_DIAG_MODE;
+    diagnostics_out->running = atomic_load(&g_mdns_diagnostics.running);
+    diagnostics_out->socket_open = atomic_load(&g_mdns_diagnostics.socket_open);
+    diagnostics_out->select_iterations =
+        atomic_load(&g_mdns_diagnostics.select_iterations);
+    diagnostics_out->packets_received =
+        atomic_load(&g_mdns_diagnostics.packets_received);
+    diagnostics_out->packets_sent =
+        atomic_load(&g_mdns_diagnostics.packets_sent);
+    heartbeat_ms = atomic_load(&g_mdns_diagnostics.worker_heartbeat_ms);
+    now_ms = mdns_now_ms();
+    diagnostics_out->worker_heartbeat_age_ms =
+        heartbeat_ms > 0u && now_ms >= heartbeat_ms ? now_ms - heartbeat_ms : 0u;
+    return true;
+}
+
+const char *airplay_mdns_phase_name(AirPlayMdnsPhase phase)
+{
+    switch (phase)
+    {
+    case AIRPLAY_MDNS_PHASE_STOPPED:
+        return "stopped";
+    case AIRPLAY_MDNS_PHASE_STARTING:
+        return "starting";
+    case AIRPLAY_MDNS_PHASE_SOCKET_READY:
+        return "socket-ready";
+    case AIRPLAY_MDNS_PHASE_THREAD_STARTING:
+        return "thread-starting";
+    case AIRPLAY_MDNS_PHASE_IDLE:
+        return "idle";
+    case AIRPLAY_MDNS_PHASE_ANNOUNCING:
+        return "announcing";
+    case AIRPLAY_MDNS_PHASE_WAITING:
+        return "waiting";
+    case AIRPLAY_MDNS_PHASE_PROCESSING:
+        return "processing";
+    case AIRPLAY_MDNS_PHASE_STOPPING:
+        return "stopping";
+    case AIRPLAY_MDNS_PHASE_FAILED:
+        return "failed";
+    default:
+        return "unknown";
+    }
 }

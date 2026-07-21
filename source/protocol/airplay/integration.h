@@ -9,14 +9,16 @@
 typedef struct
 {
     bool running;
+    bool starting;
     bool pin_visible;
     char pin[AIRPLAY_INTEGRATION_PIN_SIZE];
     char status[AIRPLAY_INTEGRATION_STATUS_MAX];
 } AirPlayIntegrationStatus;
 
 bool airplay_integration_start(void);
-bool airplay_integration_start_async(void);
+void airplay_integration_request_stop(void);
 void airplay_integration_stop(void);
+/* Snapshot reads are non-blocking so AirPlay cannot stall the main loop. */
 bool airplay_integration_get_status(AirPlayIntegrationStatus *status_out);
 
 #endif

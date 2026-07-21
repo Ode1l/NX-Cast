@@ -78,13 +78,10 @@ static bool remote_snapshot(AirPlayRemoteVideoSnapshot *snapshot_out,
     return true;
 }
 
-static bool mirror_prepare(uint64_t session_id, const uint8_t key[16],
-                           const uint8_t iv[16], uint16_t *timing_port_out,
-                           void *user_data)
+static bool mirror_prepare(const AirPlayTransportSetup *setup,
+                           uint16_t *timing_port_out, void *user_data)
 {
-    (void)session_id;
-    (void)key;
-    (void)iv;
+    (void)setup;
     (void)user_data;
     if (!timing_port_out)
         return false;

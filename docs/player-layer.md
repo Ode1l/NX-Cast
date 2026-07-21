@@ -31,18 +31,21 @@ player
 
 Responsibilities:
 
-1. Own the player session.
-2. Cache `PlayerSnapshot`.
-3. Forward backend events.
-4. Own current media strings.
-5. Drive the event pump thread.
+1. Own the Media Actor and bounded command queue.
+2. Execute all backend control commands on the actor thread.
+3. Pump backend events on the same actor thread.
+4. Own active producer/session/generation state.
+5. Cache and publish immutable `PlayerSnapshot` copies.
+6. Forward normalized backend events without holding player locks.
 
 Main files:
 
 1. `source/player/core/session.c`
-2. `source/player/types.h`
-3. `source/player/types.c`
-4. `source/player/renderer.h`
+2. `source/player/core/media_actor.c`
+3. `source/player/core/ownership.c`
+4. `source/player/types.h`
+5. `source/player/types.c`
+6. `source/player/renderer.h`
 
 ### Backend
 
@@ -100,17 +103,19 @@ The player exposes three groups of data:
 
 ### Commands
 
-Current command surface:
+Command surface:
 
-1. Set URI.
-2. Set media.
-3. Play.
-4. Pause.
-5. Stop.
-6. Seek.
-7. Volume.
-8. Mute.
-9. Show OSD.
+1. Open media with producer/session identity and optional autoplay.
+2. Play or pause the matching session.
+3. Stop the matching session or stop any session for app shutdown.
+4. Seek absolute or relative.
+5. Set volume or mute.
+6. Show OSD.
+7. Quiesce and shutdown the actor.
+
+Submission returns accepted/rejected; it does not wait for probing, decoding,
+or first frame. Main/UI never waits for command execution. Protocol handlers
+map queue rejection to their own bounded error responses.
 
 ### PlayerSnapshot
 
@@ -147,16 +152,27 @@ It currently carries:
 
 ## Playback Model
 
-The path is deliberately thin:
+The current path is thin and asynchronous:
 
 ```text
-protocol action
-  -> renderer_set_uri / play / pause / seek / stop
-  -> backend/libmpv command
+protocol or UI action
+  -> normalize + submit source-tagged MediaCommand
+  -> bounded player queue
+  -> Media Actor validates session/generation
+  -> backend/libmpv asynchronous command
   -> libmpv runtime event
   -> PlayerEvent / PlayerSnapshot
-  -> protocol_state sync
+  -> UI and protocol_state observe immutable state
 ```
+
+Legacy synchronous wrappers are retained for tests and compatibility, but they
+also submit through the Media Actor with bounded waits. Production UI and
+protocol callers use the normalized command API directly.
+
+`player_init()` starts backend initialization on the Media Actor and returns.
+Main observes `backend_ready`, attaches the deko3d render context, then calls
+`player_activate()`. Commands cannot execute before that handshake, preserving
+the required render-context-before-URL order.
 
 `SetAVTransportURI` sends the URL directly to the renderer. `libmpv/FFmpeg` is responsible for probing, networking, demuxing, decoding, and playback.
 
@@ -169,7 +185,22 @@ The backend has two lines of integration:
 1. Command line: `loadfile`, `pause`, `seek`, `set_property`, and `stop`.
 2. Observation line: `time-pos`, `duration`, `pause`, `mute`, `seekable`, `paused-for-cache`, `seeking`, EOF, and error events.
 
-The protocol layer does not maintain a private playback model. It sends commands downward and receives real runtime state back through player events and snapshots.
+The protocol layer does not maintain a private playback model. It submits
+commands downward and receives real runtime state back through player events
+and snapshots. Protocol callbacks never call backend control APIs directly.
+
+## Thread Ownership
+
+Player control/event ownership and foreground rendering are intentionally
+separate:
+
+1. Media Actor: backend lifecycle, control commands, event pumping, snapshots.
+2. Main thread: render-context attachment/detachment and frame presentation.
+3. Protocol/UI producers: normalized command submission only.
+
+No lock may be held across backend, network, filesystem, logger, event sink, or
+protocol callback execution. See [threading-design.md](threading-design.md) for
+the complete queue, lifecycle, overload, and shutdown contract.
 
 ## Render And Backend Routes
 

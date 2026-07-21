@@ -184,6 +184,13 @@ static void test_response_and_session(void)
         assert(airplay_rtsp_response_encode(&response, &encoded, &encoded_length));
         assert(encoded_length > 0);
         assert(strstr((const char *)encoded, "Content-Length: 0\r\n") != NULL);
+        assert(strstr((const char *)encoded, "Server: AirTunes/220.68\r\n") != NULL);
+        assert(strstr((const char *)encoded, "CSeq:") != NULL);
+        if (strcmp(request.method, "RECORD") == 0)
+            assert(strstr((const char *)encoded, "Audio-Jack-Status:") == NULL);
+        else
+            assert(strstr((const char *)encoded,
+                          "Audio-Jack-Status: connected; type=digital\r\n") != NULL);
         if (index == 0)
             assert(strstr((const char *)encoded, "Public:") != NULL);
         free(encoded);

@@ -13,13 +13,16 @@ All Markdown documents in this directory use English file names and English cont
 5. [scpd-module.md](scpd-module.md)
 6. [soap-module.md](soap-module.md)
 7. [threading-design.md](threading-design.md)
-8. [source-compatibility.md](source-compatibility.md)
-9. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
+8. [c-safety.md](c-safety.md)
+9. [source-compatibility.md](source-compatibility.md)
+10. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
+11. [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
 
 ## Build And Media Toolchain
 
 - [libmpv-dependencies.md](libmpv-dependencies.md)
 - [ffmpeg-mpv-toolchain.md](ffmpeg-mpv-toolchain.md)
+- [c-safety.md](c-safety.md)
 
 Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra` support.
 
@@ -30,6 +33,7 @@ Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra`
 - [soap-module.md](soap-module.md)
 - [connection-manager-sink-protocol-info.md](connection-manager-sink-protocol-info.md)
 - [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
+- [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
 
 Use these when working on DLNA discovery, device/service description, SOAP actions, GENA, or protocol state sync.
 

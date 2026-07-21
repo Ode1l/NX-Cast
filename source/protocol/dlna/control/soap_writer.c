@@ -5,31 +5,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "util/size.h"
+
 static const size_t SOAP_WRITER_INITIAL_CAP = 512;
 
 static bool soap_writer_reserve(SoapActionOutput *out, size_t extra)
 {
+    size_t needed;
+    size_t new_cap;
+    char *new_buf;
+
     if (!out)
         return false;
-
-    size_t needed = out->output_len + extra + 1;
+    if (out->output_len > out->output_cap ||
+        (out->output_cap > 0u && !out->output_xml) ||
+        !nxcast_size_add(out->output_len, extra, &needed) ||
+        !nxcast_size_add(needed, 1u, &needed) ||
+        needed > SOAP_HANDLER_OUTPUT_MAX)
+    {
+        return false;
+    }
     if (needed <= out->output_cap)
         return true;
-
-    size_t new_cap = out->output_cap > 0 ? out->output_cap : SOAP_WRITER_INITIAL_CAP;
-    while (new_cap < needed)
-    {
-        if (new_cap >= SOAP_HANDLER_OUTPUT_MAX)
-            break;
-        new_cap *= 2;
-        if (new_cap > SOAP_HANDLER_OUTPUT_MAX)
-            new_cap = SOAP_HANDLER_OUTPUT_MAX;
-    }
-
-    if (new_cap < needed)
+    if (!nxcast_size_grow(out->output_cap, needed,
+                          SOAP_WRITER_INITIAL_CAP,
+                          SOAP_HANDLER_OUTPUT_MAX, &new_cap))
         return false;
 
-    char *new_buf = realloc(out->output_xml, new_cap);
+    new_buf = realloc(out->output_xml, new_cap);
     if (!new_buf)
         return false;
 
@@ -122,11 +125,14 @@ bool soap_writer_appendf(SoapActionOutput *out, const char *fmt, ...)
 
 bool soap_writer_append_escaped(SoapActionOutput *out, const char *text)
 {
+    size_t worst_case;
+
     if (!out)
         return false;
 
     const char *value = text ? text : "";
-    size_t worst_case = strlen(value) * 6;
+    if (!nxcast_size_multiply(strlen(value), 6u, &worst_case))
+        return false;
     if (!soap_writer_reserve(out, worst_case))
         return false;
 

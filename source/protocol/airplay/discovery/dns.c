@@ -14,7 +14,7 @@
 #define DNS_MAX_RECORDS 64u
 #define DNS_MAX_COMPRESSION_JUMPS 16u
 
-static const char g_service_name[] = "_airplay._tcp.local";
+static const char g_default_service_name[] = "_airplay._tcp.local";
 
 typedef struct
 {
@@ -30,9 +30,11 @@ static uint16_t read_u16(const uint8_t *data)
 
 static bool write_bytes(DnsWriter *writer, const void *data, size_t size)
 {
-    if (!writer || !data || size > writer->capacity - writer->offset)
+    if (!writer || !writer->data || writer->offset > writer->capacity ||
+        (size > 0u && !data) || size > writer->capacity - writer->offset)
         return false;
-    memcpy(writer->data + writer->offset, data, size);
+    if (size > 0u)
+        memcpy(writer->data + writer->offset, data, size);
     writer->offset += size;
     return true;
 }
@@ -58,7 +60,9 @@ static bool write_u32(DnsWriter *writer, uint32_t value)
 
 static bool patch_u16(DnsWriter *writer, size_t offset, uint16_t value)
 {
-    if (!writer || offset + 2u > writer->capacity || offset + 2u > writer->offset)
+    if (!writer || !writer->data || offset > writer->capacity ||
+        offset > writer->offset || writer->capacity - offset < 2u ||
+        writer->offset - offset < 2u)
         return false;
     writer->data[offset] = (uint8_t)(value >> 8);
     writer->data[offset + 1u] = (uint8_t)value;
@@ -132,7 +136,8 @@ static bool read_name(const uint8_t *packet, size_t packet_size, size_t *offset,
             cursor = pointer;
             continue;
         }
-        if ((length & 0xc0u) != 0u || length > 63u || cursor + length > packet_size)
+        if ((length & 0xc0u) != 0u || length > 63u ||
+            (size_t)length > packet_size - cursor)
             return false;
         if (length == 0u)
         {
@@ -162,11 +167,19 @@ static bool service_valid(const AirPlayDnsService *service)
            service->txt_size > 0u && service->txt_size <= sizeof(service->txt);
 }
 
+static const char *service_name(const AirPlayDnsService *service)
+{
+    return service && service->service_name[0]
+               ? service->service_name
+               : g_default_service_name;
+}
+
 static bool make_instance_full(const AirPlayDnsService *service,
                                char output[AIRPLAY_DNS_NAME_MAX + 1u])
 {
     size_t instance_size;
-    size_t service_size = strlen(g_service_name);
+    const char *service_full_name = service_name(service);
+    size_t service_size = strlen(service_full_name);
 
     if (!service)
         return false;
@@ -176,7 +189,7 @@ static bool make_instance_full(const AirPlayDnsService *service,
         return false;
     memcpy(output, service->instance_name, instance_size);
     output[instance_size] = '.';
-    memcpy(output + instance_size + 1u, g_service_name, service_size + 1u);
+    memcpy(output + instance_size + 1u, service_full_name, service_size + 1u);
     return true;
 }
 
@@ -225,8 +238,12 @@ static bool build_record_set(const AirPlayDnsService *service, uint16_t id,
     size_t host_offset;
     size_t length_offset;
     size_t rdata_offset;
+    const char *service_full_name = service_name(service);
 
-    if (!service_valid(service) || !output || !output_size ||
+    if (!output_size)
+        return false;
+    *output_size = 0u;
+    if (!service_valid(service) || !output ||
         !make_instance_full(service, instance_full) ||
         !make_host_full(service, host_full))
         return false;
@@ -238,7 +255,7 @@ static bool build_record_set(const AirPlayDnsService *service, uint16_t id,
         return false;
 
     service_offset = writer.offset;
-    if (!write_name(&writer, g_service_name) ||
+    if (!write_name(&writer, service_full_name) ||
         !write_u16(&writer, AIRPLAY_DNS_TYPE_PTR) ||
         !write_u16(&writer, DNS_CLASS_IN) || !write_u32(&writer, ttl))
         return false;
@@ -306,7 +323,12 @@ bool airplay_dns_build_query_response(const AirPlayDnsService *service,
     uint16_t question_count;
     bool relevant = false;
     bool unicast = false;
+    const char *service_full_name = service_name(service);
 
+    if (output_size)
+        *output_size = 0u;
+    if (unicast_response)
+        *unicast_response = false;
     if (!service_valid(service) || !query || query_size < DNS_HEADER_SIZE ||
         query_size > AIRPLAY_DNS_PACKET_MAX || !output || !output_size ||
         !unicast_response || !make_instance_full(service, instance_full) ||
@@ -325,14 +347,15 @@ bool airplay_dns_build_query_response(const AirPlayDnsService *service,
         uint16_t dns_class;
         bool question_relevant = false;
 
-        if (!read_name(query, query_size, &offset, name) || offset + 4u > query_size)
+        if (!read_name(query, query_size, &offset, name) || offset > query_size ||
+            query_size - offset < 4u)
             return false;
         type = read_u16(query + offset);
         dns_class = read_u16(query + offset + 2u);
         offset += 4u;
         if ((dns_class & 0x7fffu) != DNS_CLASS_IN)
             continue;
-        if (name_matches(name, g_service_name) &&
+        if (name_matches(name, service_full_name) &&
             (type == AIRPLAY_DNS_TYPE_PTR || type == AIRPLAY_DNS_TYPE_ANY))
             question_relevant = true;
         else if (name_matches(name, instance_full) &&
@@ -362,7 +385,7 @@ static bool skip_questions(const uint8_t *packet, size_t packet_size,
     for (uint16_t index = 0u; index < count; ++index)
     {
         if (!read_name(packet, packet_size, offset, name) ||
-            *offset + 4u > packet_size)
+            *offset > packet_size || packet_size - *offset < 4u)
             return false;
         *offset += 4u;
     }
@@ -375,9 +398,13 @@ static bool srv_rdata_matches(const AirPlayDnsService *service,
 {
     char host_full[AIRPLAY_DNS_NAME_MAX + 1u];
     char target[AIRPLAY_DNS_NAME_MAX + 1u];
-    size_t target_offset = rdata_offset + 6u;
+    size_t target_offset;
 
-    return rdata_size >= 7u && rdata_offset + rdata_size <= packet_size &&
+    if (rdata_size < 7u || rdata_offset > packet_size ||
+        rdata_size > packet_size - rdata_offset)
+        return false;
+    target_offset = rdata_offset + 6u;
+    return
            read_u16(packet + rdata_offset) == 0u &&
            read_u16(packet + rdata_offset + 2u) == 0u &&
            read_u16(packet + rdata_offset + 4u) == service->port &&
@@ -414,12 +441,13 @@ bool airplay_dns_packet_conflicts(const AirPlayDnsService *service,
         uint16_t rdata_size;
         size_t rdata_offset;
 
-        if (!read_name(packet, packet_size, &offset, owner) || offset + 10u > packet_size)
+        if (!read_name(packet, packet_size, &offset, owner) ||
+            offset > packet_size || packet_size - offset < 10u)
             return false;
         type = read_u16(packet + offset);
         rdata_size = read_u16(packet + offset + 8u);
         rdata_offset = offset + 10u;
-        if (rdata_offset + rdata_size > packet_size)
+        if (rdata_size > packet_size - rdata_offset)
             return false;
         if (name_matches(owner, host_full) && type == AIRPLAY_DNS_TYPE_A &&
             (rdata_size != 4u || memcmp(packet + rdata_offset,

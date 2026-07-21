@@ -5,15 +5,55 @@
 #include <string.h>
 
 #include "../handler_internal.h"
+#include "app/protocol_coordinator.h"
 #include "player/renderer.h"
 
-static bool renderingcontrol_can_control_player(void)
-{
-    PlayerOwnershipLease owner = {0};
+#define RENDERINGCONTROL_OWNER_TOKEN 1u
+#define RENDERINGCONTROL_COMMAND_TIMEOUT_MS 750u
 
-    if (!player_ownership_current(&owner))
-        return true;
-    return owner.owner == PLAYER_MEDIA_OWNER_DLNA && owner.token == 1u;
+static bool renderingcontrol_submit(PlayerCommandKind kind, int value,
+                                    bool flag)
+{
+    ProtocolMediaGuard guard;
+    ProtocolMediaTransaction transaction;
+    PlayerOwnershipLease lease = {0};
+    PlayerCommandRequest request;
+    PlayerCommandStatus status;
+    bool claimed = false;
+
+    memset(&transaction, 0, sizeof(transaction));
+    if (!protocol_coordinator_media_unowned_or_owner_guard_begin(
+            PLAYER_MEDIA_OWNER_DLNA, RENDERINGCONTROL_OWNER_TOKEN, &guard))
+        return false;
+    lease = guard.lease;
+    protocol_coordinator_media_guard_end(&guard);
+
+    if (lease.owner == PLAYER_MEDIA_OWNER_NONE)
+    {
+        if (!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA,
+                                              RENDERINGCONTROL_OWNER_TOKEN,
+                                              &transaction))
+            return false;
+        lease = transaction.lease;
+        claimed = true;
+    }
+
+    memset(&request, 0, sizeof(request));
+    request.kind = kind;
+    request.source = PLAYER_COMMAND_SOURCE_DLNA;
+    request.lease = lease;
+    request.value = value;
+    request.flag = flag;
+    status = player_submit_command_wait(
+        &request, RENDERINGCONTROL_COMMAND_TIMEOUT_MS);
+    if (claimed)
+    {
+        if (player_command_status_succeeded(status))
+            protocol_coordinator_media_end(&transaction);
+        else
+            protocol_coordinator_media_abort(&transaction);
+    }
+    return player_command_status_succeeded(status);
 }
 
 bool renderingcontrol_get_brightness(const SoapActionContext *ctx, SoapActionOutput *out)
@@ -103,7 +143,9 @@ bool renderingcontrol_set_volume(const SoapActionContext *ctx, SoapActionOutput 
     if (vol > 100)
         vol = 100;
 
-    if (!renderingcontrol_can_control_player() || !renderer_set_volume((int)vol))
+    bool changed = renderingcontrol_submit(PLAYER_COMMAND_SET_VOLUME,
+                                           (int)vol, false);
+    if (!changed)
     {
         free(instance_id);
         free(channel);
@@ -167,8 +209,11 @@ bool renderingcontrol_select_preset(const SoapActionContext *ctx, SoapActionOutp
         return false;
     }
 
-    if (!renderingcontrol_can_control_player() ||
-        !renderer_set_volume(PLAYER_DEFAULT_VOLUME) || !renderer_set_mute(false))
+    bool changed = renderingcontrol_submit(PLAYER_COMMAND_SET_VOLUME,
+                                           PLAYER_DEFAULT_VOLUME, false) &&
+                   renderingcontrol_submit(PLAYER_COMMAND_SET_MUTE, 0,
+                                           false);
+    if (!changed)
     {
         free(instance_id);
         free(preset_name);
@@ -240,8 +285,9 @@ bool renderingcontrol_set_mute(const SoapActionContext *ctx, SoapActionOutput *o
         return false;
     }
 
-    if (!renderingcontrol_can_control_player() ||
-        !renderer_set_mute(strcmp(desired, "0") != 0))
+    bool changed = renderingcontrol_submit(PLAYER_COMMAND_SET_MUTE, 0,
+                                           strcmp(desired, "0") != 0);
+    if (!changed)
     {
         free(instance_id);
         free(channel);

@@ -1,4 +1,5 @@
 #include "log.h"
+#include "mirror.h"
 
 #include <switch.h>
 
@@ -25,6 +26,15 @@ static bool g_logStopRequested = false;
 static bool g_logEnabled = true;
 static LogLevel g_logMinLevel = NXCAST_LOG_LEVEL_DEFAULT;
 static bool g_logMirrorToStdio = false;
+static int g_logMirrorSocket = -1;
+static uint64_t g_logEnqueued = 0;
+static uint64_t g_logProcessed = 0;
+static uint64_t g_logQueueDroppedTotal = 0;
+static uint64_t g_logMirrorDropped = 0;
+static uint64_t g_logMirrorFailures = 0;
+static uint64_t g_logWorkerHeartbeatMs = 0;
+static size_t g_logQueueHighWatermark = 0;
+static bool g_logWorkerWaiting = false;
 
 static LogEntry g_logQueue[LOG_QUEUE_CAPACITY];
 static size_t g_logHead = 0;
@@ -35,6 +45,11 @@ static unsigned int g_logDroppedCount = 0;
 static LogEntry g_logHistory[LOG_HISTORY_CAPACITY];
 static size_t g_logHistoryHead = 0;
 static size_t g_logHistoryCount = 0;
+
+static uint64_t log_monotonic_ms(void)
+{
+    return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
 
 static const char *level_label(LogLevel level)
 {
@@ -176,6 +191,29 @@ static void clear_queue_locked(void)
     g_logDroppedCount = 0;
 }
 
+static void write_line_to_mirror(const char *line, bool mirror_to_socket,
+                                 int mirror_socket)
+{
+    bool mirror_dropped = false;
+    bool mirror_failed = false;
+    LogMirrorWriteResult mirror_result = LOG_MIRROR_WRITE_OK;
+
+    if (mirror_to_socket && mirror_socket >= 0)
+    {
+        mirror_result = log_mirror_write_nonblocking(mirror_socket, line);
+        mirror_dropped = mirror_result != LOG_MIRROR_WRITE_OK;
+        mirror_failed = mirror_result == LOG_MIRROR_WRITE_FAILED;
+    }
+
+    mutexLock(&g_logMutex);
+    g_logProcessed++;
+    if (mirror_dropped)
+        g_logMirrorDropped++;
+    if (mirror_failed)
+        g_logMirrorFailures++;
+    mutexUnlock(&g_logMutex);
+}
+
 static void log_worker_thread(void *arg)
 {
     (void)arg;
@@ -185,10 +223,15 @@ static void log_worker_thread(void *arg)
         char *line = NULL;
         unsigned int dropped = 0;
         bool mirror_to_stdio = false;
+        int mirror_socket = -1;
 
         mutexLock(&g_logMutex);
+        g_logWorkerHeartbeatMs = log_monotonic_ms();
+        g_logWorkerWaiting = true;
         while (!g_logStopRequested && g_logCount == 0 && g_logDroppedCount == 0)
             condvarWait(&g_logCondVar, &g_logMutex);
+        g_logWorkerWaiting = false;
+        g_logWorkerHeartbeatMs = log_monotonic_ms();
 
         if (g_logStopRequested && g_logCount == 0 && g_logDroppedCount == 0)
         {
@@ -210,6 +253,7 @@ static void log_worker_thread(void *arg)
         }
 
         mirror_to_stdio = g_logMirrorToStdio;
+        mirror_socket = g_logMirrorSocket;
         mutexUnlock(&g_logMutex);
 
         if (line)
@@ -218,11 +262,7 @@ static void log_worker_thread(void *arg)
             append_history_locked(line);
             mutexUnlock(&g_logMutex);
 
-            if (mirror_to_stdio)
-            {
-                fprintf(stderr, "%s\n", line);
-                fflush(stderr);
-            }
+            write_line_to_mirror(line, mirror_to_stdio, mirror_socket);
             continue;
         }
 
@@ -238,11 +278,7 @@ static void log_worker_thread(void *arg)
             append_history_locked(dropped_line);
             mutexUnlock(&g_logMutex);
 
-            if (mirror_to_stdio)
-            {
-                fprintf(stderr, "%s\n", dropped_line);
-                fflush(stderr);
-            }
+            write_line_to_mirror(dropped_line, mirror_to_stdio, mirror_socket);
         }
     }
 
@@ -259,6 +295,8 @@ bool log_runtime_init(void)
     }
 
     g_logStopRequested = false;
+    g_logWorkerHeartbeatMs = log_monotonic_ms();
+    g_logWorkerWaiting = false;
     mutexUnlock(&g_logMutex);
 
     Result rc = threadCreate(&g_logThread,
@@ -289,6 +327,8 @@ void log_runtime_shutdown(void)
     mutexLock(&g_logMutex);
     if (!g_logThreadStarted)
     {
+        g_logMirrorToStdio = false;
+        g_logMirrorSocket = -1;
         mutexUnlock(&g_logMutex);
         return;
     }
@@ -302,7 +342,10 @@ void log_runtime_shutdown(void)
 
     mutexLock(&g_logMutex);
     g_logThreadStarted = false;
+    g_logWorkerWaiting = false;
     clear_queue_locked();
+    g_logMirrorToStdio = false;
+    g_logMirrorSocket = -1;
     mutexUnlock(&g_logMutex);
 }
 
@@ -310,6 +353,46 @@ __attribute__((constructor)) static void log_runtime_globals_init(void)
 {
     mutexInit(&g_logMutex);
     condvarInit(&g_logCondVar);
+}
+
+void log_set_socket_mirror(int socket_fd)
+{
+    if (socket_fd >= 0 && !log_mirror_configure_nonblocking(socket_fd))
+        socket_fd = -1;
+
+    mutexLock(&g_logMutex);
+    g_logMirrorSocket = socket_fd;
+    if (socket_fd < 0)
+        g_logMirrorToStdio = false;
+    mutexUnlock(&g_logMutex);
+}
+
+bool log_get_runtime_stats(LogRuntimeStats *stats_out)
+{
+    uint64_t now_ms;
+
+    if (!stats_out)
+        return false;
+
+    mutexLock(&g_logMutex);
+    stats_out->enqueued = g_logEnqueued;
+    stats_out->processed = g_logProcessed;
+    stats_out->queue_dropped = g_logQueueDroppedTotal;
+    stats_out->mirror_dropped = g_logMirrorDropped;
+    stats_out->mirror_failures = g_logMirrorFailures;
+    stats_out->queue_depth = g_logCount;
+    stats_out->queue_high_watermark = g_logQueueHighWatermark;
+    now_ms = log_monotonic_ms();
+    stats_out->worker_heartbeat_age_ms =
+        g_logWorkerHeartbeatMs > 0 && now_ms >= g_logWorkerHeartbeatMs
+            ? now_ms - g_logWorkerHeartbeatMs
+            : 0;
+    stats_out->worker_running = g_logThreadStarted;
+    stats_out->worker_waiting = g_logWorkerWaiting;
+    stats_out->socket_mirror_enabled = g_logMirrorToStdio &&
+                                       g_logMirrorSocket >= 0;
+    mutexUnlock(&g_logMutex);
+    return true;
 }
 
 void vlog_write(LogLevel level, const char *fmt, va_list args)
@@ -336,11 +419,15 @@ void vlog_write(LogLevel level, const char *fmt, va_list args)
         g_logHead = (g_logHead + 1) % LOG_QUEUE_CAPACITY;
         g_logCount--;
         g_logDroppedCount++;
+        g_logQueueDroppedTotal++;
     }
 
     g_logQueue[g_logTail].line = line;
     g_logTail = (g_logTail + 1) % LOG_QUEUE_CAPACITY;
     g_logCount++;
+    if (g_logCount > g_logQueueHighWatermark)
+        g_logQueueHighWatermark = g_logCount;
+    g_logEnqueued++;
     condvarWakeOne(&g_logCondVar);
     mutexUnlock(&g_logMutex);
 }
@@ -423,7 +510,7 @@ const char *log_get_mpv_level(void)
 void log_set_stdio_mirror(bool enabled)
 {
     mutexLock(&g_logMutex);
-    g_logMirrorToStdio = enabled;
+    g_logMirrorToStdio = enabled && g_logMirrorSocket >= 0;
     mutexUnlock(&g_logMutex);
 }
 

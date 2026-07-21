@@ -23,11 +23,7 @@ static uint64_t player_trace_monotonic_ms(void)
 
 static LogLevel player_trace_normal_level(void)
 {
-#if defined(NXCAST_MEDIA_TRACE_VERBOSE) && NXCAST_MEDIA_TRACE_VERBOSE
-    return LOG_LEVEL_WARN;
-#else
     return LOG_LEVEL_INFO;
-#endif
 }
 
 void player_trace_log(const char *fmt, ...)

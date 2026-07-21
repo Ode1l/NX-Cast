@@ -13,6 +13,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "protocol/airplay/trace.h"
+
 #ifdef __SWITCH__
 #include <switch.h>
 
@@ -51,6 +53,7 @@ typedef struct
     atomic_bool active;
     atomic_bool finished;
     atomic_int socket_fd;
+    uint32_t peer_ipv4_address;
 } AirPlayServerClient;
 
 struct AirPlayServerState
@@ -225,12 +228,17 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
     size_t buffer_capacity = AIRPLAY_SERVER_INITIAL_BUFFER_BYTES;
     uint64_t request_started_ms = 0;
     int socket_fd;
+    int finish_errno = 0;
     bool session_initialized = false;
+    const char *finish_reason = "server-stopped";
 
     if (!client || !client->server)
         AIRPLAY_THREAD_FINISH();
     server = client->server;
     socket_fd = atomic_load(&client->socket_fd);
+    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control client-worker entered slot=%zu fd=%d\n",
+                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), client->index,
+                       socket_fd);
     buffer = malloc(buffer_capacity);
     request = calloc(1, sizeof(*request));
     response = calloc(1, sizeof(*response));
@@ -240,6 +248,7 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
         goto finished;
     }
     airplay_rtsp_session_init(&session, atomic_fetch_add(&server->next_session_id, 1U) + 1U);
+    airplay_rtsp_session_set_peer_ipv4(&session, client->peer_ipv4_address);
     session_initialized = true;
 
     while (atomic_load(&server->running) && session.state != AIRPLAY_RTSP_SESSION_CLOSED)
@@ -254,19 +263,39 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
         if (parse_result == AIRPLAY_RTSP_PARSE_OK)
         {
             bool close_after_response;
+            bool response_sent;
+
+            AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control request session=%llu method=%s uri=%s body=%zu\n",
+                               (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                               (unsigned long long)session.id, request->method,
+                               request->uri, request->body_length);
             if (!airplay_rtsp_dispatch(&session,
                                        request,
                                        server->config.route_handler,
                                        server->config.route_user_data,
                                        response))
             {
+                finish_reason = "dispatch-error";
                 airplay_rtsp_request_clear(request);
                 airplay_server_send_error(socket_fd, 500);
                 break;
             }
             close_after_response = response->close_connection;
-            if (!airplay_server_send_response(socket_fd, response))
+            response_sent = airplay_server_send_response(socket_fd, response);
+            AIRPLAY_TRACE_SYNC(
+                "[airplay] t_ms=%llu control response session=%llu "
+                "request=%u status=%d body=%zu headers=%zu sent=%u close=%u\n",
+                (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                (unsigned long long)session.id, session.request_count,
+                response->status_code, response->body_length,
+                response->header_count, response_sent ? 1u : 0u,
+                close_after_response ? 1u : 0u);
+            if (!response_sent)
+            {
                 close_after_response = true;
+                finish_reason = "send-failed";
+                finish_errno = errno;
+            }
             airplay_rtsp_response_clear(response);
             airplay_rtsp_request_clear(request);
             if (consumed < buffer_length)
@@ -274,11 +303,16 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
             buffer_length -= consumed;
             request_started_ms = buffer_length != 0 ? airplay_server_now_ms() : 0;
             if (close_after_response)
+            {
+                if (strcmp(finish_reason, "server-stopped") == 0)
+                    finish_reason = "response-close";
                 break;
+            }
             continue;
         }
         if (parse_result == AIRPLAY_RTSP_PARSE_ERROR)
         {
+            finish_reason = "parse-error";
             airplay_server_send_error(socket_fd,
                                       parse_error == AIRPLAY_RTSP_ERROR_LIMIT_EXCEEDED ? 413 : 400);
             break;
@@ -287,12 +321,14 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
         if (buffer_length == buffer_capacity &&
             !airplay_server_grow_buffer(&buffer, &buffer_capacity, buffer_length))
         {
+            finish_reason = "request-too-large";
             airplay_server_send_error(socket_fd, 413);
             break;
         }
         if (buffer_length != 0 && request_started_ms != 0 &&
             airplay_server_now_ms() - request_started_ms >= server->config.request_timeout_ms)
         {
+            finish_reason = "request-timeout";
             airplay_server_send_error(socket_fd, 408);
             break;
         }
@@ -306,15 +342,31 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
             continue;
         }
         if (received == 0)
+        {
+            finish_reason = "peer-closed";
             break;
+        }
         if (errno == EINTR)
             continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             continue;
+        finish_reason = "recv-error";
+        finish_errno = errno;
         break;
     }
 
 finished:
+    (void)finish_reason;
+    (void)finish_errno;
+    if (session_initialized)
+    {
+        AIRPLAY_TRACE_SYNC(
+            "[airplay] t_ms=%llu control closed session=%llu requests=%u "
+            "reason=%s errno=%d\n",
+            (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+            (unsigned long long)session.id, session.request_count,
+            finish_reason, finish_errno);
+    }
     if (session_initialized && server->config.session_closed_handler)
         server->config.session_closed_handler(&session, server->config.route_user_data);
     airplay_rtsp_request_clear(request);
@@ -413,6 +465,11 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         if (client_socket < 0)
             continue;
 
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control accepted peer=%s:%u fd=%d\n",
+                           (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                           inet_ntoa(peer.sin_addr), ntohs(peer.sin_port),
+                           client_socket);
+
 #ifdef SO_NOSIGPIPE
         {
             int enabled = 1;
@@ -431,6 +488,7 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
             continue;
         }
         atomic_store(&client->socket_fd, client_socket);
+        client->peer_ipv4_address = peer.sin_addr.s_addr;
         atomic_store(&client->active, true);
         atomic_store(&client->finished, false);
         if (!airplay_native_thread_start(&client->thread, airplay_server_client_thread, client))

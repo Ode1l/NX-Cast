@@ -43,6 +43,13 @@
 - [x] GitHub Actions run `29748063877` passes the complete strict release pipeline and publishes the corrected 25,461,434-byte NRO to the continuous Release.
 - [x] Hardware attempt 3 startup is moved off the first-frame path, TRACE startup markers bypass the async logger, and mDNS parity adds the pairing identity plus truthful audio/no-separate-RAOP feature bits.
 - [x] GitHub Actions run `29750313369` passes the full host/container/package/release pipeline for `25cc6a3` and publishes the corrected 25,461,434-byte NRO.
+- [x] Hardware attempt 4 is localized before all control traffic; normal and ASan/UBSan host suites, Clang analysis and a strict TRACE Switch build pass after removing the isolated NIFM lifecycle and adding mDNS/control boundaries.
+- [x] Hardware attempt 5 proves mDNS and TCP accept succeed but the first parser call exceeded the client stack; heap staging and a production frame-size gate reduce the parser frame from 102,672 to 224 bytes with all automated checks passing.
+- [x] Hardware attempt 6 reaches the visible PIN flow; its request sequence proves Pair Setup reconnects between `/pair-pin-start` and the SRP challenge, so Setup state now survives RTSP connection replacement with a cross-connection regression test.
+- [x] Hardware attempt 7 completes all PIN/SRP stages and reaches Pair Verify twice; the missing empty-body content type and the blocked cross-thread startup announcement are corrected with protocol and lifecycle coverage.
+- [x] Hardware attempt 8 completes Pair Verify twice but stops before `/fp-setup`; common UxPlay RTSP response headers, response-send diagnostics and logging-independent readiness are added and pass automated validation.
+- [x] Hardware attempt 9 confirms every Pair Verify response is sent successfully but iOS still closes before `/fp-setup`; dual AirPlay/RAOP DNS-SD identity, startup scheduling parity and safe player-to-home teardown are added and pass automated validation.
+- [x] Hardware attempt 10 confirms readiness and dual discovery are healthy but iOS still closes immediately after Pair Verify; AirPlay TXT, RAOP TXT and `/info` now share UxPlay's `0x5A7FFEE6` legacy-PIN mirroring profile with regression coverage.
 - [ ] iPhone trace reaches RECORD and TEARDOWN without retry loop or leaked secret data.
 
 ## Test Checklist
@@ -70,6 +77,31 @@
 - GitHub Actions run `29750313369` produced artifact `8464258928` (32,613,962 bytes) and updated the continuous Release with a 25,461,434-byte NRO plus 19,768,260-byte SD package for commit `25cc6a3`.
 - Remaining gate: automated compatibility and Switch development builds pass, but a real iPhone/Switch must still prove discovery through RECORD/TEARDOWN and H.264/AAC playback before the feature can be called compatible.
 - The user selected the GPL open-source research route. Integration must identify UxPlay and PlayFair as upstream sources, retain GPL notices, and must not describe the imported algorithm as clean-room or Apple-authorized.
+- Hardware attempt 4 reached mDNS socket bind and multicast join, then reset before the caller could report mDNS thread completion. No accepted control connection or AirPlay request was logged, so the observed device entry may have been a TTL-cached advertisement and the log does not yet implicate pairing or PlayFair.
+- The earlier NIFM address lookup is superseded: AirPlay now uses the same UDP route lookup as the stable DLNA path and no longer initializes/exits the process-global NIFM service during background startup. TRACE builds synchronously mark `threadCreate`, `threadStart`, mDNS worker entry, accepted control sockets and parsed method/body sizes without logging request bodies or secrets.
+- Normal and ASan/UBSan `make test-airplay`, focused Clang analysis, `git diff --check`, and a strict `TRACE_AIRPLAY=1` Switch build pass. The resulting NRO is 25,461,434 bytes with SHA-256 `b0ade7586b5fd157052acd9f3228eb96a20e63fb90d7e7f529d665e4a9adce63`; physical retest remains required.
+- Hardware attempt 5 reaches `mdns worker entered`, successful `threadStart`, `control accepted`, and `control client-worker entered`, then resets before the first parsed request. This excludes discovery startup and local-address lookup from the immediate crash boundary.
+- `AirPlayRtspRequest` is 102,480 bytes because it owns 48 fixed 2,112-byte header slots. The parser previously instantiated this object locally, producing a measured 102,672-byte AArch64 frame on a 65,536-byte control-client stack; it now stages on the heap and transfers ownership only after complete validation, preserving the existing output contract.
+- `make test-airplay` now compiles the production RTSP parser with `-Wframe-larger-than=32768`; AArch64 `-fstack-usage` reports 224 bytes. Normal and ASan/UBSan suites plus the strict `TRACE_AIRPLAY=1` Switch build pass; physical first-request/pairing retest remains required.
+- Hardware attempt 6 no longer crashes in request parsing. Session 1 receives `/pair-pin-start`, while sessions 2-5 reconnect before sending the 86-byte SRP challenge; the old connection-owned pairing object was therefore destroyed before the challenge and each request returned to `IDLE`, causing iOS to request the PIN again.
+- PIN/SRP Pair Setup is now a serialized service-owned transaction, while Pair Verify and its shared secret remain connection-owned. The host test closes the RTSP session between PIN start, challenge, proof and key exchange; normal, ASan/UBSan, Clang analysis and a strict TRACE Switch build pass.
+- The next physical-test NRO is 25,461,434 bytes with SHA-256 `4d4d66de383df18828717eb939790f8fa660e3a492ec74ca3be9c2197eef2038`. Secret-safe traces now include request URI and Setup state transitions so any remaining failure is attributable to challenge, proof or key exchange.
+- Hardware attempt 7 proves Pair Setup succeeds through `pin-started -> srp-challenge -> srp-verified -> paired`. Each connection then sends both 68-byte Pair Verify stages but iOS reconnects instead of advancing to `/fp-setup`; NX-Cast's successful Verify finish omitted the empty `application/octet-stream` response used by the audited UxPlay behavior.
+- The same trace shows the background integration worker remains inside the caller-thread initial mDNS announcement, explaining the persistent red `AirPlay: WAIT` even though the worker can answer discovery queries and the control server can pair. Initial announcement now belongs to the mDNS worker, so `airplay_mdns_start()` can complete without concurrent socket sends.
+- Pair Verify finish now returns `Content-Type: application/octet-stream`, its tests assert that response contract, and traces expose both Verify state transitions without payloads or keys. Normal and ASan/UBSan suites, focused Clang analysis and a strict TRACE Switch build pass.
+- The next physical-test NRO is 25,461,434 bytes with SHA-256 `2edbecd5675260f4bb243b5dcec828d266194ab1fd1ab863e8760be57cf19b8a`.
+- Hardware attempt 8 reaches `verify-challenge -> verified` with status 200 on two separate control sessions, but iOS emits neither `/fp-setup` nor `SETUP`. This excludes PIN/SRP and Pair Verify cryptography from the current failure boundary.
+- UxPlay commit `acfb5494fb2b52ca358e62ef59d6ee0ab20dec49` adds `Server: AirTunes/220.68` to control responses and `Audio-Jack-Status: connected; type=digital` to CSeq RTSP responses except RECORD. NX-Cast now applies the same common-header contract in the central dispatcher and tests it across session transitions.
+- The hardware trace records mDNS completion at `305513559 ms` and integration completion at `305535445 ms`; source inspection localizes the delay to the receiver's final asynchronous trace call. Receiver startup no longer enters the logger after becoming ready, and integration commits `running/status` before optional trace output.
+- TRACE control diagnostics now pair each request with status/body/header counts, send success and connection close reason. Normal and ASan/UBSan `make test-airplay`, focused Clang analysis, `git diff --check`, and a strict TRACE Switch build pass.
+- The next physical-test NRO is 25,461,434 bytes with SHA-256 `d05c1b71ce8dd8859e5c28a37b3fe2107b8e2c3ee5fa7da641d0ba75bcef73fe`.
+- Hardware attempt 9 supersedes the prior logging diagnosis: after that log call was removed, mDNS still completed at `307244911 ms` while integration remained pending until a control connection at `307275960 ms`. The startup worker ran at priority `0x2c`, below the receiver/mDNS/player workers at `0x2b`; it now uses `0x2b`, allowing the home AirPlay indicator to reflect readiness without depending on unrelated network activity.
+- Both real control attempts returned status 200 for `/info`, Pair Verify challenge and Pair Verify completion with `sent=1`, then iOS closed the socket before `/fp-setup`. UxPlay commit `acfb5494fb2b52ca358e62ef59d6ee0ab20dec49` advertises both `_airplay._tcp` and `_raop._tcp` on the control port, so NX-Cast now publishes the same dual identity with bounded service-specific DNS records and RAOP TXT metadata instead of relying only on feature bit 30.
+- Returning home while libmpv was still `LOADING` switched deko3d ownership immediately and was followed by the device reset. B, touch Home and PIN-forced Home now dispatch stop, retain the video view for a 250 ms teardown grace, and only then apply a manual Home override that bypasses the normal stopped-frame hold.
+- Normal and ASan/UBSan `make test-airplay`, dual-service UDP lifecycle smoke, focused Clang analysis, `git diff --check`, and a strict TRACE Switch build pass. The next physical-test NRO is 25,461,434 bytes with SHA-256 `71c9f715c8a5607ae3d63a3883f561166ff004e48846bb7e3cbedd0eb40ff7ea`.
+- Hardware attempt 10 completes startup before the iPhone connects, publishes both AirPlay and RAOP, returns `/info`, completes Pair Verify challenge and finish with status 200 and `sent=1`, then receives a peer close before any `/fp-setup` or SETUP request. This excludes the readiness indicator, discovery transport, PIN/SRP and Pair Verify response delivery from the current boundary.
+- The production mask `0x48000391` omitted FairPlay/authentication bits 2, 12, 14 and 22 while advertising legacy video, HLS and rotation bits that UxPlay keeps clear for screen mirroring. NX-Cast now publishes UxPlay's legacy-PIN mirroring profile `0x5A7FFEE6` through `_airplay._tcp` `features`, `_raop._tcp` `ft` and `/info`; receiver capability gating also removes the FairPlay/authentication group if its backend or mirror callbacks are unavailable.
+- Normal and ASan/UBSan `make test-airplay`, `git diff --check`, and a strict `TRACE_AIRPLAY=1 TRACE_INPUT=1` Switch build pass. The next physical-test NRO is 25,461,434 bytes with SHA-256 `fe5a04bb901b198ed0c8a73252e2380f703aebc338010fe32079c4e428f5537d`; the startup log now prints the final feature mask for wire confirmation.
 
 ## Files Changed
 - `makefile`
@@ -97,3 +129,11 @@
 - `scripts/airplay_mdns_smoke_server.c`
 - `scripts/smoke_airplay_mdns.py`
 - `third_party/playfair/`
+- `source/protocol/airplay/server.c`
+- `source/protocol/airplay/protocol/rtsp.c`
+- `source/protocol/airplay/integration.c`
+- `source/protocol/airplay/receiver.c`
+- `scripts/test_airplay_rtsp.c`
+- `source/protocol/airplay/discovery/dns.[ch]`
+- `scripts/test_airplay_dns.c`
+- `source/player/render/view.c`

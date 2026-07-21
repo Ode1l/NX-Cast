@@ -162,6 +162,17 @@ static AirPlayPlistValue *decode_response(const AirPlayRtspResponse *response)
     return root;
 }
 
+static const char *response_header(const AirPlayRtspResponse *response,
+                                   const char *name)
+{
+    for (size_t index = 0; index < response->header_count; ++index)
+    {
+        if (strcmp(response->headers[index].name, name) == 0)
+            return response->headers[index].value;
+    }
+    return NULL;
+}
+
 static void derive_label(const char *label, const uint8_t *secret, size_t secret_size,
                          uint8_t *output, size_t output_size)
 {
@@ -177,10 +188,23 @@ static void derive_label(const char *label, const uint8_t *secret, size_t secret
     airplay_crypto_secure_zero(hash, sizeof(hash));
 }
 
-static bool start_and_challenge(AirPlayPairingService *service,
-                                AirPlayRtspSession *session,
-                                PinRecorder *pin,
-                                AirPlayRtspResponse *response)
+static bool start_pin(AirPlayPairingService *service,
+                      AirPlayRtspSession *session,
+                      PinRecorder *pin,
+                      AirPlayRtspResponse *response)
+{
+    if (!dispatch(service, session, "POST", "/pair-pin-start", NULL, 0, NULL, response))
+        return false;
+    CHECK(response->status_code == 200);
+    CHECK(pin->display_count > 0);
+    CHECK(strcmp(pin->pin, "1234") == 0);
+    airplay_rtsp_response_clear(response);
+    return true;
+}
+
+static bool send_setup_challenge(AirPlayPairingService *service,
+                                 AirPlayRtspSession *session,
+                                 AirPlayRtspResponse *response)
 {
     static const char expected_b_hex[] =
         "7ec63636ea1c45f88f2b7e9a8740b96da93eeada71cfa9c71d4a0e94838c5a7f"
@@ -199,13 +223,6 @@ static bool start_and_challenge(AirPlayPairingService *service,
     const uint8_t *value;
     AirPlayPlistValue *request = NULL;
     AirPlayPlistValue *root = NULL;
-
-    if (!dispatch(service, session, "POST", "/pair-pin-start", NULL, 0, NULL, response))
-        return false;
-    CHECK(response->status_code == 200);
-    CHECK(pin->display_count > 0);
-    CHECK(strcmp(pin->pin, "1234") == 0);
-    airplay_rtsp_response_clear(response);
 
     request = airplay_plist_new_dict();
     CHECK(request && dict_set_string(request, "method", "pin") &&
@@ -230,6 +247,15 @@ static bool start_and_challenge(AirPlayPairingService *service,
     airplay_plist_free(root);
     airplay_rtsp_response_clear(response);
     return true;
+}
+
+static bool start_and_challenge(AirPlayPairingService *service,
+                                AirPlayRtspSession *session,
+                                PinRecorder *pin,
+                                AirPlayRtspResponse *response)
+{
+    return start_pin(service, session, pin, response) &&
+           send_setup_challenge(service, session, response);
 }
 
 static bool send_srp_proof(AirPlayPairingService *service,
@@ -393,6 +419,10 @@ static bool verify_pairing(AirPlayPairingService *service,
     CHECK(dispatch(service, session, "POST", "/pair-verify", request_body,
                    sizeof(request_body), "application/octet-stream", response));
     CHECK(response->status_code == 200);
+    {
+        const char *content_type = response_header(response, "Content-Type");
+        CHECK(content_type && strcmp(content_type, "application/octet-stream") == 0);
+    }
     CHECK(airplay_pairing_session_verified(session));
     CHECK(airplay_pairing_session_state(session) == AIRPLAY_PAIRING_STATE_VERIFIED);
     airplay_rtsp_response_clear(response);
@@ -419,12 +449,24 @@ static void test_pairing_flow_and_persistence(const char *directory)
 
     CHECK(airplay_pairing_service_create(&config, &service));
     airplay_rtsp_session_init(&session, 1);
-    CHECK(start_and_challenge(service, &session, &pin, &response));
+    CHECK(start_pin(service, &session, &pin, &response));
+    airplay_pairing_session_closed(&session, service);
+
+    airplay_rtsp_session_init(&session, 2);
+    CHECK(send_setup_challenge(service, &session, &response));
     CHECK(pin.dismiss_count == 1);
+    airplay_pairing_session_closed(&session, service);
+
+    airplay_rtsp_session_init(&session, 3);
     CHECK(send_srp_proof(service, &session, true, &response));
+    airplay_pairing_session_closed(&session, service);
+
+    airplay_rtsp_session_init(&session, 4);
     CHECK(complete_pair_setup(service, &session, client_seed, client_public,
                               server_public, &response));
-    CHECK(airplay_pairing_session_state(&session) == AIRPLAY_PAIRING_STATE_PAIRED);
+    airplay_pairing_session_closed(&session, service);
+
+    airplay_rtsp_session_init(&session, 5);
     CHECK(verify_pairing(service, &session, client_seed, client_public,
                          server_public, &response));
     airplay_pairing_session_closed(&session, service);
@@ -432,7 +474,7 @@ static void test_pairing_flow_and_persistence(const char *directory)
 
     service = NULL;
     CHECK(airplay_pairing_service_create(&config, &service));
-    airplay_rtsp_session_init(&session, 2);
+    airplay_rtsp_session_init(&session, 6);
     CHECK(verify_pairing(service, &session, client_seed, client_public,
                          server_public, &response));
     airplay_pairing_session_closed(&session, service);

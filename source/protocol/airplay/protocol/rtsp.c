@@ -291,7 +291,7 @@ AirPlayRtspParseResult airplay_rtsp_parse_request(const uint8_t *bytes,
                                                   size_t *consumed_out,
                                                   AirPlayRtspError *error_out)
 {
-    AirPlayRtspRequest request = {0};
+    AirPlayRtspRequest *request = NULL;
     size_t header_end;
     size_t line_end;
     size_t cursor;
@@ -322,106 +322,102 @@ AirPlayRtspParseResult airplay_rtsp_parse_request(const uint8_t *bytes,
         }
         return AIRPLAY_RTSP_PARSE_NEED_MORE;
     }
-    if (header_end > AIRPLAY_RTSP_MAX_HEADER_BYTES ||
-        !rtsp_find_crlf(bytes, 0, header_end, &line_end) ||
-        !rtsp_parse_request_line(bytes, line_end, &request))
+    if (header_end > AIRPLAY_RTSP_MAX_HEADER_BYTES)
     {
-        rtsp_set_error(error_out,
-                       header_end > AIRPLAY_RTSP_MAX_HEADER_BYTES ? AIRPLAY_RTSP_ERROR_LIMIT_EXCEEDED
-                                                                  : AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
+        rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_LIMIT_EXCEEDED);
         return AIRPLAY_RTSP_PARSE_ERROR;
     }
+    request = calloc(1, sizeof(*request));
+    if (!request)
+    {
+        rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_OUT_OF_MEMORY);
+        return AIRPLAY_RTSP_PARSE_ERROR;
+    }
+    if (!rtsp_find_crlf(bytes, 0, header_end, &line_end) ||
+        !rtsp_parse_request_line(bytes, line_end, request))
+        goto invalid_format;
 
     cursor = line_end + 2U;
     while (cursor + 2U < header_end)
     {
         if (!rtsp_find_crlf(bytes, cursor, header_end, &line_end) || line_end == cursor ||
-            !rtsp_parse_header_line(bytes + cursor, line_end - cursor, &request))
-        {
-            rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
-            return AIRPLAY_RTSP_PARSE_ERROR;
-        }
+            !rtsp_parse_header_line(bytes + cursor, line_end - cursor, request))
+            goto invalid_format;
         cursor = line_end + 2U;
     }
     if (cursor != header_end - 2U)
-    {
-        rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
-        return AIRPLAY_RTSP_PARSE_ERROR;
-    }
+        goto invalid_format;
 
-    for (index = 0; index < request.header_count; ++index)
+    for (index = 0; index < request->header_count; ++index)
     {
         size_t later;
-        if (rtsp_header_name_equal(request.headers[index].name, "Transfer-Encoding"))
-        {
-            rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
-            return AIRPLAY_RTSP_PARSE_ERROR;
-        }
-        if (!rtsp_header_name_equal(request.headers[index].name, "Content-Length") &&
-            !rtsp_header_name_equal(request.headers[index].name, "CSeq"))
+        if (rtsp_header_name_equal(request->headers[index].name, "Transfer-Encoding"))
+            goto invalid_format;
+        if (!rtsp_header_name_equal(request->headers[index].name, "Content-Length") &&
+            !rtsp_header_name_equal(request->headers[index].name, "CSeq"))
         {
             continue;
         }
-        for (later = index + 1U; later < request.header_count; ++later)
+        for (later = index + 1U; later < request->header_count; ++later)
         {
-            if (rtsp_header_name_equal(request.headers[index].name, request.headers[later].name))
-            {
-                rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
-                return AIRPLAY_RTSP_PARSE_ERROR;
-            }
+            if (rtsp_header_name_equal(request->headers[index].name,
+                                       request->headers[later].name))
+                goto invalid_format;
         }
     }
 
-    content_length_text = airplay_rtsp_request_header(&request, "Content-Length");
+    content_length_text = airplay_rtsp_request_header(request, "Content-Length");
     if (content_length_text)
     {
         if (!rtsp_decimal_syntax_valid(content_length_text))
-        {
-            rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
-            return AIRPLAY_RTSP_PARSE_ERROR;
-        }
+            goto invalid_format;
         if (!rtsp_parse_decimal(content_length_text, AIRPLAY_RTSP_MAX_BODY_BYTES, &parsed_value))
-        {
-            rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_LIMIT_EXCEEDED);
-            return AIRPLAY_RTSP_PARSE_ERROR;
-        }
-        request.body_length = (size_t)parsed_value;
+            goto limit_exceeded;
+        request->body_length = (size_t)parsed_value;
     }
-    if (!rtsp_size_add(header_end, request.body_length, &total_length) ||
+    if (!rtsp_size_add(header_end, request->body_length, &total_length) ||
         total_length > AIRPLAY_RTSP_MAX_MESSAGE_BYTES)
-    {
-        rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_LIMIT_EXCEEDED);
-        return AIRPLAY_RTSP_PARSE_ERROR;
-    }
+        goto limit_exceeded;
     if (length < total_length)
+    {
+        free(request);
         return AIRPLAY_RTSP_PARSE_NEED_MORE;
+    }
 
-    cseq_text = airplay_rtsp_request_header(&request, "CSeq");
+    cseq_text = airplay_rtsp_request_header(request, "CSeq");
     if (cseq_text)
     {
         if (!rtsp_decimal_syntax_valid(cseq_text) ||
             !rtsp_parse_decimal(cseq_text, UINT32_MAX, &parsed_value))
-        {
-            rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
-            return AIRPLAY_RTSP_PARSE_ERROR;
-        }
-        request.has_cseq = true;
-        request.cseq = (uint32_t)parsed_value;
+            goto invalid_format;
+        request->has_cseq = true;
+        request->cseq = (uint32_t)parsed_value;
     }
-    if (request.body_length != 0)
+    if (request->body_length != 0)
     {
-        request.body = malloc(request.body_length);
-        if (!request.body)
-        {
-            rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_OUT_OF_MEMORY);
-            return AIRPLAY_RTSP_PARSE_ERROR;
-        }
-        memcpy(request.body, bytes + header_end, request.body_length);
+        request->body = malloc(request->body_length);
+        if (!request->body)
+            goto out_of_memory;
+        memcpy(request->body, bytes + header_end, request->body_length);
     }
 
-    *request_out = request;
+    *request_out = *request;
+    free(request);
     *consumed_out = total_length;
     return AIRPLAY_RTSP_PARSE_OK;
+
+invalid_format:
+    rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_INVALID_FORMAT);
+    goto failure;
+limit_exceeded:
+    rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_LIMIT_EXCEEDED);
+    goto failure;
+out_of_memory:
+    rtsp_set_error(error_out, AIRPLAY_RTSP_ERROR_OUT_OF_MEMORY);
+failure:
+    free(request->body);
+    free(request);
+    return AIRPLAY_RTSP_PARSE_ERROR;
 }
 
 static const char *rtsp_reason_phrase(int status_code)
@@ -654,6 +650,13 @@ void airplay_rtsp_session_init(AirPlayRtspSession *session, uint64_t id)
     session->state = AIRPLAY_RTSP_SESSION_CONNECTED;
 }
 
+void airplay_rtsp_session_set_peer_ipv4(AirPlayRtspSession *session,
+                                        uint32_t address)
+{
+    if (session)
+        session->peer_ipv4_address = address;
+}
+
 bool airplay_rtsp_default_route(AirPlayRtspSession *session,
                                 const AirPlayRtspRequest *request,
                                 AirPlayRtspResponse *response)
@@ -703,6 +706,28 @@ bool airplay_rtsp_default_route(AirPlayRtspSession *session,
                                                  : 501);
 }
 
+static bool rtsp_add_control_response_headers(
+    AirPlayRtspResponse *response,
+    const AirPlayRtspRequest *request)
+{
+    char cseq[16];
+
+    if (!airplay_rtsp_response_add_header(response, "Server",
+                                          "AirTunes/220.68"))
+        return false;
+    if (!request->has_cseq)
+        return true;
+    snprintf(cseq, sizeof(cseq), "%u", request->cseq);
+    if (!airplay_rtsp_response_add_header(response, "CSeq", cseq))
+        return false;
+    if (strcmp(request->protocol, "RTSP/1.0") == 0 &&
+        strcmp(request->method, "RECORD") != 0 &&
+        !airplay_rtsp_response_add_header(
+            response, "Audio-Jack-Status", "connected; type=digital"))
+        return false;
+    return true;
+}
+
 bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
                            const AirPlayRtspRequest *request,
                            AirPlayRtspRouteHandler handler,
@@ -710,7 +735,6 @@ bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
                            AirPlayRtspResponse *response_out)
 {
     bool discovery_request;
-    char cseq[16];
     bool handled;
 
     if (!session || !request || !response_out || session->state == AIRPLAY_RTSP_SESSION_CLOSED ||
@@ -725,27 +749,18 @@ bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
         response_out->close_connection = true;
         return airplay_rtsp_response_set_status(response_out, 400);
     }
-    if (request->has_cseq)
-    {
-        snprintf(cseq, sizeof(cseq), "%u", request->cseq);
-        if (!airplay_rtsp_response_add_header(response_out, "CSeq", cseq))
-            return false;
-    }
+    if (!rtsp_add_control_response_headers(response_out, request))
+        return false;
     session->request_count++;
     handled = handler ? handler(session, request, response_out, user_data)
                       : airplay_rtsp_default_route(session, request, response_out);
     if (!handled)
     {
-        bool had_cseq = request->has_cseq;
         airplay_rtsp_response_clear(response_out);
         if (!airplay_rtsp_response_init(response_out, request->protocol, 500))
             return false;
-        if (had_cseq)
-        {
-            snprintf(cseq, sizeof(cseq), "%u", request->cseq);
-            if (!airplay_rtsp_response_add_header(response_out, "CSeq", cseq))
-                return false;
-        }
+        if (!rtsp_add_control_response_headers(response_out, request))
+            return false;
     }
     return true;
 }

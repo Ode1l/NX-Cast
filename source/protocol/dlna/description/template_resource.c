@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "log/log.h"
+#include "util/size.h"
 
 #define DLNA_TEMPLATE_FALLBACK_ROOT "./assets/dlna/"
 
@@ -53,10 +54,16 @@ static char *template_xml_escape_alloc(const char *value)
 {
     const char *input = value ? value : "";
     size_t input_len = strlen(input);
-    size_t out_capacity = input_len * 6 + 1;
-    char *escaped = malloc(out_capacity);
+    size_t out_capacity;
+    char *escaped;
     size_t used = 0;
 
+    if (!nxcast_size_multiply(input_len, 6u, &out_capacity) ||
+        !nxcast_size_add(out_capacity, 1u, &out_capacity))
+    {
+        return NULL;
+    }
+    escaped = malloc(out_capacity);
     if (!escaped)
         return NULL;
 
@@ -157,12 +164,18 @@ static FILE *template_open_file(const char *relative_path)
 static bool append_bytes_alloc(char **out, size_t *used, size_t *capacity, const char *data, size_t data_len)
 {
     char *next;
+    size_t required;
     size_t next_capacity;
 
-    if (!out || !used || !capacity || !data)
+    if (!out || !used || !capacity || !data || *used > *capacity ||
+        (*capacity > 0u && !*out) ||
+        !nxcast_size_add(*used, data_len, &required) ||
+        !nxcast_size_add(required, 1u, &required))
+    {
         return false;
+    }
 
-    if (*used + data_len + 1 <= *capacity)
+    if (required <= *capacity)
     {
         memcpy(*out + *used, data, data_len);
         *used += data_len;
@@ -170,9 +183,11 @@ static bool append_bytes_alloc(char **out, size_t *used, size_t *capacity, const
         return true;
     }
 
-    next_capacity = *capacity == 0 ? 512 : *capacity * 2;
-    while (*used + data_len + 1 > next_capacity)
-        next_capacity *= 2;
+    if (!nxcast_size_grow(*capacity, required, 512u, SIZE_MAX,
+                          &next_capacity))
+    {
+        return false;
+    }
 
     next = realloc(*out, next_capacity);
     if (!next)
@@ -328,11 +343,25 @@ bool dlna_template_load_file_alloc(const char *relative_path,
 
     while (!feof(file))
     {
-        if (used + 256 + 1 > capacity)
+        size_t required;
+
+        if (!nxcast_size_add(used, 257u, &required))
         {
-            size_t next_capacity = capacity == 0 ? 512 : capacity * 2;
-            while (used + 256 + 1 > next_capacity)
-                next_capacity *= 2;
+            free(buffer);
+            fclose(file);
+            return false;
+        }
+        if (required > capacity)
+        {
+            size_t next_capacity;
+
+            if (!nxcast_size_grow(capacity, required, 512u, SIZE_MAX,
+                                  &next_capacity))
+            {
+                free(buffer);
+                fclose(file);
+                return false;
+            }
 
             char *next_buffer = realloc(buffer, next_capacity);
             if (!next_buffer)

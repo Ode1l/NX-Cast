@@ -30,6 +30,7 @@ int main(int argc, char **argv)
     unsigned long bind_port;
     unsigned long announcement_port;
     char instance_name[64];
+    AirPlayMdnsDiagnostics diagnostics;
 
     if (argc != 3)
         return 2;
@@ -42,7 +43,7 @@ int main(int argc, char **argv)
     config.friendly_name = "NX-Cast";
     config.control_port = 7000u;
     config.ipv4_address = inet_addr("127.0.0.1");
-    config.features = AIRPLAY_MDNS_FEATURE_LEGACY_PAIRING;
+    config.features = AIRPLAY_MDNS_FEATURES_MIRROR_COMPAT;
     config.pin_required = true;
     snprintf(config.pairing_id, sizeof(config.pairing_id),
              "00112233-4455-4677-8899-aabbccddeeff");
@@ -57,12 +58,19 @@ int main(int argc, char **argv)
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
     if (!airplay_mdns_start(&config) ||
-        !airplay_mdns_instance_name(instance_name, sizeof(instance_name)))
+        !airplay_mdns_instance_name(instance_name, sizeof(instance_name)) ||
+        !airplay_mdns_get_diagnostics(&diagnostics) ||
+        !diagnostics.running || !diagnostics.socket_open ||
+        diagnostics.phase < AIRPLAY_MDNS_PHASE_SOCKET_READY)
         return 1;
     printf("READY %u %s\n", airplay_mdns_bound_port(), instance_name);
     fflush(stdout);
     while (!g_stop_requested && airplay_mdns_is_running())
         sleep_milliseconds(20u);
     airplay_mdns_stop();
+    if (!airplay_mdns_get_diagnostics(&diagnostics) ||
+        diagnostics.phase != AIRPLAY_MDNS_PHASE_STOPPED ||
+        diagnostics.running || diagnostics.socket_open)
+        return 1;
     return 0;
 }

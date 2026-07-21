@@ -45,6 +45,7 @@ APP_VERSION	:=	0.2.0
 ICON		:=	assets/icon/switch-screencast-logo.jpg
 BUILD		:=	build
 SOURCES		:=	source \
+			source/app \
 			source/iptv \
 			source/log \
 			source/player \
@@ -82,6 +83,8 @@ CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DNXCAST_APP_VERSION=\"$(APP_VERSION)\"
 TRACE_MEDIA ?= 0
 TRACE_INPUT ?= 0
 TRACE_AIRPLAY ?= 0
+NXCAST_DIAG_PROFILE ?= normal
+NXCAST_AIRPLAY_RUNTIME ?= 1
 NXCAST_REQUIRE_LIBMPV ?= 0
 NXCAST_REQUIRE_DEKO3D ?= 0
 NXCAST_REQUIRE_AIRPLAY_ED25519 ?= 0
@@ -90,6 +93,7 @@ RELEASE_JOBS ?= 4
 RELEASE_ATTESTATION := $(CURDIR)/$(BUILD)/release-features.txt
 HOST_CC ?= cc
 HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource -Ithird_party/playfair
+HOST_SANITIZER_FLAGS ?= -fsanitize=address,undefined -fno-omit-frame-pointer
 HOST_THREAD_FLAGS ?= -pthread
 PLAYFAIR_SOURCES := third_party/playfair/hand_garble.c \
 	third_party/playfair/modified_md5.c \
@@ -101,23 +105,86 @@ PLAYFAIR_LIBS := -lm
 AIRPLAY_LIFECYCLE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay
 AIRPLAY_PLIST_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_plist
 AIRPLAY_RTSP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_rtsp
+AIRPLAY_RTSP_STACK_CHECK_OBJ := $(CURDIR)/$(BUILD)/tests/airplay_rtsp_stack_check.o
 AIRPLAY_CRYPTO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_crypto
 AIRPLAY_SRP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_srp
 AIRPLAY_PAIRING_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_pairing
 AIRPLAY_DNS_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_dns
+SEEK_TARGET_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_seek_target
 AIRPLAY_HANDLERS_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_handlers
 AIRPLAY_FAIRPLAY_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_fairplay
 AIRPLAY_MIRROR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_mirror
+AIRPLAY_TIMING_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_timing
 AIRPLAY_STREAM_BRIDGE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_stream_bridge
 AIRPLAY_MIRROR_RUNTIME_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_mirror_runtime
 AIRPLAY_AUDIO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_audio
 AIRPLAY_CLOCK_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_clock
 AIRPLAY_REMOTE_VIDEO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_remote_video
 PLAYER_OWNERSHIP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_player_ownership
+PLAYER_ACTOR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_media_actor
+PROTOCOL_COORDINATOR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_protocol_coordinator
+LOG_MIRROR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_log_mirror
+LOG_POLICY_NORMAL_OBJ := $(CURDIR)/$(BUILD)/tests/test_log_policy_normal.o
+LOG_POLICY_TRACE_OBJ := $(CURDIR)/$(BUILD)/tests/test_log_policy_trace.o
+C_SIZE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_c_size
+SOAP_WRITER_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_soap_writer
+PLAYER_TYPES_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_player_types
+IPTV_URL_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_iptv_url
 AIRPLAY_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_smoke_server
 AIRPLAY_PAIRING_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_pairing_smoke_server
 AIRPLAY_MDNS_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_mdns_smoke_server
 AIRPLAY_RECEIVER_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_receiver_smoke_server
+
+NXCAST_DIAG_PROFILES := normal airplay-off control-only mdns-socket mdns-idle \
+	mdns-receive full-parallel full-serial full-low-priority
+
+ifeq ($(filter $(NXCAST_DIAG_PROFILE),$(NXCAST_DIAG_PROFILES)),)
+$(error Unknown NXCAST_DIAG_PROFILE '$(NXCAST_DIAG_PROFILE)'; expected one of: $(NXCAST_DIAG_PROFILES))
+endif
+
+ifneq ($(NXCAST_DIAG_PROFILE),normal)
+CFLAGS += -DNXCAST_DIAGNOSTIC_BUILD=1 \
+	-DNXCAST_MEDIA_TRACE_VERBOSE=1 \
+	-DNXCAST_INPUT_TRACE_VERBOSE=1 \
+	-DNXCAST_AIRPLAY_TRACE_VERBOSE=1 \
+	-DNXCAST_TRACE_BUILD=1
+endif
+
+ifeq ($(NXCAST_DIAG_PROFILE),airplay-off)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=1 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"airplay-off\" \
+	-DNXCAST_DISABLE_AIRPLAY_RUNTIME=1
+else ifeq ($(NXCAST_DIAG_PROFILE),control-only)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=2 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"control-only\" \
+	-DNXCAST_AIRPLAY_DISCOVERY_ENABLED=0
+else ifeq ($(NXCAST_DIAG_PROFILE),mdns-socket)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=3 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"mdns-socket\" \
+	-DNXCAST_AIRPLAY_MDNS_DIAG_MODE=1
+else ifeq ($(NXCAST_DIAG_PROFILE),mdns-idle)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=4 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"mdns-idle\" \
+	-DNXCAST_AIRPLAY_MDNS_DIAG_MODE=2
+else ifeq ($(NXCAST_DIAG_PROFILE),mdns-receive)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=5 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"mdns-receive\" \
+	-DNXCAST_AIRPLAY_MDNS_DIAG_MODE=3
+else ifeq ($(NXCAST_DIAG_PROFILE),full-parallel)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=6 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"full-parallel\"
+else ifeq ($(NXCAST_DIAG_PROFILE),full-serial)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=7 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"full-serial\" \
+	-DNXCAST_PROTOCOL_START_SERIAL=1
+else ifeq ($(NXCAST_DIAG_PROFILE),full-low-priority)
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=8 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"full-low-priority\" \
+	-DNXCAST_AIRPLAY_MDNS_THREAD_PRIORITY=0x2e
+else
+CFLAGS += -DNXCAST_DIAG_PROFILE_ID=0 \
+	-DNXCAST_DIAG_PROFILE_NAME=\"normal\"
+endif
 
 ifeq ($(TRACE_MEDIA),1)
 CFLAGS	+=	-DNXCAST_MEDIA_TRACE_VERBOSE=1
@@ -129,6 +196,14 @@ endif
 
 ifeq ($(TRACE_AIRPLAY),1)
 CFLAGS	+=	-DNXCAST_AIRPLAY_TRACE_VERBOSE=1
+endif
+
+ifneq ($(filter 1,$(TRACE_MEDIA) $(TRACE_INPUT) $(TRACE_AIRPLAY)),)
+CFLAGS	+=	-DNXCAST_TRACE_BUILD=1
+endif
+
+ifeq ($(NXCAST_AIRPLAY_RUNTIME),0)
+CFLAGS	+=	-DNXCAST_DISABLE_AIRPLAY_RUNTIME=1
 endif
 
 ASFLAGS	:=	-g $(ARCH)
@@ -352,7 +427,7 @@ ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
 endif
 
-.PHONY: $(BUILD) clean all release-build test-airplay
+.PHONY: $(BUILD) clean all release-build test-airplay test-airplay-dns test-c-safety test-c-safety-sanitize test-c-size test-soap-writer test-player-types test-seek-target test-iptv-url test-log-mirror test-log-policy test-player-actor test-protocol-coordinator test-shutdown-order
 
 #---------------------------------------------------------------------------------
 all: sdmc_init $(BUILD)
@@ -397,7 +472,67 @@ release-build:
 		'airplay-playfair=1' > $(RELEASE_ATTESTATION)
 	@echo "release build attested at $(RELEASE_ATTESTATION)"
 
-test-airplay:
+test-protocol-coordinator:
+	@mkdir -p $(dir $(PROTOCOL_COORDINATOR_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/player/core/ownership.c source/app/protocol_coordinator.c scripts/test_protocol_coordinator.c -o $(PROTOCOL_COORDINATOR_TEST_BIN)
+	@$(PROTOCOL_COORDINATOR_TEST_BIN)
+
+test-player-actor:
+	@mkdir -p $(dir $(PLAYER_ACTOR_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/player/core/media_actor.c scripts/test_media_actor.c -o $(PLAYER_ACTOR_TEST_BIN)
+	@$(PLAYER_ACTOR_TEST_BIN)
+
+test-log-mirror:
+	@mkdir -p $(dir $(LOG_MIRROR_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/log/mirror.c scripts/test_log_mirror.c -o $(LOG_MIRROR_TEST_BIN)
+	@$(LOG_MIRROR_TEST_BIN)
+
+test-log-policy:
+	@mkdir -p $(dir $(LOG_POLICY_NORMAL_OBJ))
+	$(HOST_CC) $(HOST_CFLAGS) -DNXCAST_EXPECTED_LOG_LEVEL=LOG_LEVEL_WARN -c scripts/test_log_policy.c -o $(LOG_POLICY_NORMAL_OBJ)
+	$(HOST_CC) $(HOST_CFLAGS) -DNXCAST_TRACE_BUILD=1 -DNXCAST_EXPECTED_LOG_LEVEL=LOG_LEVEL_INFO -c scripts/test_log_policy.c -o $(LOG_POLICY_TRACE_OBJ)
+
+test-c-size:
+	@mkdir -p $(dir $(C_SIZE_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) scripts/test_c_size.c -o $(C_SIZE_TEST_BIN)
+	@$(C_SIZE_TEST_BIN)
+
+test-soap-writer:
+	@mkdir -p $(dir $(SOAP_WRITER_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/protocol/dlna/control/soap_writer.c scripts/test_soap_writer.c -o $(SOAP_WRITER_TEST_BIN)
+	@$(SOAP_WRITER_TEST_BIN)
+
+test-player-types:
+	@mkdir -p $(dir $(PLAYER_TYPES_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/player/types.c scripts/test_player_types.c -o $(PLAYER_TYPES_TEST_BIN)
+	@$(PLAYER_TYPES_TEST_BIN)
+
+test-seek-target:
+	@mkdir -p $(dir $(SEEK_TARGET_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/player/seek_target.c scripts/test_seek_target.c -lm -o $(SEEK_TARGET_TEST_BIN)
+	@$(SEEK_TARGET_TEST_BIN)
+
+test-iptv-url:
+	@mkdir -p $(dir $(IPTV_URL_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/iptv/url.c scripts/test_iptv_url.c -o $(IPTV_URL_TEST_BIN)
+	@$(IPTV_URL_TEST_BIN)
+
+test-airplay-dns:
+	@mkdir -p $(dir $(AIRPLAY_DNS_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/discovery/dns.c scripts/test_airplay_dns.c -o $(AIRPLAY_DNS_TEST_BIN)
+	@$(AIRPLAY_DNS_TEST_BIN)
+
+test-c-safety: test-c-size test-soap-writer test-player-types test-seek-target test-iptv-url test-airplay-dns
+
+test-c-safety-sanitize:
+	@ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+		UBSAN_OPTIONS=halt_on_error=1 \
+		$(MAKE) test-c-safety HOST_CFLAGS="$(HOST_CFLAGS) $(HOST_SANITIZER_FLAGS)"
+
+test-shutdown-order:
+	@python3 scripts/test_shutdown_order.py
+
+test-airplay: test-protocol-coordinator test-player-actor test-log-mirror test-log-policy test-c-safety test-shutdown-order
 	@test "$(HOST_MBEDTLS_FOUND)" = "1" || (printf '%s\n' "mbedTLS 2.x host development files are required (macOS: brew install mbedtls@2)" >&2; exit 1)
 	@test "$(HOST_SODIUM_FOUND)" = "1" || (printf '%s\n' "libsodium host development files are required (macOS: brew install libsodium)" >&2; exit 1)
 	@test "$(HOST_FFMPEG_FOUND)" = "1" || (printf '%s\n' "FFmpeg host development files are required (macOS: brew install ffmpeg)" >&2; exit 1)
@@ -405,15 +540,16 @@ test-airplay:
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/airplay.c scripts/test_airplay.c -o $(AIRPLAY_LIFECYCLE_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/plist.c scripts/test_airplay_plist.c -o $(AIRPLAY_PLIST_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/rtsp.c scripts/test_airplay_rtsp.c -o $(AIRPLAY_RTSP_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) -Wframe-larger-than=32768 -c source/protocol/airplay/protocol/rtsp.c -o $(AIRPLAY_RTSP_STACK_CHECK_OBJ)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c scripts/test_airplay_crypto.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_CRYPTO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/srp.c scripts/test_airplay_srp.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_SRP_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 -DAIRPLAY_TESTING=1 source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/test_airplay_pairing.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_TEST_BIN)
-	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/discovery/dns.c scripts/test_airplay_dns.c -o $(AIRPLAY_DNS_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c scripts/test_airplay_handlers.c $(HOST_MBEDTLS_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_HANDLERS_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) scripts/test_airplay_fairplay.c $(HOST_MBEDTLS_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_FAIRPLAY_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c scripts/test_airplay_mirror.c $(HOST_MBEDTLS_LIBS) -o $(AIRPLAY_MIRROR_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/mirror/timing.c scripts/test_airplay_timing.c -o $(AIRPLAY_TIMING_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/video.c source/protocol/airplay/media/stream_bridge.c scripts/test_airplay_stream_bridge.c $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_STREAM_BRIDGE_TEST_BIN)
-	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/audio.c source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c source/protocol/airplay/media/stream_bridge.c source/protocol/airplay/media/mirror_runtime.c scripts/test_airplay_mirror_runtime.c $(HOST_MBEDTLS_LIBS) $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_MIRROR_RUNTIME_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/audio.c source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/timing.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c source/protocol/airplay/media/stream_bridge.c source/protocol/airplay/media/mirror_runtime.c scripts/test_airplay_mirror_runtime.c $(HOST_MBEDTLS_LIBS) $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_MIRROR_RUNTIME_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_FFMPEG_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/audio.c source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/video.c source/protocol/airplay/media/stream_bridge.c scripts/test_airplay_audio.c $(HOST_MBEDTLS_LIBS) $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_AUDIO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/mirror/clock.c scripts/test_airplay_clock.c -o $(AIRPLAY_CLOCK_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/media/remote_video.c scripts/test_airplay_remote_video.c -o $(AIRPLAY_REMOTE_VIDEO_TEST_BIN)
@@ -428,10 +564,10 @@ test-airplay:
 	@$(AIRPLAY_CRYPTO_TEST_BIN)
 	@$(AIRPLAY_SRP_TEST_BIN)
 	@$(AIRPLAY_PAIRING_TEST_BIN)
-	@$(AIRPLAY_DNS_TEST_BIN)
 	@$(AIRPLAY_HANDLERS_TEST_BIN)
 	@$(AIRPLAY_FAIRPLAY_TEST_BIN)
 	@$(AIRPLAY_MIRROR_TEST_BIN)
+	@$(AIRPLAY_TIMING_TEST_BIN)
 	@$(AIRPLAY_STREAM_BRIDGE_TEST_BIN)
 	@$(AIRPLAY_MIRROR_RUNTIME_TEST_BIN)
 	@$(AIRPLAY_AUDIO_TEST_BIN)

@@ -10,6 +10,7 @@
 #include "identity.h"
 #include "pairing_store.h"
 #include "protocol/airplay/protocol/plist.h"
+#include "protocol/airplay/trace.h"
 #include "srp.h"
 
 #define PAIRING_PLIST_CONTENT_TYPE "application/x-apple-binary-plist"
@@ -41,6 +42,8 @@ struct AirPlayPairingService
     AirPlayPairingRandomCallback random_callback;
     void *random_context;
 #endif
+    AirPlayPairingSession *setup;
+    atomic_flag setup_lock;
     atomic_flag store_lock;
 };
 
@@ -68,6 +71,18 @@ static void pairing_unlock(AirPlayPairingService *service)
     atomic_flag_clear_explicit(&service->store_lock, memory_order_release);
 }
 
+static void pairing_setup_lock(AirPlayPairingService *service)
+{
+    while (atomic_flag_test_and_set_explicit(&service->setup_lock, memory_order_acquire))
+    {
+    }
+}
+
+static void pairing_setup_unlock(AirPlayPairingService *service)
+{
+    atomic_flag_clear_explicit(&service->setup_lock, memory_order_release);
+}
+
 static void pairing_session_destroy(AirPlayPairingSession *pairing)
 {
     if (!pairing)
@@ -77,6 +92,31 @@ static void pairing_session_destroy(AirPlayPairingSession *pairing)
     airplay_crypto_rng_deinit(&pairing->rng);
     airplay_crypto_secure_zero(pairing, sizeof(*pairing));
     free(pairing);
+}
+
+static AirPlayPairingSession *pairing_session_create(AirPlayPairingService *service)
+{
+    AirPlayPairingSession *pairing = calloc(1, sizeof(*pairing));
+
+    if (!pairing || !airplay_crypto_rng_init(&pairing->rng,
+                                             "NX-Cast AirPlay pairing session"))
+    {
+        pairing_session_destroy(pairing);
+        return NULL;
+    }
+    pairing->state = AIRPLAY_PAIRING_STATE_IDLE;
+    pairing->service = service;
+    return pairing;
+}
+
+static void pairing_setup_destroy(AirPlayPairingService *service,
+                                  AirPlayPairingSession *pairing)
+{
+    if (!pairing)
+        return;
+    if (service->pin_dismiss_callback && pairing->pin[0])
+        service->pin_dismiss_callback(service->pin_user_data);
+    pairing_session_destroy(pairing);
 }
 
 static AirPlayPairingSession *pairing_session_get(AirPlayRtspSession *session,
@@ -89,14 +129,9 @@ static AirPlayPairingSession *pairing_session_get(AirPlayRtspSession *session,
     pairing = session->security_context;
     if (pairing)
         return pairing;
-    pairing = calloc(1, sizeof(*pairing));
-    if (!pairing || !airplay_crypto_rng_init(&pairing->rng, "NX-Cast AirPlay pairing session"))
-    {
-        pairing_session_destroy(pairing);
+    pairing = pairing_session_create(service);
+    if (!pairing)
         return NULL;
-    }
-    pairing->state = AIRPLAY_PAIRING_STATE_IDLE;
-    pairing->service = service;
     session->security_context = pairing;
     return pairing;
 }
@@ -114,6 +149,7 @@ bool airplay_pairing_service_create(const AirPlayPairingConfig *config,
     service = calloc(1, sizeof(*service));
     if (!service)
         return false;
+    atomic_flag_clear(&service->setup_lock);
     atomic_flag_clear(&service->store_lock);
     service->pin_display_callback = config->pin_display_callback;
     service->pin_dismiss_callback = config->pin_dismiss_callback;
@@ -140,6 +176,8 @@ void airplay_pairing_service_destroy(AirPlayPairingService *service)
 {
     if (!service)
         return;
+    pairing_setup_destroy(service, service->setup);
+    service->setup = NULL;
     airplay_pairing_store_close(service->store);
     airplay_identity_destroy(service->identity);
     airplay_crypto_secure_zero(service, sizeof(*service));
@@ -526,6 +564,9 @@ static bool pairing_verify_finish(AirPlayPairingService *service,
     if (!airplay_crypto_ed25519_verify(pairing->client_ed_public, message,
                                        sizeof(message), signature))
         goto cleanup;
+    if (!airplay_rtsp_response_set_body(response, NULL, 0,
+                                        "application/octet-stream"))
+        goto cleanup;
     pairing->state = AIRPLAY_PAIRING_STATE_VERIFIED;
     airplay_crypto_secure_zero(pairing->server_x_private,
                                sizeof(pairing->server_x_private));
@@ -559,6 +600,81 @@ static bool pairing_handle_verify(AirPlayPairingService *service,
     return pairing_set_failure(service, pairing, response);
 }
 
+static bool pairing_reject_missing_setup(AirPlayRtspResponse *response)
+{
+    airplay_rtsp_response_set_body(response, NULL, 0, NULL);
+    response->close_connection = true;
+    return airplay_rtsp_response_set_status(response, 470);
+}
+
+static bool pairing_route_setup(AirPlayPairingService *service,
+                                AirPlayRtspSession *session,
+                                const AirPlayRtspRequest *request,
+                                AirPlayRtspResponse *response)
+{
+    AirPlayPairingSession *pairing;
+    AirPlayPairingSession *replaced = NULL;
+    AirPlayPairingState state_before = AIRPLAY_PAIRING_STATE_IDLE;
+    AirPlayPairingState state_after = AIRPLAY_PAIRING_STATE_IDLE;
+    bool terminal = false;
+    bool handled;
+
+    (void)session;
+    pairing_setup_lock(service);
+    if (strcmp(request->uri, "/pair-pin-start") == 0)
+    {
+        replaced = service->setup;
+        service->setup = NULL;
+        pairing_setup_destroy(service, replaced);
+        pairing = pairing_session_create(service);
+        if (!pairing)
+        {
+            pairing_setup_unlock(service);
+            return false;
+        }
+        service->setup = pairing;
+        handled = pairing_handle_pin_start(service, pairing, request, response);
+    }
+    else
+    {
+        pairing = service->setup;
+        if (!pairing)
+        {
+            handled = pairing_reject_missing_setup(response);
+            AIRPLAY_TRACE_SYNC(
+                "[airplay-pairing] t_ms=%llu session=%llu uri=%s bytes=%zu "
+                "state=missing result=rejected status=%d\n",
+                (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                (unsigned long long)session->id, request->uri,
+                request->body_length, response->status_code);
+            pairing_setup_unlock(service);
+            return handled;
+        }
+        state_before = pairing->state;
+        handled = pairing_handle_setup(service, pairing, request, response);
+    }
+
+    state_after = pairing->state;
+    terminal = state_after == AIRPLAY_PAIRING_STATE_FAILED ||
+               state_after == AIRPLAY_PAIRING_STATE_PAIRED;
+    (void)state_before;
+    AIRPLAY_TRACE_SYNC(
+        "[airplay-pairing] t_ms=%llu session=%llu uri=%s bytes=%zu "
+        "state=%s->%s result=%s status=%d close=%u\n",
+        (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+        (unsigned long long)session->id, request->uri, request->body_length,
+        airplay_pairing_state_name(state_before),
+        airplay_pairing_state_name(state_after), handled ? "ok" : "error",
+        response->status_code, response->close_connection ? 1u : 0u);
+    if (terminal)
+    {
+        service->setup = NULL;
+        pairing_setup_destroy(service, pairing);
+    }
+    pairing_setup_unlock(service);
+    return handled;
+}
+
 bool airplay_pairing_route(AirPlayRtspSession *session,
                            const AirPlayRtspRequest *request,
                            AirPlayRtspResponse *response,
@@ -569,15 +685,29 @@ bool airplay_pairing_route(AirPlayRtspSession *session,
 
     if (!service || !session || !request || !response)
         return false;
+    if (strcmp(request->uri, "/pair-pin-start") == 0 ||
+        strcmp(request->uri, "/pair-setup-pin") == 0)
+        return pairing_route_setup(service, session, request, response);
     pairing = pairing_session_get(session, service);
     if (!pairing)
         return false;
-    if (strcmp(request->uri, "/pair-pin-start") == 0)
-        return pairing_handle_pin_start(service, pairing, request, response);
-    if (strcmp(request->uri, "/pair-setup-pin") == 0)
-        return pairing_handle_setup(service, pairing, request, response);
     if (strcmp(request->uri, "/pair-verify") == 0)
-        return pairing_handle_verify(service, pairing, request, response);
+    {
+        AirPlayPairingState state_before = pairing->state;
+        bool handled = pairing_handle_verify(service, pairing, request, response);
+
+        (void)state_before;
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-pairing] t_ms=%llu session=%llu uri=%s bytes=%zu "
+            "state=%s->%s result=%s status=%d close=%u\n",
+            (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+            (unsigned long long)session->id, request->uri, request->body_length,
+            airplay_pairing_state_name(state_before),
+            airplay_pairing_state_name(pairing->state),
+            handled ? "ok" : "error", response->status_code,
+            response->close_connection ? 1u : 0u);
+        return handled;
+    }
     if ((strcmp(request->method, "SETUP") == 0 || strcmp(request->method, "RECORD") == 0) &&
         pairing->state != AIRPLAY_PAIRING_STATE_VERIFIED)
         return pairing_set_failure(service, pairing, response);
