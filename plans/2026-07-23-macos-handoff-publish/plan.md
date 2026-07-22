@@ -1,6 +1,6 @@
 # Plan: macOS Handoff and GitHub Publish
 
-> Status: ACTIVE
+> Status: COMPLETED
 > Created: 2026-07-23
 > Last Updated: 2026-07-23
 
@@ -19,12 +19,12 @@ None.
 ## Spec-Lite
 
 ### Acceptance Criteria
-- [ ] A handoff document records architecture changes, diagnostic profiles, physical test results, unresolved failures, and macOS continuation commands.
-- [ ] The local Windows VS Code task/launch configuration remains present but unstaged and uncommitted, with its reconstruction contract recorded in the handoff.
-- [ ] No `build/`, `dist/`, `sdmc/`, `logs/`, `artifacts/`, NRO, ELF, NACP, LST, or accidental `NUL` file enters a commit.
-- [ ] CRLF-only changes are removed from the publish diff without changing semantic content.
-- [ ] Relevant focused host tests and a clean Profile 14 Switch build pass, or any environmental limitation is explicitly recorded.
-- [ ] Curated commits are pushed to `origin/airplay`, and the remote head matches the final local commit.
+- [x] A handoff document records architecture changes, diagnostic profiles, physical test results, unresolved failures, and macOS continuation commands.
+- [x] The local Windows VS Code task/launch configuration remains present but unstaged and uncommitted, with its reconstruction contract recorded in the handoff.
+- [x] No `build/`, `dist/`, `sdmc/`, `logs/`, `artifacts/`, NRO, ELF, NACP, LST, or accidental `NUL` file enters a commit.
+- [x] CRLF-only changes are removed from the publish diff without changing semantic content.
+- [x] Relevant focused host tests and a clean Profile 14 Switch build pass, or any environmental limitation is explicitly recorded.
+- [x] Curated commits are pushed to `origin/airplay`, and the remote head matches the final local commit.
 
 ### Non-goals
 - Add ALAC support, change Bilibili request headers, or otherwise alter playback behavior during handoff.
@@ -50,7 +50,7 @@ None.
 |------|------|--------|------|
 | Step 1 | `steps/step-1.md` | COMPLETED | Write the macOS handoff and update durable documentation/context. |
 | Step 2 | `steps/step-2.md` | COMPLETED | Remove line-ending noise, validate the curated source tree, and prove artifact exclusions. |
-| Step 3 | `steps/step-3.md` | IN_PROGRESS | Stage only the approved manifest, commit intentionally, push, and verify the remote head. |
+| Step 3 | `steps/step-3.md` | COMPLETED | Stage only the approved manifest, commit intentionally, push, and verify the remote head. |
 
 ## Validation Commands
 
@@ -99,9 +99,12 @@ None.
 - LF normalization reduced 213 tracked modifications to 42 semantic paths; normal and EOL-insensitive path lists are identical and `git diff --check` passes — verified by Git on 2026-07-23.
 - All six focused host regressions passed, and the clean strict Profile 14 build produced a 25,600,698-byte NRO containing the requested profile and libnx random-source markers — verified by Make, `strings`, and SHA-256 on 2026-07-23.
 - The full host AirPlay suite remains unclaimed on this Windows host because Makefile discovery reports mbedTLS, libsodium, and FFmpeg host development packages absent — verified by Make database inspection on 2026-07-23.
+- The curated implementation/handoff commit is `6ddb05acf065e59c787937c8fadd58a6bffc9363`; after SSH push, local HEAD, the refreshed `origin/airplay`, and `git ls-remote` all matched — verified by Git on 2026-07-23.
+- `.vscode/tasks.json`, `.vscode/launch.json`, and `plans/2026-07-22-vscode-space-path-build/` remain local and outside the commit, while all build/log/Switch binary paths remain ignored — verified by post-push status and staged-path assertions on 2026-07-23.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
 | 2026-07-23 | Step 1 | Added the redacted macOS handoff, linked it from the documentation index, and replaced stale session context; documentation redaction, links, re-read, and whitespace checks passed. |
 | 2026-07-23 | Step 2 | Removed EOL-only noise and the accidental NUL artifact, passed six focused host regressions and a clean strict Profile 14 build, and confirmed generated artifacts remain ignored. |
+| 2026-07-23 | Step 3 | Explicitly staged 89 approved paths, committed as `6ddb05a`, pushed `airplay` over authenticated SSH, and verified the remote ref; local Windows configuration stayed uncommitted. |
