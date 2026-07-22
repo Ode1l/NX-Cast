@@ -32,6 +32,17 @@ typedef struct
     void *video_user_data;
 } AirPlayMirrorSessionConfig;
 
+typedef struct
+{
+    uint64_t connections_accepted;
+    uint64_t encrypted_packets;
+    uint64_t encrypted_bytes;
+    uint64_t decrypt_ok;
+    uint64_t decrypt_failures;
+    uint64_t invalid_headers;
+    AirPlayMirrorVideoStats video;
+} AirPlayMirrorSessionStats;
+
 typedef struct AirPlayMirrorSession AirPlayMirrorSession;
 
 bool airplay_mirror_packet_header_parse(
@@ -47,5 +58,7 @@ void airplay_mirror_session_set_recording(AirPlayMirrorSession *session,
 void airplay_mirror_session_destroy(AirPlayMirrorSession *session);
 uint16_t airplay_mirror_session_port(const AirPlayMirrorSession *session);
 bool airplay_mirror_session_is_running(const AirPlayMirrorSession *session);
+bool airplay_mirror_session_get_stats(const AirPlayMirrorSession *session,
+                                      AirPlayMirrorSessionStats *stats_out);
 
 #endif

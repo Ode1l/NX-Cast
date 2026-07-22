@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -32,6 +33,8 @@
 #define IPTV_XMLTV_LIMIT (64U * 1024U * 1024U)
 #define IPTV_LOGO_LIMIT (4U * 1024U * 1024U)
 #define IPTV_WORKER_STACK_SIZE 0x80000
+#define IPTV_RESOURCE_TRANSITION_TIMEOUT_MS 6000u
+#define IPTV_BACKGROUND_QUIESCE_TIMEOUT_MS 4000u
 #define IPTV_FALLBACK_NAME "IPTV Channel"
 
 typedef struct
@@ -52,7 +55,9 @@ static CondVar g_worker_cond;
 static Thread g_worker_thread;
 static bool g_sync_initialized;
 static bool g_worker_started;
-static bool g_worker_stop;
+static atomic_bool g_worker_stop = false;
+static bool g_worker_busy;
+static atomic_bool g_background_suspended = false;
 static bool g_refresh_all_requested;
 static uint32_t g_refresh_source_requested;
 static bool g_logo_requested;
@@ -89,6 +94,18 @@ static bool g_preinstalled_refresh_needed;
 static int g_preinstalled_changed_count;
 
 static void iptv_queue_selected_logo_locked(void);
+
+static bool iptv_background_fetch_cancelled(void *context)
+{
+    (void)context;
+    return atomic_load(&g_background_suspended) ||
+           atomic_load(&g_worker_stop);
+}
+
+static const IptvFetchControl g_background_fetch_control = {
+    .cancelled = iptv_background_fetch_cancelled,
+    .context = NULL,
+};
 
 static void iptv_copy(char *out, size_t out_size, const char *value)
 {
@@ -1186,6 +1203,7 @@ static bool iptv_refresh_source_files(const IptvSource *source, char *message, s
         playlist_ok = iptv_fetch_to_file(source->url,
                                          source->cache_path,
                                          IPTV_REMOTE_PLAYLIST_LIMIT,
+                                         &g_background_fetch_control,
                                          error,
                                          sizeof(error));
     epg_url = source->epg_url;
@@ -1198,6 +1216,7 @@ static bool iptv_refresh_source_files(const IptvSource *source, char *message, s
         epg_ok = iptv_fetch_to_file(epg_url,
                                     epg_path,
                                     IPTV_XMLTV_LIMIT,
+                                    &g_background_fetch_control,
                                     error,
                                     sizeof(error));
     }
@@ -1234,7 +1253,9 @@ static void iptv_cache_logo(uint32_t channel_id, const char *url, const char *pa
 
     if (!url[0] || !path[0] || iptv_path_exists(path))
         return;
-    if (!iptv_fetch_to_file(url, path, IPTV_LOGO_LIMIT, error, sizeof(error)))
+    if (!iptv_fetch_to_file(url, path, IPTV_LOGO_LIMIT,
+                            &g_background_fetch_control, error,
+                            sizeof(error)))
     {
         log_warn("[iptv] logo cache failed channel=%08x error=%s\n", channel_id, error);
         return;
@@ -1266,9 +1287,12 @@ static void iptv_worker(void *argument)
         char logo_path[IPTV_PATH_MAX];
 
         mutexLock(&g_mutex);
-        while (!g_worker_stop && !g_refresh_all_requested && !g_refresh_source_requested && !g_logo_requested)
+        while (!atomic_load(&g_worker_stop) &&
+               (atomic_load(&g_background_suspended) ||
+                (!g_refresh_all_requested && !g_refresh_source_requested &&
+                 !g_logo_requested)))
             condvarWait(&g_worker_cond, &g_mutex);
-        if (g_worker_stop)
+        if (atomic_load(&g_worker_stop))
         {
             mutexUnlock(&g_mutex);
             break;
@@ -1282,10 +1306,14 @@ static void iptv_worker(void *argument)
         g_refresh_all_requested = false;
         g_refresh_source_requested = 0;
         g_logo_requested = false;
+        g_worker_busy = refresh_all || refresh_source || cache_logo;
+        if (refresh_all || refresh_source)
+            g_refreshing = true;
         mutexUnlock(&g_mutex);
 
         if (refresh_all)
         {
+            bool cancelled = false;
             IptvSource sources[IPTV_MAX_SOURCES];
             int count;
             char message[IPTV_STATUS_MAX] = "IPTV sources refreshed.";
@@ -1296,8 +1324,10 @@ static void iptv_worker(void *argument)
             for (int i = 0; i < count; ++i)
             {
                 mutexLock(&g_mutex);
-                if (g_worker_stop)
+                if (atomic_load(&g_worker_stop) ||
+                    atomic_load(&g_background_suspended))
                 {
+                    cancelled = true;
                     mutexUnlock(&g_mutex);
                     break;
                 }
@@ -1305,9 +1335,18 @@ static void iptv_worker(void *argument)
                 snprintf(g_status, sizeof(g_status), "Refreshing %s...", sources[i].name);
                 mutexUnlock(&g_mutex);
                 iptv_refresh_source_files(&sources[i], message, sizeof(message));
+                if (atomic_load(&g_worker_stop) ||
+                    atomic_load(&g_background_suspended))
+                {
+                    cancelled = true;
+                    break;
+                }
             }
-            iptv_rebuild_catalog();
-            iptv_finish_refresh(message);
+            if (!cancelled)
+            {
+                iptv_rebuild_catalog();
+                iptv_finish_refresh(message);
+            }
         }
         else if (refresh_source)
         {
@@ -1316,12 +1355,22 @@ static void iptv_worker(void *argument)
             if (iptv_find_source_copy(refresh_source, &source))
             {
                 mutexLock(&g_mutex);
+                if (atomic_load(&g_worker_stop) ||
+                    atomic_load(&g_background_suspended))
+                {
+                    mutexUnlock(&g_mutex);
+                    goto job_finished;
+                }
                 g_refreshing_source_id = source.id;
                 snprintf(g_status, sizeof(g_status), "Refreshing %s...", source.name);
                 mutexUnlock(&g_mutex);
                 iptv_refresh_source_files(&source, message, sizeof(message));
-                iptv_rebuild_catalog();
-                iptv_finish_refresh(message);
+                if (!atomic_load(&g_worker_stop) &&
+                    !atomic_load(&g_background_suspended))
+                {
+                    iptv_rebuild_catalog();
+                    iptv_finish_refresh(message);
+                }
             }
             else
             {
@@ -1330,15 +1379,51 @@ static void iptv_worker(void *argument)
         }
 
         if (cache_logo)
-            iptv_cache_logo(logo_channel, logo_url, logo_path);
+        {
+            bool can_cache = !atomic_load(&g_worker_stop) &&
+                             !atomic_load(&g_background_suspended);
+            if (can_cache)
+                iptv_cache_logo(logo_channel, logo_url, logo_path);
+        }
+
+    job_finished:
+        mutexLock(&g_mutex);
+        if (atomic_load(&g_background_suspended) &&
+            !atomic_load(&g_worker_stop))
+        {
+            if (refresh_all)
+                g_refresh_all_requested = true;
+            else if (refresh_source != 0u)
+                g_refresh_source_requested = refresh_source;
+            if (cache_logo)
+            {
+                g_logo_requested = true;
+                g_logo_channel_id = logo_channel;
+                iptv_copy(g_logo_url, sizeof(g_logo_url), logo_url);
+                iptv_copy(g_logo_path, sizeof(g_logo_path), logo_path);
+            }
+            g_refreshing = false;
+            g_refreshing_source_id = 0u;
+            iptv_copy(g_status, sizeof(g_status),
+                      "IPTV background work paused during playback.");
+        }
+        g_worker_busy = false;
+        condvarWakeAll(&g_worker_cond);
+        mutexUnlock(&g_mutex);
     }
+    mutexLock(&g_mutex);
+    g_worker_busy = false;
+    condvarWakeAll(&g_worker_cond);
+    mutexUnlock(&g_mutex);
     threadExit();
 }
 
 static void iptv_queue_selected_logo_locked(void)
 {
     IptvChannel *channel;
-    if (!g_worker_started || g_visible_count <= 0 || g_selected_index < 0 || g_selected_index >= g_visible_count)
+    if (!g_worker_started || atomic_load(&g_background_suspended) ||
+        g_visible_count <= 0 || g_selected_index < 0 ||
+        g_selected_index >= g_visible_count)
         return;
     channel = &g_channels[g_visible[g_selected_index]];
     if (!channel->logo_url[0] || channel->logo_cached)
@@ -1361,7 +1446,8 @@ bool iptv_init(void)
         g_sync_initialized = true;
     }
     iptv_ensure_directories();
-    g_worker_stop = false;
+    atomic_store(&g_worker_stop, false);
+    g_worker_busy = false;
     g_refresh_all_requested = false;
     g_refresh_source_requested = 0;
     g_logo_requested = false;
@@ -1424,7 +1510,7 @@ void iptv_deinit(void)
     if (!g_sync_initialized)
         return;
     mutexLock(&g_mutex);
-    g_worker_stop = true;
+    atomic_store(&g_worker_stop, true);
     condvarWakeAll(&g_worker_cond);
     mutexUnlock(&g_mutex);
     if (g_worker_started)
@@ -1434,6 +1520,7 @@ void iptv_deinit(void)
     }
     mutexLock(&g_mutex);
     g_worker_started = false;
+    g_worker_busy = false;
     g_initialized = false;
     g_loaded = false;
     g_refreshing = false;
@@ -1447,6 +1534,48 @@ void iptv_deinit(void)
         (void)protocol_coordinator_media_release_current(
             PLAYER_MEDIA_OWNER_IPTV, playback_token);
     avformat_network_deinit();
+}
+
+bool iptv_set_background_network_suspended(bool suspended)
+{
+    bool previous = atomic_exchange(&g_background_suspended, suspended);
+    bool quiesced = true;
+
+    if (g_sync_initialized)
+    {
+        mutexLock(&g_mutex);
+        if (!suspended && previous)
+            iptv_queue_selected_logo_locked();
+        condvarWakeAll(&g_worker_cond);
+        if (suspended)
+        {
+            uint64_t started_ms =
+                armTicksToNs(armGetSystemTick()) / UINT64_C(1000000);
+
+            while (g_worker_started && g_worker_busy)
+            {
+                uint64_t now_ms =
+                    armTicksToNs(armGetSystemTick()) / UINT64_C(1000000);
+
+                if (now_ms - started_ms >=
+                    IPTV_BACKGROUND_QUIESCE_TIMEOUT_MS)
+                {
+                    quiesced = false;
+                    break;
+                }
+                uint64_t remaining_ms =
+                    IPTV_BACKGROUND_QUIESCE_TIMEOUT_MS -
+                    (now_ms - started_ms);
+                (void)condvarWaitTimeout(&g_worker_cond, &g_mutex,
+                                         remaining_ms * UINT64_C(1000000));
+            }
+        }
+        mutexUnlock(&g_mutex);
+    }
+    if (previous != suspended || !quiesced)
+        log_info("[iptv] background-network suspended=%d quiesced=%d\n",
+                 suspended ? 1 : 0, quiesced ? 1 : 0);
+    return quiesced;
 }
 
 bool iptv_reload(void)
@@ -1483,6 +1612,8 @@ bool iptv_get_state(IptvState *out)
     out->initialized = g_initialized;
     out->loaded = g_loaded;
     out->refreshing = g_refreshing;
+    out->background_suspended = atomic_load(&g_background_suspended);
+    out->background_worker_busy = g_worker_busy;
     out->source_count = g_source_count;
     out->hls_stream_count = g_hls_stream_count;
     out->channel_count = g_channel_count;
@@ -1849,11 +1980,17 @@ bool iptv_remove_selected_source(void)
 bool iptv_refresh_selected_source_async(void)
 {
     uint32_t id = 0;
+    bool busy;
+
     mutexLock(&g_mutex);
-    if (!g_worker_started || g_source_count <= 0 || g_refreshing)
+    bool suspended = atomic_load(&g_background_suspended);
+    busy = g_refreshing;
+    if (!g_worker_started || g_source_count <= 0 || busy || suspended)
     {
         mutexUnlock(&g_mutex);
-        iptv_set_status(g_refreshing ? "An IPTV refresh is already running." : "IPTV background worker is unavailable.");
+        iptv_set_status(suspended ? "IPTV background work is paused during playback."
+                                  : (busy ? "An IPTV refresh is already running."
+                                          : "IPTV background worker is unavailable."));
         return false;
     }
     id = g_sources[g_source_selected_index].id;
@@ -1867,11 +2004,17 @@ bool iptv_refresh_selected_source_async(void)
 
 bool iptv_refresh_all_async(void)
 {
+    bool busy;
+
     mutexLock(&g_mutex);
-    if (!g_worker_started || g_refreshing)
+    bool suspended = atomic_load(&g_background_suspended);
+    busy = g_refreshing;
+    if (!g_worker_started || busy || suspended)
     {
         mutexUnlock(&g_mutex);
-        iptv_set_status(g_refreshing ? "An IPTV refresh is already running." : "IPTV background worker is unavailable.");
+        iptv_set_status(suspended ? "IPTV background work is paused during playback."
+                                  : (busy ? "An IPTV refresh is already running."
+                                          : "IPTV background worker is unavailable."));
         return false;
     }
     mutexUnlock(&g_mutex);
@@ -1883,12 +2026,15 @@ bool iptv_refresh_all_async(void)
     }
 
     mutexLock(&g_mutex);
-    if (!g_worker_started || g_refreshing || g_source_count <= 0)
+    suspended = atomic_load(&g_background_suspended);
+    if (!g_worker_started || g_refreshing || g_source_count <= 0 || suspended)
     {
         bool busy = g_refreshing;
         bool worker_available = g_worker_started;
         mutexUnlock(&g_mutex);
-        if (busy)
+        if (suspended)
+            iptv_set_status("IPTV background work is paused during playback.");
+        else if (busy)
             iptv_set_status("An IPTV refresh is already running.");
         else if (!worker_available)
             iptv_set_status("IPTV background worker is unavailable.");
@@ -2026,6 +2172,18 @@ static bool iptv_play_url_named(const char *url,
              "previous_owner=%s url_hash=%08x\n",
              seq, transaction.lease.generation,
              player_media_owner_name(transaction.previous.owner), url_hash);
+
+#if defined(NXCAST_EXCLUSIVE_MEDIA_RESOURCES) && \
+    NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+    /* IPTV entry points run on the main thread, so they may drive convergence
+       while waiting for the coordinator worker to isolate the receivers. */
+    if (!protocol_coordinator_media_drive_resources(
+            &transaction.lease, IPTV_RESOURCE_TRANSITION_TIMEOUT_MS))
+    {
+        failure_phase = "resource-transition";
+        goto failure;
+    }
+#endif
 
     memset(&request, 0, sizeof(request));
     request.kind = PLAYER_COMMAND_OPEN;

@@ -37,11 +37,29 @@ typedef enum
     PROTOCOL_SERVICE_FAILED
 } ProtocolServiceState;
 
+typedef enum
+{
+    PROTOCOL_RESOURCE_MODE_HOME = 0,
+    PROTOCOL_RESOURCE_MODE_IPTV_EXCLUSIVE,
+    PROTOCOL_RESOURCE_MODE_DLNA_EXCLUSIVE,
+    PROTOCOL_RESOURCE_MODE_AIRPLAY_EXCLUSIVE
+} ProtocolResourceMode;
+
+typedef enum
+{
+    PROTOCOL_DISCOVERY_SUSPEND_NONE = 0,
+    PROTOCOL_DISCOVERY_SUSPEND_MEDIA_OWNERSHIP,
+    PROTOCOL_DISCOVERY_SUSPEND_PLAYBACK_ACTIVITY
+} ProtocolDiscoverySuspensionPolicy;
+
 typedef struct
 {
     bool enabled[PROTOCOL_SERVICE_COUNT];
     /* Diagnostic/low-contention mode: start one supervised worker at a time. */
     bool serial_startup;
+    /* Keep only the active protocol family and IPTV core network work alive. */
+    bool exclusive_media_resources;
+    ProtocolDiscoverySuspensionPolicy discovery_suspension_policy;
 } ProtocolCoordinatorConfig;
 
 typedef struct
@@ -61,6 +79,12 @@ typedef struct
     uint64_t service_transition_age_ms[PROTOCOL_SERVICE_COUNT];
     ProtocolAirPlayStatus airplay;
     PlayerOwnershipLease active_media;
+    ProtocolResourceMode desired_resource_mode;
+    ProtocolResourceMode applied_resource_mode;
+    bool resource_transition_active;
+    bool resource_transition_failed;
+    uint64_t resource_transition_age_ms;
+    bool discovery_suspended;
     uint32_t revision;
 } ProtocolCoordinatorSnapshot;
 
@@ -80,6 +104,10 @@ typedef struct
     ProtocolServiceOperations services[PROTOCOL_SERVICE_COUNT];
     bool (*airplay_get_status)(void *context,
                                ProtocolAirPlayStatus *status_out);
+    /* Must be nonblocking; discovery workers observe the requested state. */
+    void (*set_discovery_suspended)(void *context, bool suspended);
+    /* Must be nonblocking; gates catalog/logo/background network jobs only. */
+    bool (*set_background_network_suspended)(void *context, bool suspended);
 } ProtocolCoordinatorOperations;
 
 typedef struct
@@ -100,6 +128,10 @@ bool protocol_coordinator_start(const ProtocolCoordinatorConfig *config,
                                 const ProtocolCoordinatorOperations *operations);
 void protocol_coordinator_tick(void);
 void protocol_coordinator_stop(void);
+/* Drives playback-activity discovery policy; repeated values are idempotent. */
+void protocol_coordinator_set_playback_active(bool active);
+/* Terminal applies to idle/stopped/error; active includes paused and seeking. */
+void protocol_coordinator_observe_playback(bool active, bool terminal);
 bool protocol_coordinator_begin_start(const ProtocolCoordinatorConfig *config);
 bool protocol_coordinator_set_service_state(ProtocolService service,
                                             ProtocolServiceState state);
@@ -111,6 +143,12 @@ bool protocol_coordinator_get_snapshot(ProtocolCoordinatorSnapshot *snapshot_out
 bool protocol_coordinator_media_begin(PlayerMediaOwner owner, uint64_t token,
                                       ProtocolMediaTransaction *transaction_out);
 bool protocol_coordinator_media_validate(const PlayerOwnershipLease *lease);
+/* Waits for the lease's exclusive service set; never drives UI/main-loop work. */
+bool protocol_coordinator_media_wait_resources(
+    const PlayerOwnershipLease *lease, uint32_t timeout_ms);
+/* Main-thread-only variant that also advances coordinator convergence. */
+bool protocol_coordinator_media_drive_resources(
+    const PlayerOwnershipLease *lease, uint32_t timeout_ms);
 bool protocol_coordinator_media_release(const PlayerOwnershipLease *lease);
 void protocol_coordinator_media_abort(ProtocolMediaTransaction *transaction);
 void protocol_coordinator_media_end(ProtocolMediaTransaction *transaction);
@@ -132,5 +170,6 @@ bool protocol_coordinator_media_release_current(PlayerMediaOwner owner,
 const char *protocol_coordinator_state_name(ProtocolCoordinatorState state);
 const char *protocol_service_name(ProtocolService service);
 const char *protocol_service_state_name(ProtocolServiceState state);
+const char *protocol_resource_mode_name(ProtocolResourceMode mode);
 
 #endif

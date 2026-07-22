@@ -6,6 +6,7 @@
 #include <strings.h>
 
 #include "protocol/airplay/media/remote_video.h"
+#include "protocol/airplay/diagnostics.h"
 #include "protocol/airplay/protocol/plist.h"
 #include "protocol/airplay/security/crypto.h"
 #include "protocol/airplay/trace.h"
@@ -456,7 +457,12 @@ static bool setup_initial(AirPlayHandlers *handlers,
     if (!wrapped_key || wrapped_size != AIRPLAY_FAIRPLAY_WRAPPED_KEY_SIZE ||
         !iv || iv_size != sizeof(context->aes_iv) || context->initial_setup ||
         !derive_session_key(handlers, context, session, wrapped_key, context->aes_key))
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=%llu stream=transport stage=format\n",
+            (unsigned long long)session->id);
         return false;
+    }
     memcpy(context->aes_iv, iv, sizeof(context->aes_iv));
     timing_protocol = airplay_plist_get_string(
         airplay_plist_dict_get(root, "timingProtocol"));
@@ -475,10 +481,23 @@ static bool setup_initial(AirPlayHandlers *handlers,
     if (handlers->config.transport_prepare_callback &&
         !handlers->config.transport_prepare_callback(&transport, &timing_port,
                                                      handlers->config.callback_user_data))
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=%llu stream=timing stage=runtime-state\n",
+            (unsigned long long)session->id);
         return false;
+    }
     context->initial_setup = true;
-    return dict_set(response_root, "timingPort", airplay_plist_new_uint(timing_port)) &&
-           dict_set(response_root, "eventPort", airplay_plist_new_uint(0u));
+    if (!dict_set(response_root, "timingPort",
+                  airplay_plist_new_uint(timing_port)) ||
+        !dict_set(response_root, "eventPort", airplay_plist_new_uint(0u)))
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=%llu stream=transport stage=response-plist\n",
+            (unsigned long long)session->id);
+        return false;
+    }
+    return true;
 }
 
 static bool setup_streams(AirPlayHandlers *handlers,
@@ -518,10 +537,21 @@ static bool setup_streams(AirPlayHandlers *handlers,
             if (type == 110u)
             {
                 if (!airplay_plist_get_uint(
-                        airplay_plist_dict_get(stream, "streamConnectionID"), &value) ||
+                        airplay_plist_dict_get(stream, "streamConnectionID"),
+                        &value) ||
                     value == 0u || context->mirror_setup ||
-                    !handlers->config.mirror_open_callback ||
-                    !handlers->config.mirror_open_callback(
+                    !handlers->config.mirror_open_callback)
+                {
+                    AIRPLAY_OBSERVE(
+                        "[airplay-setup-failure] session=%llu stream=video stage=format\n",
+                        (unsigned long long)session->id);
+                    goto failure;
+                }
+                AIRPLAY_OBSERVE(
+                    "[airplay-setup] session=%llu stream=video connection_id=%llu stage=negotiate\n",
+                    (unsigned long long)session->id,
+                    (unsigned long long)value);
+                if (!handlers->config.mirror_open_callback(
                         session->id, context->aes_key, value, &data_port,
                         handlers->config.callback_user_data) ||
                     data_port == 0u)
@@ -537,23 +567,44 @@ static bool setup_streams(AirPlayHandlers *handlers,
                 uint16_t samples_per_frame;
                 uint32_t sample_rate = 44100u;
 
-                if (!context->mirror_setup || context->audio_setup ||
+                if (context->audio_setup ||
                     !handlers->config.audio_open_callback ||
-                    !airplay_plist_get_uint(airplay_plist_dict_get(stream, "ct"),
-                                            &value) || value > UINT8_MAX)
+                    !airplay_plist_get_uint(
+                        airplay_plist_dict_get(stream, "ct"), &value) ||
+                    value > UINT8_MAX)
+                {
+                    AIRPLAY_OBSERVE(
+                        "[airplay-setup-failure] session=%llu stream=audio stage=format field=ct\n",
+                        (unsigned long long)session->id);
                     goto failure;
+                }
                 compression_type = (uint8_t)value;
                 if (!airplay_plist_get_uint(airplay_plist_dict_get(stream, "spf"),
                                             &value) || value > UINT16_MAX)
+                {
+                    AIRPLAY_OBSERVE(
+                        "[airplay-setup-failure] session=%llu stream=audio stage=format field=spf ct=%u\n",
+                        (unsigned long long)session->id, compression_type);
                     goto failure;
+                }
                 samples_per_frame = (uint16_t)value;
                 if (airplay_plist_get_uint(airplay_plist_dict_get(stream, "sr"),
                                            &value))
                 {
                     if (value > UINT32_MAX)
+                    {
+                        AIRPLAY_OBSERVE(
+                            "[airplay-setup-failure] session=%llu stream=audio stage=format field=sr ct=%u spf=%u\n",
+                            (unsigned long long)session->id,
+                            compression_type, samples_per_frame);
                         goto failure;
+                    }
                     sample_rate = (uint32_t)value;
                 }
+                AIRPLAY_OBSERVE(
+                    "[airplay-setup] session=%llu stream=audio ct=%u spf=%u sr=%u stage=negotiate\n",
+                    (unsigned long long)session->id, compression_type,
+                    samples_per_frame, sample_rate);
                 if (!handlers->config.audio_open_callback(
                         session->id, context->aes_key, context->aes_iv,
                         compression_type, samples_per_frame, sample_rate,
@@ -567,6 +618,9 @@ static bool setup_streams(AirPlayHandlers *handlers,
                     !dict_set(response_stream, "controlPort",
                               airplay_plist_new_uint(control_port)))
                 {
+                    AIRPLAY_OBSERVE(
+                        "[airplay-setup-failure] session=%llu stream=audio stage=response-plist\n",
+                        (unsigned long long)session->id);
                     airplay_plist_free(response_stream);
                     goto failure;
                 }
@@ -577,13 +631,22 @@ static bool setup_streams(AirPlayHandlers *handlers,
                 !dict_set(response_stream, "type", airplay_plist_new_uint(type)) ||
                 !array_append(response_streams, response_stream))
             {
+                AIRPLAY_OBSERVE(
+                    "[airplay-setup-failure] session=%llu stream=%s stage=response-plist\n",
+                    (unsigned long long)session->id,
+                    type == 110u ? "video" : "audio");
                 airplay_plist_free(response_stream);
                 goto failure;
             }
         }
     }
     if (!dict_set(response_root, "streams", response_streams))
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=%llu stream=all stage=response-plist\n",
+            (unsigned long long)session->id);
         return false;
+    }
     return true;
 
 failure:
@@ -681,7 +744,12 @@ static bool handle_setup(AirPlayHandlers *handlers,
     if (streams && !setup_streams(handlers, context, session, streams, response_root))
         goto cleanup;
     if (!set_plist_body(response, response_root))
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=%llu stream=all stage=response-plist\n",
+            (unsigned long long)session->id);
         goto cleanup;
+    }
     session->state = was_recording ? AIRPLAY_RTSP_SESSION_RECORDING
                                    : AIRPLAY_RTSP_SESSION_SETUP;
     if (context->record_requested && context->mirror_setup &&

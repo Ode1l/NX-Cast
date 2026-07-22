@@ -56,6 +56,7 @@ typedef enum
     AIRPLAY_MDNS_PHASE_SOCKET_READY,
     AIRPLAY_MDNS_PHASE_THREAD_STARTING,
     AIRPLAY_MDNS_PHASE_IDLE,
+    AIRPLAY_MDNS_PHASE_SUSPENDED,
     AIRPLAY_MDNS_PHASE_ANNOUNCING,
     AIRPLAY_MDNS_PHASE_WAITING,
     AIRPLAY_MDNS_PHASE_PROCESSING,
@@ -68,6 +69,7 @@ typedef struct
     AirPlayMdnsPhase phase;
     int mode;
     bool running;
+    bool suspended;
     bool socket_open;
     uint64_t worker_heartbeat_age_ms;
     uint64_t select_iterations;
@@ -78,6 +80,8 @@ typedef struct
 bool airplay_mdns_start(const AirPlayMdnsConfig *config);
 void airplay_mdns_stop(void);
 bool airplay_mdns_is_running(void);
+void airplay_mdns_set_suspended(bool suspended);
+bool airplay_mdns_is_suspended(void);
 uint16_t airplay_mdns_bound_port(void);
 bool airplay_mdns_instance_name(char *output, size_t output_size);
 bool airplay_mdns_get_diagnostics(AirPlayMdnsDiagnostics *diagnostics_out);

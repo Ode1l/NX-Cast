@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "app/network_diagnostics.h"
 #include "app/protocol_coordinator.h"
 #include "iptv/iptv.h"
 #include "log/log.h"
@@ -20,7 +21,9 @@
 #include "protocol/airplay/discovery/mdns.h"
 #include "protocol/airplay/integration.h"
 #include "protocol/dlna_control.h"
+#include "protocol/dlna/control/controller_session.h"
 #include "protocol/dlna/description/resource_store.h"
+#include "protocol/dlna/discovery/ssdp.h"
 // #include "protocol/airplay/discovery/mdns.h"
 
 typedef struct
@@ -52,12 +55,37 @@ typedef struct
 #define TOUCH_TAP_DEBOUNCE_MS 350ULL
 #define RETURN_HOME_STOP_GRACE_MS 250ULL
 #define RUNTIME_HEARTBEAT_INTERVAL_MS 2000ULL
+#define NETWORK_HEARTBEAT_INTERVAL_MS 10000ULL
+#define NETWORK_DIAGNOSTIC_SLOW_OPERATION_MS 1500ULL
 
 #ifndef NXCAST_DIAG_PROFILE_ID
 #define NXCAST_DIAG_PROFILE_ID 0
 #endif
 #ifndef NXCAST_DIAG_PROFILE_NAME
 #define NXCAST_DIAG_PROFILE_NAME "normal"
+#endif
+
+#ifndef NXCAST_SOCKET_BSD_SESSIONS
+#define NXCAST_SOCKET_BSD_SESSIONS 0
+#endif
+
+#ifndef NXCAST_SOCKET_SB_EFFICIENCY
+#define NXCAST_SOCKET_SB_EFFICIENCY 0
+#endif
+
+#ifndef NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+#define NXCAST_EXCLUSIVE_MEDIA_RESOURCES 0
+#endif
+
+#ifndef NXCAST_DLNA_CONTROLLER_EXIT_TIMEOUT_MS
+#define NXCAST_DLNA_CONTROLLER_EXIT_TIMEOUT_MS 0
+#endif
+
+#if NXCAST_SOCKET_BSD_SESSIONS > 32
+#error "NXCAST_SOCKET_BSD_SESSIONS must be 0 (default) or at most 32"
+#endif
+#if NXCAST_SOCKET_SB_EFFICIENCY > 8
+#error "NXCAST_SOCKET_SB_EFFICIENCY must be 0 (default) or in the standard 1-8 range"
 #endif
 
 static int g_nxlinkSock = -1;
@@ -117,6 +145,8 @@ static void main_log_protocol_transition(
     log_info("[protocol-coordinator] revision=%u->%u state=%s->%s "
              "iptv=%s->%s dlna=%s->%s airplay=%s->%s "
              "owner=%s->%s token=%llu generation=%u pin_visible=%d "
+             "resource=%s->%s desired=%s transition=%d failed=%d "
+             "discovery_suspended=%d->%d "
              "airplay_running=%d airplay_starting=%d status=%s\n",
              previous->revision,
              current->revision,
@@ -133,6 +163,13 @@ static void main_log_protocol_transition(
              (unsigned long long)current->active_media.token,
              current->active_media.generation,
              current->airplay.pin_visible ? 1 : 0,
+             protocol_resource_mode_name(previous->applied_resource_mode),
+             protocol_resource_mode_name(current->applied_resource_mode),
+             protocol_resource_mode_name(current->desired_resource_mode),
+             current->resource_transition_active ? 1 : 0,
+             current->resource_transition_failed ? 1 : 0,
+             previous->discovery_suspended ? 1 : 0,
+             current->discovery_suspended ? 1 : 0,
              current->airplay.running ? 1 : 0,
              current->airplay.starting ? 1 : 0,
              current->airplay.status[0] ? current->airplay.status : "none");
@@ -145,6 +182,10 @@ static bool main_request_player_home(const PlayerSnapshot *snapshot,
                                      bool *stop_dispatched)
 {
     bool playback_active;
+#if NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+    PlayerOwnershipLease active_lease = {0};
+    bool have_active_lease = protocol_coordinator_media_current(&active_lease);
+#endif
 
     if (!pending || !ready_ms || !stop_dispatched)
         return false;
@@ -162,6 +203,24 @@ static bool main_request_player_home(const PlayerSnapshot *snapshot,
         bool shown;
 
         *pending = false;
+#if NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+        {
+            if (have_active_lease)
+            {
+                bool released;
+
+                if (active_lease.owner == PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO ||
+                    active_lease.owner == PLAYER_MEDIA_OWNER_AIRPLAY_MIRROR)
+                    airplay_integration_stop_active_media();
+                released = protocol_coordinator_media_release(&active_lease);
+
+                log_info("[return-home] phase=release-owner owner=%s "
+                         "generation=%u released=%d\n",
+                         player_media_owner_name(active_lease.owner),
+                         active_lease.generation, released ? 1 : 0);
+            }
+        }
+#endif
         log_info("[return-home] phase=show-home begin reason=no-active-media\n");
         shown = player_view_show_home();
         log_info("[return-home] phase=show-home done ok=%d reason=no-active-media\n",
@@ -170,6 +229,12 @@ static bool main_request_player_home(const PlayerSnapshot *snapshot,
     }
     log_info("[return-home] phase=player-stop begin state=%s\n",
              main_player_state_name(snapshot->state));
+#if NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+    if (have_active_lease &&
+        (active_lease.owner == PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO ||
+         active_lease.owner == PLAYER_MEDIA_OWNER_AIRPLAY_MIRROR))
+        airplay_integration_stop_active_media();
+#endif
     {
         PlayerCommandRequest stop_request = {
             .kind = PLAYER_COMMAND_STOP_ANY,
@@ -554,6 +619,110 @@ static bool main_protocol_airplay_get_status(void *context,
     snprintf(status_out->status, sizeof(status_out->status), "%s", status.status);
     return true;
 }
+
+static void main_log_network_diagnostics(bool emit_summary)
+{
+    NetworkDiagnosticSnapshot
+        snapshots[NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT];
+
+    for (int index = 0; index < NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT; ++index)
+    {
+        NetworkDiagnosticSubsystem subsystem =
+            (NetworkDiagnosticSubsystem)index;
+        NetworkDiagnosticSnapshot *snapshot = &snapshots[index];
+
+        if (!network_diagnostics_get_snapshot(subsystem, snapshot))
+            memset(snapshot, 0, sizeof(*snapshot));
+    }
+
+    if (emit_summary)
+    {
+        char summary[768];
+        size_t used = 0u;
+
+        summary[0] = '\0';
+        for (int index = 0; index < NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT;
+             ++index)
+        {
+            NetworkDiagnosticSubsystem subsystem =
+                (NetworkDiagnosticSubsystem)index;
+            NetworkDiagnosticSnapshot *snapshot = &snapshots[index];
+            int written = snprintf(
+                summary + used, sizeof(summary) - used,
+                "%s%s=%llu/%llu/%s:%llu/%llu/%llu/%d:%s/%llu/%llu",
+                used > 0u ? " " : "",
+                network_diagnostics_subsystem_name(subsystem),
+                (unsigned long long)snapshot->open_sockets,
+                (unsigned long long)snapshot->active_operations,
+                network_diagnostics_operation_name(
+                    snapshot->oldest_active_operation),
+                (unsigned long long)snapshot->oldest_active_age_ms,
+                (unsigned long long)snapshot->heartbeat_age_ms,
+                (unsigned long long)snapshot->maximum_duration_ms,
+                snapshot->last_error,
+                network_diagnostics_operation_name(
+                    snapshot->last_error_operation),
+                (unsigned long long)snapshot->operation_slot_overflows,
+                (unsigned long long)snapshot->socket_close_underflows);
+
+            if (written < 0)
+                break;
+            if ((size_t)written >= sizeof(summary) - used)
+            {
+                used = sizeof(summary) - 1u;
+                break;
+            }
+            used += (size_t)written;
+        }
+        log_info("[network-heartbeat] v=2 %s\n", summary);
+    }
+
+    for (int index = 0; index < NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT; ++index)
+    {
+        NetworkDiagnosticSnapshot *snapshot = &snapshots[index];
+
+        if (snapshot->active_operations == 0u ||
+            snapshot->oldest_active_age_ms <
+                NETWORK_DIAGNOSTIC_SLOW_OPERATION_MS)
+            continue;
+        log_warn("[network-stall] subsystem=%s operation=%s token=%llu "
+                 "age_ms=%llu active=%llu sockets=%llu last_error=%d\n",
+                 network_diagnostics_subsystem_name(
+                     (NetworkDiagnosticSubsystem)index),
+                 network_diagnostics_operation_name(
+                     snapshot->oldest_active_operation),
+                 (unsigned long long)snapshot->oldest_active_token,
+                 (unsigned long long)snapshot->oldest_active_age_ms,
+                 (unsigned long long)snapshot->active_operations,
+                 (unsigned long long)snapshot->open_sockets,
+                 snapshot->last_error);
+    }
+}
+
+static bool main_protocol_set_background_network_suspended(void *context,
+                                                            bool suspended)
+{
+    (void)context;
+    return iptv_set_background_network_suspended(suspended);
+}
+
+#if defined(NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA) && \
+    NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA
+static void main_protocol_set_discovery_suspended(void *context, bool suspended)
+{
+    (void)context;
+    airplay_mdns_set_suspended(suspended);
+    ssdp_set_suspended(suspended);
+}
+#elif defined(NXCAST_SUSPEND_AIRPLAY_MDNS_WHILE_PLAYBACK) && \
+    NXCAST_SUSPEND_AIRPLAY_MDNS_WHILE_PLAYBACK
+static void main_protocol_set_airplay_mdns_suspended(void *context,
+                                                     bool suspended)
+{
+    (void)context;
+    airplay_mdns_set_suspended(suspended);
+}
+#endif
 
 typedef enum
 {
@@ -943,15 +1112,34 @@ static void render_home_view(const PlayerHomeViewState *state)
 
 static bool initialize_network(void)
 {
+#if NXCAST_SOCKET_BSD_SESSIONS > 0 || NXCAST_SOCKET_SB_EFFICIENCY > 0
+    SocketInitConfig socket_config = *socketGetDefaultInitConfig();
+#if NXCAST_SOCKET_BSD_SESSIONS > 0
+    socket_config.num_bsd_sessions = NXCAST_SOCKET_BSD_SESSIONS;
+#endif
+#if NXCAST_SOCKET_SB_EFFICIENCY > 0
+    socket_config.sb_efficiency = NXCAST_SOCKET_SB_EFFICIENCY;
+#endif
+    Result rc = socketInitialize(&socket_config);
+#else
     Result rc = socketInitializeDefault();
+#endif
     if (R_FAILED(rc))
     {
-        log_error("[net] socketInitializeDefault() failed: 0x%08X\n", rc);
+        log_error("[net] socket initialization failed bsd_sessions=%u "
+                  "sb_efficiency=%u result=0x%08X\n",
+                  (unsigned)NXCAST_SOCKET_BSD_SESSIONS,
+                  (unsigned)NXCAST_SOCKET_SB_EFFICIENCY, rc);
         log_warn("[net] Network features unavailable.\n");
         return false;
     }
 
-    log_info("[net] Network stack initialized.\n");
+    log_info("[net] Network stack initialized bsd_sessions=%s%u "
+             "sb_efficiency=%s%u.\n",
+             NXCAST_SOCKET_BSD_SESSIONS > 0 ? "override:" : "default:",
+             (unsigned)NXCAST_SOCKET_BSD_SESSIONS,
+             NXCAST_SOCKET_SB_EFFICIENCY > 0 ? "override:" : "default:",
+             (unsigned)NXCAST_SOCKET_SB_EFFICIENCY);
     log_info("[net] Ensure Wi-Fi is connected before streaming.\n");
     return true;
 }
@@ -1084,6 +1272,18 @@ int main(int argc, char* argv[])
 #if defined(NXCAST_PROTOCOL_START_SERIAL) && NXCAST_PROTOCOL_START_SERIAL
         .serial_startup = true,
 #endif
+#if NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+        .exclusive_media_resources = true,
+#endif
+#if defined(NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA) && \
+    NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA
+        .discovery_suspension_policy =
+            PROTOCOL_DISCOVERY_SUSPEND_MEDIA_OWNERSHIP
+#elif defined(NXCAST_SUSPEND_AIRPLAY_MDNS_WHILE_PLAYBACK) && \
+    NXCAST_SUSPEND_AIRPLAY_MDNS_WHILE_PLAYBACK
+        .discovery_suspension_policy =
+            PROTOCOL_DISCOVERY_SUSPEND_PLAYBACK_ACTIVITY
+#endif
     };
     ProtocolCoordinatorOperations protocolOperations = {
         .context = NULL,
@@ -1103,7 +1303,16 @@ int main(int argc, char* argv[])
                 .stop = main_protocol_airplay_stop
             }
         },
-        .airplay_get_status = main_protocol_airplay_get_status
+        .airplay_get_status = main_protocol_airplay_get_status,
+        .set_background_network_suspended =
+            main_protocol_set_background_network_suspended,
+#if defined(NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA) && \
+    NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA
+        .set_discovery_suspended = main_protocol_set_discovery_suspended
+#elif defined(NXCAST_SUSPEND_AIRPLAY_MDNS_WHILE_PLAYBACK) && \
+    NXCAST_SUSPEND_AIRPLAY_MDNS_WHILE_PLAYBACK
+        .set_discovery_suspended = main_protocol_set_airplay_mdns_suspended
+#endif
     };
 #if defined(NXCAST_DISABLE_AIRPLAY_RUNTIME) && NXCAST_DISABLE_AIRPLAY_RUNTIME
     airplayRuntimeAllowed = false;
@@ -1136,6 +1345,7 @@ int main(int argc, char* argv[])
     uint64_t return_home_ready_ms = 0;
 #if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
     uint64_t runtime_heartbeat_due_ms = main_monotonic_time_ms();
+    uint64_t network_heartbeat_due_ms = runtime_heartbeat_due_ms;
     uint64_t runtime_frame = 0;
 #endif
     ExitReason exit_reason = EXIT_REASON_UNKNOWN;
@@ -1203,13 +1413,70 @@ int main(int argc, char* argv[])
                      networkReady ? 1 : 0,
                      IPTV_ROOT_DIR);
         }
+        if (videoPlatformReady && player_get_snapshot(&snapshot))
+            have_snapshot = true;
+        protocol_coordinator_observe_playback(
+            have_snapshot && main_snapshot_playback_active(&snapshot),
+            have_snapshot &&
+                (snapshot.state == PLAYER_STATE_IDLE ||
+                 snapshot.state == PLAYER_STATE_STOPPED ||
+                 snapshot.state == PLAYER_STATE_ERROR));
         protocol_coordinator_tick();
         (void)protocol_coordinator_get_snapshot(&protocolStatus);
         main_log_protocol_transition(&loggedProtocolStatus, &protocolStatus);
         if (loggedProtocolStatus.revision != protocolStatus.revision)
             loggedProtocolStatus = protocolStatus;
-        if (videoPlatformReady && player_get_snapshot(&snapshot))
-            have_snapshot = true;
+        if (videoPlatformReady && !return_home_pending)
+        {
+            bool explicit_stop =
+                dlna_controller_session_consume_home_request();
+            bool controller_timeout = false;
+
+#if NXCAST_DLNA_CONTROLLER_EXIT_TIMEOUT_MS > 0
+            bool timeout_eligible =
+                have_snapshot && main_snapshot_playback_active(&snapshot) &&
+                protocolStatus.active_media.owner == PLAYER_MEDIA_OWNER_DLNA;
+            controller_timeout =
+                dlna_controller_session_consume_timeout_at(
+                    input_now_ms, NXCAST_DLNA_CONTROLLER_EXIT_TIMEOUT_MS,
+                    timeout_eligible);
+#endif
+            if (explicit_stop || controller_timeout)
+            {
+                DlnaControllerSessionSnapshot controller_snapshot = {0};
+                bool stop_dispatched = false;
+                bool ok;
+                uint64_t poll_age_ms = 0u;
+
+                (void)dlna_controller_session_get_snapshot(
+                    &controller_snapshot);
+                if (input_now_ms >= controller_snapshot.last_poll_ms)
+                    poll_age_ms = input_now_ms -
+                                  controller_snapshot.last_poll_ms;
+                ok = main_request_player_home(
+                    have_snapshot ? &snapshot : NULL, input_now_ms,
+                    &return_home_pending, &return_home_ready_ms,
+                    &stop_dispatched);
+                log_info("[dlna-control] event=return-home reason=%s "
+                         "ok=%d stop=%d polls=%u poll_age_ms=%llu "
+                         "state=%s\n",
+                         explicit_stop ? "explicit-stop"
+                                       : "controller-timeout",
+                         ok ? 1 : 0, stop_dispatched ? 1 : 0,
+                         controller_snapshot.poll_count,
+                         (unsigned long long)poll_age_ms,
+                         have_snapshot
+                             ? main_player_state_name(snapshot.state)
+                             : "none");
+                if (!ok)
+                {
+                    if (explicit_stop)
+                        dlna_controller_session_allow_home_retry();
+                    else
+                        dlna_controller_session_allow_timeout_retry();
+                }
+            }
+        }
         if (videoPlatformReady && protocolStatus.airplay.pin_visible &&
             !airplay_pin_was_visible)
         {
@@ -1237,7 +1504,8 @@ int main(int argc, char* argv[])
         {
             log_info("[return-home] phase=show-home begin reason=player-stopped "
                      "state=%s media=%d\n",
-                     have_snapshot ? main_player_state_name(snapshot.state) : "none",
+                     have_snapshot ? main_player_state_name(snapshot.state)
+                                   : "none",
                      have_snapshot && snapshot.has_media ? 1 : 0);
             bool ok = player_view_show_home();
             if (ok)
@@ -1274,28 +1542,20 @@ int main(int argc, char* argv[])
             LogRuntimeStats log_stats = {0};
             PlayerRuntimeHealth player_health = {0};
             AirPlayMdnsDiagnostics mdns_diagnostics = {0};
+            IptvState iptv_diagnostics = {0};
 
             (void)log_get_runtime_stats(&log_stats);
             (void)player_get_runtime_health(&player_health);
             (void)airplay_mdns_get_diagnostics(&mdns_diagnostics);
-            log_info("[runtime-heartbeat] t_ms=%llu frame=%llu view=%s "
-                     "player_state=%s media=%d return_home_pending=%d "
-                     "protocol_state=%s owner=%s generation=%u "
-                     "service_workers=%d,%d,%d service_age_ms=%llu,%llu,%llu "
-                     "media_queue=%zu media_high=%zu media_command=%llu "
-                     "media_kind=%d media_producer=%d media_token=%llu "
-                     "media_generation=%u "
-                     "media_command_age_ms=%llu media_heartbeat_age_ms=%llu "
-                     "media_full=%llu media_stale=%llu media_timeout=%llu "
-                     "media_coalesced=%llu media_accepting=%d "
-                     "media_lifecycle=%d,%d,%d,%d "
-                     "log_queue=%zu enqueued=%llu processed=%llu "
-                     "log_high=%zu log_heartbeat_age_ms=%llu log_waiting=%d "
-                     "queue_dropped=%llu mirror_dropped=%llu "
-                     "mirror_failures=%llu mirror=%d worker=%d "
-                     "mdns_phase=%s mdns_mode=%d mdns_running=%d "
-                     "mdns_socket=%d mdns_heartbeat_age_ms=%llu "
-                     "mdns_select=%llu mdns_recv=%llu mdns_sent=%llu\n",
+            (void)iptv_get_state(&iptv_diagnostics);
+            log_info("[runtime-heartbeat] v=2 t=%llu f=%llu ui=%s "
+                     "p=%s/%d/%d proto=%s own=%s/%u "
+                     "res=%s/%s/%d/%d/%llu "
+                     "svc=%d/%d/%d/%d:%llu/%d:%llu/%d:%llu "
+                     "media=%zu/%zu/%llu/%d/%d/%llu/%u/%llu/%llu/"
+                     "%llu/%llu/%llu/%llu/%d "
+                     "log=%zu/%zu/%llu/%llu/%llu/%llu "
+                     "mdns=%s/%d/%d/%d/%llu/%llu/%llu/%llu ssdp=%d\n",
                      (unsigned long long)input_now_ms,
                      (unsigned long long)runtime_frame,
                      player_view_mode_name(active_view),
@@ -1305,12 +1565,29 @@ int main(int argc, char* argv[])
                      protocol_coordinator_state_name(protocolStatus.state),
                      player_media_owner_name(protocolStatus.active_media.owner),
                      protocolStatus.active_media.generation,
+                     protocol_resource_mode_name(
+                         protocolStatus.desired_resource_mode),
+                     protocol_resource_mode_name(
+                         protocolStatus.applied_resource_mode),
+                     protocolStatus.resource_transition_active ? 1 : 0,
+                     protocolStatus.resource_transition_failed ? 1 : 0,
+                     (unsigned long long)
+                         protocolStatus.resource_transition_age_ms,
+                     iptv_diagnostics.background_suspended ? 1 : 0,
+                     iptv_diagnostics.background_worker_busy ? 1 : 0,
+                     protocolStatus.discovery_suspended ? 1 : 0,
                      protocolStatus.service_worker_active[PROTOCOL_SERVICE_IPTV] ? 1 : 0,
+                     (unsigned long long)
+                         protocolStatus.service_transition_age_ms
+                             [PROTOCOL_SERVICE_IPTV],
                      protocolStatus.service_worker_active[PROTOCOL_SERVICE_DLNA] ? 1 : 0,
+                     (unsigned long long)
+                         protocolStatus.service_transition_age_ms
+                             [PROTOCOL_SERVICE_DLNA],
                      protocolStatus.service_worker_active[PROTOCOL_SERVICE_AIRPLAY] ? 1 : 0,
-                     (unsigned long long)protocolStatus.service_transition_age_ms[PROTOCOL_SERVICE_IPTV],
-                     (unsigned long long)protocolStatus.service_transition_age_ms[PROTOCOL_SERVICE_DLNA],
-                     (unsigned long long)protocolStatus.service_transition_age_ms[PROTOCOL_SERVICE_AIRPLAY],
+                     (unsigned long long)
+                         protocolStatus.service_transition_age_ms
+                             [PROTOCOL_SERVICE_AIRPLAY],
                      player_health.queue_depth,
                      player_health.queue_high_watermark,
                      (unsigned long long)player_health.current_command_id,
@@ -1325,29 +1602,30 @@ int main(int argc, char* argv[])
                      (unsigned long long)player_health.timed_out,
                      (unsigned long long)player_health.coalesced,
                      player_health.accepting ? 1 : 0,
-                     player_health.initializing ? 1 : 0,
-                     player_health.backend_ready ? 1 : 0,
-                     player_health.initialization_failed ? 1 : 0,
-                     player_health.dispatch_enabled ? 1 : 0,
                      log_stats.queue_depth,
-                     (unsigned long long)log_stats.enqueued,
-                     (unsigned long long)log_stats.processed,
                      log_stats.queue_high_watermark,
                      (unsigned long long)log_stats.worker_heartbeat_age_ms,
-                     log_stats.worker_waiting ? 1 : 0,
                      (unsigned long long)log_stats.queue_dropped,
                      (unsigned long long)log_stats.mirror_dropped,
                      (unsigned long long)log_stats.mirror_failures,
-                     log_stats.socket_mirror_enabled ? 1 : 0,
-                     log_stats.worker_running ? 1 : 0,
                      airplay_mdns_phase_name(mdns_diagnostics.phase),
-                     mdns_diagnostics.mode,
                      mdns_diagnostics.running ? 1 : 0,
+                     mdns_diagnostics.suspended ? 1 : 0,
                      mdns_diagnostics.socket_open ? 1 : 0,
                      (unsigned long long)mdns_diagnostics.worker_heartbeat_age_ms,
                      (unsigned long long)mdns_diagnostics.select_iterations,
                      (unsigned long long)mdns_diagnostics.packets_received,
-                     (unsigned long long)mdns_diagnostics.packets_sent);
+                     (unsigned long long)mdns_diagnostics.packets_sent,
+                     ssdp_is_suspended() ? 1 : 0);
+            {
+                bool emit_network_summary =
+                    input_now_ms >= network_heartbeat_due_ms;
+
+                main_log_network_diagnostics(emit_network_summary);
+                if (emit_network_summary)
+                    network_heartbeat_due_ms =
+                        input_now_ms + NETWORK_HEARTBEAT_INTERVAL_MS;
+            }
             runtime_heartbeat_due_ms = input_now_ms +
                                        RUNTIME_HEARTBEAT_INTERVAL_MS;
         }

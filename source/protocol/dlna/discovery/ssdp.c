@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include "app/network_diagnostics.h"
 #include "log/log.h"
 #include "protocol/dlna/server_info.h"
 
@@ -38,9 +40,9 @@ static const char g_serviceTypeConnectionManager[] = "urn:schemas-upnp-org:servi
 typedef struct
 {
     SsdpConfig config;                   // metadata advertised via SSDP
-    int socket_fd;                       // multicast socket
+    atomic_int socket_fd;                // multicast socket
     Thread thread;                       // background responder thread
-    bool running;
+    atomic_bool running;
     bool thread_started;
     char *local_ip;                      // cached local IPv4
     char *location;                      // http://<ip>:<port>/device.xml
@@ -53,6 +55,8 @@ typedef struct
 } SsdpAdvertisement;
 
 static SsdpState g_ssdp;
+/* Kept outside g_ssdp because g_ssdp is reset while the service starts. */
+static atomic_bool g_ssdp_suspended = false;
 static SsdpAdvertisement g_advertisements[6];
 static size_t g_advertisement_count = 0;
 
@@ -166,6 +170,89 @@ static uint64_t ssdp_now_ms(void)
     return armTicksToNs(armGetSystemTick()) / 1000000ULL;
 }
 
+static int ssdp_socket_create(int domain, int type, int protocol)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_SSDP, NETWORK_OPERATION_SOCKET);
+    int socket_fd = socket(domain, type, protocol);
+    int saved_errno = socket_fd < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (socket_fd >= 0)
+        network_diagnostics_socket_opened(NETWORK_DIAGNOSTIC_SSDP);
+    else
+        errno = saved_errno;
+    return socket_fd;
+}
+
+static void ssdp_socket_close_fd(int socket_fd)
+{
+    if (socket_fd < 0)
+        return;
+    (void)close(socket_fd);
+    network_diagnostics_socket_closed(NETWORK_DIAGNOSTIC_SSDP);
+}
+
+static int ssdp_connect(int socket_fd, const struct sockaddr *address,
+                        socklen_t address_length)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_SSDP, NETWORK_OPERATION_CONNECT);
+    int result = connect(socket_fd, address, address_length);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static ssize_t ssdp_sendto(int socket_fd, const void *buffer, size_t length,
+                           int flags, const struct sockaddr *address,
+                           socklen_t address_length)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_SSDP, NETWORK_OPERATION_SEND);
+    ssize_t result = sendto(socket_fd, buffer, length, flags, address,
+                            address_length);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static ssize_t ssdp_recvfrom(int socket_fd, void *buffer, size_t length,
+                             int flags, struct sockaddr *address,
+                             socklen_t *address_length)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_SSDP, NETWORK_OPERATION_RECV);
+    ssize_t result = recvfrom(socket_fd, buffer, length, flags, address,
+                              address_length);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static int ssdp_select(int descriptor_count, fd_set *read_set,
+                       struct timeval *timeout)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_SSDP, NETWORK_OPERATION_SELECT);
+    int result = select(descriptor_count, read_set, NULL, NULL, timeout);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
 static char *ssdp_format_date_alloc(void)
 {
     time_t now;
@@ -187,7 +274,7 @@ static char *ssdp_format_date_alloc(void)
 // Determine the outbound IPv4 address by connecting a dummy UDP socket.
 static bool determine_local_ip(char **out)
 {
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    int sock = ssdp_socket_create(AF_INET, SOCK_DGRAM, 0);
     char *local_ip = NULL;
     if (sock < 0)
     {
@@ -201,10 +288,10 @@ static bool determine_local_ip(char **out)
     remote.sin_port = htons(9);
     remote.sin_addr.s_addr = inet_addr("8.8.8.8");
 
-    if (connect(sock, (struct sockaddr *)&remote, sizeof(remote)) < 0)
+    if (ssdp_connect(sock, (struct sockaddr *)&remote, sizeof(remote)) < 0)
     {
         log_error("[ssdp] connect failed: %s (%d)\n", strerror(errno), errno);
-        close(sock);
+        ssdp_socket_close_fd(sock);
         return false;
     }
 
@@ -213,41 +300,50 @@ static bool determine_local_ip(char **out)
     if (getsockname(sock, (struct sockaddr *)&local, &addr_len) < 0)
     {
         log_error("[ssdp] getsockname failed: %s (%d)\n", strerror(errno), errno);
-        close(sock);
+        ssdp_socket_close_fd(sock);
         return false;
     }
 
     local_ip = malloc(INET_ADDRSTRLEN);
     if (!local_ip)
     {
-        close(sock);
+        ssdp_socket_close_fd(sock);
         return false;
     }
 
     if (!inet_ntop(AF_INET, &local.sin_addr, local_ip, INET_ADDRSTRLEN))
     {
         log_error("[ssdp] inet_ntop failed: %s (%d)\n", strerror(errno), errno);
-        close(sock);
+        ssdp_socket_close_fd(sock);
         free(local_ip);
         return false;
     }
 
-    close(sock);
+    ssdp_socket_close_fd(sock);
     *out = local_ip;
     return true;
 }
 
 static bool create_socket(SsdpState *state)
 {
-    state->socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (state->socket_fd < 0)
+    int socket_fd = ssdp_socket_create(AF_INET, SOCK_DGRAM, 0);
+
+    if (socket_fd < 0)
     {
         log_error("[ssdp] socket creation failed: %s (%d)\n", strerror(errno), errno);
         return false;
     }
 
     int reuse = 1;
-    setsockopt(state->socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    struct timeval io_timeout = {
+        .tv_sec = 0,
+        .tv_usec = 500000,
+    };
+    setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    (void)setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &io_timeout,
+                     sizeof(io_timeout));
+    (void)setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &io_timeout,
+                     sizeof(io_timeout));
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -255,22 +351,21 @@ static bool create_socket(SsdpState *state)
     addr.sin_port = htons(SSDP_PORT);
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(state->socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    if (bind(socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
         log_error("[ssdp] bind failed: %s (%d)\n", strerror(errno), errno);
-        close(state->socket_fd);
-        state->socket_fd = -1;
+        ssdp_socket_close_fd(socket_fd);
         return false;
     }
 
     struct ip_mreq mreq;
     mreq.imr_multiaddr.s_addr = inet_addr(SSDP_MULTICAST);
     mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-    if (setsockopt(state->socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+    if (setsockopt(socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq,
+                   sizeof(mreq)) < 0)
     {
         log_error("[ssdp] multicast join failed: %s (%d)\n", strerror(errno), errno);
-        close(state->socket_fd);
-        state->socket_fd = -1;
+        ssdp_socket_close_fd(socket_fd);
         return false;
     }
 
@@ -278,14 +373,17 @@ static bool create_socket(SsdpState *state)
     {
         struct in_addr iface;
         iface.s_addr = inet_addr(state->local_ip);
-        (void)setsockopt(state->socket_fd, IPPROTO_IP, IP_MULTICAST_IF, &iface, sizeof(iface));
+        (void)setsockopt(socket_fd, IPPROTO_IP, IP_MULTICAST_IF, &iface,
+                         sizeof(iface));
     }
 
     {
         int loop = 0;
-        (void)setsockopt(state->socket_fd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+        (void)setsockopt(socket_fd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop,
+                         sizeof(loop));
     }
 
+    atomic_store(&state->socket_fd, socket_fd);
     return true;
 }
 
@@ -337,7 +435,7 @@ static void send_msearch_response(const char *st, const char *usn, const struct 
     char *response;
     size_t response_len;
 
-    if (g_ssdp.socket_fd < 0)
+    if (atomic_load(&g_ssdp.socket_fd) < 0)
         return;
 
     if (!st || st[0] == '\0' || !usn || usn[0] == '\0')
@@ -369,8 +467,9 @@ static void send_msearch_response(const char *st, const char *usn, const struct 
     }
     response_len = strlen(response);
 
-    ssize_t sent = sendto(g_ssdp.socket_fd, response, response_len, 0,
-                          (const struct sockaddr *)from, sizeof(*from));
+    ssize_t sent = ssdp_sendto(atomic_load(&g_ssdp.socket_fd), response,
+                               response_len, 0,
+                               (const struct sockaddr *)from, sizeof(*from));
     if (sent < 0)
     {
         log_warn("[ssdp] sendto failed: %s (%d)\n", strerror(errno), errno);
@@ -391,7 +490,8 @@ static void send_notify_packet(const char *nt, const char *usn)
     char *date = NULL;
     char *payload = NULL;
 
-    if (g_ssdp.socket_fd < 0 || !nt || nt[0] == '\0' || !usn || usn[0] == '\0')
+    if (atomic_load(&g_ssdp.socket_fd) < 0 || !nt || nt[0] == '\0' ||
+        !usn || usn[0] == '\0')
         return;
 
     date = ssdp_format_date_alloc();
@@ -427,12 +527,12 @@ static void send_notify_packet(const char *nt, const char *usn)
 
     for (int i = 0; i < 2; ++i)
     {
-        ssize_t sent = sendto(g_ssdp.socket_fd,
-                              payload,
-                              strlen(payload),
-                              0,
-                              (const struct sockaddr *)&addr,
-                              sizeof(addr));
+        ssize_t sent = ssdp_sendto(atomic_load(&g_ssdp.socket_fd),
+                                   payload,
+                                   strlen(payload),
+                                   0,
+                                   (const struct sockaddr *)&addr,
+                                   sizeof(addr));
         if (sent < 0)
             break;
     }
@@ -445,7 +545,8 @@ static void send_byebye_packet(const char *nt, const char *usn)
     struct sockaddr_in addr;
     char *payload = NULL;
 
-    if (g_ssdp.socket_fd < 0 || !nt || nt[0] == '\0' || !usn || usn[0] == '\0')
+    if (atomic_load(&g_ssdp.socket_fd) < 0 || !nt || nt[0] == '\0' ||
+        !usn || usn[0] == '\0')
         return;
 
     payload = ssdp_strdup_printf("NOTIFY * HTTP/1.1\r\n"
@@ -470,12 +571,12 @@ static void send_byebye_packet(const char *nt, const char *usn)
 
     for (int i = 0; i < 2; ++i)
     {
-        ssize_t sent = sendto(g_ssdp.socket_fd,
-                              payload,
-                              strlen(payload),
-                              0,
-                              (const struct sockaddr *)&addr,
-                              sizeof(addr));
+        ssize_t sent = ssdp_sendto(atomic_load(&g_ssdp.socket_fd),
+                                   payload,
+                                   strlen(payload),
+                                   0,
+                                   (const struct sockaddr *)&addr,
+                                   sizeof(addr));
         if (sent < 0)
             break;
     }
@@ -515,17 +616,18 @@ static char *ssdp_recv_packet_alloc(int socket_fd, struct sockaddr_in *from, ssi
     if (!buffer)
     {
         from_len = sizeof(*from);
-        (void)recvfrom(socket_fd, NULL, 0, 0, (struct sockaddr *)from, &from_len);
+        (void)ssdp_recvfrom(socket_fd, NULL, 0, 0,
+                            (struct sockaddr *)from, &from_len);
         return NULL;
     }
 
     from_len = sizeof(*from);
-    received = recvfrom(socket_fd,
-                        buffer,
-                        (size_t)pending,
-                        0,
-                        (struct sockaddr *)from,
-                        &from_len);
+    received = ssdp_recvfrom(socket_fd,
+                             buffer,
+                             (size_t)pending,
+                             0,
+                             (struct sockaddr *)from,
+                             &from_len);
     if (received <= 0)
     {
         free(buffer);
@@ -612,27 +714,48 @@ static void ssdp_thread(void *arg)
 {
     (void)arg;
     uint64_t next_notify_ms = ssdp_now_ms();
+    bool was_suspended = false;
 
-    while (g_ssdp.running)
+    while (atomic_load(&g_ssdp.running))
     {
+        int socket_fd = atomic_load(&g_ssdp.socket_fd);
+
+        if (socket_fd < 0)
+            break;
+        network_diagnostics_heartbeat(NETWORK_DIAGNOSTIC_SSDP);
+        if (atomic_load(&g_ssdp_suspended))
+        {
+            was_suspended = true;
+            svcSleepThread(100000000LL);
+            continue;
+        }
+        if (was_suspended)
+        {
+            send_alive_notifications();
+            next_notify_ms = ssdp_now_ms() + SSDP_NOTIFY_INTERVAL_MS;
+            was_suspended = false;
+        }
         fd_set readfds;
         FD_ZERO(&readfds);
-        FD_SET(g_ssdp.socket_fd, &readfds);
+        FD_SET(socket_fd, &readfds);
 
         struct timeval timeout;
         timeout.tv_sec = 0;
         timeout.tv_usec = 100000;
 
-        int ret = select(g_ssdp.socket_fd + 1, &readfds, NULL, NULL, &timeout);
+        int ret = ssdp_select(socket_fd + 1, &readfds, &timeout);
         if (ret < 0)
         {
             if (errno == EINTR)
                 continue;
-            if (!g_ssdp.running)
+            if (!atomic_load(&g_ssdp.running))
                 break;
             log_error("[ssdp] select failed: %s (%d)\n", strerror(errno), errno);
             break;
         }
+
+        if (!atomic_load(&g_ssdp.running))
+            break;
 
         if (ret == 0)
         {
@@ -645,11 +768,11 @@ static void ssdp_thread(void *arg)
             continue;
         }
 
-        if (FD_ISSET(g_ssdp.socket_fd, &readfds))
+        if (FD_ISSET(socket_fd, &readfds))
         {
             struct sockaddr_in from;
             ssize_t len = -1;
-            char *buffer = ssdp_recv_packet_alloc(g_ssdp.socket_fd, &from, &len);
+            char *buffer = ssdp_recv_packet_alloc(socket_fd, &from, &len);
 
             if (buffer && len > 0)
                 handle_packet(buffer, len, &from);
@@ -660,8 +783,10 @@ static void ssdp_thread(void *arg)
 
 bool ssdp_start(const SsdpConfig *config)
 {
-    if (g_ssdp.running)
+    if (atomic_load(&g_ssdp.running))
         return true;
+    if (g_ssdp.thread_started)
+        return false;
 
     if (!config || !config->device_type || !config->uuid || !config->location_path)
     {
@@ -669,9 +794,13 @@ bool ssdp_start(const SsdpConfig *config)
         return false;
     }
 
-    memset(&g_ssdp, 0, sizeof(g_ssdp));
+    ssdp_clear_cached_strings();
+    ssdp_clear_advertisements();
+    atomic_store(&g_ssdp_suspended, false);
+    atomic_store(&g_ssdp.running, false);
+    atomic_store(&g_ssdp.socket_fd, -1);
     g_ssdp.config = *config;
-    g_ssdp.socket_fd = -1;
+    g_ssdp.thread_started = false;
 
     if (!determine_local_ip(&g_ssdp.local_ip))
         return false;
@@ -687,25 +816,26 @@ bool ssdp_start(const SsdpConfig *config)
     }
 
     if (!create_socket(&g_ssdp))
+    {
+        ssdp_clear_cached_strings();
         return false;
+    }
     if (!ssdp_build_advertisements())
     {
-        close(g_ssdp.socket_fd);
-        g_ssdp.socket_fd = -1;
+        ssdp_socket_close_fd(atomic_exchange(&g_ssdp.socket_fd, -1));
         ssdp_clear_cached_strings();
         return false;
     }
 
-    g_ssdp.running = true;
+    atomic_store(&g_ssdp.running, true);
     Result rc = threadCreate(&g_ssdp.thread, ssdp_thread, NULL, NULL, SSDP_THREAD_STACK_SIZE, 0x2B, -2);
     if (R_FAILED(rc))
     {
         log_error("[ssdp] threadCreate failed: 0x%08X\n", rc);
-        g_ssdp.running = false;
+        atomic_store(&g_ssdp.running, false);
         ssdp_clear_cached_strings();
         ssdp_clear_advertisements();
-        close(g_ssdp.socket_fd);
-        g_ssdp.socket_fd = -1;
+        ssdp_socket_close_fd(atomic_exchange(&g_ssdp.socket_fd, -1));
         return false;
     }
 
@@ -713,12 +843,11 @@ bool ssdp_start(const SsdpConfig *config)
     if (R_FAILED(rc))
     {
         log_error("[ssdp] threadStart failed: 0x%08X\n", rc);
-        g_ssdp.running = false;
+        atomic_store(&g_ssdp.running, false);
         threadClose(&g_ssdp.thread);
         ssdp_clear_cached_strings();
         ssdp_clear_advertisements();
-        close(g_ssdp.socket_fd);
-        g_ssdp.socket_fd = -1;
+        ssdp_socket_close_fd(atomic_exchange(&g_ssdp.socket_fd, -1));
         return false;
     }
 
@@ -730,24 +859,24 @@ bool ssdp_start(const SsdpConfig *config)
 
 void ssdp_stop(void)
 {
-    if (!g_ssdp.running)
+    int fd;
+
+    if (!atomic_load(&g_ssdp.running) && !g_ssdp.thread_started)
         return;
 
     log_info("[ssdp] stop begin socket_fd=%d thread_started=%d\n",
-             g_ssdp.socket_fd,
+             atomic_load(&g_ssdp.socket_fd),
              g_ssdp.thread_started ? 1 : 0);
-    g_ssdp.running = false;
+    atomic_store(&g_ssdp.running, false);
 
-    if (g_ssdp.socket_fd >= 0)
+    if (atomic_load(&g_ssdp.socket_fd) >= 0)
         send_byebye_notifications();
 
-    if (g_ssdp.socket_fd >= 0)
+    fd = atomic_exchange(&g_ssdp.socket_fd, -1);
+    if (fd >= 0)
     {
-        int fd = g_ssdp.socket_fd;
-        g_ssdp.socket_fd = -1;
-        log_info("[ssdp] stop closing socket fd=%d\n", fd);
+        log_info("[ssdp] stop shutting down socket fd=%d\n", fd);
         shutdown(fd, SHUT_RDWR);
-        close(fd);
     }
 
     if (g_ssdp.thread_started)
@@ -759,7 +888,21 @@ void ssdp_stop(void)
         log_info("[ssdp] stop thread closed\n");
     }
 
+    if (fd >= 0)
+        ssdp_socket_close_fd(fd);
+
     ssdp_clear_cached_strings();
     ssdp_clear_advertisements();
+    atomic_store(&g_ssdp_suspended, false);
     log_info("[ssdp] Responder stopped.\n");
+}
+
+void ssdp_set_suspended(bool suspended)
+{
+    atomic_store(&g_ssdp_suspended, suspended);
+}
+
+bool ssdp_is_suspended(void)
+{
+    return atomic_load(&g_ssdp_suspended);
 }

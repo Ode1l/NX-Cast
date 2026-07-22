@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "app/network_diagnostics.h"
 #include "log/log.h"
 
 #define HTTP_SERVER_REQUEST_BUFFER_SIZE 16384
@@ -25,18 +27,108 @@
 
 typedef struct
 {
-    int listen_sock;
+    atomic_int listen_sock;
+    atomic_int active_client_sock;
     uint16_t port;
     Thread thread;
-    bool running;
+    atomic_bool running;
     bool thread_started;
     HttpRequestHandler handler;
     void *handler_user_data;
 } HttpServerState;
 
-static HttpServerState g_http_server = {
-    .listen_sock = -1
-};
+static HttpServerState g_http_server;
+
+static int http_diagnostic_socket(int domain, int type, int protocol)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_SOCKET);
+    int socket_fd = socket(domain, type, protocol);
+    int saved_errno = socket_fd < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (socket_fd >= 0)
+        network_diagnostics_socket_opened(NETWORK_DIAGNOSTIC_DLNA_HTTP);
+    else
+        errno = saved_errno;
+    return socket_fd;
+}
+
+static void http_diagnostic_close(int socket_fd)
+{
+    if (socket_fd < 0)
+        return;
+    (void)close(socket_fd);
+    network_diagnostics_socket_closed(NETWORK_DIAGNOSTIC_DLNA_HTTP);
+}
+
+static ssize_t http_diagnostic_recv(int socket_fd, void *buffer, size_t length,
+                                    int flags)
+{
+    if (atomic_load(&g_http_server.active_client_sock) != socket_fd)
+    {
+        errno = ECANCELED;
+        return -1;
+    }
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_RECV);
+    ssize_t result = recv(socket_fd, buffer, length, flags);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static ssize_t http_diagnostic_send(int socket_fd, const void *buffer,
+                                    size_t length, int flags)
+{
+    if (atomic_load(&g_http_server.active_client_sock) != socket_fd)
+    {
+        errno = ECANCELED;
+        return -1;
+    }
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_SEND);
+    ssize_t result = send(socket_fd, buffer, length, flags);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static int http_diagnostic_select(int descriptor_count, fd_set *read_set,
+                                  struct timeval *timeout)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_SELECT);
+    int result = select(descriptor_count, read_set, NULL, NULL, timeout);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static int http_diagnostic_accept(int socket_fd, struct sockaddr *address,
+                                  socklen_t *address_length)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_ACCEPT);
+    int result = accept(socket_fd, address, address_length);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result >= 0)
+        network_diagnostics_socket_opened(NETWORK_DIAGNOSTIC_DLNA_HTTP);
+    else
+        errno = saved_errno;
+    return result;
+}
 
 static bool get_header_value(const char *request, const char *header, char *out, size_t out_size)
 {
@@ -181,13 +273,14 @@ static ssize_t recv_full_http_request(int client_sock, char *request_buffer, siz
     recv_timeout.tv_sec = HTTP_SERVER_RECV_IDLE_TIMEOUT_SEC;
     recv_timeout.tv_usec = 0;
     setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, &recv_timeout, sizeof(recv_timeout));
+    setsockopt(client_sock, SOL_SOCKET, SO_SNDTIMEO, &recv_timeout,
+               sizeof(recv_timeout));
 
     while (request_len < request_capacity - 1)
     {
-        ssize_t chunk = recv(client_sock,
-                             request_buffer + request_len,
-                             request_capacity - 1 - request_len,
-                             0);
+        ssize_t chunk = http_diagnostic_recv(
+            client_sock, request_buffer + request_len,
+            request_capacity - 1 - request_len, 0);
         if (chunk > 0)
         {
             request_len += (size_t)chunk;
@@ -333,7 +426,8 @@ static void handle_client(int client_sock, const struct sockaddr_in *client_addr
                                 HTTP_SERVER_RESPONSE_BUFFER_SIZE, &response_len) &&
             response_len > 0)
         {
-            send(client_sock, response_buffer, response_len, 0);
+            (void)http_diagnostic_send(client_sock, response_buffer,
+                                       response_len, 0);
         }
         free(request_buffer);
         free(response_buffer);
@@ -399,7 +493,8 @@ static void handle_client(int client_sock, const struct sockaddr_in *client_addr
     }
 
     if (response_len > 0)
-        send(client_sock, response_buffer, response_len, 0);
+        (void)http_diagnostic_send(client_sock, response_buffer, response_len,
+                                   0);
 
     log_debug("[http-server] send endpoint=%s bytes=%zu handled=%d\n",
               path, response_len, handled ? 1 : 0);
@@ -412,48 +507,73 @@ static void http_server_thread(void *arg)
 {
     (void)arg;
 
-    while (g_http_server.running)
+    while (atomic_load(&g_http_server.running))
     {
+        int listen_sock = atomic_load(&g_http_server.listen_sock);
         fd_set read_fds;
+
+        if (listen_sock < 0)
+            break;
         FD_ZERO(&read_fds);
-        FD_SET(g_http_server.listen_sock, &read_fds);
+        FD_SET(listen_sock, &read_fds);
 
         struct timeval timeout;
         timeout.tv_sec = 0;
         timeout.tv_usec = 100000;
 
-        int ret = select(g_http_server.listen_sock + 1, &read_fds, NULL, NULL, &timeout);
+        int ret = http_diagnostic_select(listen_sock + 1, &read_fds,
+                                         &timeout);
         if (ret < 0)
         {
             if (errno == EINTR)
                 continue;
-            if (!g_http_server.running)
+            if (!atomic_load(&g_http_server.running))
                 break;
             log_error("[http-server] select failed: %s (%d)\n", strerror(errno), errno);
             break;
         }
 
+        if (!atomic_load(&g_http_server.running))
+            break;
+
         if (ret == 0)
             continue;
 
-        if (FD_ISSET(g_http_server.listen_sock, &read_fds))
+        if (FD_ISSET(listen_sock, &read_fds))
         {
             struct sockaddr_in client_addr;
             socklen_t client_len = sizeof(client_addr);
-            int client_sock = accept(g_http_server.listen_sock, (struct sockaddr *)&client_addr, &client_len);
+            int client_sock = http_diagnostic_accept(
+                listen_sock, (struct sockaddr *)&client_addr,
+                &client_len);
             if (client_sock < 0)
                 continue;
 
-            handle_client(client_sock, &client_addr);
-            close(client_sock);
+            atomic_store(&g_http_server.active_client_sock, client_sock);
+            if (atomic_load(&g_http_server.running))
+                handle_client(client_sock, &client_addr);
+            {
+                int expected = client_sock;
+
+                if (atomic_compare_exchange_strong(
+                        &g_http_server.active_client_sock, &expected, -1))
+                {
+                    if (!atomic_load(&g_http_server.running))
+                        shutdown(client_sock, SHUT_RDWR);
+                    http_diagnostic_close(client_sock);
+                }
+            }
         }
     }
+    atomic_store(&g_http_server.running, false);
 }
 
 bool http_server_start(const HttpServerConfig *config)
 {
-    if (g_http_server.running)
+    if (atomic_load(&g_http_server.running))
         return true;
+    if (g_http_server.thread_started)
+        return false;
 
     if (!config || config->port == 0 || !config->handler)
     {
@@ -461,10 +581,15 @@ bool http_server_start(const HttpServerConfig *config)
         return false;
     }
 
-    memset(&g_http_server, 0, sizeof(g_http_server));
-    g_http_server.listen_sock = -1;
+    atomic_store(&g_http_server.listen_sock, -1);
+    atomic_store(&g_http_server.active_client_sock, -1);
+    atomic_store(&g_http_server.running, false);
+    g_http_server.port = 0;
+    g_http_server.thread_started = false;
+    g_http_server.handler = NULL;
+    g_http_server.handler_user_data = NULL;
 
-    int listen_sock = socket(AF_INET, SOCK_STREAM, 0);
+    int listen_sock = http_diagnostic_socket(AF_INET, SOCK_STREAM, 0);
     if (listen_sock < 0)
     {
         log_error("[http-server] socket failed: %s (%d)\n", strerror(errno), errno);
@@ -483,22 +608,22 @@ bool http_server_start(const HttpServerConfig *config)
     if (bind(listen_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
         log_error("[http-server] bind failed on port %u: %s (%d)\n", config->port, strerror(errno), errno);
-        close(listen_sock);
+        http_diagnostic_close(listen_sock);
         return false;
     }
 
     if (listen(listen_sock, 8) < 0)
     {
         log_error("[http-server] listen failed: %s (%d)\n", strerror(errno), errno);
-        close(listen_sock);
+        http_diagnostic_close(listen_sock);
         return false;
     }
 
-    g_http_server.listen_sock = listen_sock;
+    atomic_store(&g_http_server.listen_sock, listen_sock);
     g_http_server.port = config->port;
     g_http_server.handler = config->handler;
     g_http_server.handler_user_data = config->user_data;
-    g_http_server.running = true;
+    atomic_store(&g_http_server.running, true);
 
     Result rc = threadCreate(&g_http_server.thread,
                              http_server_thread,
@@ -510,9 +635,10 @@ bool http_server_start(const HttpServerConfig *config)
     if (R_FAILED(rc))
     {
         log_error("[http-server] threadCreate failed: 0x%08X\n", rc);
-        g_http_server.running = false;
-        close(g_http_server.listen_sock);
-        g_http_server.listen_sock = -1;
+        int owned_socket = atomic_exchange(&g_http_server.listen_sock, -1);
+
+        atomic_store(&g_http_server.running, false);
+        http_diagnostic_close(owned_socket);
         return false;
     }
 
@@ -521,9 +647,10 @@ bool http_server_start(const HttpServerConfig *config)
     {
         log_error("[http-server] threadStart failed: 0x%08X\n", rc);
         threadClose(&g_http_server.thread);
-        g_http_server.running = false;
-        close(g_http_server.listen_sock);
-        g_http_server.listen_sock = -1;
+        int owned_socket = atomic_exchange(&g_http_server.listen_sock, -1);
+
+        atomic_store(&g_http_server.running, false);
+        http_diagnostic_close(owned_socket);
         return false;
     }
 
@@ -534,22 +661,32 @@ bool http_server_start(const HttpServerConfig *config)
 
 void http_server_stop(void)
 {
-    if (!g_http_server.running)
+    int listen_sock;
+    int client_sock;
+
+    if (!atomic_load(&g_http_server.running) &&
+        !g_http_server.thread_started)
         return;
 
     log_info("[http-server] stop begin listen_sock=%d thread_started=%d port=%u\n",
-             g_http_server.listen_sock,
+             atomic_load(&g_http_server.listen_sock),
              g_http_server.thread_started ? 1 : 0,
              g_http_server.port);
-    g_http_server.running = false;
+    atomic_store(&g_http_server.running, false);
 
-    if (g_http_server.listen_sock >= 0)
+    listen_sock = atomic_exchange(&g_http_server.listen_sock, -1);
+    client_sock = atomic_exchange(&g_http_server.active_client_sock, -1);
+    if (listen_sock >= 0)
     {
-        int sock = g_http_server.listen_sock;
-        g_http_server.listen_sock = -1;
-        log_info("[http-server] stop closing listen socket fd=%d\n", sock);
-        shutdown(sock, SHUT_RDWR);
-        close(sock);
+        log_info("[http-server] stop shutting down listen socket fd=%d\n",
+                 listen_sock);
+        shutdown(listen_sock, SHUT_RDWR);
+    }
+    if (client_sock >= 0)
+    {
+        log_info("[http-server] stop shutting down active client fd=%d\n",
+                 client_sock);
+        shutdown(client_sock, SHUT_RDWR);
     }
 
     if (g_http_server.thread_started)
@@ -561,6 +698,11 @@ void http_server_stop(void)
         log_info("[http-server] stop thread closed\n");
     }
 
+    if (client_sock >= 0)
+        http_diagnostic_close(client_sock);
+    if (listen_sock >= 0)
+        http_diagnostic_close(listen_sock);
+
     g_http_server.port = 0;
     g_http_server.handler = NULL;
     g_http_server.handler_user_data = NULL;
@@ -569,5 +711,5 @@ void http_server_stop(void)
 
 bool http_server_is_running(void)
 {
-    return g_http_server.running;
+    return atomic_load(&g_http_server.running);
 }

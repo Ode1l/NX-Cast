@@ -26,6 +26,7 @@ typedef void *(*AirPlayAudioThreadEntry)(void *argument);
 #endif
 
 #include "protocol/airplay/security/crypto.h"
+#include "protocol/airplay/diagnostics.h"
 #include "protocol/airplay/trace.h"
 
 #define AIRPLAY_AUDIO_REORDER_THRESHOLD 3u
@@ -62,6 +63,7 @@ struct AirPlayMirrorAudio
     uint16_t data_port;
     uint16_t control_port;
     bool thread_started;
+    uint32_t diagnostic_thread_generation;
 };
 
 static uint16_t read_be16(const uint8_t *data)
@@ -326,6 +328,8 @@ static void close_owned_socket(atomic_int *owner)
     {
         shutdown(socket_fd, SHUT_RDWR);
         close(socket_fd);
+        airplay_diagnostics_socket_closed(
+            NETWORK_DIAGNOSTIC_AIRPLAY_AUDIO);
     }
 }
 
@@ -382,6 +386,7 @@ static bool create_udp_socket(atomic_int *owner, uint16_t *port_out)
 
     if (socket_fd < 0)
         return false;
+    airplay_diagnostics_socket_opened(NETWORK_DIAGNOSTIC_AIRPLAY_AUDIO);
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
     address.sin_port = htons(0u);
@@ -390,6 +395,8 @@ static bool create_udp_socket(atomic_int *owner, uint16_t *port_out)
         getsockname(socket_fd, (struct sockaddr *)&address, &address_size) != 0)
     {
         close(socket_fd);
+        airplay_diagnostics_socket_closed(
+            NETWORK_DIAGNOSTIC_AIRPLAY_AUDIO);
         return false;
     }
     *port_out = ntohs(address.sin_port);
@@ -401,13 +408,24 @@ bool airplay_mirror_audio_create(const AirPlayMirrorAudioConfig *config,
                                  AirPlayMirrorAudio **audio_out)
 {
     AirPlayMirrorAudio *audio;
+    const char *failure_stage = "config";
 
     if (!config || !audio_out || *audio_out || config->session_id == 0u ||
         !config->aes_key || !config->aes_iv || !config->callback)
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=%llu stream=audio stage=config\n",
+            (unsigned long long)(config ? config->session_id : 0u));
         return false;
+    }
     audio = calloc(1, sizeof(*audio));
     if (!audio)
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=%llu stream=audio stage=format reason=no-memory\n",
+            (unsigned long long)config->session_id);
         return false;
+    }
     audio->session_id = config->session_id;
     memcpy(audio->key, config->aes_key, sizeof(audio->key));
     memcpy(audio->iv, config->aes_iv, sizeof(audio->iv));
@@ -418,25 +436,41 @@ bool airplay_mirror_audio_create(const AirPlayMirrorAudioConfig *config,
     atomic_init(&audio->recording, false);
     atomic_init(&audio->data_fd, -1);
     atomic_init(&audio->control_fd, -1);
+    failure_stage = "format";
     if (!airplay_mirror_audio_format(config->compression_type,
                                      config->samples_per_frame,
-                                     config->sample_rate, &audio->format) ||
-        !create_udp_socket(&audio->data_fd, &audio->data_port) ||
-        !create_udp_socket(&audio->control_fd, &audio->control_port))
-    {
-        airplay_mirror_audio_destroy(audio);
-        return false;
-    }
+                                     config->sample_rate, &audio->format))
+        goto failure;
+    failure_stage = "socket-data";
+    if (!create_udp_socket(&audio->data_fd, &audio->data_port))
+        goto failure;
+    failure_stage = "socket-control";
+    if (!create_udp_socket(&audio->control_fd, &audio->control_port))
+        goto failure;
     atomic_store(&audio->running, true);
+    failure_stage = "thread-create";
     if (!audio_thread_start(&audio->thread, audio_thread, audio))
     {
+        airplay_diagnostics_thread_create_failed(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_AUDIO);
         atomic_store(&audio->running, false);
-        airplay_mirror_audio_destroy(audio);
-        return false;
+        goto failure;
     }
     audio->thread_started = true;
+    audio->diagnostic_thread_generation =
+        airplay_diagnostics_thread_created(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_AUDIO);
     *audio_out = audio;
     return true;
+
+failure:
+    AIRPLAY_OBSERVE(
+        "[airplay-setup-failure] session=%llu stream=audio stage=%s ct=%u spf=%u sr=%u\n",
+        (unsigned long long)config->session_id, failure_stage,
+        config->compression_type, config->samples_per_frame,
+        config->sample_rate);
+    airplay_mirror_audio_destroy(audio);
+    return false;
 }
 
 void airplay_mirror_audio_set_recording(AirPlayMirrorAudio *audio, bool recording)
@@ -453,7 +487,12 @@ void airplay_mirror_audio_destroy(AirPlayMirrorAudio *audio)
     close_owned_socket(&audio->data_fd);
     close_owned_socket(&audio->control_fd);
     if (audio->thread_started)
+    {
         audio_thread_join(&audio->thread);
+        airplay_diagnostics_thread_joined(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_AUDIO,
+            audio->diagnostic_thread_generation);
+    }
     audio_slots_clear(audio);
     airplay_crypto_secure_zero(audio->key, sizeof(audio->key));
     airplay_crypto_secure_zero(audio->iv, sizeof(audio->iv));

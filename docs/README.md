@@ -17,6 +17,7 @@ All Markdown documents in this directory use English file names and English cont
 9. [source-compatibility.md](source-compatibility.md)
 10. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
 11. [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
+12. [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
 
 ## Build And Media Toolchain
 
@@ -34,6 +35,7 @@ Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra`
 - [connection-manager-sink-protocol-info.md](connection-manager-sink-protocol-info.md)
 - [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
 - [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
+- [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
 
 Use these when working on DLNA discovery, device/service description, SOAP actions, GENA, or protocol state sync.
 

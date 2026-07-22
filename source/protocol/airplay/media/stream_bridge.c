@@ -47,7 +47,11 @@ struct AirPlayStreamBridge
     uint64_t bytes_written;
     uint64_t bytes_read;
     uint64_t video_packets;
+    uint64_t video_bytes;
+    uint64_t video_push_failures;
     uint64_t audio_packets;
+    uint64_t audio_bytes;
+    uint64_t audio_push_failures;
     uint32_t video_config_generation;
     bool reader_claimed;
     bool eof;
@@ -347,9 +351,16 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
     int64_t pts;
     bool ok = false;
 
-    if (!bridge || !access_unit || !access_unit->data || access_unit->size == 0u ||
-        access_unit->size > INT_MAX)
+    if (!bridge)
         return false;
+    if (!access_unit || !access_unit->data || access_unit->size == 0u ||
+        access_unit->size > INT_MAX)
+    {
+        bridge_mutex_lock(&bridge->mux_mutex);
+        bridge->video_push_failures++;
+        bridge_mutex_unlock(&bridge->mux_mutex);
+        return false;
+    }
     bridge_mutex_lock(&bridge->mux_mutex);
     if (bridge->mux_finished || atomic_load(&bridge->cancelled))
         goto cleanup;
@@ -394,9 +405,12 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
         bridge->last_pts = pts;
         bridge->video_config_generation = access_unit->config_generation;
         bridge->video_packets++;
+        bridge->video_bytes += access_unit->size;
     }
 
 cleanup:
+    if (!ok)
+        bridge->video_push_failures++;
     bridge_mutex_unlock(&bridge->mux_mutex);
     return ok;
 }
@@ -456,9 +470,15 @@ bool airplay_stream_bridge_push_audio(AirPlayStreamBridge *bridge,
     int64_t pts;
     bool ok = false;
 
-    if (!bridge || !frame || !frame->data || frame->size == 0u ||
-        frame->size > INT_MAX)
+    if (!bridge)
         return false;
+    if (!frame || !frame->data || frame->size == 0u || frame->size > INT_MAX)
+    {
+        bridge_mutex_lock(&bridge->mux_mutex);
+        bridge->audio_push_failures++;
+        bridge_mutex_unlock(&bridge->mux_mutex);
+        return false;
+    }
     bridge_mutex_lock(&bridge->mux_mutex);
     if (bridge->audio_stream_index < 0 || bridge->mux_finished ||
         atomic_load(&bridge->cancelled) || !bridge_ensure_header(bridge))
@@ -486,6 +506,7 @@ bool airplay_stream_bridge_push_audio(AirPlayStreamBridge *bridge,
     {
         avio_flush(bridge->avio);
         bridge->audio_packets++;
+        bridge->audio_bytes += frame->size;
         if ((bridge->audio_packets & 0xffu) == 0u)
         {
             AirPlayMirrorClockStats stats;
@@ -504,6 +525,8 @@ bool airplay_stream_bridge_push_audio(AirPlayStreamBridge *bridge,
     }
 
 cleanup:
+    if (!ok)
+        bridge->audio_push_failures++;
     av_packet_free(&packet);
     bridge_mutex_unlock(&bridge->mux_mutex);
     return ok;
@@ -615,7 +638,11 @@ bool airplay_stream_bridge_get_stats(AirPlayStreamBridge *bridge,
     stats_out->bytes_written = bridge->bytes_written;
     stats_out->bytes_read = bridge->bytes_read;
     stats_out->video_packets = bridge->video_packets;
+    stats_out->video_bytes = bridge->video_bytes;
+    stats_out->video_push_failures = bridge->video_push_failures;
     stats_out->audio_packets = bridge->audio_packets;
+    stats_out->audio_bytes = bridge->audio_bytes;
+    stats_out->audio_push_failures = bridge->audio_push_failures;
     stats_out->video_config_generation = bridge->video_config_generation;
     (void)airplay_mirror_clock_get_stats(bridge->clock, &stats_out->clock);
     stats_out->eof = bridge->eof;

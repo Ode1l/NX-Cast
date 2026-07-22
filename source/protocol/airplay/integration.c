@@ -18,6 +18,7 @@
 #define AIRPLAY_CONTROL_PORT 7000u
 #define AIRPLAY_STREAM_CAPACITY (4u * 1024u * 1024u)
 #define AIRPLAY_STORAGE_DIRECTORY "sdmc:/switch/NX-Cast/airplay"
+#define AIRPLAY_RESOURCE_TRANSITION_TIMEOUT_MS 6000u
 
 #ifndef NXCAST_AIRPLAY_DISCOVERY_ENABLED
 #define NXCAST_AIRPLAY_DISCOVERY_ENABLED 1
@@ -128,8 +129,15 @@ static bool integration_remote_claim(uint64_t session_id, void *user_data)
 
     (void)user_data;
     if (!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO,
-                                          session_id, &transaction))
+                                           session_id, &transaction))
         return false;
+    if (!protocol_coordinator_media_wait_resources(
+            &transaction.lease, AIRPLAY_RESOURCE_TRANSITION_TIMEOUT_MS))
+    {
+        protocol_coordinator_media_abort(&transaction);
+        integration_set_status("AirPlay resource handoff failed");
+        return false;
+    }
     mutexLock(&g_airplay.mutex);
     g_airplay.remote_lease = transaction.lease;
     mutexUnlock(&g_airplay.mutex);
@@ -338,6 +346,23 @@ static void integration_mirror_status(AirPlayMirrorRuntimeStatus status,
         integration_set_status("AirPlay mirroring active");
         break;
     case AIRPLAY_MIRROR_RUNTIME_ERROR:
+#if defined(NXCAST_EXCLUSIVE_MEDIA_RESOURCES) && \
+    NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+        lease = integration_mirror_lease();
+        if (protocol_coordinator_media_validate(&lease))
+        {
+            airplay_mirror_runtime_stop(lease.token, user_data);
+            (void)integration_submit_player(
+                PLAYER_COMMAND_SOURCE_AIRPLAY_MIRROR, &lease,
+                PLAYER_COMMAND_STOP, NULL, NULL, 0);
+            (void)protocol_coordinator_media_release(&lease);
+        }
+        mutexLock(&g_airplay.mutex);
+        if (g_airplay.mirror_lease.generation == lease.generation)
+            memset(&g_airplay.mirror_lease, 0,
+                   sizeof(g_airplay.mirror_lease));
+        mutexUnlock(&g_airplay.mutex);
+#endif
         integration_set_status("AirPlay mirroring error");
         break;
     case AIRPLAY_MIRROR_RUNTIME_DISCONNECTED:
@@ -383,10 +408,18 @@ static void integration_mirror_record(uint64_t session_id, void *user_data)
     AirPlayMirrorRuntimeStatus status;
 
     if (!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_AIRPLAY_MIRROR,
-                                          session_id, &transaction))
+                                           session_id, &transaction))
     {
         airplay_mirror_runtime_stop(session_id, user_data);
         integration_set_status("AirPlay mirroring error");
+        return;
+    }
+    if (!protocol_coordinator_media_wait_resources(
+            &transaction.lease, AIRPLAY_RESOURCE_TRANSITION_TIMEOUT_MS))
+    {
+        airplay_mirror_runtime_stop(session_id, user_data);
+        integration_set_status("AirPlay resource handoff failed");
+        protocol_coordinator_media_abort(&transaction);
         return;
     }
     mutexLock(&g_airplay.mutex);
@@ -599,6 +632,27 @@ void airplay_integration_request_stop(void)
     mutexLock(&g_airplay.mutex);
     g_airplay.stop_requested = true;
     mutexUnlock(&g_airplay.mutex);
+}
+
+void airplay_integration_stop_active_media(void)
+{
+    PlayerOwnershipLease remote;
+    PlayerOwnershipLease mirror;
+    AirPlayMirrorRuntime *mirror_runtime;
+
+    integration_ensure_mutex();
+    mutexLock(&g_airplay.mutex);
+    remote = g_airplay.remote_lease;
+    mirror = g_airplay.mirror_lease;
+    mirror_runtime = g_airplay.mirror_runtime;
+    mutexUnlock(&g_airplay.mutex);
+
+    if (mirror.owner == PLAYER_MEDIA_OWNER_AIRPLAY_MIRROR &&
+        protocol_coordinator_media_validate(&mirror) && mirror_runtime)
+        airplay_mirror_runtime_stop(mirror.token, mirror_runtime);
+    if (remote.owner == PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO &&
+        protocol_coordinator_media_validate(&remote))
+        integration_remote_release(remote.token, NULL);
 }
 
 void airplay_integration_stop(void)

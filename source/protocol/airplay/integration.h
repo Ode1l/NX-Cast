@@ -17,6 +17,8 @@ typedef struct
 
 bool airplay_integration_start(void);
 void airplay_integration_request_stop(void);
+/* Stops the current AirPlay media session without taking discovery offline. */
+void airplay_integration_stop_active_media(void);
 void airplay_integration_stop(void);
 /* Snapshot reads are non-blocking so AirPlay cannot stall the main loop. */
 bool airplay_integration_get_status(AirPlayIntegrationStatus *status_out);

@@ -1,5 +1,6 @@
 #include "video.h"
 
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,11 +10,19 @@ struct AirPlayMirrorVideo
     void *user_data;
     uint8_t config[AIRPLAY_MIRROR_VIDEO_MAX_CONFIG];
     size_t config_size;
-    uint32_t config_generation;
+    atomic_uint_fast32_t config_generation;
     uint64_t config_timestamp;
     uint64_t last_timestamp;
     bool has_last_timestamp;
-    bool waiting_for_keyframe;
+    atomic_bool waiting_for_keyframe;
+    atomic_uint_fast64_t config_ok;
+    atomic_uint_fast64_t config_failures;
+    atomic_uint_fast64_t access_units_ok;
+    atomic_uint_fast64_t access_units_dropped;
+    atomic_uint_fast64_t access_units_invalid;
+    atomic_uint_fast64_t access_units_no_memory;
+    atomic_uint_fast64_t access_unit_bytes;
+    atomic_uint_fast64_t keyframes;
 };
 
 static uint16_t read_be16(const uint8_t *data)
@@ -110,7 +119,16 @@ bool airplay_mirror_video_create(AirPlayMirrorVideoCallback callback,
         return false;
     video->callback = callback;
     video->user_data = user_data;
-    video->waiting_for_keyframe = true;
+    atomic_init(&video->config_generation, 0u);
+    atomic_init(&video->waiting_for_keyframe, true);
+    atomic_init(&video->config_ok, 0u);
+    atomic_init(&video->config_failures, 0u);
+    atomic_init(&video->access_units_ok, 0u);
+    atomic_init(&video->access_units_dropped, 0u);
+    atomic_init(&video->access_units_invalid, 0u);
+    atomic_init(&video->access_units_no_memory, 0u);
+    atomic_init(&video->access_unit_bytes, 0u);
+    atomic_init(&video->keyframes, 0u);
     *video_out = video;
     return true;
 }
@@ -129,7 +147,7 @@ void airplay_mirror_video_reset(AirPlayMirrorVideo *video)
         return;
     video->has_last_timestamp = false;
     video->last_timestamp = 0u;
-    video->waiting_for_keyframe = true;
+    atomic_store(&video->waiting_for_keyframe, true);
 }
 
 AirPlayMirrorVideoResult airplay_mirror_video_process_config(
@@ -139,20 +157,28 @@ AirPlayMirrorVideoResult airplay_mirror_video_process_config(
     uint8_t parsed[AIRPLAY_MIRROR_VIDEO_MAX_CONFIG];
     size_t parsed_size = 0u;
 
-    if (!video || avcc_size > AIRPLAY_MIRROR_VIDEO_MAX_CONFIG ||
-        !parse_parameter_sets(avcc, avcc_size, parsed, &parsed_size))
+    if (!video)
         return AIRPLAY_MIRROR_VIDEO_INVALID;
+    if (avcc_size > AIRPLAY_MIRROR_VIDEO_MAX_CONFIG ||
+        !parse_parameter_sets(avcc, avcc_size, parsed, &parsed_size))
+    {
+        atomic_fetch_add(&video->config_failures, 1u);
+        return AIRPLAY_MIRROR_VIDEO_INVALID;
+    }
     if (parsed_size != video->config_size ||
         memcmp(parsed, video->config, parsed_size) != 0)
     {
         memcpy(video->config, parsed, parsed_size);
         video->config_size = parsed_size;
-        video->config_generation++;
-        if (video->config_generation == 0u)
-            video->config_generation = 1u;
-        video->waiting_for_keyframe = true;
+        uint32_t generation =
+            (uint32_t)(atomic_fetch_add(&video->config_generation, 1u) + 1u);
+
+        if (generation == 0u)
+            (void)atomic_fetch_add(&video->config_generation, 1u);
+        atomic_store(&video->waiting_for_keyframe, true);
     }
     video->config_timestamp = timestamp;
+    atomic_fetch_add(&video->config_ok, 1u);
     return AIRPLAY_MIRROR_VIDEO_OK;
 }
 
@@ -219,42 +245,87 @@ AirPlayMirrorVideoResult airplay_mirror_video_process_access_unit(
     bool keyframe;
     uint8_t *output;
 
-    if (!video || !inspect_access_unit(payload, payload_size, &annexb_size, &keyframe))
+    if (!video)
         return AIRPLAY_MIRROR_VIDEO_INVALID;
+    if (!inspect_access_unit(payload, payload_size, &annexb_size, &keyframe))
+    {
+        atomic_fetch_add(&video->access_units_invalid, 1u);
+        return AIRPLAY_MIRROR_VIDEO_INVALID;
+    }
     if (video->config_size == 0u ||
         (video->has_last_timestamp && timestamp < video->last_timestamp) ||
-        (video->waiting_for_keyframe && !keyframe))
+        (atomic_load(&video->waiting_for_keyframe) && !keyframe))
+    {
+        atomic_fetch_add(&video->access_units_dropped, 1u);
         return AIRPLAY_MIRROR_VIDEO_DROPPED;
-    prefix_size = video->waiting_for_keyframe ? video->config_size : 0u;
+    }
+    prefix_size = atomic_load(&video->waiting_for_keyframe)
+                      ? video->config_size
+                      : 0u;
     if (annexb_size > AIRPLAY_MIRROR_VIDEO_MAX_ACCESS_UNIT - prefix_size)
+    {
+        atomic_fetch_add(&video->access_units_invalid, 1u);
         return AIRPLAY_MIRROR_VIDEO_INVALID;
+    }
     output = malloc(prefix_size + annexb_size);
     if (!output)
+    {
+        atomic_fetch_add(&video->access_units_no_memory, 1u);
         return AIRPLAY_MIRROR_VIDEO_NO_MEMORY;
+    }
     if (prefix_size)
         memcpy(output, video->config, prefix_size);
     write_access_unit(payload, payload_size, output + prefix_size);
     access_unit.data = output;
     access_unit.size = prefix_size + annexb_size;
     access_unit.timestamp = timestamp;
-    access_unit.config_generation = video->config_generation;
+    access_unit.config_generation =
+        (uint32_t)atomic_load(&video->config_generation);
     access_unit.keyframe = keyframe;
     video->callback(&access_unit, video->user_data);
     free(output);
-    video->waiting_for_keyframe = false;
+    atomic_store(&video->waiting_for_keyframe, false);
     video->has_last_timestamp = true;
     video->last_timestamp = timestamp;
+    atomic_fetch_add(&video->access_units_ok, 1u);
+    atomic_fetch_add(&video->access_unit_bytes, access_unit.size);
+    if (keyframe)
+        atomic_fetch_add(&video->keyframes, 1u);
     return AIRPLAY_MIRROR_VIDEO_OK;
 }
 
 uint32_t airplay_mirror_video_config_generation(const AirPlayMirrorVideo *video)
 {
-    return video ? video->config_generation : 0u;
+    return video ? (uint32_t)atomic_load(&video->config_generation) : 0u;
 }
 
 bool airplay_mirror_video_waiting_for_keyframe(const AirPlayMirrorVideo *video)
 {
-    return !video || video->waiting_for_keyframe;
+    return !video || atomic_load(&video->waiting_for_keyframe);
+}
+
+bool airplay_mirror_video_get_stats(const AirPlayMirrorVideo *video,
+                                    AirPlayMirrorVideoStats *stats_out)
+{
+    if (!video || !stats_out)
+        return false;
+    memset(stats_out, 0, sizeof(*stats_out));
+    stats_out->config_ok = atomic_load(&video->config_ok);
+    stats_out->config_failures = atomic_load(&video->config_failures);
+    stats_out->access_units_ok = atomic_load(&video->access_units_ok);
+    stats_out->access_units_dropped =
+        atomic_load(&video->access_units_dropped);
+    stats_out->access_units_invalid =
+        atomic_load(&video->access_units_invalid);
+    stats_out->access_units_no_memory =
+        atomic_load(&video->access_units_no_memory);
+    stats_out->access_unit_bytes = atomic_load(&video->access_unit_bytes);
+    stats_out->keyframes = atomic_load(&video->keyframes);
+    stats_out->config_generation =
+        (uint32_t)atomic_load(&video->config_generation);
+    stats_out->waiting_for_keyframe =
+        atomic_load(&video->waiting_for_keyframe);
+    return true;
 }
 
 const char *airplay_mirror_video_result_name(AirPlayMirrorVideoResult result)

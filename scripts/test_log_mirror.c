@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "log/mirror.h"
 
 #include <assert.h>
@@ -7,7 +9,42 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
+
+#define TEST_DISCONNECT_WAIT_LIMIT_MS 1000u
+#define TEST_DISCONNECT_WAIT_STEP_MS 10u
+
+static void test_sleep_ms(unsigned milliseconds)
+{
+    struct timespec delay = {
+        .tv_sec = (time_t)(milliseconds / 1000u),
+        .tv_nsec = (long)(milliseconds % 1000u) * 1000000L,
+    };
+
+    while (nanosleep(&delay, &delay) != 0 && errno == EINTR)
+    {
+    }
+}
+
+static bool wait_for_disconnected_peer(int socket_fd)
+{
+    unsigned waited_ms = 0u;
+
+    while (waited_ms < TEST_DISCONNECT_WAIT_LIMIT_MS)
+    {
+        LogMirrorWriteResult result =
+            log_mirror_write_nonblocking(socket_fd, "closed");
+
+        if (result == LOG_MIRROR_WRITE_FAILED)
+            return true;
+        assert(result == LOG_MIRROR_WRITE_OK ||
+               result == LOG_MIRROR_WRITE_DROPPED);
+        test_sleep_ms(TEST_DISCONNECT_WAIT_STEP_MS);
+        waited_ms += TEST_DISCONNECT_WAIT_STEP_MS;
+    }
+    return false;
+}
 
 static void test_success(void)
 {
@@ -92,8 +129,7 @@ static void test_disconnected_peer_is_failed(void)
 
     assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
     close(sockets[1]);
-    assert(log_mirror_write_nonblocking(sockets[0], "closed") ==
-           LOG_MIRROR_WRITE_FAILED);
+    assert(wait_for_disconnected_peer(sockets[0]));
     close(sockets[0]);
 }
 

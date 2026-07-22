@@ -18,6 +18,20 @@ typedef enum
 
 typedef struct
 {
+    uint64_t config_ok;
+    uint64_t config_failures;
+    uint64_t access_units_ok;
+    uint64_t access_units_dropped;
+    uint64_t access_units_invalid;
+    uint64_t access_units_no_memory;
+    uint64_t access_unit_bytes;
+    uint64_t keyframes;
+    uint32_t config_generation;
+    bool waiting_for_keyframe;
+} AirPlayMirrorVideoStats;
+
+typedef struct
+{
     const uint8_t *data;
     size_t size;
     uint64_t timestamp;
@@ -43,6 +57,8 @@ AirPlayMirrorVideoResult airplay_mirror_video_process_access_unit(
     uint64_t timestamp);
 uint32_t airplay_mirror_video_config_generation(const AirPlayMirrorVideo *video);
 bool airplay_mirror_video_waiting_for_keyframe(const AirPlayMirrorVideo *video);
+bool airplay_mirror_video_get_stats(const AirPlayMirrorVideo *video,
+                                    AirPlayMirrorVideoStats *stats_out);
 const char *airplay_mirror_video_result_name(AirPlayMirrorVideoResult result);
 
 #endif

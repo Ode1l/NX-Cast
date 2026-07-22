@@ -27,6 +27,7 @@ typedef void *(*AirPlayTimingThreadEntry)(void *argument);
 #endif
 
 #include "protocol/airplay/trace.h"
+#include "protocol/airplay/diagnostics.h"
 
 #define AIRPLAY_TIMING_PACKET_SIZE 32u
 #define AIRPLAY_TIMING_RESPONSE_TIMEOUT_MS 300u
@@ -43,6 +44,7 @@ struct AirPlayMirrorTiming
     atomic_uint_fast64_t responses_received;
     uint16_t local_port;
     bool thread_started;
+    uint32_t diagnostic_thread_generation;
 };
 
 static uint64_t timing_now_ntp(void)
@@ -128,7 +130,11 @@ static void timing_close_socket(AirPlayMirrorTiming *timing)
         return;
     socket_fd = atomic_exchange(&timing->socket_fd, -1);
     if (socket_fd >= 0)
+    {
         close(socket_fd);
+        airplay_diagnostics_socket_closed(
+            NETWORK_DIAGNOSTIC_AIRPLAY_TIMING);
+    }
 }
 
 static void timing_wait_response(AirPlayMirrorTiming *timing, int socket_fd)
@@ -211,7 +217,12 @@ bool airplay_mirror_timing_create(uint32_t peer_ipv4_address,
 
     socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0)
+    {
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=0 stream=timing stage=socket-data\n");
         goto failure;
+    }
+    airplay_diagnostics_socket_opened(NETWORK_DIAGNOSTIC_AIRPLAY_TIMING);
     memset(&local, 0, sizeof(local));
     local.sin_family = AF_INET;
     local.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -220,6 +231,10 @@ bool airplay_mirror_timing_create(uint32_t peer_ipv4_address,
         getsockname(socket_fd, (struct sockaddr *)&local, &local_size) != 0)
     {
         close(socket_fd);
+        airplay_diagnostics_socket_closed(
+            NETWORK_DIAGNOSTIC_AIRPLAY_TIMING);
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=0 stream=timing stage=socket-data\n");
         goto failure;
     }
     timing->local_port = ntohs(local.sin_port);
@@ -227,11 +242,18 @@ bool airplay_mirror_timing_create(uint32_t peer_ipv4_address,
     atomic_store(&timing->running, true);
     if (!timing_thread_start(&timing->thread, timing_worker, timing))
     {
+        airplay_diagnostics_thread_create_failed(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_TIMING);
+        AIRPLAY_OBSERVE(
+            "[airplay-setup-failure] session=0 stream=timing stage=thread-create\n");
         atomic_store(&timing->running, false);
         timing_close_socket(timing);
         goto failure;
     }
     timing->thread_started = true;
+    timing->diagnostic_thread_generation =
+        airplay_diagnostics_thread_created(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_TIMING);
     *timing_out = timing;
     return true;
 
@@ -247,7 +269,12 @@ void airplay_mirror_timing_destroy(AirPlayMirrorTiming *timing)
     atomic_store(&timing->running, false);
     timing_close_socket(timing);
     if (timing->thread_started)
+    {
         timing_thread_join(&timing->thread);
+        airplay_diagnostics_thread_joined(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_TIMING,
+            timing->diagnostic_thread_generation);
+    }
     memset(timing, 0, sizeof(*timing));
     free(timing);
 }

@@ -15,19 +15,28 @@ static bool renderingcontrol_submit(PlayerCommandKind kind, int value,
                                     bool flag)
 {
     ProtocolMediaGuard guard;
+#if !defined(NXCAST_EXCLUSIVE_MEDIA_RESOURCES) || \
+    !NXCAST_EXCLUSIVE_MEDIA_RESOURCES
     ProtocolMediaTransaction transaction;
+#endif
     PlayerOwnershipLease lease = {0};
     PlayerCommandRequest request;
     PlayerCommandStatus status;
+#if !defined(NXCAST_EXCLUSIVE_MEDIA_RESOURCES) || \
+    !NXCAST_EXCLUSIVE_MEDIA_RESOURCES
     bool claimed = false;
 
     memset(&transaction, 0, sizeof(transaction));
+#endif
+
     if (!protocol_coordinator_media_unowned_or_owner_guard_begin(
             PLAYER_MEDIA_OWNER_DLNA, RENDERINGCONTROL_OWNER_TOKEN, &guard))
         return false;
     lease = guard.lease;
     protocol_coordinator_media_guard_end(&guard);
 
+#if !defined(NXCAST_EXCLUSIVE_MEDIA_RESOURCES) || \
+    !NXCAST_EXCLUSIVE_MEDIA_RESOURCES
     if (lease.owner == PLAYER_MEDIA_OWNER_NONE)
     {
         if (!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA,
@@ -37,15 +46,31 @@ static bool renderingcontrol_submit(PlayerCommandKind kind, int value,
         lease = transaction.lease;
         claimed = true;
     }
+#endif
 
     memset(&request, 0, sizeof(request));
     request.kind = kind;
+#if defined(NXCAST_EXCLUSIVE_MEDIA_RESOURCES) && \
+    NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+    if (lease.owner == PLAYER_MEDIA_OWNER_DLNA)
+    {
+        request.source = PLAYER_COMMAND_SOURCE_DLNA;
+        request.lease = lease;
+    }
+    else
+    {
+        request.source = PLAYER_COMMAND_SOURCE_UI;
+    }
+#else
     request.source = PLAYER_COMMAND_SOURCE_DLNA;
     request.lease = lease;
+#endif
     request.value = value;
     request.flag = flag;
     status = player_submit_command_wait(
         &request, RENDERINGCONTROL_COMMAND_TIMEOUT_MS);
+#if !defined(NXCAST_EXCLUSIVE_MEDIA_RESOURCES) || \
+    !NXCAST_EXCLUSIVE_MEDIA_RESOURCES
     if (claimed)
     {
         if (player_command_status_succeeded(status))
@@ -53,6 +78,7 @@ static bool renderingcontrol_submit(PlayerCommandKind kind, int value,
         else
             protocol_coordinator_media_abort(&transaction);
     }
+#endif
     return player_command_status_succeeded(status);
 }
 

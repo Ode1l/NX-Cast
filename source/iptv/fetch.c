@@ -8,6 +8,18 @@
 #include <libavutil/dict.h>
 #include <libavutil/error.h>
 
+#include "app/network_diagnostics.h"
+
+static int fetch_interrupted(void *opaque)
+{
+    const IptvFetchControl *control = opaque;
+
+    return control && control->cancelled &&
+           control->cancelled(control->context)
+               ? 1
+               : 0;
+}
+
 static void fetch_set_error(char *out, size_t out_size, const char *message)
 {
     if (!out || out_size == 0)
@@ -18,6 +30,7 @@ static void fetch_set_error(char *out, size_t out_size, const char *message)
 bool iptv_fetch_to_file(const char *url,
                         const char *destination,
                         size_t maximum_size,
+                        const IptvFetchControl *control,
                         char *error,
                         size_t error_size)
 {
@@ -28,8 +41,14 @@ bool iptv_fetch_to_file(const char *url,
     unsigned char buffer[32768];
     size_t total = 0;
     bool ok = false;
+    bool cancelled = false;
     int rc;
     int written;
+    AVIOInterruptCB interrupt = {
+        .callback = fetch_interrupted,
+        .opaque = (void *)control,
+    };
+    NetworkOperationToken operation = {0};
 
     if (error && error_size > 0u)
         error[0] = '\0';
@@ -48,18 +67,35 @@ bool iptv_fetch_to_file(const char *url,
     }
     remove(temporary);
     av_dict_set(&options, "user_agent", "NX-Cast/0.1 IPTV", 0);
-    av_dict_set(&options, "rw_timeout", "15000000", 0);
+    av_dict_set(&options, "rw_timeout", "3000000", 0);
     av_dict_set(&options, "reconnect", "1", 0);
     av_dict_set(&options, "reconnect_streamed", "1", 0);
     av_dict_set(&options, "reconnect_delay_max", "2", 0);
 
-    rc = avio_open2(&input, url, AVIO_FLAG_READ, NULL, &options);
+    operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_IPTV_BACKGROUND, NETWORK_OPERATION_HTTP_FETCH);
+    if (fetch_interrupted((void *)control))
+    {
+        cancelled = true;
+        fetch_set_error(error, error_size, "download cancelled");
+        rc = AVERROR_EXIT;
+    }
+    else
+    {
+        rc = avio_open2(&input, url, AVIO_FLAG_READ, &interrupt, &options);
+    }
     av_dict_free(&options);
     if (rc < 0)
     {
         char av_error[AV_ERROR_MAX_STRING_SIZE];
-        av_strerror(rc, av_error, sizeof(av_error));
-        fetch_set_error(error, error_size, av_error);
+        cancelled = fetch_interrupted((void *)control) != 0;
+        if (!cancelled)
+        {
+            av_strerror(rc, av_error, sizeof(av_error));
+            fetch_set_error(error, error_size, av_error);
+        }
+        network_diagnostics_operation_end(
+            &operation, cancelled ? ECANCELED : EIO);
         return false;
     }
 
@@ -74,6 +110,12 @@ bool iptv_fetch_to_file(const char *url,
 
     for (;;)
     {
+        if (fetch_interrupted((void *)control))
+        {
+            cancelled = true;
+            fetch_set_error(error, error_size, "download cancelled");
+            break;
+        }
         rc = avio_read(input, buffer, (int)sizeof(buffer));
         if (rc == AVERROR_EOF)
         {
@@ -110,6 +152,8 @@ cleanup:
     }
     if (input)
         avio_closep(&input);
+    network_diagnostics_operation_end(
+        &operation, ok ? 0 : (cancelled ? ECANCELED : EIO));
     if (!ok)
     {
         remove(temporary);

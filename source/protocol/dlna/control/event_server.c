@@ -4,16 +4,20 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "app/network_diagnostics.h"
 #include "handler_internal.h"
 #include "log/log.h"
 #include "player/renderer.h"
@@ -29,6 +33,7 @@
 #define EVENT_MAX_TIMEOUT_SECONDS 3600
 #define EVENT_NOTIFY_RETRY_SLEEP_MS 100
 #define EVENT_NOTIFY_IO_TIMEOUT_SEC 1
+#define EVENT_NOTIFY_CONNECT_TIMEOUT_SEC 1
 typedef enum
 {
     EVENT_SERVICE_INVALID = -1,
@@ -67,7 +72,8 @@ static CondVar g_event_cond;
 static bool g_event_sync_ready = false;
 static Thread g_event_thread;
 static bool g_event_thread_started = false;
-static bool g_event_stop_requested = false;
+static atomic_bool g_event_stop_requested;
+static atomic_int g_event_active_socket;
 static EventSubscription g_event_subscriptions[EVENT_MAX_SUBSCRIPTIONS];
 static bool g_avtransport_state_dirty = false;
 static bool g_renderingcontrol_dirty = false;
@@ -111,6 +117,93 @@ static void event_clear_targets(EventNotifyTarget *targets, size_t count)
 static uint64_t event_now_ms(void)
 {
     return armTicksToNs(armGetSystemTick()) / 1000000ULL;
+}
+
+static int event_diagnostic_socket(int domain, int type, int protocol)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_SOCKET);
+    int socket_fd = socket(domain, type, protocol);
+    int saved_errno = socket_fd < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (socket_fd >= 0)
+        network_diagnostics_socket_opened(NETWORK_DIAGNOSTIC_DLNA_HTTP);
+    else
+        errno = saved_errno;
+    return socket_fd;
+}
+
+static void event_diagnostic_close(int socket_fd)
+{
+    if (socket_fd < 0)
+        return;
+    (void)close(socket_fd);
+    network_diagnostics_socket_closed(NETWORK_DIAGNOSTIC_DLNA_HTTP);
+}
+
+static int event_diagnostic_connect(int socket_fd,
+                                    const struct sockaddr *address,
+                                    socklen_t address_length)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_CONNECT);
+    int original_flags = fcntl(socket_fd, F_GETFL, 0);
+    int result;
+
+    if (original_flags >= 0)
+        (void)fcntl(socket_fd, F_SETFL, original_flags | O_NONBLOCK);
+    result = connect(socket_fd, address, address_length);
+    if (result < 0 && (errno == EINPROGRESS || errno == EWOULDBLOCK))
+    {
+        fd_set write_set;
+        struct timeval timeout = {
+            .tv_sec = EVENT_NOTIFY_CONNECT_TIMEOUT_SEC,
+            .tv_usec = 0,
+        };
+        int selected;
+
+        FD_ZERO(&write_set);
+        FD_SET(socket_fd, &write_set);
+        selected = select(socket_fd + 1, NULL, &write_set, NULL, &timeout);
+        if (selected > 0 && FD_ISSET(socket_fd, &write_set))
+        {
+            int socket_error = 0;
+            socklen_t error_size = sizeof(socket_error);
+
+            if (getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &socket_error,
+                           &error_size) == 0 && socket_error == 0)
+                result = 0;
+            else
+                errno = socket_error != 0 ? socket_error : EIO;
+        }
+        else if (selected == 0)
+        {
+            errno = ETIMEDOUT;
+        }
+    }
+    int saved_errno = result < 0 ? errno : 0;
+
+    if (original_flags >= 0)
+        (void)fcntl(socket_fd, F_SETFL, original_flags);
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static ssize_t event_diagnostic_send(int socket_fd, const void *buffer,
+                                     size_t length, int flags)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_DLNA_HTTP, NETWORK_OPERATION_SEND);
+    ssize_t result = send(socket_fd, buffer, length, flags);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
 }
 
 static void event_ensure_sync(void)
@@ -590,7 +683,11 @@ static bool event_send_all(int sock, const char *buf, size_t len)
 
     while (sent < len)
     {
-        ssize_t chunk = send(sock, buf + sent, len - sent, 0);
+        if (atomic_load(&g_event_stop_requested) ||
+            atomic_load(&g_event_active_socket) != sock)
+            return false;
+        ssize_t chunk = event_diagnostic_send(sock, buf + sent, len - sent,
+                                              0);
         if (chunk <= 0)
         {
             if (errno == EINTR)
@@ -612,7 +709,8 @@ static bool event_send_notify(const EventNotifyTarget *target, EventService serv
     struct timeval timeout;
     char *request = NULL;
 
-    if (!target || !target->in_use)
+    if (!target || !target->in_use ||
+        atomic_load(&g_event_stop_requested))
         return false;
 
     if (!event_build_propertyset(service, &body))
@@ -622,9 +720,23 @@ static bool event_send_notify(const EventNotifyTarget *target, EventService serv
         return false;
     }
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
+    sock = event_diagnostic_socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
         goto cleanup;
+    atomic_store(&g_event_active_socket, sock);
+    if (atomic_load(&g_event_stop_requested))
+    {
+        int expected = sock;
+
+        if (atomic_compare_exchange_strong(&g_event_active_socket, &expected,
+                                           -1))
+        {
+            shutdown(sock, SHUT_RDWR);
+            event_diagnostic_close(sock);
+        }
+        sock = -1;
+        goto cleanup;
+    }
 
     timeout.tv_sec = EVENT_NOTIFY_IO_TIMEOUT_SEC;
     timeout.tv_usec = 0;
@@ -641,7 +753,11 @@ static bool event_send_notify(const EventNotifyTarget *target, EventService serv
         goto cleanup;
     }
 
-    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    if (event_diagnostic_connect(sock, (struct sockaddr *)&addr,
+                                 sizeof(addr)) < 0)
+        goto cleanup;
+    if (atomic_load(&g_event_stop_requested) ||
+        atomic_load(&g_event_active_socket) != sock)
         goto cleanup;
 
     size_t request_cap = body.output_len + 1024;
@@ -699,7 +815,13 @@ static bool event_send_notify(const EventNotifyTarget *target, EventService serv
 
 cleanup:
     if (sock >= 0)
-        close(sock);
+    {
+        int expected = sock;
+
+        if (atomic_compare_exchange_strong(&g_event_active_socket, &expected,
+                                           -1))
+            event_diagnostic_close(sock);
+    }
     free(request);
     soap_writer_dispose(&body);
     return success;
@@ -759,7 +881,7 @@ static void event_thread_main(void *arg)
         memset(cm_targets, 0, sizeof(cm_targets));
 
         mutexLock(&g_event_mutex);
-        while (!g_event_stop_requested &&
+        while (!atomic_load(&g_event_stop_requested) &&
                !g_avtransport_state_dirty &&
                !g_renderingcontrol_dirty &&
                !g_connectionmanager_dirty)
@@ -767,7 +889,7 @@ static void event_thread_main(void *arg)
             condvarWait(&g_event_cond, &g_event_mutex);
         }
 
-        if (g_event_stop_requested)
+        if (atomic_load(&g_event_stop_requested))
         {
             mutexUnlock(&g_event_mutex);
             break;
@@ -805,11 +927,14 @@ static void event_thread_main(void *arg)
             continue;
         }
 
-        for (size_t i = 0; i < avt_count; ++i)
+        for (size_t i = 0;
+             i < avt_count && !atomic_load(&g_event_stop_requested); ++i)
             (void)event_send_notify(&avt_targets[i], EVENT_SERVICE_AVTRANSPORT);
-        for (size_t i = 0; i < rc_count; ++i)
+        for (size_t i = 0;
+             i < rc_count && !atomic_load(&g_event_stop_requested); ++i)
             (void)event_send_notify(&rc_targets[i], EVENT_SERVICE_RENDERINGCONTROL);
-        for (size_t i = 0; i < cm_count; ++i)
+        for (size_t i = 0;
+             i < cm_count && !atomic_load(&g_event_stop_requested); ++i)
             (void)event_send_notify(&cm_targets[i], EVENT_SERVICE_CONNECTIONMANAGER);
 
         event_clear_targets(avt_targets, avt_count);
@@ -835,7 +960,8 @@ bool event_server_start(void)
 
     for (size_t i = 0; i < EVENT_MAX_SUBSCRIPTIONS; ++i)
         event_subscription_clear(&g_event_subscriptions[i]);
-    g_event_stop_requested = false;
+    atomic_store(&g_event_stop_requested, false);
+    atomic_store(&g_event_active_socket, -1);
     g_avtransport_state_dirty = false;
     g_renderingcontrol_dirty = false;
     g_connectionmanager_dirty = false;
@@ -867,6 +993,8 @@ bool event_server_start(void)
 
 void event_server_stop(void)
 {
+    int active_socket = -1;
+
     log_info("[event] stop begin sync_pending=1\n");
     event_ensure_sync();
 
@@ -878,13 +1006,23 @@ void event_server_stop(void)
         return;
     }
 
-    g_event_stop_requested = true;
+    atomic_store(&g_event_stop_requested, true);
     condvarWakeAll(&g_event_cond);
     mutexUnlock(&g_event_mutex);
+
+    active_socket = atomic_exchange(&g_event_active_socket, -1);
+    if (active_socket >= 0)
+    {
+        log_info("[event] stop shutting down active socket fd=%d\n",
+                 active_socket);
+        shutdown(active_socket, SHUT_RDWR);
+    }
 
     log_info("[event] stop waiting for thread exit\n");
     threadWaitForExit(&g_event_thread);
     threadClose(&g_event_thread);
+    if (active_socket >= 0)
+        event_diagnostic_close(active_socket);
 
     mutexLock(&g_event_mutex);
     g_event_thread_started = false;

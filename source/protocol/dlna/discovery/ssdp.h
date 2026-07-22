@@ -16,3 +16,5 @@ typedef struct
 
 bool ssdp_start(const SsdpConfig *config);
 void ssdp_stop(void);
+void ssdp_set_suspended(bool suspended);
+bool ssdp_is_suspended(void);

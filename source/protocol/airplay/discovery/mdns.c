@@ -15,6 +15,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "app/network_diagnostics.h"
+#include "protocol/airplay/diagnostics.h"
 #include "protocol/airplay/trace.h"
 #include "util/size.h"
 
@@ -82,12 +84,14 @@ typedef struct
     atomic_int socket_fd;
     uint16_t bound_port;
     unsigned conflict_suffix;
+    uint32_t diagnostic_thread_generation;
 } AirPlayMdnsState;
 
 typedef struct
 {
     atomic_int phase;
     atomic_bool running;
+    atomic_bool suspended;
     atomic_bool socket_open;
     atomic_uint_fast64_t worker_heartbeat_ms;
     atomic_uint_fast64_t select_iterations;
@@ -109,6 +113,43 @@ static uint64_t mdns_now_ms(void)
         return 0u;
     return (uint64_t)now.tv_sec * 1000u + (uint64_t)now.tv_nsec / 1000000u;
 #endif
+}
+
+static int mdns_socket_create(int domain, int type, int protocol)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_MDNS, NETWORK_OPERATION_SOCKET);
+    int socket_fd = socket(domain, type, protocol);
+    int saved_errno = socket_fd < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (socket_fd >= 0)
+        network_diagnostics_socket_opened(NETWORK_DIAGNOSTIC_MDNS);
+    else
+        errno = saved_errno;
+    return socket_fd;
+}
+
+static void mdns_socket_close_fd(int socket_fd)
+{
+    if (socket_fd < 0)
+        return;
+    (void)close(socket_fd);
+    network_diagnostics_socket_closed(NETWORK_DIAGNOSTIC_MDNS);
+}
+
+static int mdns_socket_connect(int socket_fd, const struct sockaddr *address,
+                               socklen_t address_length)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_MDNS, NETWORK_OPERATION_CONNECT);
+    int result = connect(socket_fd, address, address_length);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
 }
 
 static void mdns_sleep_ms(unsigned int duration_ms)
@@ -170,15 +211,25 @@ static void mdns_thread_join(AirPlayMdnsThread *thread)
 #endif
 }
 
-static void mdns_close_socket(void)
+static int mdns_take_socket(void)
 {
     int socket_fd = atomic_exchange(&g_mdns.socket_fd, -1);
+
     if (socket_fd >= 0)
-    {
         shutdown(socket_fd, SHUT_RDWR);
-        close(socket_fd);
-    }
+    return socket_fd;
+}
+
+static void mdns_finish_socket_close(int socket_fd)
+{
+    if (socket_fd >= 0)
+        mdns_socket_close_fd(socket_fd);
     atomic_store(&g_mdns_diagnostics.socket_open, false);
+}
+
+static void mdns_close_socket(void)
+{
+    mdns_finish_socket_close(mdns_take_socket());
 }
 
 static void mdns_set_phase(AirPlayMdnsPhase phase)
@@ -189,6 +240,7 @@ static void mdns_set_phase(AirPlayMdnsPhase phase)
 static void mdns_worker_heartbeat(void)
 {
     atomic_store(&g_mdns_diagnostics.worker_heartbeat_ms, mdns_now_ms());
+    network_diagnostics_heartbeat(NETWORK_DIAGNOSTIC_MDNS);
 }
 
 static bool determine_local_address(uint32_t *address_out)
@@ -200,20 +252,21 @@ static bool determine_local_address(uint32_t *address_out)
 
     if (!address_out)
         return false;
-    socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    socket_fd = mdns_socket_create(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0)
         return false;
     memset(&remote, 0, sizeof(remote));
     remote.sin_family = AF_INET;
     remote.sin_port = htons(9u);
     remote.sin_addr.s_addr = inet_addr("8.8.8.8");
-    if (connect(socket_fd, (struct sockaddr *)&remote, sizeof(remote)) != 0 ||
+    if (mdns_socket_connect(socket_fd, (struct sockaddr *)&remote,
+                            sizeof(remote)) != 0 ||
         getsockname(socket_fd, (struct sockaddr *)&local, &local_size) != 0)
     {
-        close(socket_fd);
+        mdns_socket_close_fd(socket_fd);
         return false;
     }
-    close(socket_fd);
+    mdns_socket_close_fd(socket_fd);
     if (local.sin_addr.s_addr == 0u)
         return false;
     *address_out = local.sin_addr.s_addr;
@@ -456,8 +509,17 @@ static bool send_packet(const uint8_t *packet, size_t packet_size,
 
     if (socket_fd < 0 || !packet || packet_size == 0u || !target)
         return false;
-    sent = sendto(socket_fd, packet, packet_size, 0,
-                  (const struct sockaddr *)target, sizeof(*target));
+    {
+        NetworkOperationToken operation = network_diagnostics_operation_begin(
+            NETWORK_DIAGNOSTIC_MDNS, NETWORK_OPERATION_SEND);
+        sent = sendto(socket_fd, packet, packet_size, 0,
+                      (const struct sockaddr *)target, sizeof(*target));
+        int saved_errno = sent < 0 ? errno : 0;
+
+        network_diagnostics_operation_end(&operation, saved_errno);
+        if (sent < 0)
+            errno = saved_errno;
+    }
     if (sent != (ssize_t)packet_size)
         return false;
     atomic_fetch_add(&g_mdns_diagnostics.packets_sent, 1u);
@@ -525,6 +587,7 @@ static void handle_packet(const uint8_t *packet, size_t packet_size,
 static AIRPLAY_MDNS_THREAD_RETURN mdns_thread(void *argument)
 {
     uint64_t next_announcement;
+    bool was_suspended = false;
 
     (void)argument;
     mdns_worker_heartbeat();
@@ -539,6 +602,9 @@ static AIRPLAY_MDNS_THREAD_RETURN mdns_thread(void *argument)
         mdns_set_phase(AIRPLAY_MDNS_PHASE_IDLE);
         while (atomic_load(&g_mdns.running))
         {
+            mdns_set_phase(atomic_load(&g_mdns_diagnostics.suspended)
+                               ? AIRPLAY_MDNS_PHASE_SUSPENDED
+                               : AIRPLAY_MDNS_PHASE_IDLE);
             mdns_worker_heartbeat();
             mdns_sleep_ms(AIRPLAY_MDNS_POLL_MS);
         }
@@ -565,13 +631,42 @@ static AIRPLAY_MDNS_THREAD_RETURN mdns_thread(void *argument)
 
         if (socket_fd < 0)
             break;
+        if (atomic_load(&g_mdns_diagnostics.suspended))
+        {
+            mdns_set_phase(AIRPLAY_MDNS_PHASE_SUSPENDED);
+            mdns_worker_heartbeat();
+            was_suspended = true;
+            mdns_sleep_ms(AIRPLAY_MDNS_POLL_MS);
+            continue;
+        }
+        if (was_suspended)
+        {
+            if (NXCAST_AIRPLAY_MDNS_DIAG_MODE == AIRPLAY_MDNS_DIAG_FULL)
+            {
+                mdns_set_phase(AIRPLAY_MDNS_PHASE_ANNOUNCING);
+                mdns_worker_heartbeat();
+                (void)send_announcement(AIRPLAY_MDNS_TTL);
+            }
+            next_announcement = mdns_now_ms() + AIRPLAY_MDNS_ANNOUNCE_INTERVAL_MS;
+            was_suspended = false;
+        }
         mdns_set_phase(AIRPLAY_MDNS_PHASE_WAITING);
         mdns_worker_heartbeat();
         FD_ZERO(&read_set);
         FD_SET(socket_fd, &read_set);
         timeout.tv_sec = 0;
         timeout.tv_usec = AIRPLAY_MDNS_POLL_MS * 1000u;
-        result = select(socket_fd + 1, &read_set, NULL, NULL, &timeout);
+        {
+            NetworkOperationToken operation =
+                network_diagnostics_operation_begin(
+                    NETWORK_DIAGNOSTIC_MDNS, NETWORK_OPERATION_SELECT);
+            result = select(socket_fd + 1, &read_set, NULL, NULL, &timeout);
+            int saved_errno = result < 0 ? errno : 0;
+
+            network_diagnostics_operation_end(&operation, saved_errno);
+            if (result < 0)
+                errno = saved_errno;
+        }
         atomic_fetch_add(&g_mdns_diagnostics.select_iterations, 1u);
         mdns_worker_heartbeat();
         if (result < 0)
@@ -582,13 +677,24 @@ static AIRPLAY_MDNS_THREAD_RETURN mdns_thread(void *argument)
                 AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] select failed: %s\n", strerror(errno));
             break;
         }
+        if (!atomic_load(&g_mdns.running))
+            break;
         if (result > 0 && FD_ISSET(socket_fd, &read_set))
         {
             uint8_t packet[AIRPLAY_DNS_PACKET_MAX];
             struct sockaddr_in sender;
             socklen_t sender_size = sizeof(sender);
+            NetworkOperationToken operation =
+                network_diagnostics_operation_begin(
+                    NETWORK_DIAGNOSTIC_MDNS, NETWORK_OPERATION_RECV);
             ssize_t received = recvfrom(socket_fd, packet, sizeof(packet), 0,
-                                        (struct sockaddr *)&sender, &sender_size);
+                                        (struct sockaddr *)&sender,
+                                        &sender_size);
+            int saved_errno = received < 0 ? errno : 0;
+
+            network_diagnostics_operation_end(&operation, saved_errno);
+            if (received < 0)
+                errno = saved_errno;
             if (received > 0)
             {
                 atomic_fetch_add(&g_mdns_diagnostics.packets_received, 1u);
@@ -621,13 +727,17 @@ static bool create_socket(void)
     unsigned char multicast_loop = 0u;
     const char *failure_stage = "socket";
     int saved_errno;
+    struct timeval io_timeout = {
+        .tv_sec = 0,
+        .tv_usec = 500000,
+    };
 
 #if defined(AIRPLAY_TESTING)
     bind_port = g_mdns.config.test_bind_port;
 #endif
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=create begin\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
-    socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    socket_fd = mdns_socket_create(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0)
     {
         AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] socket setup failed stage=%s error=%s (%d)\n",
@@ -636,6 +746,10 @@ static bool create_socket(void)
     }
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns socket stage=create done fd=%d\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS(), socket_fd);
+    (void)setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &io_timeout,
+                     sizeof(io_timeout));
+    (void)setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &io_timeout,
+                     sizeof(io_timeout));
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 #ifdef SO_REUSEPORT
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &enabled, sizeof(enabled));
@@ -688,7 +802,7 @@ static bool create_socket(void)
 
 failure:
     saved_errno = errno;
-    close(socket_fd);
+    mdns_socket_close_fd(socket_fd);
     AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] socket setup failed stage=%s error=%s (%d)\n",
                            failure_stage, strerror(saved_errno), saved_errno);
     return false;
@@ -716,6 +830,7 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
     atomic_init(&g_mdns.socket_fd, -1);
     atomic_store(&g_mdns_diagnostics.phase, AIRPLAY_MDNS_PHASE_STARTING);
     atomic_store(&g_mdns_diagnostics.running, false);
+    atomic_store(&g_mdns_diagnostics.suspended, false);
     atomic_store(&g_mdns_diagnostics.socket_open, false);
     atomic_store(&g_mdns_diagnostics.worker_heartbeat_ms, 0u);
     atomic_store(&g_mdns_diagnostics.select_iterations, 0u);
@@ -787,6 +902,8 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
     mdns_set_phase(AIRPLAY_MDNS_PHASE_THREAD_STARTING);
     if (!mdns_thread_start(&g_mdns.thread, mdns_thread, NULL))
     {
+        airplay_diagnostics_thread_create_failed(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_MDNS);
         AIRPLAY_MDNS_LOG_ERROR("[airplay-mdns] start failed stage=thread\n");
         atomic_store(&g_mdns.running, false);
         atomic_store(&g_mdns_diagnostics.running, false);
@@ -796,6 +913,9 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
         return false;
     }
     g_mdns.thread_started = true;
+    g_mdns.diagnostic_thread_generation =
+        airplay_diagnostics_thread_created(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_MDNS);
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu mdns stage=thread done\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS());
     AIRPLAY_TRACE("[airplay-mdns] started airplay=%s raop=%s port=%u features=0x%X,0x%X\n",
@@ -815,6 +935,8 @@ bool airplay_mdns_start(const AirPlayMdnsConfig *config)
 
 void airplay_mdns_stop(void)
 {
+    int socket_fd;
+
     if (!g_mdns.started)
         return;
     mdns_set_phase(AIRPLAY_MDNS_PHASE_STOPPING);
@@ -822,9 +944,17 @@ void airplay_mdns_stop(void)
         (void)send_announcement(0u);
     atomic_store(&g_mdns.running, false);
     atomic_store(&g_mdns_diagnostics.running, false);
-    mdns_close_socket();
+    atomic_store(&g_mdns_diagnostics.suspended, false);
+    socket_fd = mdns_take_socket();
     if (g_mdns.thread_started)
+    {
         mdns_thread_join(&g_mdns.thread);
+        airplay_diagnostics_thread_joined(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_MDNS,
+            g_mdns.diagnostic_thread_generation);
+        g_mdns.diagnostic_thread_generation = 0u;
+    }
+    mdns_finish_socket_close(socket_fd);
     g_mdns.started = false;
     g_mdns.thread_started = false;
     g_mdns.bound_port = 0u;
@@ -838,6 +968,16 @@ void airplay_mdns_stop(void)
 bool airplay_mdns_is_running(void)
 {
     return g_mdns.started && atomic_load(&g_mdns.running);
+}
+
+void airplay_mdns_set_suspended(bool suspended)
+{
+    atomic_store(&g_mdns_diagnostics.suspended, suspended);
+}
+
+bool airplay_mdns_is_suspended(void)
+{
+    return atomic_load(&g_mdns_diagnostics.suspended);
 }
 
 uint16_t airplay_mdns_bound_port(void)
@@ -870,6 +1010,7 @@ bool airplay_mdns_get_diagnostics(AirPlayMdnsDiagnostics *diagnostics_out)
         (AirPlayMdnsPhase)atomic_load(&g_mdns_diagnostics.phase);
     diagnostics_out->mode = NXCAST_AIRPLAY_MDNS_DIAG_MODE;
     diagnostics_out->running = atomic_load(&g_mdns_diagnostics.running);
+    diagnostics_out->suspended = atomic_load(&g_mdns_diagnostics.suspended);
     diagnostics_out->socket_open = atomic_load(&g_mdns_diagnostics.socket_open);
     diagnostics_out->select_iterations =
         atomic_load(&g_mdns_diagnostics.select_iterations);
@@ -898,6 +1039,8 @@ const char *airplay_mdns_phase_name(AirPlayMdnsPhase phase)
         return "thread-starting";
     case AIRPLAY_MDNS_PHASE_IDLE:
         return "idle";
+    case AIRPLAY_MDNS_PHASE_SUSPENDED:
+        return "suspended";
     case AIRPLAY_MDNS_PHASE_ANNOUNCING:
         return "announcing";
     case AIRPLAY_MDNS_PHASE_WAITING:

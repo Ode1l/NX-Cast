@@ -148,6 +148,7 @@ static void test_video_parser(void)
     static const uint8_t p_frame[] = {0u, 0u, 0u, 2u, 0x41u, 0x80u};
     Recorder recorder = {0};
     AirPlayMirrorVideo *video = NULL;
+    AirPlayMirrorVideoStats stats = {0};
     uint8_t *config;
     uint8_t *idr;
     uint8_t *truncated;
@@ -197,6 +198,11 @@ static void test_video_parser(void)
     config[config_size - 1u] = 0u;
     CHECK(airplay_mirror_video_process_config(video, config, config_size - 1u, 204u) ==
           AIRPLAY_MIRROR_VIDEO_INVALID);
+    CHECK(airplay_mirror_video_get_stats(video, &stats));
+    CHECK(stats.config_ok == 2u && stats.config_failures == 1u);
+    CHECK(stats.access_units_ok == 2u && stats.access_units_dropped == 3u &&
+          stats.access_units_invalid == 1u && stats.keyframes == 1u);
+    CHECK(stats.config_generation == 2u);
     airplay_mirror_video_destroy(video);
     free(config);
     free(idr);
@@ -284,6 +290,7 @@ static void test_tcp_session(void)
     Recorder recorder = {0};
     AirPlayMirrorSessionConfig session_config = {0};
     AirPlayMirrorSession *session = NULL;
+    AirPlayMirrorSessionStats stats = {0};
     AirPlayCryptoAesCtr aes = {0};
     uint8_t session_key[16];
     uint8_t key[16];
@@ -341,6 +348,12 @@ static void test_tcp_session(void)
         close(socket_fd);
     }
     airplay_crypto_aes_ctr_deinit(&aes);
+    CHECK(airplay_mirror_session_get_stats(session, &stats));
+    CHECK(stats.connections_accepted == 2u);
+    CHECK(stats.encrypted_packets == 2u && stats.decrypt_ok == 2u &&
+          stats.decrypt_failures == 0u);
+    CHECK(stats.video.config_ok == 2u && stats.video.access_units_ok == 2u &&
+          stats.video.keyframes == 2u);
     airplay_mirror_session_destroy(session);
     free(config);
     free(idr);

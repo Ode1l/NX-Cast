@@ -208,6 +208,8 @@ static void test_stream_and_wrap(const AccessUnitFixture *fixture)
     CHECK(atomic_load(&producer.result));
     CHECK(airplay_stream_bridge_get_stats(bridge, &stats));
     CHECK(stats.video_packets == producer.count);
+    CHECK(stats.video_bytes == (uint64_t)producer.count * fixture->size);
+    CHECK(stats.video_push_failures == 0u);
     CHECK(stats.bytes_written == drained && stats.bytes_read == drained);
     CHECK(stats.eof && !stats.cancelled && stats.buffered == 0u);
     airplay_stream_bridge_release_reader(bridge);
@@ -221,6 +223,7 @@ static void test_cancel_and_restart(const AccessUnitFixture *fixture)
     Producer producer = {0};
     pthread_t thread;
     uint8_t byte;
+    AirPlayStreamBridgeStats stats = {0};
 
     CHECK(airplay_stream_bridge_create(AIRPLAY_STREAM_BRIDGE_MIN_CAPACITY, &bridge));
     producer.bridge = bridge;
@@ -247,6 +250,8 @@ static void test_cancel_and_restart(const AccessUnitFixture *fixture)
     access_unit.timestamp = UINT64_C(1) << 32;
     access_unit.config_generation = 2u;
     CHECK(!airplay_stream_bridge_push_video(bridge, &access_unit));
+    CHECK(airplay_stream_bridge_get_stats(bridge, &stats));
+    CHECK(stats.video_push_failures == 1u);
     access_unit.keyframe = true;
     CHECK(airplay_stream_bridge_push_video(bridge, &access_unit));
     airplay_stream_bridge_cancel(bridge);

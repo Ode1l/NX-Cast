@@ -19,7 +19,11 @@ typedef struct
     uint64_t bytes_written;
     uint64_t bytes_read;
     uint64_t video_packets;
+    uint64_t video_bytes;
+    uint64_t video_push_failures;
     uint64_t audio_packets;
+    uint64_t audio_bytes;
+    uint64_t audio_push_failures;
     uint32_t video_config_generation;
     AirPlayMirrorClockStats clock;
     bool eof;

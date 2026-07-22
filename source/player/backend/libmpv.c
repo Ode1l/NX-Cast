@@ -8,8 +8,10 @@
 
 #include <switch.h>
 
+#include "app/runtime_observability.h"
 #include "log/log.h"
 #include "player/backend/libmpv_airplay.h"
+#include "player/core/ownership.h"
 #include "player/seek_target.h"
 #include "player/trace.h"
 #include "protocol/airplay/media/stream_bridge.h"
@@ -121,12 +123,377 @@ static u64 g_process_volume_pid = 0;
 static unsigned int g_log_noise_seen[LIBMPV_LOG_NOISE_COUNT];
 static unsigned int g_log_noise_suppressed[LIBMPV_LOG_NOISE_COUNT];
 
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+static bool g_dlna_observe_active = false;
+static uint64_t g_dlna_observe_last_ms = 0u;
+static int g_dlna_observe_http_status = -1;
+static char g_dlna_observe_range_stage[24] = "unknown";
+#endif
+
 static void libmpv_on_render_update(void *ctx);
 
 static uint64_t libmpv_monotonic_ms(void)
 {
     return armTicksToNs(armGetSystemTick()) / 1000000ULL;
 }
+
+static void libmpv_log_resource_boundary(const char *event)
+{
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    PlayerOwnershipLease lease = {0};
+
+    if (player_ownership_current(&lease))
+    {
+        runtime_observability_log_resources(
+            event, player_media_owner_name(lease.owner), lease.generation);
+    }
+    else
+    {
+        runtime_observability_log_resources(event, "none", 0u);
+    }
+#else
+    (void)event;
+#endif
+}
+
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+
+typedef struct
+{
+    bool cache_duration_available;
+    double cache_duration;
+    bool forward_bytes_available;
+    int64_t forward_bytes;
+    bool total_bytes_available;
+    int64_t total_bytes;
+    bool reader_pts_available;
+    double reader_pts;
+    bool cache_end_available;
+    double cache_end;
+    bool eof_available;
+    int eof;
+    bool underrun_available;
+    int underrun;
+} LibmpvDlnaCacheObservation;
+
+static const char *libmpv_observe_state_name(PlayerState state)
+{
+    switch (state)
+    {
+    case PLAYER_STATE_LOADING:
+        return "loading";
+    case PLAYER_STATE_BUFFERING:
+        return "buffering";
+    case PLAYER_STATE_SEEKING:
+        return "seeking";
+    case PLAYER_STATE_PLAYING:
+        return "playing";
+    case PLAYER_STATE_PAUSED:
+        return "paused";
+    case PLAYER_STATE_STOPPED:
+        return "stopped";
+    case PLAYER_STATE_ERROR:
+        return "error";
+    case PLAYER_STATE_IDLE:
+    default:
+        return "idle";
+    }
+}
+
+static const mpv_node *libmpv_observe_map_value(const mpv_node *node,
+                                                 const char *key)
+{
+    mpv_node_list *map;
+
+    if (!node || node->format != MPV_FORMAT_NODE_MAP || !node->u.list ||
+        !key)
+        return NULL;
+    map = node->u.list;
+    for (int index = 0; index < map->num; ++index)
+    {
+        if (map->keys && map->keys[index] &&
+            strcmp(map->keys[index], key) == 0)
+            return &map->values[index];
+    }
+    return NULL;
+}
+
+static bool libmpv_observe_node_int64(const mpv_node *node, int64_t *out)
+{
+    if (!node || !out)
+        return false;
+    if (node->format == MPV_FORMAT_INT64)
+    {
+        *out = node->u.int64;
+        return true;
+    }
+    if (node->format == MPV_FORMAT_FLAG)
+    {
+        *out = node->u.flag;
+        return true;
+    }
+    return false;
+}
+
+static bool libmpv_observe_node_double(const mpv_node *node, double *out)
+{
+    if (!node || !out)
+        return false;
+    if (node->format == MPV_FORMAT_DOUBLE)
+    {
+        *out = node->u.double_;
+        return true;
+    }
+    if (node->format == MPV_FORMAT_INT64)
+    {
+        *out = (double)node->u.int64;
+        return true;
+    }
+    return false;
+}
+
+static void libmpv_observe_cache(mpv_handle *mpv,
+                                 LibmpvDlnaCacheObservation *out)
+{
+    mpv_node cache = {0};
+    const mpv_node *value;
+    int64_t integer;
+
+    if (!mpv || !out)
+        return;
+    memset(out, 0, sizeof(*out));
+    if (mpv_get_property(mpv, "demuxer-cache-state", MPV_FORMAT_NODE,
+                         &cache) < 0)
+    {
+        out->cache_duration_available =
+            mpv_get_property(mpv, "demuxer-cache-duration",
+                             MPV_FORMAT_DOUBLE, &out->cache_duration) >= 0;
+        return;
+    }
+
+    value = libmpv_observe_map_value(&cache, "cache-duration");
+    out->cache_duration_available =
+        libmpv_observe_node_double(value, &out->cache_duration);
+    value = libmpv_observe_map_value(&cache, "fw-bytes");
+    out->forward_bytes_available =
+        libmpv_observe_node_int64(value, &out->forward_bytes);
+    value = libmpv_observe_map_value(&cache, "total-bytes");
+    out->total_bytes_available =
+        libmpv_observe_node_int64(value, &out->total_bytes);
+    value = libmpv_observe_map_value(&cache, "reader-pts");
+    out->reader_pts_available =
+        libmpv_observe_node_double(value, &out->reader_pts);
+    value = libmpv_observe_map_value(&cache, "cache-end");
+    out->cache_end_available =
+        libmpv_observe_node_double(value, &out->cache_end);
+    value = libmpv_observe_map_value(&cache, "eof");
+    if (libmpv_observe_node_int64(value, &integer))
+    {
+        out->eof_available = true;
+        out->eof = integer != 0;
+    }
+    value = libmpv_observe_map_value(&cache, "underrun");
+    if (libmpv_observe_node_int64(value, &integer))
+    {
+        out->underrun_available = true;
+        out->underrun = integer != 0;
+    }
+    mpv_free_node_contents(&cache);
+}
+
+static const char *libmpv_observe_find_ascii(const char *text,
+                                              const char *needle)
+{
+    size_t needle_length;
+
+    if (!text || !needle || !needle[0])
+        return NULL;
+    needle_length = strlen(needle);
+    for (; *text; ++text)
+    {
+        size_t index = 0u;
+
+        while (index < needle_length && text[index] &&
+               ((text[index] >= 'A' && text[index] <= 'Z'
+                     ? text[index] - 'A' + 'a'
+                     : text[index]) ==
+                (needle[index] >= 'A' && needle[index] <= 'Z'
+                     ? needle[index] - 'A' + 'a'
+                     : needle[index])))
+        {
+            ++index;
+        }
+        if (index == needle_length)
+            return text;
+    }
+    return NULL;
+}
+
+static bool libmpv_observe_contains_ascii(const char *text,
+                                          const char *needle)
+{
+    return libmpv_observe_find_ascii(text, needle) != NULL;
+}
+
+static int libmpv_observe_http_status(const char *text)
+{
+    const char *cursor = libmpv_observe_find_ascii(text, "http/");
+
+    if (!cursor)
+        cursor = libmpv_observe_find_ascii(text, "http status");
+    if (!cursor)
+        cursor = libmpv_observe_find_ascii(text, "http error");
+    if (!cursor)
+        return -1;
+    for (; *cursor; ++cursor)
+    {
+        if (cursor[0] >= '1' && cursor[0] <= '5' &&
+            cursor[1] >= '0' && cursor[1] <= '9' &&
+            cursor[2] >= '0' && cursor[2] <= '9')
+        {
+            return (cursor[0] - '0') * 100 + (cursor[1] - '0') * 10 +
+                   (cursor[2] - '0');
+        }
+    }
+    return -1;
+}
+
+static void libmpv_observe_mpv_log(const mpv_event_log_message *message)
+{
+    int status;
+    bool range;
+
+    if (!message || !message->text)
+        return;
+    status = libmpv_observe_http_status(message->text);
+    range = libmpv_observe_contains_ascii(message->text, "range");
+    if (status < 0 && !range)
+        return;
+
+    mutexLock(&g_mutex);
+    if (g_dlna_observe_active)
+    {
+        if (status >= 0)
+            g_dlna_observe_http_status = status;
+        if (range)
+            snprintf(g_dlna_observe_range_stage,
+                     sizeof(g_dlna_observe_range_stage), "range-log");
+    }
+    mutexUnlock(&g_mutex);
+}
+
+static void libmpv_observe_dlna_sample(void)
+{
+    LibmpvDlnaCacheObservation cache;
+    mpv_handle *mpv;
+    PlayerState state;
+    uint64_t now_ms = libmpv_monotonic_ms();
+    int http_status;
+    char range_stage[sizeof(g_dlna_observe_range_stage)];
+    char *video_format = NULL;
+    char *hwdec = NULL;
+    int64_t video_track = -1;
+    int64_t presented = -1;
+    int64_t vo_dropped = -1;
+    int64_t decoder_dropped = -1;
+    char forward_bytes[32];
+    char total_bytes[32];
+    char cache_duration[32];
+    char reader_pts[32];
+    char cache_end[32];
+    char eof[16];
+    char underrun[16];
+    char http[16];
+    char video_track_text[32];
+    char presented_text[32];
+    char vo_dropped_text[32];
+    char decoder_dropped_text[32];
+
+    mutexLock(&g_mutex);
+    state = g_state;
+    if (!g_mpv || !g_dlna_observe_active ||
+        (state != PLAYER_STATE_LOADING && state != PLAYER_STATE_BUFFERING &&
+         state != PLAYER_STATE_SEEKING) ||
+        (g_dlna_observe_last_ms > 0u &&
+         now_ms - g_dlna_observe_last_ms < 1000u))
+    {
+        mutexUnlock(&g_mutex);
+        return;
+    }
+    g_dlna_observe_last_ms = now_ms;
+    mpv = g_mpv;
+    http_status = g_dlna_observe_http_status;
+    snprintf(range_stage, sizeof(range_stage), "%s",
+             g_dlna_observe_range_stage);
+    mutexUnlock(&g_mutex);
+
+    libmpv_observe_cache(mpv, &cache);
+    video_format = mpv_get_property_string(mpv, "video-format");
+    hwdec = mpv_get_property_string(mpv, "hwdec-current");
+    (void)mpv_get_property(mpv, "vid", MPV_FORMAT_INT64, &video_track);
+    (void)mpv_get_property(mpv, "estimated-frame-number",
+                           MPV_FORMAT_INT64, &presented);
+    (void)mpv_get_property(mpv, "frame-drop-count", MPV_FORMAT_INT64,
+                           &vo_dropped);
+    (void)mpv_get_property(mpv, "decoder-frame-drop-count",
+                           MPV_FORMAT_INT64, &decoder_dropped);
+
+#define LIBMPV_DIAG_FORMAT_VALUE(buffer, available, format, value)            \
+    snprintf((buffer), sizeof(buffer), (available) ? (format) : "unknown",   \
+             (value))
+    LIBMPV_DIAG_FORMAT_VALUE(forward_bytes, cache.forward_bytes_available,
+                             "%lld", (long long)cache.forward_bytes);
+    LIBMPV_DIAG_FORMAT_VALUE(total_bytes, cache.total_bytes_available, "%lld",
+                             (long long)cache.total_bytes);
+    LIBMPV_DIAG_FORMAT_VALUE(cache_duration,
+                             cache.cache_duration_available, "%.3f",
+                             cache.cache_duration);
+    LIBMPV_DIAG_FORMAT_VALUE(reader_pts, cache.reader_pts_available, "%.3f",
+                             cache.reader_pts);
+    LIBMPV_DIAG_FORMAT_VALUE(cache_end, cache.cache_end_available, "%.3f",
+                             cache.cache_end);
+    LIBMPV_DIAG_FORMAT_VALUE(eof, cache.eof_available, "%d", cache.eof);
+    LIBMPV_DIAG_FORMAT_VALUE(underrun, cache.underrun_available, "%d",
+                             cache.underrun);
+    LIBMPV_DIAG_FORMAT_VALUE(http, http_status >= 0, "%d", http_status);
+    LIBMPV_DIAG_FORMAT_VALUE(video_track_text, video_track >= 0, "%lld",
+                             (long long)video_track);
+    LIBMPV_DIAG_FORMAT_VALUE(presented_text, presented >= 0, "%lld",
+                             (long long)presented);
+    LIBMPV_DIAG_FORMAT_VALUE(vo_dropped_text, vo_dropped >= 0, "%lld",
+                             (long long)vo_dropped);
+    LIBMPV_DIAG_FORMAT_VALUE(decoder_dropped_text, decoder_dropped >= 0,
+                             "%lld", (long long)decoder_dropped);
+#undef LIBMPV_DIAG_FORMAT_VALUE
+
+    log_info(
+        "[dlna-player-diag] phase=%s cache_bytes=%s/%s cache_s=%s "
+        "reader_pts=%s cache_end=%s eof=%s underrun=%s http=%s "
+        "range=%s video=%s/%s hwdec=%s "
+        "frames=decoded:unknown/presented:%s/dropped:%s+%s\n",
+        libmpv_observe_state_name(state), forward_bytes, total_bytes,
+        cache_duration, reader_pts, cache_end, eof, underrun, http,
+        range_stage, video_track_text,
+        video_format ? video_format : "unknown",
+        hwdec ? hwdec : "unknown", presented_text, vo_dropped_text,
+        decoder_dropped_text);
+
+    mpv_free(video_format);
+    mpv_free(hwdec);
+}
+
+#else
+
+static void libmpv_observe_mpv_log(const mpv_event_log_message *message)
+{
+    (void)message;
+}
+
+static void libmpv_observe_dlna_sample(void)
+{
+}
+
+#endif
 
 static bool libmpv_is_direct_mp4(const char *uri)
 {
@@ -504,6 +871,8 @@ static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
     if (!msg || !msg->text)
         return;
 
+    libmpv_observe_mpv_log(msg);
+
     text = strdup(msg->text);
     if (!text)
         return;
@@ -767,6 +1136,13 @@ static void libmpv_reset_locked(void)
     g_render_update_pending = false;
     g_render_backend = LIBMPV_RENDER_BACKEND_NONE;
     libmpv_reset_log_noise_locked();
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    g_dlna_observe_active = false;
+    g_dlna_observe_last_ms = 0u;
+    g_dlna_observe_http_status = -1;
+    snprintf(g_dlna_observe_range_stage,
+             sizeof(g_dlna_observe_range_stage), "unknown");
+#endif
 }
 
 static bool libmpv_send_seek_target_locked(const char *target, LibmpvPendingEvents *pending)
@@ -799,6 +1175,11 @@ static bool libmpv_send_seek_target_locked(const char *target, LibmpvPendingEven
 
     g_last_error = 0;
     g_seeking = true;
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    if (g_dlna_observe_active)
+        snprintf(g_dlna_observe_range_stage,
+                 sizeof(g_dlna_observe_range_stage), "seek-dispatch");
+#endif
     libmpv_refresh_state_locked(pending);
     return true;
 }
@@ -834,6 +1215,14 @@ static bool libmpv_async_load_current(bool paused)
     LibmpvPendingEvents pending = {0};
     char detail[96];
     bool direct_mp4;
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    PlayerOwnershipLease observe_lease = {0};
+    bool observe_dlna =
+        player_ownership_current(&observe_lease) &&
+        observe_lease.owner == PLAYER_MEDIA_OWNER_DLNA;
+#endif
+
+    libmpv_log_resource_boundary("next-loadfile");
 
     mutexLock(&g_mutex);
     if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0')
@@ -892,6 +1281,13 @@ static bool libmpv_async_load_current(bool paused)
     g_startup_hold_deadline_ms = libmpv_monotonic_ms() + LIBMPV_STARTUP_GATE_TIMEOUT_MS;
     g_seeking = false;
     g_paused_for_cache = false;
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    g_dlna_observe_active = observe_dlna;
+    g_dlna_observe_last_ms = 0u;
+    g_dlna_observe_http_status = -1;
+    snprintf(g_dlna_observe_range_stage,
+             sizeof(g_dlna_observe_range_stage), "loadfile");
+#endif
     libmpv_clear_pending_seek_locked();
     libmpv_set_position_locked(0, &pending);
     libmpv_set_duration_locked(0, &pending);
@@ -1113,6 +1509,11 @@ static void libmpv_handle_event(mpv_event *event)
     case MPV_EVENT_SEEK:
         mutexLock(&g_mutex);
         g_seeking = true;
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+        if (g_dlna_observe_active)
+            snprintf(g_dlna_observe_range_stage,
+                     sizeof(g_dlna_observe_range_stage), "seek-event");
+#endif
         if (g_startup_render_hold && g_initial_seek_inflight)
             g_initial_seek_event_seen = true;
         libmpv_refresh_state_locked(&pending);
@@ -1125,6 +1526,11 @@ static void libmpv_handle_event(mpv_event *event)
         g_file_loaded = true;
         g_stopped = false;
         g_seeking = false;
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+        if (g_dlna_observe_active)
+            snprintf(g_dlna_observe_range_stage,
+                     sizeof(g_dlna_observe_range_stage), "restart");
+#endif
         libmpv_maybe_issue_pending_seek_locked(&pending);
         if (g_startup_render_hold && g_play_requested)
         {
@@ -1185,6 +1591,7 @@ static void libmpv_handle_event(mpv_event *event)
         mutexUnlock(&g_mutex);
         if (replaced_previous)
         {
+            libmpv_log_resource_boundary("end-file-replaced");
             libmpv_log_trace("mpv-end-file", "event", "replaced-previous", g_uri);
             log_info("[player-libmpv] ignored end-file for replaced media reason=%s\n", reason);
             break;
@@ -1195,6 +1602,7 @@ static void libmpv_handle_event(mpv_event *event)
                  reason,
                  end ? mpv_error_string(end->error) : "success");
         libmpv_log_trace("mpv-end-file", "event", reason, g_uri);
+        libmpv_log_resource_boundary("end-file");
 
         mutexLock(&g_mutex);
         g_stopped = true;
@@ -1234,7 +1642,15 @@ static void libmpv_handle_event(mpv_event *event)
         {
             mutexLock(&g_mutex);
             if (event->reply_userdata == LIBMPV_REPLY_SEEK)
+            {
                 g_seeking = false;
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+                if (g_dlna_observe_active)
+                    snprintf(g_dlna_observe_range_stage,
+                             sizeof(g_dlna_observe_range_stage),
+                             "seek-failed");
+#endif
+            }
             if (event->reply_userdata == LIBMPV_REPLY_LOADFILE)
                 g_load_pending = false;
             libmpv_refresh_state_locked(&pending);
@@ -1582,6 +1998,7 @@ static bool libmpv_stop(void)
     libmpv_refresh_state_locked(&pending);
     mutexUnlock(&g_mutex);
 
+    libmpv_log_resource_boundary("stop");
     libmpv_flush_events(&pending);
     return true;
 }
@@ -1823,6 +2240,7 @@ static bool libmpv_pump_events(int timeout_ms)
     }
 
     libmpv_release_expired_startup_gate();
+    libmpv_observe_dlna_sample();
 
     return handled;
 }

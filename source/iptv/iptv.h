@@ -72,6 +72,8 @@ typedef struct
     bool initialized;
     bool loaded;
     bool refreshing;
+    bool background_suspended;
+    bool background_worker_busy;
     int source_count;
     int hls_stream_count;
     int channel_count;
@@ -92,6 +94,7 @@ typedef struct
 
 bool iptv_init(void);
 void iptv_deinit(void);
+bool iptv_set_background_network_suspended(bool suspended);
 bool iptv_reload(void);
 IptvPlaylistKind iptv_classify_playlist_file(const char *path);
 const char *iptv_playlist_kind_name(IptvPlaylistKind kind);

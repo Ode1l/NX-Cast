@@ -302,6 +302,57 @@ static void run_cycle(AirPlayMirrorRuntime *runtime, FakePlayer *player,
     free(encrypted);
 }
 
+static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
+                                   FakePlayer *player,
+                                   unsigned completed_cycles)
+{
+    uint8_t key[16];
+    uint8_t iv[16];
+    uint16_t timing_port = 0u;
+    uint16_t audio_port = 0u;
+    uint16_t control_port = 0u;
+    uint16_t mirror_port = 0u;
+    uint64_t audio_only_session = 900u;
+    uint64_t mirror_session = 901u;
+
+    for (size_t index = 0u; index < sizeof(key); ++index)
+    {
+        key[index] = (uint8_t)(0x20u + index);
+        iv[index] = (uint8_t)(0x40u + index);
+    }
+
+    CHECK(airplay_mirror_runtime_transport_prepare(
+        audio_only_session, key, iv, 0u, 0u, false, &timing_port, runtime));
+    CHECK(timing_port == 0u);
+    CHECK(airplay_mirror_runtime_audio_open(
+        audio_only_session, key, iv, 8u, 480u, 44100u,
+        &audio_port, &control_port, runtime));
+    CHECK(audio_port != 0u && control_port != 0u);
+    airplay_mirror_runtime_stop(audio_only_session, runtime);
+    pthread_mutex_lock(&player->mutex);
+    CHECK(player->stop_count == completed_cycles);
+    pthread_mutex_unlock(&player->mutex);
+
+    timing_port = 0u;
+    audio_port = 0u;
+    control_port = 0u;
+    CHECK(airplay_mirror_runtime_transport_prepare(
+        mirror_session, key, iv, 0u, 0u, false, &timing_port, runtime));
+    CHECK(airplay_mirror_runtime_audio_open(
+        mirror_session, key, iv, 8u, 480u, 44100u,
+        &audio_port, &control_port, runtime));
+    CHECK(airplay_mirror_runtime_open(
+        mirror_session, key, UINT64_C(0x1020304050607080),
+        &mirror_port, runtime));
+    CHECK(mirror_port != 0u);
+    airplay_mirror_runtime_record(mirror_session, runtime);
+    CHECK(wait_for_count(player, &player->set_uri_count,
+                         completed_cycles + 1u));
+    airplay_mirror_runtime_stop(mirror_session, runtime);
+    CHECK(wait_for_count(player, &player->stop_count,
+                         completed_cycles + 1u));
+}
+
 int main(void)
 {
     FakePlayer player = {0};
@@ -329,6 +380,7 @@ int main(void)
     {
         for (unsigned cycle = 0u; cycle < 10u; ++cycle)
             run_cycle(runtime, &player, avcc, avcc_size, idr, idr_size, cycle);
+        run_audio_first_cycles(runtime, &player, 10u);
     }
     airplay_mirror_runtime_destroy(runtime);
     fake_bind(NULL, &player);

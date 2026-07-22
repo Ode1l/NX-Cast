@@ -13,6 +13,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "app/network_diagnostics.h"
+#include "protocol/airplay/diagnostics.h"
 #include "protocol/airplay/trace.h"
 
 #ifdef __SWITCH__
@@ -54,6 +56,7 @@ typedef struct
     atomic_bool finished;
     atomic_int socket_fd;
     uint32_t peer_ipv4_address;
+    uint32_t diagnostic_thread_generation;
 } AirPlayServerClient;
 
 struct AirPlayServerState
@@ -65,6 +68,7 @@ struct AirPlayServerState
     atomic_bool running;
     atomic_int listen_socket;
     atomic_uint_fast64_t next_session_id;
+    uint32_t diagnostic_listener_generation;
     AirPlayServerClient clients[AIRPLAY_SERVER_MAX_CLIENTS];
 };
 
@@ -122,18 +126,110 @@ static void airplay_native_thread_join(AirPlayNativeThread *thread)
 #endif
 }
 
-static void airplay_server_close_socket(atomic_int *socket_storage)
+static int airplay_server_diagnostic_socket(int domain, int type, int protocol)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL, NETWORK_OPERATION_SOCKET);
+    int socket_fd = socket(domain, type, protocol);
+    int saved_errno = socket_fd < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (socket_fd >= 0)
+        network_diagnostics_socket_opened(
+            NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL);
+    else
+        errno = saved_errno;
+    return socket_fd;
+}
+
+static void airplay_server_diagnostic_close(int socket_fd)
+{
+    if (socket_fd < 0)
+        return;
+    (void)close(socket_fd);
+    network_diagnostics_socket_closed(NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL);
+}
+
+static ssize_t airplay_server_diagnostic_send(int socket_fd,
+                                              const void *buffer,
+                                              size_t length, int flags)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL, NETWORK_OPERATION_SEND);
+    ssize_t result = send(socket_fd, buffer, length, flags);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static ssize_t airplay_server_diagnostic_recv(int socket_fd, void *buffer,
+                                              size_t length, int flags)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL, NETWORK_OPERATION_RECV);
+    ssize_t result = recv(socket_fd, buffer, length, flags);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static int airplay_server_diagnostic_select(int descriptor_count,
+                                            fd_set *read_set,
+                                            struct timeval *timeout)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL, NETWORK_OPERATION_SELECT);
+    int result = select(descriptor_count, read_set, NULL, NULL, timeout);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result < 0)
+        errno = saved_errno;
+    return result;
+}
+
+static int airplay_server_diagnostic_accept(int socket_fd,
+                                            struct sockaddr *address,
+                                            socklen_t *address_length)
+{
+    NetworkOperationToken operation = network_diagnostics_operation_begin(
+        NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL, NETWORK_OPERATION_ACCEPT);
+    int result = accept(socket_fd, address, address_length);
+    int saved_errno = result < 0 ? errno : 0;
+
+    network_diagnostics_operation_end(&operation, saved_errno);
+    if (result >= 0)
+        network_diagnostics_socket_opened(
+            NETWORK_DIAGNOSTIC_AIRPLAY_CONTROL);
+    else
+        errno = saved_errno;
+    return result;
+}
+
+static int airplay_server_take_socket(atomic_int *socket_storage)
 {
     int socket_fd;
 
     if (!socket_storage)
-        return;
+        return -1;
     socket_fd = atomic_exchange(socket_storage, -1);
     if (socket_fd >= 0)
-    {
         shutdown(socket_fd, SHUT_RDWR);
-        close(socket_fd);
-    }
+    return socket_fd;
+}
+
+static void airplay_server_close_socket(atomic_int *socket_storage)
+{
+    int socket_fd = airplay_server_take_socket(socket_storage);
+
+    if (socket_fd >= 0)
+        airplay_server_diagnostic_close(socket_fd);
 }
 
 static void airplay_server_set_socket_timeout(int socket_fd, int option, uint32_t timeout_ms)
@@ -155,7 +251,8 @@ static bool airplay_server_send_all(int socket_fd, const uint8_t *bytes, size_t 
 #endif
     while (sent < length)
     {
-        ssize_t result = send(socket_fd, bytes + sent, length - sent, flags);
+        ssize_t result = airplay_server_diagnostic_send(
+            socket_fd, bytes + sent, length - sent, flags);
         if (result > 0)
         {
             sent += (size_t)result;
@@ -333,7 +430,9 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
             break;
         }
 
-        ssize_t received = recv(socket_fd, buffer + buffer_length, buffer_capacity - buffer_length, 0);
+        ssize_t received = airplay_server_diagnostic_recv(
+            socket_fd, buffer + buffer_length,
+            buffer_capacity - buffer_length, 0);
         if (received > 0)
         {
             if (buffer_length == 0)
@@ -390,6 +489,10 @@ static void airplay_server_reap_clients(AirPlayServerState *server)
         if (client->thread_started && atomic_load(&client->finished))
         {
             airplay_native_thread_join(&client->thread);
+            airplay_diagnostics_thread_joined(
+                RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_CLIENT,
+                client->diagnostic_thread_generation);
+            client->diagnostic_thread_generation = 0u;
             client->thread_started = false;
             atomic_store(&client->finished, false);
         }
@@ -421,6 +524,10 @@ static void airplay_server_finish_clients(AirPlayServerState *server)
         if (client->thread_started)
         {
             airplay_native_thread_join(&client->thread);
+            airplay_diagnostics_thread_joined(
+                RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_CLIENT,
+                client->diagnostic_thread_generation);
+            client->diagnostic_thread_generation = 0u;
             client->thread_started = false;
         }
         atomic_store(&client->active, false);
@@ -446,7 +553,8 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         FD_SET(listen_socket, &read_fds);
         timeout.tv_sec = 0;
         timeout.tv_usec = 100000;
-        selected = select(listen_socket + 1, &read_fds, NULL, NULL, &timeout);
+        selected = airplay_server_diagnostic_select(
+            listen_socket + 1, &read_fds, &timeout);
         if (selected < 0)
         {
             if (errno == EINTR)
@@ -456,14 +564,23 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
             AIRPLAY_SERVER_LOG_ERROR("[airplay-server] select failed: %s (%d)\n", strerror(errno), errno);
             break;
         }
+        if (!atomic_load(&server->running))
+            break;
         if (selected == 0 || !FD_ISSET(listen_socket, &read_fds))
             continue;
 
         struct sockaddr_in peer;
         socklen_t peer_length = sizeof(peer);
-        int client_socket = accept(listen_socket, (struct sockaddr *)&peer, &peer_length);
+        int client_socket = airplay_server_diagnostic_accept(
+            listen_socket, (struct sockaddr *)&peer, &peer_length);
         if (client_socket < 0)
             continue;
+        if (!atomic_load(&server->running))
+        {
+            shutdown(client_socket, SHUT_RDWR);
+            airplay_server_diagnostic_close(client_socket);
+            break;
+        }
 
         AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control accepted peer=%s:%u fd=%d\n",
                            (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
@@ -484,7 +601,7 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         {
             airplay_server_send_error(client_socket, 503);
             shutdown(client_socket, SHUT_RDWR);
-            close(client_socket);
+            airplay_server_diagnostic_close(client_socket);
             continue;
         }
         atomic_store(&client->socket_fd, client_socket);
@@ -493,12 +610,17 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         atomic_store(&client->finished, false);
         if (!airplay_native_thread_start(&client->thread, airplay_server_client_thread, client))
         {
+            airplay_diagnostics_thread_create_failed(
+                RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_CLIENT);
             airplay_server_close_socket(&client->socket_fd);
             atomic_store(&client->active, false);
             AIRPLAY_SERVER_LOG_ERROR("[airplay-server] client thread creation failed\n");
             continue;
         }
         client->thread_started = true;
+        client->diagnostic_thread_generation =
+            airplay_diagnostics_thread_created(
+                RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_CLIENT);
     }
 
     if (server)
@@ -538,7 +660,7 @@ bool airplay_server_start(const AirPlayServerConfig *config)
         atomic_init(&client->socket_fd, -1);
     }
 
-    listen_socket = socket(AF_INET, SOCK_STREAM, 0);
+    listen_socket = airplay_server_diagnostic_socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket < 0)
         return false;
     setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
@@ -550,7 +672,7 @@ bool airplay_server_start(const AirPlayServerConfig *config)
         listen(listen_socket, AIRPLAY_SERVER_BACKLOG) < 0 ||
         getsockname(listen_socket, (struct sockaddr *)&address, &address_length) < 0)
     {
-        close(listen_socket);
+        airplay_server_diagnostic_close(listen_socket);
         return false;
     }
     g_airplay_server.bound_port = ntohs(address.sin_port);
@@ -560,12 +682,17 @@ bool airplay_server_start(const AirPlayServerConfig *config)
                                      airplay_server_listener_thread,
                                      &g_airplay_server))
     {
+        airplay_diagnostics_thread_create_failed(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_LISTENER);
         atomic_store(&g_airplay_server.running, false);
         airplay_server_close_socket(&g_airplay_server.listen_socket);
         g_airplay_server.bound_port = 0;
         return false;
     }
     g_airplay_server.listener_started = true;
+    g_airplay_server.diagnostic_listener_generation =
+        airplay_diagnostics_thread_created(
+            RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_LISTENER);
     AIRPLAY_SERVER_LOG_INFO("[airplay-server] listening on :%u\n", g_airplay_server.bound_port);
     return true;
 }
@@ -573,14 +700,29 @@ bool airplay_server_start(const AirPlayServerConfig *config)
 void airplay_server_stop(void)
 {
     size_t index;
+    int listen_socket;
+    int client_sockets[AIRPLAY_SERVER_MAX_CLIENTS];
 
     if (!g_airplay_server.listener_started)
         return;
     atomic_store(&g_airplay_server.running, false);
-    airplay_server_close_socket(&g_airplay_server.listen_socket);
+    listen_socket =
+        airplay_server_take_socket(&g_airplay_server.listen_socket);
     for (index = 0; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
-        airplay_server_close_socket(&g_airplay_server.clients[index].socket_fd);
+        client_sockets[index] = airplay_server_take_socket(
+            &g_airplay_server.clients[index].socket_fd);
     airplay_native_thread_join(&g_airplay_server.listener_thread);
+    airplay_diagnostics_thread_joined(
+        RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_LISTENER,
+        g_airplay_server.diagnostic_listener_generation);
+    g_airplay_server.diagnostic_listener_generation = 0u;
+    for (index = 0; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
+    {
+        if (client_sockets[index] >= 0)
+            airplay_server_diagnostic_close(client_sockets[index]);
+    }
+    if (listen_socket >= 0)
+        airplay_server_diagnostic_close(listen_socket);
     g_airplay_server.listener_started = false;
     g_airplay_server.bound_port = 0;
     memset(&g_airplay_server.config, 0, sizeof(g_airplay_server.config));

@@ -1,36 +1,64 @@
 # Session Context
 
-> Last Updated: 2026-07-21 02:10 NZST
+> Last Updated: 2026-07-23 NZST
 
 ## Current Task
-修复安装 `switch-libsodium` 后 AirPlay 构建在启动阶段立即闪退，并保留 integration/receiver/mDNS 的脱敏分阶段诊断。
+
+Publish the accumulated AirPlay/DLNA resource-management and diagnostic work on
+the `airplay` branch, then continue on macOS using the consolidated handoff in
+`docs/MACOS_HANDOFF_2026-07-23.md`.
 
 ## Implementation State
-- Steps 1-6 and 8-9 are completed with bounded protocol, identity/pairing, mDNS, H.264/AAC media, MPEG-TS and libmpv stream implementations.
-- Steps 10-14 are implemented and covered by host/sanitizer/Switch builds; their remaining gates are physical iPhone/Switch playback and soak tests.
-- Step 15 host tests, Docker build, strict Ed25519/libmpv/deko3d/ImGui build, package checks and continuous Release pipeline are automated and green.
-- The fixed-source GPL PlayFair subset is integrated behind NX-Cast's bounded adapter; mirroring is advertised experimentally when the media callbacks are present.
-- The composed receiver verifies all four mirror/video capability bits, a 142-byte stage-one reply, authorization failure isolation, and reconnect behavior.
-- The first physical test did not reach discovery: nxlink uploaded a 25,391,802-byte local NRO built without `switch-libsodium`, so Ed25519 identity creation stopped the receiver before mDNS started.
-- VS Code and direct nxlink builds now require AirPlay Ed25519, while opt-in AirPlay traces remain visible under the global WARN log threshold.
-- After `switch-libsodium` was installed, two 25,461,434-byte local uploads reset nxlink before any application trace. Static inspection showed the package's default sysrandom backend opens `/dev/urandom` and calls `sodium_misuse()` when that fails on libnx.
-- NX-Cast now registers a Switch-only libsodium randombytes backend backed by `randomGet()` before the first `sodium_init()`. The strict traced NRO contains the expected call order and startup-stage markers.
+
+- Profiles 1-14 isolate AirPlay control, mDNS socket/thread/receive behavior,
+  BSD-session counts, discovery suspension, exclusive media ownership, and
+  bounded observability.
+- Profiles 13/14 use a global first-owner coordinator. The active protocol stack
+  remains complete; non-owner receiver stacks stop and IPTV background network
+  work quiesces before the player command proceeds.
+- DLNA controller sessions now have explicit Stop handling plus an armed
+  ten-second controller-silence Home recovery path.
+- Runtime heartbeat v2, network summaries, resource snapshots, AirPlay setup and
+  worker lifecycle counters, mirror pipeline counters, and DLNA libmpv samples
+  are implemented and rate limited.
+- The Windows `.vscode/tasks.json` and `.vscode/launch.json` changes remain local
+  and uncommitted. They contain devkitPro MSYS/cygpath workarounds and must be
+  recreated with native macOS shell commands if needed.
+
+## Latest Verified Results
+
+- Profile 5 (`mdns-receive`) was the first startup-matrix boundary where the UI
+  stayed responsive but IPTV and DLNA both failed.
+- BSD8 restored IPTV and DLNA connectivity but DLNA stuttered; BSD16 was worse.
+- Suspending all discovery broke DLNA phone control and later rediscovery.
+- Profile 13 made DLNA mostly usable but did not yet pass repeated mixed-protocol
+  acceptance; phone Stop and AirPlay video remained open issues.
+- The latest Profile 14 run had healthy resource/thread/socket convergence. Its
+  four DLNA attempts failed on remote HTTP 514 before `file-loaded`, and its
+  three AirPlay attempts negotiated unsupported audio-only ALAC (`ct=2`,
+  `mirror=0`) and returned RTSP 461 at the format boundary.
+- `ytdl_hook` errors in that run occurred after direct HTTP failure and are
+  secondary evidence, not proof of an FFmpeg decoder regression.
 
 ## Current Blockers
-- Physical iPhone/Switch hardware is required for the 60-minute soak, ten reconnects, mixed DLNA/IPTV/AirPlay switching and shutdown matrix.
-- The corrected libsodium startup path still requires a physical upload test; static binary inspection and host/Switch builds cannot prove Horizon runtime behavior.
-- Discovery, PIN pairing and media acceptance remain pending after startup survives with the corrected NRO.
 
-## CI State
-- GitHub Actions build 96 first failed only in the continuous Release API with `Error creating policy` during a GitHub service incident; attempt 2 passed without source changes.
-- CI no longer performs online `dkp-pacman -S` calls. The pinned official `devkita64` image already contains `switch-libsodium`; the Dockerfile verifies it locally with `dkp-pacman -Q`.
-- `make test-airplay` includes deterministic unit/sanitizer coverage and real loopback RTSP, pairing, mDNS, receiver and HLS smoke tests.
-- GitHub Actions build 98 passed the complete pipeline for capability/stack hardening commit `d1a4763`; artifact `8453509701` is 32,384,049 bytes.
-- GitHub Actions run `29728903616` passed the complete pipeline for GPL PlayFair commit `f5e21b2`; artifact `8455447635` is 32,614,855 bytes and the continuous Release points to that commit.
-- GitHub Actions run `29745733797` passed the strict Ed25519/deko3d/ImGui pipeline for discovery-build fix `c6fd4ca`; artifact `8462340191` is 32,615,208 bytes and the 25,461,434-byte continuous NRO was downloaded into the workspace for the next upload-only test.
-- The local corrected clean release build, SD package verification, normal host suite, ASan/UBSan suite and strict TRACE rebuild all pass. GitHub Actions run `29748063877` also passed and updated the continuous Release to `bca12bc`.
+- The latest DLNA source is unsuitable as the only playback baseline because its
+  CDN returned HTTP 514. A stable local/LAN H.264/AAC item is required.
+- The tested AirPlay session was audio only and used unsupported ALAC. Video must
+  be tested with a sender/session that negotiates screen mirroring.
+- Repeated successful-media Stop/Home/reconnect and the 60-minute mixed-protocol
+  soak remain physical-device gates.
 
-## Next Actions
-1. Upload the corrected strict TRACE NRO and confirm startup reaches the `ed25519`, receiver and mDNS stage markers without resetting nxlink.
-2. Run PIN pairing, RECORD/TEARDOWN and first-frame playback on a real iPhone/Switch with redacted traces.
-3. Complete reconnect, mixed-protocol, shutdown and 60-minute A/V soak acceptance before claiming compatibility.
+## macOS Next Actions
+
+1. Install/verify the devkitPro Switch packages and Homebrew `mbedtls@2`,
+   `libsodium`, and `ffmpeg` host dependencies.
+2. Run the focused host suite and `make test-airplay`, then clean-build Profile
+   14 using the commands in the macOS handoff.
+3. Run the stable LAN DLNA five-cycle test before changing libmpv or FFmpeg.
+4. A/B the same item against the Bilibili source and compare HTTP/Range/cache
+   evidence.
+5. Test AirPlay audio and screen mirroring separately, recording negotiation and
+   the first non-advancing Profile 14 video-pipeline counter.
+6. Complete repeated mixed-protocol restoration and soak gates before promoting
+   the exclusive policy to the normal profile.
