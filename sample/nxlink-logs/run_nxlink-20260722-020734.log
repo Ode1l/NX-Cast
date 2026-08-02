@@ -1,0 +1,82 @@
+pinging switch
+Sending NX-Cast.nro, 25596602 bytes
+12468461 sent (48.71%), 1114 blocks
+starting server
+server active ...
+[INFO] [log] nxlink logger connected host=<IP_REDACTED> port=28771 fd=3 mirror_fd=2 stdout=local
+[INFO] [diagnostic] profile_id=5 profile=mdns-receive protocol_start=parallel
+[INFO] [player-view] init render_owner=main-thread active_view=home
+[INFO] [player] auto resolve libmpv_available=1 mock_available=1
+[INFO] [player-actor] lifecycle=initialize phase=begin backend=libmpv
+[INFO] [player] init accepted backend=libmpv lifecycle=async-suspended actor_capacity=64 reserved=4
+[INFO] [ui] NX-Cast starting. Press + to exit.
+[INFO] [ui] Home view shows cast instructions and last error only.
+[INFO] [ui] Video view auto-activates while playback is active.
+[INFO] [runtime-heartbeat] t_ms=22616146 frame=1 view=home player_state=idle media=0 return_home_pending=0 protocol_state=stopped owner=none generation=0 service_workers=0,0,0 service_age_ms=0,0,0 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=21 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=1,0,0,0 log_queue=7 enqueued=14 processed=6 log_high=7 log_heartbeat_age_ms=0 log_waiting=0 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=stopped mdns_mode=3 mdns_running=0 mdns_socket=0 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [input] active_view=home state=idle media=0 snapshot=1
+[INFO] [player-libmpv] log subscription level=info
+[INFO] [player-libmpv] init volume_backend=aud:a-process
+[INFO] [player-libmpv] init
+[INFO] [player-actor] lifecycle=initialize phase=ready backend=libmpv
+[INFO] [player-view] dk3d render context attached early
+[INFO] [player-view] prepare_video ok=1 render_api_connected=0 render_path=0
+[INFO] [ui] video render prepare=1 player_activate=1 before_media_url=1
+[INFO] [protocol-coordinator] start accepted=1 state=starting iptv=starting dlna=starting airplay=starting network=1 root=sdmc:/switch/NX-Cast/iptv
+[INFO] [airplay] t_ms=22616200 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=22616201 integration stage=ed25519 done
+[INFO] [airplay] t_ms=22616201 integration stage=mirror-runtime begin
+[INFO] [airplay] t_ms=22616201 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=22616201 integration stage=remote-video begin
+[INFO] [airplay] t_ms=22616201 integration stage=remote-video done
+[INFO] [airplay] t_ms=22616201 integration stage=receiver begin
+[INFO] [airplay] t_ms=22616201 receiver stage=pairing-identity begin
+[INFO] [dlna] loaded persistent device identity.
+[INFO] [scpd] description templates ready.
+[INFO] [player-view] render_api_connected=1 backend=dk3d
+[INFO] [player-view] home renderer active frame=1
+[INFO] [iptv] preinstalled source file loaded sources=1 changed=0 refresh=0
+[INFO] [soap] SOAP control module started.
+[INFO] [event] DLNA event server started.
+[INFO] [http-server] listening on :49152
+[INFO] [airplay] t_ms=22616268 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=22616268 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=22616268 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=22616268 receiver stage=handlers begin
+[INFO] [airplay] t_ms=22616268 handlers stage=validate begin
+[INFO] [airplay] t_ms=22616268 handlers stage=validate done
+[INFO] [airplay] t_ms=22616268 handlers stage=allocate begin bytes=792
+[INFO] [airplay] t_ms=22616269 handlers stage=allocate done
+[INFO] [airplay] t_ms=22616269 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=22616269 handlers stage=copy done
+[INFO] [airplay] t_ms=22616269 receiver stage=handlers done
+[INFO] [airplay] t_ms=22616269 receiver stage=control-server begin
+[INFO] [player-imgui] initialized deko3d overlay
+[INFO] [player-libmpv][osd/libass] can't find selected font provider
+[INFO] [ssdp] Responder ready on <URL_REDACTED>
+[INFO] [dlna] Control layer initialized (HTTP/SCPD on :49152).
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=22616507 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=22616507 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=22616508 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=22616508 receiver stage=mdns begin
+[INFO] [airplay] t_ms=22616508 mdns stage=local-address begin
+[INFO] [protocol-coordinator] revision=2->4 state=starting->starting iptv=starting->running dlna=starting->running airplay=starting->starting owner=none->none token=0 generation=0 pin_visible=0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [scpd] served path=/description.xml bytes=2696 template=Description.xml
+[INFO] [airplay] t_ms=22616605 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=22616605 mdns stage=service-record begin
+[INFO] [airplay] t_ms=22616605 mdns stage=service-record done
+[INFO] [airplay] t_ms=22616605 mdns stage=socket begin
+[INFO] [airplay] t_ms=22616605 mdns socket stage=create begin
+[INFO] [airplay] t_ms=22616606 mdns socket stage=create done fd=5
+[INFO] [airplay] t_ms=22616607 mdns socket stage=bind begin port=5353
+[INFO] [airplay] t_ms=22616688 mdns socket stage=bind done
+[INFO] [airplay] t_ms=22616688 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=22616699 mdns socket stage=multicast-join done
+[INFO] [scpd] served path=/dlna/AVTransport.xml bytes=20658 template=AVTransport.xml
+[INFO] [airplay] t_ms=22616726 mdns stage=socket done
+[INFO] [airplay] t_ms=22616726 mdns stage=thread begin
+[INFO] [airplay] t_ms=22616726 mdns thread-create begin stack=65536
+[INFO] [airplay] t_ms=22616726 mdns thread-create done rc=0x00000000
+exiting ...
+socket error 0x0 on poll

@@ -19,6 +19,7 @@ All Markdown documents in this directory use English file names and English cont
 11. [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
 12. [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
 13. [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
+14. [Sanitized nxlink log samples](../sample/nxlink-logs/README.md)
 
 ## Build And Media Toolchain
 
@@ -28,6 +29,11 @@ All Markdown documents in this directory use English file names and English cont
 - [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
 
 Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra` support.
+
+The [sanitized nxlink log samples](../sample/nxlink-logs/README.md) preserve the
+hardware test timelines referenced by the AirPlay/DLNA handoff without
+publishing signed media URLs, LAN addresses, device identity material, or host
+paths.
 
 ## Protocol
 

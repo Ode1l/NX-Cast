@@ -1,0 +1,170 @@
+pinging switch
+Sending NX-Cast.nro, 25596602 bytes
+12467859 sent (48.71%), 1115 blocks
+starting server
+server active ...
+[INFO] [log] nxlink logger connected host=<IP_REDACTED> port=28771 fd=3 mirror_fd=2 stdout=local
+[INFO] [diagnostic] profile_id=3 profile=mdns-socket protocol_start=parallel
+[INFO] [player-view] init render_owner=main-thread active_view=home
+[INFO] [player] auto resolve libmpv_available=1 mock_available=1
+[INFO] [player-actor] lifecycle=initialize phase=begin backend=libmpv
+[INFO] [player] init accepted backend=libmpv lifecycle=async-suspended actor_capacity=64 reserved=4
+[INFO] [ui] NX-Cast starting. Press + to exit.
+[INFO] [ui] Home view shows cast instructions and last error only.
+[INFO] [ui] Video view auto-activates while playback is active.
+[INFO] [runtime-heartbeat] t_ms=22786833 frame=1 view=home player_state=idle media=0 return_home_pending=0 protocol_state=stopped owner=none generation=0 service_workers=0,0,0 service_age_ms=0,0,0 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=23 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=1,0,0,0 log_queue=7 enqueued=14 processed=6 log_high=7 log_heartbeat_age_ms=0 log_waiting=0 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=stopped mdns_mode=1 mdns_running=0 mdns_socket=0 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [input] active_view=home state=idle media=0 snapshot=1
+[INFO] [player-libmpv] log subscription level=info
+[INFO] [player-libmpv] init volume_backend=aud:a-process
+[INFO] [player-libmpv] init
+[INFO] [player-actor] lifecycle=initialize phase=ready backend=libmpv
+[INFO] [player-view] dk3d render context attached early
+[INFO] [player-view] prepare_video ok=1 render_api_connected=0 render_path=0
+[INFO] [ui] video render prepare=1 player_activate=1 before_media_url=1
+[INFO] [protocol-coordinator] start accepted=1 state=starting iptv=starting dlna=starting airplay=starting network=1 root=sdmc:/switch/NX-Cast/iptv
+[INFO] [airplay] t_ms=22786884 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=22786884 integration stage=ed25519 done
+[INFO] [airplay] t_ms=22786885 integration stage=mirror-runtime begin
+[INFO] [airplay] t_ms=22786885 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=22786885 integration stage=remote-video begin
+[INFO] [airplay] t_ms=22786885 integration stage=remote-video done
+[INFO] [airplay] t_ms=22786885 integration stage=receiver begin
+[INFO] [airplay] t_ms=22786885 receiver stage=pairing-identity begin
+[INFO] [dlna] loaded persistent device identity.
+[INFO] [scpd] description templates ready.
+[INFO] [player-view] render_api_connected=1 backend=dk3d
+[INFO] [player-view] home renderer active frame=1
+[INFO] [iptv] preinstalled source file loaded sources=1 changed=0 refresh=0
+[INFO] [airplay] t_ms=22786943 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=22786943 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=22786943 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=22786944 receiver stage=handlers begin
+[INFO] [airplay] t_ms=22786944 handlers stage=validate begin
+[INFO] [airplay] t_ms=22786944 handlers stage=validate done
+[INFO] [airplay] t_ms=22786945 handlers stage=allocate begin bytes=792
+[INFO] [soap] SOAP control module started.
+[INFO] [event] DLNA event server started.
+[INFO] [http-server] listening on :49152
+[INFO] [airplay] t_ms=22786946 handlers stage=allocate done
+[INFO] [airplay] t_ms=22786947 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=22786947 handlers stage=copy done
+[INFO] [airplay] t_ms=22786948 receiver stage=handlers done
+[INFO] [airplay] t_ms=22786948 receiver stage=control-server begin
+[INFO] [player-imgui] initialized deko3d overlay
+[INFO] [player-libmpv][osd/libass] can't find selected font provider
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=22787193 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=22787193 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=22787193 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=22787193 receiver stage=mdns begin
+[INFO] [airplay] t_ms=22787193 mdns stage=local-address begin
+[INFO] [protocol-coordinator] revision=2->3 state=starting->starting iptv=starting->running dlna=starting->starting airplay=starting->starting owner=none->none token=0 generation=0 pin_visible=0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [scpd] served path=/description.xml bytes=2696 template=Description.xml
+[INFO] [ssdp] Responder ready on <URL_REDACTED>
+[INFO] [dlna] Control layer initialized (HTTP/SCPD on :49152).
+[INFO] [protocol-coordinator] revision=3->4 state=starting->starting iptv=running->running dlna=starting->running airplay=starting->starting owner=none->none token=0 generation=0 pin_visible=0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [scpd] served path=/dlna/AVTransport.xml bytes=20658 template=AVTransport.xml
+[INFO] [airplay] t_ms=22787431 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=22787431 mdns stage=service-record begin
+[INFO] [airplay] t_ms=22787431 mdns stage=service-record done
+[INFO] [airplay] t_ms=22787431 mdns stage=socket begin
+[INFO] [airplay] t_ms=22787431 mdns socket stage=create begin
+[INFO] [scpd] served path=/dlna/RenderingControl.xml bytes=7102 template=RenderingControl.xml
+[INFO] [airplay] t_ms=22787599 mdns socket stage=create done fd=9
+[INFO] [airplay] t_ms=22787699 mdns socket stage=bind begin port=5353
+[INFO] [airplay] t_ms=22787794 mdns socket stage=bind done
+[INFO] [airplay] t_ms=22787794 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=22787894 mdns socket stage=multicast-join done
+[INFO] [airplay] t_ms=22788034 mdns stage=socket done
+[INFO] [airplay] t_ms=22788034 mdns diagnostic socket-only ready
+[INFO] [airplay] t_ms=22788034 receiver stage=mdns done
+[INFO] [airplay] t_ms=22788034 integration stage=receiver done
+[INFO] [airplay] integration started port=7000 discovery=1
+[INFO] [protocol-coordinator] revision=4->6 state=starting->ready iptv=running->running dlna=running->running airplay=starting->running owner=none->none token=0 generation=0 pin_visible=0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [runtime-heartbeat] t_ms=22788846 frame=118 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=1654,1551,812 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=84 processed=84 log_high=14 log_heartbeat_age_ms=612 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22790846 frame=238 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=3654,3551,2812 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=85 processed=85 log_high=14 log_heartbeat_age_ms=1950 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22792846 frame=358 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=5654,5551,4812 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=86 processed=86 log_high=14 log_heartbeat_age_ms=1949 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22794846 frame=478 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=7654,7551,6812 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=87 processed=87 log_high=14 log_heartbeat_age_ms=1948 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22796846 frame=598 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=9654,9551,8812 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=88 processed=88 log_high=14 log_heartbeat_age_ms=1947 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22798847 frame=718 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=11655,11552,10813 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=89 processed=89 log_high=14 log_heartbeat_age_ms=1945 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22800863 frame=839 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=13671,13568,12829 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=90 processed=90 log_high=14 log_heartbeat_age_ms=1960 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22802863 frame=959 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=15671,15568,14829 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=91 processed=91 log_high=14 log_heartbeat_age_ms=1992 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22804863 frame=1079 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=17671,17568,16829 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=92 processed=92 log_high=14 log_heartbeat_age_ms=1991 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22806863 frame=1199 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=19671,19568,18829 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=93 processed=93 log_high=14 log_heartbeat_age_ms=1990 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [input] buttons_down=0x4 view=home state=idle media=0
+[INFO] [input] action=iptv-panel open=1 page=channels
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/4a7088d3.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9efc58f1.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/52e0194c.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/a08eed09.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/6cb00861.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/f169131a.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/4f2e344b.img
+[INFO] [input] buttons_down=0x8000 view=home state=idle media=0
+[INFO] [runtime-heartbeat] t_ms=22808863 frame=1319 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=21671,21568,20829 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=104 processed=104 log_high=14 log_heartbeat_age_ms=688 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/5db69825.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9f213a16.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9aaf04cb.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/ce9fb65a.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/c125c614.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/e341d217.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/1f2d4256.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9559bcd1.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/d63f5cc0.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/f5841fc2.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/b6be5c32.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/e87c5112.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/c5a3a2b9.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9ff9071d.img
+[INFO] [input] buttons_down=0x1 view=home state=idle media=0
+[INFO] [media-trace] seq=1 t_ms=0 action=IPTVPlay phase=begin url_hash=9cc30efa metadata_bytes=14 url=<URL_REDACTED>
+[INFO] [iptv-play] seq=1 phase=begin channel_id=c5a3a2b9 url_hash=9cc30efa
+[INFO] [iptv-play] seq=1 phase=claim begin url_hash=9cc30efa
+[INFO] [protocol-coordinator] event=claim previous_owner=none previous_token=0 previous_generation=0 owner=iptv token=1 generation=2
+[INFO] [iptv-play] seq=1 phase=claim done generation=2 previous_owner=none url_hash=9cc30efa
+[INFO] [iptv-play] seq=1 phase=enqueue-open-autoplay begin generation=2 token=1 url_hash=9cc30efa
+[INFO] [media-trace] seq=1 t_ms=0 layer=player action=set_media phase=begin url_hash=9cc30efa url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=set_media phase=begin url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=set_media phase=mutex-wait url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=set_media phase=mutex-acquired url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=loadfile phase=dispatch url_hash=9cc30efa detail=paused=1 profile=default-stable url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=loadfile phase=queued url_hash=9cc30efa detail=paused=1 profile=default-stable url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=set_media phase=done url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=player action=set_media phase=done url_hash=9cc30efa url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=player action=Play phase=backend-call-begin url_hash=9cc30efa detail=-
+[INFO] [iptv-play] seq=1 phase=enqueue-open-autoplay done status=accepted url_hash=9cc30efa
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=Play phase=mutex-wait url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=Play phase=mutex-acquired url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=libmpv action=Play phase=deferred url_hash=9cc30efa detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=player action=Play phase=backend-call-done url_hash=9cc30efa detail=ok
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=snapshot-refresh-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=snapshot-refresh-done url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=backend-wakeup-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=backend-wakeup-done url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=mpv-start-file phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [iptv-play] seq=1 phase=done channel_id=c5a3a2b9 url_hash=9cc30efa
+[INFO] [input] action=iptv-play ok=1 index=19
+[INFO] [protocol-coordinator] revision=6->7 state=ready->media-active iptv=running->running dlna=running->running airplay=running->running owner=none->iptv token=1 generation=2 pin_visible=0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=1417
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [runtime-heartbeat] t_ms=22810863 frame=1439 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=23671,23568,22829 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=22 enqueued=152 processed=129 log_high=31 log_heartbeat_age_ms=53 log_waiting=0 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22812863 frame=1559 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=25671,25568,24829 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=153 processed=153 log_high=31 log_heartbeat_age_ms=1252 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22814863 frame=1679 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=27671,27568,26829 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=154 processed=154 log_high=31 log_heartbeat_age_ms=1984 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [player-libmpv][cplayer]  (+) Video --vid=1 (h264 1280x720 25.000fps)
+[INFO] [player-libmpv][cplayer]  (+) Audio --aid=1 (aac 2ch 48000Hz)
+[INFO] [media-trace] seq=1 t_ms=5717 layer=libmpv action=mpv-file-loaded phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] file-loaded uri=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=5717 layer=libmpv action=Play phase=dispatch url_hash=9cc30efa detail=file-loaded-autoplay url=<URL_REDACTED>
+[INFO] [player-libmpv][cplayer] AO: [hos] 48000Hz stereo 2ch s16
+[INFO] [player-libmpv][cplayer] VO: [libmpv] 1280x720 yuv420p
+[INFO] [media-trace] seq=1 t_ms=5967 layer=libmpv action=mpv-playback-restart phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=5967 layer=libmpv action=startup-gate phase=seek-window url_hash=9cc30efa detail=open url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=6322 layer=libmpv action=startup-gate phase=released url_hash=9cc30efa detail=initial-seek-window-expired url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=6428 layer=render action=first-frame phase=presented url_hash=9cc30efa frame=1796 presented=1796
+[INFO] [runtime-heartbeat] t_ms=22816926 frame=1798 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=29734,29631,28892 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=166 processed=165 log_high=31 log_heartbeat_age_ms=0 log_waiting=0 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=22818951 frame=1893 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=31759,31656,30917 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=167 processed=167 log_high=31 log_heartbeat_age_ms=1975 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=socket-ready mdns_mode=1 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+exiting ...
+socket error 0x0 on poll

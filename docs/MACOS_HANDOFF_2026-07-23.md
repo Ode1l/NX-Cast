@@ -9,8 +9,11 @@
 This document is the durable handoff for the AirPlay/DLNA playback investigation.
 It summarizes the code now in the branch, the physical Switch results, what is
 still unproven, and how to resume on macOS. Raw nxlink logs, signed media URLs,
-compiled Switch files, and machine-specific VS Code configuration are
-intentionally not part of the repository.
+compiled Switch files, and machine-specific VS Code configuration remain
+outside the repository. The complete 19-file capture set is available as
+[sanitized nxlink log samples](../sample/nxlink-logs/README.md); those copies
+retain diagnostic ordering and status fields while replacing network locations,
+device identity material, authentication values, and host paths.
 
 ## Problem Statement
 

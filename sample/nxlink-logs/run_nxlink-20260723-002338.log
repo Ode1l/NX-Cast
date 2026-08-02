@@ -1,0 +1,986 @@
+pinging switch
+Sending NX-Cast.nro, 25600698 bytes
+12489735 sent (48.79%), 1119 blocks
+starting server
+server active ...
+[INFO] [log] nxlink logger connected host=<IP_REDACTED> port=28771 fd=3 mirror_fd=2 stdout=local
+[INFO] [diagnostic] profile_id=14 profile=full-owner-exclusive-observe-bsd12 protocol_start=parallel
+[INFO] [player-view] init render_owner=main-thread active_view=home
+[INFO] [player] auto resolve libmpv_available=1 mock_available=1
+[INFO] [player-actor] lifecycle=initialize phase=begin backend=libmpv
+[INFO] [player] init accepted backend=libmpv lifecycle=async-suspended actor_capacity=64 reserved=4
+[INFO] [ui] NX-Cast starting. Press + to exit.
+[INFO] [ui] Home view shows cast instructions and last error only.
+[INFO] [ui] Video view auto-activates while playback is active.
+[INFO] [runtime-heartbeat] v=2 t=102787241 f=1 ui=home p=idle/0/0 proto=stopped own=none/0 res=home/home/0/0/0 svc=0/0/0/0:0/0:0/0:0 media=0/0/0/0/0/0/0/0/22/0/0/0/0/1 log=7/7/1/0/0/0 mdns=stopped/0/0/0/0/0/0/0 ssdp=0
+[INFO] [network-heartbeat] v=2 mdns=0/0/none:0/0/0/0:none/0/0 ssdp=0/0/none:0/0/0/0:none/0/0 dlna-http=0/0/none:0/0/0/0:none/0/0 airplay-control=0/0/none:0/0/0/0:none/0/0 airplay-timing=0/0/none:0/0/0/0:none/0/0 airplay-audio=0/0/none:0/0/0/0:none/0/0 airplay-mirror=0/0/none:0/0/0/0:none/0/0 iptv-background=0/0/none:0/0/0/0:none/0/0
+[INFO] [input] active_view=home state=idle media=0 snapshot=1
+[INFO] [player-libmpv] log subscription level=info
+[INFO] [player-libmpv] init volume_backend=aud:a-process
+[INFO] [player-libmpv] init
+[INFO] [player-actor] lifecycle=initialize phase=ready backend=libmpv
+[INFO] [player-view] dk3d render context attached early
+[INFO] [player-view] prepare_video ok=1 render_api_connected=0 render_path=0
+[INFO] [ui] video render prepare=1 player_activate=1 before_media_url=1
+[INFO] [protocol-coordinator] start accepted=1 state=starting iptv=starting dlna=starting airplay=starting network=1 root=sdmc:/switch/NX-Cast/iptv
+[INFO] [airplay] t_ms=102787298 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=102787298 integration stage=ed25519 done
+[INFO] [airplay] t_ms=102787298 integration stage=mirror-runtime begin
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=created generation=1 created=1 joined=0 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102787298 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=102787298 integration stage=remote-video begin
+[INFO] [airplay] t_ms=102787298 integration stage=remote-video done
+[INFO] [airplay] t_ms=102787298 integration stage=receiver begin
+[INFO] [airplay] t_ms=102787298 receiver stage=pairing-identity begin
+[INFO] [dlna] loaded persistent device identity.
+[INFO] [scpd] description templates ready.
+[INFO] [player-view] render_api_connected=1 backend=dk3d
+[INFO] [player-view] home renderer active frame=1
+[INFO] [iptv] preinstalled source file loaded sources=1 changed=0 refresh=0
+[INFO] [soap] SOAP control module started.
+[INFO] [event] DLNA event server started.
+[INFO] [http-server] listening on :49152
+[INFO] [airplay] t_ms=102787362 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=102787363 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=102787364 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=102787364 receiver stage=handlers begin
+[INFO] [airplay] t_ms=102787364 handlers stage=validate begin
+[INFO] [airplay] t_ms=102787364 handlers stage=validate done
+[INFO] [airplay] t_ms=102787365 handlers stage=allocate begin bytes=792
+[INFO] [airplay] t_ms=102787365 handlers stage=allocate done
+[INFO] [airplay] t_ms=102787365 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=102787365 handlers stage=copy done
+[INFO] [airplay] t_ms=102787365 receiver stage=handlers done
+[INFO] [airplay] t_ms=102787365 receiver stage=control-server begin
+[INFO] [player-imgui] initialized deko3d overlay
+[INFO] [player-libmpv][osd/libass] can't find selected font provider
+[INFO] [airplay-thread] role=airplay-listener event=created generation=1 created=1 joined=0 live=1 failed=0 underflow=0
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=102787597 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=102787597 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=102787597 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=102787597 receiver stage=mdns begin
+[INFO] [airplay] t_ms=102787597 mdns stage=local-address begin
+[INFO] [airplay] t_ms=102787598 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=102787598 mdns stage=service-record begin
+[INFO] [airplay] t_ms=102787598 mdns stage=service-record done
+[INFO] [airplay] t_ms=102787598 mdns stage=socket begin
+[INFO] [airplay] t_ms=102787598 mdns socket stage=create begin
+[INFO] [airplay] t_ms=102787598 mdns socket stage=create done fd=5
+[INFO] [ssdp] Responder ready on <URL_REDACTED>
+[INFO] [dlna] Control layer initialized (HTTP/SCPD on :49152).
+[INFO] [airplay] t_ms=102787599 mdns socket stage=bind begin port=5353
+[INFO] [airplay] t_ms=102787599 mdns socket stage=bind done
+[INFO] [airplay] t_ms=102787599 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=102787600 mdns socket stage=multicast-join done
+[INFO] [airplay] t_ms=102787600 mdns stage=socket done
+[INFO] [airplay] t_ms=102787600 mdns stage=thread begin
+[INFO] [airplay] t_ms=102787600 mdns thread-create begin stack=65536
+[INFO] [airplay] t_ms=102787600 mdns thread-create done rc=0x00000000
+[INFO] [airplay] t_ms=102787600 mdns thread-start begin
+[INFO] [airplay] t_ms=102787600 mdns worker entered
+[INFO] [airplay] t_ms=102787601 mdns worker mode=0 priority=0x2b
+[INFO] [airplay] t_ms=102787601 mdns worker announce begin
+[INFO] [airplay] t_ms=102787601 mdns thread-start done rc=0x00000000
+[INFO] [airplay-thread] role=airplay-mdns event=created generation=1 created=1 joined=0 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102787601 mdns stage=thread done
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay] t_ms=102787601 receiver stage=mdns done
+[INFO] [airplay] t_ms=102787601 integration stage=receiver done
+[INFO] [airplay] integration started port=7000 discovery=1
+[INFO] [airplay] t_ms=102787601 mdns worker announce done
+[INFO] [protocol-coordinator] revision=2->6 state=starting->ready iptv=starting->running dlna=starting->running airplay=starting->running owner=none->none token=0 generation=0 pin_visible=0 resource=home->home desired=home transition=0 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [runtime-heartbeat] v=2 t=102789242 f=117 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:1646/0:1643/0:1641 media=0/0/0/0/0/0/0/0/6/0/0/0/0/1 log=0/14/1633/0/0/0 mdns=waiting/1/0/1/41/8/0/2 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102791242 f=237 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:3646/0:3643/0:3641 media=0/0/0/0/0/0/0/0/5/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/40/18/0/2 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102793242 f=357 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:5646/0:5643/0:5641 media=0/0/0/0/0/0/0/0/4/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/40/28/0/2 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102795242 f=477 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:7646/0:7643/0:7641 media=0/0/0/0/0/0/0/0/3/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/40/38/0/2 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102797242 f=597 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:9646/0:9643/0:9641 media=0/0/0/0/0/0/0/0/2/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/39/48/0/2 ssdp=0
+[INFO] [network-heartbeat] v=2 mdns=1/1/select:39/39/201/0:none/0/0 ssdp=1/1/select:39/39/101/0:none/0/0 dlna-http=1/1/select:39/39/247/0:none/0/0 airplay-control=1/1/select:39/39/231/0:none/0/0 airplay-timing=0/0/none:0/0/0/0:none/0/0 airplay-audio=0/0/none:0/0/0/0:none/0/0 airplay-mirror=0/0/none:0/0/0/0:none/0/0 iptv-background=0/0/none:0/0/0/0:none/0/0
+[INFO] [runtime-heartbeat] v=2 t=102799242 f=717 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:11646/0:11643/0:11641 media=0/0/0/0/0/0/0/0/1/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/11/62/6/6 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102801242 f=837 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:13646/0:13643/0:13641 media=0/0/0/0/0/0/0/0/9/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/164/75/12/8 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102803242 f=957 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:15646/0:15643/0:15641 media=0/0/0/0/0/0/0/0/8/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/19/89/17/10 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102805242 f=1077 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:17646/0:17643/0:17641 media=0/0/0/0/0/0/0/0/7/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/171/100/19/10 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102807242 f=1197 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:19646/0:19643/0:19641 media=0/0/0/0/0/0/0/0/6/0/0/0/0/1 log=0/14/2000/0/0/0 mdns=waiting/1/0/1/25/113/22/10 ssdp=0
+[INFO] [network-heartbeat] v=2 mdns=1/1/select:25/25/201/0:none/0/0 ssdp=1/1/select:33/33/101/0:none/0/0 dlna-http=1/1/select:33/33/247/0:none/0/0 airplay-control=1/1/select:33/33/231/0:none/0/0 airplay-timing=0/0/none:0/0/0/0:none/0/0 airplay-audio=0/0/none:0/0/0/0:none/0/0 airplay-mirror=0/0/none:0/0/0/0:none/0/0 iptv-background=0/0/none:0/0/0/0:none/0/0
+[INFO] [ssdp] send packet to <IP_REDACTED>:9491 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:9491 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:9491 st=upnp:rootdevice bytes=283
+[INFO] [scpd] served path=/description.xml bytes=2696 template=Description.xml
+[INFO] [scpd] served path=/dlna/AVTransport.xml bytes=20658 template=AVTransport.xml
+[INFO] [scpd] served path=/dlna/RenderingControl.xml bytes=7102 template=RenderingControl.xml
+[INFO] [runtime-heartbeat] v=2 t=102809242 f=1317 ui=home p=idle/0/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:21646/0:21643/0:21641 media=0/0/0/0/0/0/0/0/5/0/0/0/0/1 log=0/14/509/0/0/0 mdns=waiting/1/0/1/176/124/24/10 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI><URL_REDACTED></CurrentURI>
+[INFO] [media-trace] seq=1 t_ms=0 action=SetAVTransportURI phase=begin url_hash=d81a4f8d metadata_bytes=2114 url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=0 layer=soap action=SetAVTransportURI phase=dispatch instance=0 url_hash=d81a4f8d url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=claim previous_owner=none previous_token=0 previous_generation=0 owner=dlna token=1 generation=2
+[INFO] [resource-snapshot] event=claim owner=dlna generation=2 app_threads=3/3/0/0/0 free_thread_slots=81 mem=3440488448/3444572160/4083712 heap=39642800/44216320/4573520/77808 sockets=5 mdns=1 ssdp=1 dlna-http=2 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] revision=6->9 state=ready->media-active iptv=running->running dlna=running->running airplay=running->running owner=none->dlna token=1 generation=2 pin_visible=0 resource=home->home desired=dlna-exclusive transition=1 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [iptv] background-network suspended=1 quiesced=1
+[INFO] [airplay-thread] role=airplay-mdns event=joined generation=1 created=1 joined=1 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-listener event=joined generation=1 created=1 joined=1 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=joined generation=1 created=1 joined=1 live=0 failed=0 underflow=0
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=2 reason=stale-lease
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=2 reason=stale-lease
+[INFO] [media-trace] seq=1 t_ms=18 layer=player action=set_media phase=begin url_hash=d81a4f8d url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=18 layer=libmpv action=set_media phase=begin url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=18 layer=libmpv action=set_media phase=mutex-wait url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=18 layer=libmpv action=set_media phase=mutex-acquired url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=next-loadfile owner=dlna generation=2 app_threads=0/3/3/0/0 free_thread_slots=83 mem=3440488448/3444572160/4083712 heap=39706656/44216320/4509664/77808 sockets=3 mdns=0 ssdp=1 dlna-http=2 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=1 t_ms=19 layer=libmpv action=loadfile phase=dispatch url_hash=d81a4f8d detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=19 layer=libmpv action=loadfile phase=queued url_hash=d81a4f8d detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=19 layer=libmpv action=set_media phase=done url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=19 layer=player action=set_media phase=done url_hash=d81a4f8d url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=19 layer=libmpv action=mpv-start-file phase=event url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=19 layer=soap action=SetAVTransportURI phase=done url_hash=d81a4f8d url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[INFO] [dlna-player-diag] phase=loading cache_bytes=unknown/unknown cache_s=unknown reader_pts=unknown cache_end=unknown eof=unknown underrun=unknown http=unknown range=loadfile video=unknown/unknown hwdec=unknown frames=decoded:unknown/presented:unknown/dropped:unknown+unknown
+[INFO] [protocol-coordinator] revision=9->12 state=media-active->media-active iptv=running->running dlna=running->running airplay=running->stopped owner=dlna->dlna token=1 generation=2 pin_visible=0 resource=home->dlna-exclusive desired=dlna-exclusive transition=0 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=1372
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[INFO] [media-trace] seq=1 t_ms=39 layer=soap action=Play phase=begin url_hash=d81a4f8d detail=1 url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=39 layer=player action=Play phase=backend-call-begin url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=39 layer=libmpv action=Play phase=mutex-wait url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=39 layer=libmpv action=Play phase=mutex-acquired url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=39 layer=libmpv action=Play phase=deferred url_hash=d81a4f8d detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=39 layer=player action=Play phase=backend-call-done url_hash=d81a4f8d detail=ok
+[INFO] [media-trace] seq=1 t_ms=39 layer=player action=Play phase=snapshot-refresh-begin url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=39 layer=player action=Play phase=snapshot-refresh-done url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=39 layer=player action=Play phase=backend-wakeup-begin url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=39 layer=player action=Play phase=backend-wakeup-done url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=39 layer=soap action=Play phase=done url_hash=d81a4f8d detail=1 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[WARN] [player-libmpv][ffmpeg] http: HTTP error 514 Frequency Capped
+[ERROR] [player-libmpv][stream] Failed to open <URL_REDACTED>
+[ERROR] [player-libmpv][ytdl_hook]
+[ERROR] [player-libmpv][ytdl_hook] youtube-dl failed: unexpected error occurred
+[INFO] [player-libmpv] end-file uri=<URL_REDACTED> reason=error error=loading failed
+[INFO] [media-trace] seq=1 t_ms=520 layer=libmpv action=mpv-end-file phase=event url_hash=d81a4f8d detail=error url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=end-file owner=dlna generation=2 app_threads=0/3/3/0/0 free_thread_slots=83 mem=3440488448/3444572160/4083712 heap=39456128/44216320/4760192/77808 sockets=2 mdns=0 ssdp=1 dlna-http=1 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] event=terminal-release owner=dlna token=1 generation=2 seen_active=1
+[INFO] [protocol-coordinator] event=release action=release owner=dlna token=1 generation=2 reason=completed
+[INFO] [protocol-coordinator] revision=12->15 state=media-active->ready iptv=running->running dlna=running->running airplay=stopped->stopped owner=dlna->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->dlna-exclusive desired=home transition=1 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=home state=ERROR has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=home frame=1402
+[INFO] [input] active_view=home state=error media=1 snapshot=1
+[INFO] [airplay] t_ms=102810676 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=102810676 integration stage=ed25519 done
+[INFO] [airplay] t_ms=102810676 integration stage=mirror-runtime begin
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=created generation=2 created=2 joined=1 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102810676 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=102810676 integration stage=remote-video begin
+[INFO] [airplay] t_ms=102810676 integration stage=remote-video done
+[INFO] [airplay] t_ms=102810676 integration stage=receiver begin
+[INFO] [airplay] t_ms=102810676 receiver stage=pairing-identity begin
+[INFO] [airplay] t_ms=102810682 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=102810682 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=102810682 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=102810682 receiver stage=handlers begin
+[INFO] [airplay] t_ms=102810682 handlers stage=validate begin
+[INFO] [airplay] t_ms=102810682 handlers stage=validate done
+[INFO] [airplay] t_ms=102810682 handlers stage=allocate begin bytes=792
+[INFO] [airplay] t_ms=102810682 handlers stage=allocate done
+[INFO] [airplay] t_ms=102810682 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=102810682 handlers stage=copy done
+[INFO] [airplay] t_ms=102810682 receiver stage=handlers done
+[INFO] [airplay] t_ms=102810682 receiver stage=control-server begin
+[INFO] [airplay-thread] role=airplay-listener event=created generation=2 created=2 joined=1 live=1 failed=0 underflow=0
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=102810683 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=102810683 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=102810683 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=102810683 receiver stage=mdns begin
+[INFO] [airplay] t_ms=102810683 mdns stage=local-address begin
+[INFO] [airplay] t_ms=102810684 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=102810684 mdns stage=service-record begin
+[INFO] [airplay] t_ms=102810684 mdns stage=service-record done
+[INFO] [airplay] t_ms=102810684 mdns stage=socket begin
+[INFO] [airplay] t_ms=102810684 mdns socket stage=create begin
+[INFO] [airplay] t_ms=102810684 mdns socket stage=create done fd=6
+[INFO] [airplay] t_ms=102810684 mdns socket stage=bind begin port=5353
+[INFO] [airplay] t_ms=102810684 mdns socket stage=bind done
+[INFO] [airplay] t_ms=102810684 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=102810684 mdns socket stage=multicast-join done
+[INFO] [airplay] t_ms=102810684 mdns stage=socket done
+[INFO] [airplay] t_ms=102810684 mdns stage=thread begin
+[INFO] [airplay] t_ms=102810684 mdns thread-create begin stack=65536
+[INFO] [airplay] t_ms=102810684 mdns thread-create done rc=0x00000000
+[INFO] [airplay] t_ms=102810684 mdns thread-start begin
+[INFO] [airplay] t_ms=102810684 mdns worker entered
+[INFO] [airplay] t_ms=102810684 mdns worker mode=0 priority=0x2b
+[INFO] [airplay] t_ms=102810684 mdns worker announce begin
+[INFO] [airplay] t_ms=102810684 mdns thread-start done rc=0x00000000
+[INFO] [airplay-thread] role=airplay-mdns event=created generation=2 created=2 joined=1 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102810685 mdns stage=thread done
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay] t_ms=102810685 receiver stage=mdns done
+[INFO] [airplay] t_ms=102810685 integration stage=receiver done
+[INFO] [airplay] integration started port=7000 discovery=1
+[INFO] [iptv] background-network suspended=0 quiesced=1
+[INFO] [airplay] t_ms=102810685 mdns worker announce done
+[INFO] [protocol-coordinator] revision=15->19 state=ready->ready iptv=running->running dlna=running->running airplay=stopped->running owner=none->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->home desired=home transition=0 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102811242 f=1437 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:23646/0:23643/0:557 media=0/1/0/0/0/0/0/0/7/0/0/0/0/1 log=0/43/38/0/0/0 mdns=waiting/1/0/1/31/3/1/2 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] v=2 t=102813242 f=1557 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:25646/0:25643/0:2557 media=0/1/0/0/0/0/0/0/6/0/0/0/0/1 log=0/43/41/0/0/0 mdns=waiting/1/0/1/183/14/3/4 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[INFO] [media-trace] seq=1 t_ms=3929 layer=soap action=Stop phase=begin url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [media-trace] seq=1 t_ms=3929 layer=soap action=Stop phase=done url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Stop handler=avtransport_stop
+[INFO] [return-home] phase=request t_ms=102814075 playback_active=1 state=error media=1
+[INFO] [return-home] phase=player-stop begin state=error
+[INFO] [media-trace] seq=1 t_ms=3932 layer=player action=Stop phase=backend-call-begin url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=3932 layer=libmpv action=Stop phase=mutex-wait url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=3932 layer=libmpv action=Stop phase=mutex-acquired url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=3932 layer=libmpv action=Stop phase=dispatch url_hash=d81a4f8d detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=stop owner=none generation=0 app_threads=3/6/3/0/0 free_thread_slots=80 mem=3440488448/3444572160/4083712 heap=39681904/44216320/4534416/77808 sockets=4 mdns=1 ssdp=1 dlna-http=1 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=1 t_ms=3933 layer=player action=Stop phase=backend-call-done url_hash=d81a4f8d detail=ok
+[INFO] [media-trace] seq=1 t_ms=3933 layer=player action=Stop phase=snapshot-refresh-begin url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=3933 layer=player action=Stop phase=snapshot-refresh-done url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=3933 layer=player action=Stop phase=backend-wakeup-begin url_hash=d81a4f8d detail=-
+[INFO] [media-trace] seq=1 t_ms=3933 layer=player action=Stop phase=backend-wakeup-done url_hash=d81a4f8d detail=-
+[INFO] [return-home] phase=player-stop done state=error
+[INFO] [return-home] phase=wait-player-stopped ready_ms=102814325
+[INFO] [dlna-control] event=return-home reason=explicit-stop ok=1 stop=1 polls=0 poll_age_ms=102814075 state=error
+[INFO] [return-home] phase=show-home begin reason=player-stopped state=stopped media=1
+[INFO] [player-view] manual navigation target=home state=STOPPED
+[INFO] [return-home] phase=show-home done ok=1 reason=player-stopped pending=0
+[INFO] [input] action=return-home-complete ok=1 state=stopped
+[INFO] [runtime-heartbeat] v=2 t=102815242 f=1677 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:27646/0:27643/0:4557 media=0/1/0/0/0/0/0/0/5/0/0/0/0/1 log=0/43/916/0/0/0 mdns=waiting/1/0/1/38/26/5/4 ssdp=0
+[INFO] [ssdp] send packet to <IP_REDACTED>:3177 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:3177 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:3177 st=upnp:rootdevice bytes=283
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI><URL_REDACTED></CurrentURI>
+[INFO] [media-trace] seq=2 t_ms=0 action=SetAVTransportURI phase=begin url_hash=1780e437 metadata_bytes=2114 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=0 layer=soap action=SetAVTransportURI phase=dispatch instance=0 url_hash=1780e437 url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=claim previous_owner=none previous_token=0 previous_generation=0 owner=dlna token=1 generation=3
+[INFO] [resource-snapshot] event=claim owner=dlna generation=3 app_threads=3/6/3/0/0 free_thread_slots=80 mem=3440488448/3444572160/4083712 heap=39832464/44216320/4383856/77808 sockets=5 mdns=1 ssdp=1 dlna-http=2 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] revision=19->22 state=ready->media-active iptv=running->running dlna=running->running airplay=running->running owner=none->dlna token=1 generation=3 pin_visible=0 resource=home->home desired=dlna-exclusive transition=1 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [iptv] background-network suspended=1 quiesced=1
+[INFO] [airplay-thread] role=airplay-mdns event=joined generation=2 created=2 joined=2 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-listener event=joined generation=2 created=2 joined=2 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=joined generation=2 created=2 joined=2 live=0 failed=0 underflow=0
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=3 reason=stale-lease
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=3 reason=stale-lease
+[INFO] [media-trace] seq=2 t_ms=15 layer=player action=set_media phase=begin url_hash=1780e437 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=15 layer=libmpv action=set_media phase=begin url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=15 layer=libmpv action=set_media phase=mutex-wait url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=15 layer=libmpv action=set_media phase=mutex-acquired url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=next-loadfile owner=dlna generation=3 app_threads=0/6/6/0/0 free_thread_slots=82 mem=3440488448/3444572160/4083712 heap=39893424/44216320/4322896/77808 sockets=3 mdns=0 ssdp=1 dlna-http=2 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=2 t_ms=16 layer=libmpv action=loadfile phase=dispatch url_hash=1780e437 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=16 layer=libmpv action=loadfile phase=queued url_hash=1780e437 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=16 layer=libmpv action=set_media phase=done url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=16 layer=player action=set_media phase=done url_hash=1780e437 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=16 layer=libmpv action=mpv-start-file phase=event url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=16 layer=soap action=SetAVTransportURI phase=done url_hash=1780e437 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[INFO] [dlna-player-diag] phase=loading cache_bytes=unknown/unknown cache_s=unknown reader_pts=unknown cache_end=unknown eof=unknown underrun=unknown http=unknown range=loadfile video=unknown/unknown hwdec=unknown frames=decoded:unknown/presented:unknown/dropped:unknown+unknown
+[INFO] [protocol-coordinator] revision=22->25 state=media-active->media-active iptv=running->running dlna=running->running airplay=running->stopped owner=dlna->dlna token=1 generation=3 pin_visible=0 resource=home->dlna-exclusive desired=dlna-exclusive transition=0 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=1787
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[INFO] [media-trace] seq=2 t_ms=32 layer=soap action=Play phase=begin url_hash=1780e437 detail=1 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=32 layer=player action=Play phase=backend-call-begin url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=32 layer=libmpv action=Play phase=mutex-wait url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=32 layer=libmpv action=Play phase=mutex-acquired url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=32 layer=libmpv action=Play phase=deferred url_hash=1780e437 detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=32 layer=player action=Play phase=backend-call-done url_hash=1780e437 detail=ok
+[INFO] [media-trace] seq=2 t_ms=32 layer=player action=Play phase=snapshot-refresh-begin url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=32 layer=player action=Play phase=snapshot-refresh-done url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=32 layer=player action=Play phase=backend-wakeup-begin url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=32 layer=player action=Play phase=backend-wakeup-done url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=32 layer=soap action=Play phase=done url_hash=1780e437 detail=1 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] v=2 t=102817242 f=1797 ui=video p=loading/1/0 proto=media-active own=dlna/3 res=dlna-exclusive/dlna-exclusive/0/0/0 svc=1/0/0/0:29646/0:29643/0:165 media=0/1/0/0/0/0/0/0/8/0/0/0/0/1 log=0/43/135/0/0/0 mdns=stopped/0/0/0/166/36/5/6 ssdp=0
+[INFO] [network-heartbeat] v=2 mdns=0/0/none:0/165/201/0:none/0/0 ssdp=1/1/select:24/24/101/0:none/0/0 dlna-http=1/1/select:35/35/247/0:none/0/0 airplay-control=0/0/none:0/165/231/0:none/0/0 airplay-timing=0/0/none:0/0/0/0:none/0/0 airplay-audio=0/0/none:0/0/0/0:none/0/0 airplay-mirror=0/0/none:0/0/0/0:none/0/0 iptv-background=0/0/none:0/0/0/0:none/0/0
+[WARN] [player-libmpv][ffmpeg] http: HTTP error 514 Frequency Capped
+[ERROR] [player-libmpv][stream] Failed to open <URL_REDACTED>
+[ERROR] [player-libmpv][ytdl_hook]
+[ERROR] [player-libmpv][ytdl_hook] youtube-dl failed: unexpected error occurred
+[INFO] [player-libmpv] end-file uri=<URL_REDACTED> reason=error error=loading failed
+[INFO] [media-trace] seq=2 t_ms=562 layer=libmpv action=mpv-end-file phase=event url_hash=1780e437 detail=error url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=end-file owner=dlna generation=3 app_threads=0/6/6/0/0 free_thread_slots=83 mem=3440488448/3444572160/4083712 heap=39491216/44216320/4725104/77808 sockets=2 mdns=0 ssdp=1 dlna-http=1 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] event=terminal-release owner=dlna token=1 generation=3 seen_active=1
+[INFO] [protocol-coordinator] event=release action=release owner=dlna token=1 generation=3 reason=completed
+[INFO] [protocol-coordinator] revision=25->28 state=media-active->ready iptv=running->running dlna=running->running airplay=stopped->stopped owner=dlna->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->dlna-exclusive desired=home transition=1 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=home state=ERROR has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=home frame=1819
+[INFO] [input] active_view=home state=error media=1 snapshot=1
+[INFO] [airplay] t_ms=102817626 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=102817626 integration stage=ed25519 done
+[INFO] [airplay] t_ms=102817626 integration stage=mirror-runtime begin
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=created generation=3 created=3 joined=2 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102817626 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=102817626 integration stage=remote-video begin
+[INFO] [airplay] t_ms=102817626 integration stage=remote-video done
+[INFO] [airplay] t_ms=102817626 integration stage=receiver begin
+[INFO] [airplay] t_ms=102817626 receiver stage=pairing-identity begin
+[INFO] [airplay] t_ms=102817633 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=102817633 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=102817633 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=102817633 receiver stage=handlers begin
+[INFO] [airplay] t_ms=102817633 handlers stage=validate begin
+[INFO] [airplay] t_ms=102817633 handlers stage=validate done
+[INFO] [airplay] t_ms=102817633 handlers stage=allocate begin bytes=792
+[INFO] [airplay] t_ms=102817633 handlers stage=allocate done
+[INFO] [airplay] t_ms=102817633 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=102817633 handlers stage=copy done
+[INFO] [airplay] t_ms=102817633 receiver stage=handlers done
+[INFO] [airplay] t_ms=102817633 receiver stage=control-server begin
+[INFO] [airplay-thread] role=airplay-listener event=created generation=3 created=3 joined=2 live=1 failed=0 underflow=0
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=102817633 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=102817633 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=102817633 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=102817633 receiver stage=mdns begin
+[INFO] [airplay] t_ms=102817633 mdns stage=local-address begin
+[INFO] [airplay] t_ms=102817634 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=102817634 mdns stage=service-record begin
+[INFO] [airplay] t_ms=102817634 mdns stage=service-record done
+[INFO] [airplay] t_ms=102817634 mdns stage=socket begin
+[INFO] [airplay] t_ms=102817634 mdns socket stage=create begin
+[INFO] [airplay] t_ms=102817634 mdns socket stage=create done fd=6
+[INFO] [airplay] t_ms=102817634 mdns socket stage=bind begin port=5353
+[INFO] [airplay] t_ms=102817634 mdns socket stage=bind done
+[INFO] [airplay] t_ms=102817634 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=102817635 mdns socket stage=multicast-join done
+[INFO] [airplay] t_ms=102817635 mdns stage=socket done
+[INFO] [airplay] t_ms=102817635 mdns stage=thread begin
+[INFO] [airplay] t_ms=102817635 mdns thread-create begin stack=65536
+[INFO] [airplay] t_ms=102817635 mdns thread-create done rc=0x00000000
+[INFO] [airplay] t_ms=102817635 mdns thread-start begin
+[INFO] [airplay] t_ms=102817635 mdns worker entered
+[INFO] [airplay] t_ms=102817635 mdns worker mode=0 priority=0x2b
+[INFO] [airplay] t_ms=102817635 mdns worker announce begin
+[INFO] [airplay] t_ms=102817635 mdns thread-start done rc=0x00000000
+[INFO] [airplay-thread] role=airplay-mdns event=created generation=3 created=3 joined=2 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102817635 mdns stage=thread done
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay] t_ms=102817635 receiver stage=mdns done
+[INFO] [airplay] t_ms=102817635 integration stage=receiver done
+[INFO] [airplay] integration started port=7000 discovery=1
+[INFO] [iptv] background-network suspended=0 quiesced=1
+[INFO] [airplay] t_ms=102817635 mdns worker announce done
+[INFO] [protocol-coordinator] revision=28->32 state=ready->ready iptv=running->running dlna=running->running airplay=stopped->running owner=none->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->home desired=home transition=0 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102819242 f=1917 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:31646/0:31643/0:1607 media=0/1/0/0/0/0/0/0/6/0/0/0/0/1 log=0/45/27/0/0/0 mdns=waiting/1/0/1/6/8/0/2 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[INFO] [media-trace] seq=2 t_ms=2829 layer=soap action=Stop phase=begin url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [media-trace] seq=2 t_ms=2829 layer=soap action=Stop phase=done url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Stop handler=avtransport_stop
+[INFO] [return-home] phase=request t_ms=102819892 playback_active=1 state=error media=1
+[INFO] [return-home] phase=player-stop begin state=error
+[INFO] [media-trace] seq=2 t_ms=2830 layer=player action=Stop phase=backend-call-begin url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=2830 layer=libmpv action=Stop phase=mutex-wait url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=2830 layer=libmpv action=Stop phase=mutex-acquired url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=2830 layer=libmpv action=Stop phase=dispatch url_hash=1780e437 detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=stop owner=none generation=0 app_threads=3/9/6/0/0 free_thread_slots=80 mem=3440488448/3444572160/4083712 heap=39715984/44216320/4500336/77808 sockets=5 mdns=1 ssdp=1 dlna-http=2 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=2 t_ms=2831 layer=player action=Stop phase=backend-call-done url_hash=1780e437 detail=ok
+[INFO] [media-trace] seq=2 t_ms=2831 layer=player action=Stop phase=snapshot-refresh-begin url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=2831 layer=player action=Stop phase=snapshot-refresh-done url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=2831 layer=player action=Stop phase=backend-wakeup-begin url_hash=1780e437 detail=-
+[INFO] [media-trace] seq=2 t_ms=2831 layer=player action=Stop phase=backend-wakeup-done url_hash=1780e437 detail=-
+[INFO] [return-home] phase=player-stop done state=error
+[INFO] [return-home] phase=wait-player-stopped ready_ms=102820142
+[INFO] [dlna-control] event=return-home reason=explicit-stop ok=1 stop=1 polls=0 poll_age_ms=102819892 state=error
+[INFO] [return-home] phase=show-home begin reason=player-stopped state=stopped media=1
+[INFO] [player-view] manual navigation target=home state=STOPPED
+[INFO] [return-home] phase=show-home done ok=1 reason=player-stopped pending=0
+[INFO] [input] action=return-home-complete ok=1 state=stopped
+[INFO] [runtime-heartbeat] v=2 t=102821242 f=2037 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:33646/0:33643/0:3607 media=0/1/0/0/0/0/0/0/8/0/0/0/0/1 log=0/45/1100/0/0/0 mdns=waiting/1/0/1/6/18/0/2 ssdp=0
+[INFO] [ssdp] send packet to <IP_REDACTED>:7961 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:7961 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:7961 st=upnp:rootdevice bytes=283
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI><URL_REDACTED></CurrentURI>
+[INFO] [media-trace] seq=3 t_ms=0 action=SetAVTransportURI phase=begin url_hash=d06e2a93 metadata_bytes=2114 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=soap action=SetAVTransportURI phase=dispatch instance=0 url_hash=d06e2a93 url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=claim previous_owner=none previous_token=0 previous_generation=0 owner=dlna token=1 generation=4
+[INFO] [resource-snapshot] event=claim owner=dlna generation=4 app_threads=3/9/6/0/0 free_thread_slots=80 mem=3440488448/3444572160/4083712 heap=39866304/44216320/4350016/77808 sockets=5 mdns=1 ssdp=1 dlna-http=2 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] revision=32->35 state=ready->media-active iptv=running->running dlna=running->running airplay=running->running owner=none->dlna token=1 generation=4 pin_visible=0 resource=home->home desired=dlna-exclusive transition=1 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [iptv] background-network suspended=1 quiesced=1
+[INFO] [airplay-thread] role=airplay-mdns event=joined generation=3 created=3 joined=3 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-listener event=joined generation=3 created=3 joined=3 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=joined generation=3 created=3 joined=3 live=0 failed=0 underflow=0
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=4 reason=stale-lease
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=4 reason=stale-lease
+[INFO] [media-trace] seq=3 t_ms=14 layer=player action=set_media phase=begin url_hash=d06e2a93 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=14 layer=libmpv action=set_media phase=begin url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=14 layer=libmpv action=set_media phase=mutex-wait url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=14 layer=libmpv action=set_media phase=mutex-acquired url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=next-loadfile owner=dlna generation=4 app_threads=0/9/9/0/0 free_thread_slots=82 mem=3440488448/3444572160/4083712 heap=39927264/44216320/4289056/77808 sockets=3 mdns=0 ssdp=1 dlna-http=2 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=3 t_ms=15 layer=libmpv action=loadfile phase=dispatch url_hash=d06e2a93 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=15 layer=libmpv action=loadfile phase=queued url_hash=d06e2a93 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=15 layer=libmpv action=set_media phase=done url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=15 layer=player action=set_media phase=done url_hash=d06e2a93 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=15 layer=libmpv action=mpv-start-file phase=event url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=15 layer=soap action=SetAVTransportURI phase=done url_hash=d06e2a93 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[INFO] [dlna-player-diag] phase=loading cache_bytes=unknown/unknown cache_s=unknown reader_pts=unknown cache_end=unknown eof=unknown underrun=unknown http=unknown range=loadfile video=unknown/unknown hwdec=unknown frames=decoded:unknown/presented:unknown/dropped:unknown+unknown
+[INFO] [protocol-coordinator] revision=35->38 state=media-active->media-active iptv=running->running dlna=running->running airplay=running->stopped owner=dlna->dlna token=1 generation=4 pin_visible=0 resource=home->dlna-exclusive desired=dlna-exclusive transition=0 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=2131
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[INFO] [media-trace] seq=3 t_ms=30 layer=soap action=Play phase=begin url_hash=d06e2a93 detail=1 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=30 layer=player action=Play phase=backend-call-begin url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=30 layer=libmpv action=Play phase=mutex-wait url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=30 layer=libmpv action=Play phase=mutex-acquired url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=30 layer=libmpv action=Play phase=deferred url_hash=d06e2a93 detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=30 layer=player action=Play phase=backend-call-done url_hash=d06e2a93 detail=ok
+[INFO] [media-trace] seq=3 t_ms=30 layer=player action=Play phase=snapshot-refresh-begin url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=30 layer=player action=Play phase=snapshot-refresh-done url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=30 layer=player action=Play phase=backend-wakeup-begin url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=30 layer=player action=Play phase=backend-wakeup-done url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=30 layer=soap action=Play phase=done url_hash=d06e2a93 detail=1 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102823242 f=2157 ui=video p=loading/1/0 proto=media-active own=dlna/4 res=dlna-exclusive/dlna-exclusive/0/0/0 svc=1/0/0/0:35646/0:35643/0:432 media=0/1/0/0/0/0/0/0/5/0/0/0/0/1 log=0/45/399/0/0/0 mdns=stopped/0/0/0/433/26/0/4 ssdp=0
+[WARN] [player-libmpv][ffmpeg] http: HTTP error 514 Frequency Capped
+[ERROR] [player-libmpv][stream] Failed to open <URL_REDACTED>
+[ERROR] [player-libmpv][ytdl_hook]
+[ERROR] [player-libmpv][ytdl_hook] youtube-dl failed: unexpected error occurred
+[INFO] [player-libmpv] end-file uri=<URL_REDACTED> reason=error error=loading failed
+[INFO] [media-trace] seq=3 t_ms=468 layer=libmpv action=mpv-end-file phase=event url_hash=d06e2a93 detail=error url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=end-file owner=dlna generation=4 app_threads=0/9/9/0/0 free_thread_slots=83 mem=3440488448/3444572160/4083712 heap=39524720/44216320/4691600/77808 sockets=2 mdns=0 ssdp=1 dlna-http=1 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] event=terminal-release owner=dlna token=1 generation=4 seen_active=1
+[INFO] [protocol-coordinator] event=release action=release owner=dlna token=1 generation=4 reason=completed
+[INFO] [protocol-coordinator] revision=38->41 state=media-active->ready iptv=running->running dlna=running->running airplay=stopped->stopped owner=dlna->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->dlna-exclusive desired=home transition=1 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=home state=ERROR has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=home frame=2158
+[INFO] [input] active_view=home state=error media=1 snapshot=1
+[INFO] [airplay] t_ms=102823276 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=102823276 integration stage=ed25519 done
+[INFO] [airplay] t_ms=102823276 integration stage=mirror-runtime begin
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=created generation=4 created=4 joined=3 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102823276 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=102823276 integration stage=remote-video begin
+[INFO] [airplay] t_ms=102823276 integration stage=remote-video done
+[INFO] [airplay] t_ms=102823276 integration stage=receiver begin
+[INFO] [airplay] t_ms=102823276 receiver stage=pairing-identity begin
+[INFO] [airplay] t_ms=102823282 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=102823282 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=102823282 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=102823282 receiver stage=handlers begin
+[INFO] [airplay] t_ms=102823282 handlers stage=validate begin
+[INFO] [airplay] t_ms=102823282 handlers stage=validate done
+[INFO] [airplay] t_ms=102823282 handlers stage=allocate begin bytes=792
+[INFO] [airplay] t_ms=102823282 handlers stage=allocate done
+[INFO] [airplay] t_ms=102823282 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=102823282 handlers stage=copy done
+[INFO] [airplay] t_ms=102823282 receiver stage=handlers done
+[INFO] [airplay] t_ms=102823282 receiver stage=control-server begin
+[INFO] [airplay-thread] role=airplay-listener event=created generation=4 created=4 joined=3 live=1 failed=0 underflow=0
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=102823283 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=102823283 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=102823283 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=102823283 receiver stage=mdns begin
+[INFO] [airplay] t_ms=102823283 mdns stage=local-address begin
+[INFO] [airplay] t_ms=102823283 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=102823283 mdns stage=service-record begin
+[INFO] [airplay] t_ms=102823283 mdns stage=service-record done
+[INFO] [airplay] t_ms=102823283 mdns stage=socket begin
+[INFO] [airplay] t_ms=102823283 mdns socket stage=create begin
+[INFO] [airplay] t_ms=102823284 mdns socket stage=create done fd=6
+[INFO] [airplay] t_ms=102823284 mdns socket stage=bind begin port=5353
+[INFO] [airplay] t_ms=102823284 mdns socket stage=bind done
+[INFO] [airplay] t_ms=102823284 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=102823284 mdns socket stage=multicast-join done
+[INFO] [airplay] t_ms=102823284 mdns stage=socket done
+[INFO] [airplay] t_ms=102823284 mdns stage=thread begin
+[INFO] [airplay] t_ms=102823284 mdns thread-create begin stack=65536
+[INFO] [airplay] t_ms=102823284 mdns thread-create done rc=0x00000000
+[INFO] [airplay] t_ms=102823284 mdns thread-start begin
+[INFO] [airplay] t_ms=102823284 mdns worker entered
+[INFO] [airplay] t_ms=102823284 mdns worker mode=0 priority=0x2b
+[INFO] [airplay] t_ms=102823284 mdns worker announce begin
+[INFO] [airplay] t_ms=102823284 mdns thread-start done rc=0x00000000
+[INFO] [airplay-thread] role=airplay-mdns event=created generation=4 created=4 joined=3 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102823284 mdns stage=thread done
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay] t_ms=102823284 receiver stage=mdns done
+[INFO] [airplay] t_ms=102823284 integration stage=receiver done
+[INFO] [airplay] integration started port=7000 discovery=1
+[INFO] [iptv] background-network suspended=0 quiesced=1
+[INFO] [airplay] t_ms=102823285 mdns worker announce done
+[INFO] [protocol-coordinator] revision=41->45 state=ready->ready iptv=running->running dlna=running->running airplay=stopped->running owner=none->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->home desired=home transition=0 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [ssdp] send packet to <IP_REDACTED>:1451 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:1451 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:1451 st=upnp:rootdevice bytes=283
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102825242 f=2277 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:37646/0:37643/0:1958 media=0/1/0/0/0/0/0/0/5/0/0/0/0/1 log=0/45/399/0/0/0 mdns=waiting/1/0/1/115/12/3/3 ssdp=0
+[INFO] [ssdp] send packet to <IP_REDACTED>:13602 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:13602 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:13602 st=upnp:rootdevice bytes=283
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [airplay] t_ms=102827168 control accepted peer=<IP_REDACTED>:63687 fd=8
+[INFO] [airplay-thread] role=airplay-client event=created generation=1 created=1 joined=0 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102827169 control client-worker entered slot=0 fd=8
+[INFO] [airplay] t_ms=102827169 control request session=1 method=GET uri=<URL_REDACTED> body=70
+[INFO] [airplay] session=1 request=1 method=GET uri=<URL_REDACTED> bytes=70 state=connected
+[INFO] [airplay] t_ms=102827169 control response session=1 request=1 status=200 body=274 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102827199 control request session=1 method=POST uri=<URL_REDACTED> body=68
+[INFO] [airplay-pairing] t_ms=102827212 session=1 uri=<URL_REDACTED> bytes=68 state=idle->verify-challenge result=ok status=200 close=0
+[INFO] [airplay] t_ms=102827212 control response session=1 request=2 status=200 body=96 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102827219 control request session=1 method=POST uri=<URL_REDACTED> body=68
+[INFO] [airplay-pairing] t_ms=102827219 session=1 uri=<URL_REDACTED> bytes=68 state=verify-challenge->verified result=ok status=200 close=0
+[INFO] [airplay] t_ms=102827220 control response session=1 request=3 status=200 body=0 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102827228 control request session=1 method=POST uri=<URL_REDACTED> body=16
+[INFO] [airplay] session=1 request=4 method=POST uri=<URL_REDACTED> bytes=16 state=connected
+[INFO] [airplay] endpoint=fp-setup bytes=16 result=ok
+[INFO] [airplay] t_ms=102827228 control response session=1 request=4 status=200 body=142 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102827237 control request session=1 method=POST uri=<URL_REDACTED> body=164
+[INFO] [airplay] session=1 request=5 method=POST uri=<URL_REDACTED> bytes=164 state=connected
+[INFO] [airplay] endpoint=fp-setup bytes=164 result=ok
+[INFO] [airplay] t_ms=102827237 control response session=1 request=5 status=200 body=32 headers=4 sent=1 close=0
+[INFO] [runtime-heartbeat] v=2 t=102827242 f=2397 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:39646/0:39643/0:3958 media=0/1/0/0/0/0/0/0/0/0/0/0/0/1 log=0/45/5/0/0/0 mdns=waiting/1/0/1/52/25/6/7 ssdp=0
+[INFO] [network-heartbeat] v=2 mdns=1/1/select:52/52/201/0:none/0/0 ssdp=1/1/select:91/91/101/0:none/0/0 dlna-http=1/1/select:72/72/247/0:none/0/0 airplay-control=2/2/select:73/5/231/0:none/0/0 airplay-timing=0/0/none:0/0/0/0:none/0/0 airplay-audio=0/0/none:0/0/0/0:none/0/0 airplay-mirror=0/0/none:0/0/0/0:none/0/0 iptv-background=0/0/none:0/0/0/0:none/0/0
+[INFO] [airplay] t_ms=102827244 control request session=1 method=SETUP uri=<URL_REDACTED> body=697
+[INFO] [airplay] session=1 request=6 method=SETUP uri=<URL_REDACTED> bytes=697 state=connected
+[INFO] [airplay] t_ms=102827245 setup metadata session=1 keys=19 initial=1 timing=NTP timing_port=62284 remote_control=0 streams=0 mirror=0 audio=0
+[INFO] [airplay-thread] role=airplay-timing event=created generation=1 created=1 joined=0 live=1 failed=0 underflow=0
+[INFO] [airplay-timing] session=1 protocol=NTP local=25698 remote=62284
+[INFO] [airplay] session=1 method=SETUP initial=1 mirror=0 record=0 result=ok
+[INFO] [airplay] t_ms=102827245 control response session=1 request=6 status=200 body=76 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102827255 control request session=1 method=GET uri=<URL_REDACTED> body=0
+[INFO] [airplay] session=1 request=7 method=GET uri=<URL_REDACTED> bytes=0 state=setup
+[INFO] [airplay] t_ms=102827256 control response session=1 request=7 status=200 body=1105 headers=4 sent=1 close=0
+[INFO] [airplay-timing] first NTP response received
+[INFO] [airplay] t_ms=102827266 control request session=1 method=RECORD uri=<URL_REDACTED> body=0
+[INFO] [airplay] session=1 request=8 method=RECORD uri=<URL_REDACTED> bytes=0 state=setup
+[INFO] [airplay] session=1 method=RECORD mirror=0 deferred=1
+[INFO] [airplay] t_ms=102827266 control response session=1 request=8 status=200 body=0 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102827624 control request session=1 method=SETUP uri=<URL_REDACTED> body=243
+[INFO] [airplay] session=1 request=9 method=SETUP uri=<URL_REDACTED> bytes=243 state=recording
+[INFO] [airplay] t_ms=102827624 setup metadata session=1 keys=1 initial=0 timing=missing timing_port=0 remote_control=0 streams=1 mirror=0 audio=1
+[INFO] [airplay-setup] session=1 stream=audio ct=2 spf=352 sr=44100 stage=negotiate
+[INFO] [airplay-setup-failure] session=1 stream=audio stage=format ct=2 spf=352 sr=44100
+[INFO] [airplay] session=1 method=SETUP initial=1 mirror=0 record=1 result=failed
+[INFO] [airplay-thread] role=airplay-timing event=joined generation=1 created=1 joined=1 live=0 failed=0 underflow=0
+[INFO] [airplay] t_ms=102827662 control response session=1 request=9 status=461 body=0 headers=3 sent=1 close=0
+[INFO] [airplay] t_ms=102827679 control request session=1 method=TEARDOWN uri=<URL_REDACTED> body=42
+[INFO] [airplay] session=1 request=10 method=TEARDOWN uri=<URL_REDACTED> bytes=42 state=recording
+[INFO] [airplay] t_ms=102827680 control response session=1 request=10 status=200 body=0 headers=3 sent=1 close=1
+[INFO] [airplay] t_ms=102827680 control closed session=1 requests=10 reason=response-close errno=0
+[INFO] [airplay-thread] role=airplay-client event=joined generation=1 created=1 joined=1 live=0 failed=0 underflow=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] v=2 t=102829242 f=2517 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:41646/0:41643/0:5958 media=0/1/0/0/0/0/0/0/9/0/0/0/0/1 log=0/45/400/0/0/0 mdns=waiting/1/0/1/140/37/9/7 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [ssdp] send packet to <IP_REDACTED>:1589 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:1589 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:1589 st=upnp:rootdevice bytes=283
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102831242 f=2637 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:43646/0:43643/0:7958 media=0/1/0/0/0/0/0/0/8/0/0/0/0/1 log=0/45/398/0/0/0 mdns=waiting/1/0/1/82/48/10/9 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102833242 f=2757 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:45646/0:45643/0:9958 media=0/1/0/0/0/0/0/0/7/0/0/0/0/1 log=0/45/203/0/0/0 mdns=waiting/1/0/1/10/59/11/9 ssdp=0
+[INFO] [airplay] t_ms=102833441 control accepted peer=<IP_REDACTED>:63727 fd=8
+[INFO] [airplay-thread] role=airplay-client event=created generation=2 created=2 joined=1 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102833442 control client-worker entered slot=0 fd=8
+[INFO] [airplay] t_ms=102833445 control request session=2 method=GET uri=<URL_REDACTED> body=70
+[INFO] [airplay] session=2 request=1 method=GET uri=<URL_REDACTED> bytes=70 state=connected
+[INFO] [airplay] t_ms=102833445 control response session=2 request=1 status=200 body=274 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102833454 control request session=2 method=POST uri=<URL_REDACTED> body=68
+[INFO] [airplay-pairing] t_ms=102833466 session=2 uri=<URL_REDACTED> bytes=68 state=idle->verify-challenge result=ok status=200 close=0
+[INFO] [airplay] t_ms=102833467 control response session=2 request=2 status=200 body=96 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102833473 control request session=2 method=POST uri=<URL_REDACTED> body=68
+[INFO] [airplay-pairing] t_ms=102833474 session=2 uri=<URL_REDACTED> bytes=68 state=verify-challenge->verified result=ok status=200 close=0
+[INFO] [airplay] t_ms=102833474 control response session=2 request=3 status=200 body=0 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102833481 control request session=2 method=POST uri=<URL_REDACTED> body=16
+[INFO] [airplay] session=2 request=4 method=POST uri=<URL_REDACTED> bytes=16 state=connected
+[INFO] [airplay] endpoint=fp-setup bytes=16 result=ok
+[INFO] [airplay] t_ms=102833482 control response session=2 request=4 status=200 body=142 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102833490 control request session=2 method=POST uri=<URL_REDACTED> body=164
+[INFO] [airplay] session=2 request=5 method=POST uri=<URL_REDACTED> bytes=164 state=connected
+[INFO] [airplay] endpoint=fp-setup bytes=164 result=ok
+[INFO] [airplay] t_ms=102833490 control response session=2 request=5 status=200 body=32 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102833497 control request session=2 method=SETUP uri=<URL_REDACTED> body=697
+[INFO] [airplay] session=2 request=6 method=SETUP uri=<URL_REDACTED> bytes=697 state=connected
+[INFO] [airplay] t_ms=102833498 setup metadata session=2 keys=19 initial=1 timing=NTP timing_port=55441 remote_control=0 streams=0 mirror=0 audio=0
+[INFO] [airplay-thread] role=airplay-timing event=created generation=2 created=2 joined=1 live=1 failed=0 underflow=0
+[INFO] [airplay-timing] session=2 protocol=NTP local=48198 remote=55441
+[INFO] [airplay] session=2 method=SETUP initial=1 mirror=0 record=0 result=ok
+[INFO] [airplay] t_ms=102833498 control response session=2 request=6 status=200 body=76 headers=4 sent=1 close=0
+[INFO] [airplay-timing] first NTP response received
+[INFO] [airplay] t_ms=102833510 control request session=2 method=GET uri=<URL_REDACTED> body=0
+[INFO] [airplay] session=2 request=7 method=GET uri=<URL_REDACTED> bytes=0 state=setup
+[INFO] [airplay] t_ms=102833510 control response session=2 request=7 status=200 body=1105 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102833519 control request session=2 method=RECORD uri=<URL_REDACTED> body=0
+[INFO] [airplay] session=2 request=8 method=RECORD uri=<URL_REDACTED> bytes=0 state=setup
+[INFO] [airplay] session=2 method=RECORD mirror=0 deferred=1
+[INFO] [airplay] t_ms=102833519 control response session=2 request=8 status=200 body=0 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102833789 control request session=2 method=SETUP uri=<URL_REDACTED> body=243
+[INFO] [airplay] session=2 request=9 method=SETUP uri=<URL_REDACTED> bytes=243 state=recording
+[INFO] [airplay] t_ms=102833789 setup metadata session=2 keys=1 initial=0 timing=missing timing_port=0 remote_control=0 streams=1 mirror=0 audio=1
+[INFO] [airplay-setup] session=2 stream=audio ct=2 spf=352 sr=44100 stage=negotiate
+[INFO] [airplay-setup-failure] session=2 stream=audio stage=format ct=2 spf=352 sr=44100
+[INFO] [airplay] session=2 method=SETUP initial=1 mirror=0 record=1 result=failed
+[INFO] [airplay-thread] role=airplay-timing event=joined generation=2 created=2 joined=2 live=0 failed=0 underflow=0
+[INFO] [airplay] t_ms=102833809 control response session=2 request=9 status=461 body=0 headers=3 sent=1 close=0
+[INFO] [airplay] t_ms=102833819 control request session=2 method=TEARDOWN uri=<URL_REDACTED> body=42
+[INFO] [airplay] session=2 request=10 method=TEARDOWN uri=<URL_REDACTED> bytes=42 state=recording
+[INFO] [airplay] t_ms=102833819 control response session=2 request=10 status=200 body=0 headers=3 sent=1 close=1
+[INFO] [airplay] t_ms=102833819 control closed session=2 requests=10 reason=response-close errno=0
+[INFO] [airplay-thread] role=airplay-client event=joined generation=2 created=2 joined=2 live=0 failed=0 underflow=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102835242 f=2877 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:47646/0:47643/0:11958 media=0/1/0/0/0/0/0/0/5/0/0/0/0/1 log=0/45/315/0/0/0 mdns=waiting/1/0/1/176/70/15/9 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [airplay] t_ms=102836314 control accepted peer=<IP_REDACTED>:63759 fd=8
+[INFO] [airplay-thread] role=airplay-client event=created generation=3 created=3 joined=2 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102836314 control client-worker entered slot=0 fd=8
+[INFO] [airplay] t_ms=102836314 control request session=3 method=GET uri=<URL_REDACTED> body=70
+[INFO] [airplay] session=3 request=1 method=GET uri=<URL_REDACTED> bytes=70 state=connected
+[INFO] [airplay] t_ms=102836314 control response session=3 request=1 status=200 body=274 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102836329 control request session=3 method=POST uri=<URL_REDACTED> body=68
+[INFO] [airplay-pairing] t_ms=102836341 session=3 uri=<URL_REDACTED> bytes=68 state=idle->verify-challenge result=ok status=200 close=0
+[INFO] [airplay] t_ms=102836342 control response session=3 request=2 status=200 body=96 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102836349 control request session=3 method=POST uri=<URL_REDACTED> body=68
+[INFO] [airplay-pairing] t_ms=102836350 session=3 uri=<URL_REDACTED> bytes=68 state=verify-challenge->verified result=ok status=200 close=0
+[INFO] [airplay] t_ms=102836350 control response session=3 request=3 status=200 body=0 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102836357 control request session=3 method=POST uri=<URL_REDACTED> body=16
+[INFO] [airplay] session=3 request=4 method=POST uri=<URL_REDACTED> bytes=16 state=connected
+[INFO] [airplay] endpoint=fp-setup bytes=16 result=ok
+[INFO] [airplay] t_ms=102836357 control response session=3 request=4 status=200 body=142 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102836364 control request session=3 method=POST uri=<URL_REDACTED> body=164
+[INFO] [airplay] session=3 request=5 method=POST uri=<URL_REDACTED> bytes=164 state=connected
+[INFO] [airplay] endpoint=fp-setup bytes=164 result=ok
+[INFO] [airplay] t_ms=102836364 control response session=3 request=5 status=200 body=32 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102836369 control request session=3 method=SETUP uri=<URL_REDACTED> body=697
+[INFO] [airplay] session=3 request=6 method=SETUP uri=<URL_REDACTED> bytes=697 state=connected
+[INFO] [airplay] t_ms=102836369 setup metadata session=3 keys=19 initial=1 timing=NTP timing_port=64332 remote_control=0 streams=0 mirror=0 audio=0
+[INFO] [airplay-thread] role=airplay-timing event=created generation=3 created=3 joined=2 live=1 failed=0 underflow=0
+[INFO] [airplay-timing] session=3 protocol=NTP local=44937 remote=64332
+[INFO] [airplay] session=3 method=SETUP initial=1 mirror=0 record=0 result=ok
+[INFO] [airplay] t_ms=102836370 control response session=3 request=6 status=200 body=76 headers=4 sent=1 close=0
+[INFO] [airplay-timing] first NTP response received
+[INFO] [airplay] t_ms=102836381 control request session=3 method=GET uri=<URL_REDACTED> body=0
+[INFO] [airplay] session=3 request=7 method=GET uri=<URL_REDACTED> bytes=0 state=setup
+[INFO] [airplay] t_ms=102836382 control response session=3 request=7 status=200 body=1105 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102836390 control request session=3 method=RECORD uri=<URL_REDACTED> body=0
+[INFO] [airplay] session=3 request=8 method=RECORD uri=<URL_REDACTED> bytes=0 state=setup
+[INFO] [airplay] session=3 method=RECORD mirror=0 deferred=1
+[INFO] [airplay] t_ms=102836390 control response session=3 request=8 status=200 body=0 headers=4 sent=1 close=0
+[INFO] [airplay] t_ms=102836597 control request session=3 method=SETUP uri=<URL_REDACTED> body=243
+[INFO] [airplay] session=3 request=9 method=SETUP uri=<URL_REDACTED> bytes=243 state=recording
+[INFO] [airplay] t_ms=102836597 setup metadata session=3 keys=1 initial=0 timing=missing timing_port=0 remote_control=0 streams=1 mirror=0 audio=1
+[INFO] [airplay-setup] session=3 stream=audio ct=2 spf=352 sr=44100 stage=negotiate
+[INFO] [airplay-setup-failure] session=3 stream=audio stage=format ct=2 spf=352 sr=44100
+[INFO] [airplay] session=3 method=SETUP initial=1 mirror=0 record=1 result=failed
+[INFO] [airplay-thread] role=airplay-timing event=joined generation=3 created=3 joined=3 live=0 failed=0 underflow=0
+[INFO] [airplay] t_ms=102836680 control response session=3 request=9 status=461 body=0 headers=3 sent=1 close=0
+[INFO] [airplay] t_ms=102836697 control request session=3 method=TEARDOWN uri=<URL_REDACTED> body=42
+[INFO] [airplay] session=3 request=10 method=TEARDOWN uri=<URL_REDACTED> bytes=42 state=recording
+[INFO] [airplay] t_ms=102836697 control response session=3 request=10 status=200 body=0 headers=3 sent=1 close=1
+[INFO] [airplay] t_ms=102836697 control closed session=3 requests=10 reason=response-close errno=0
+[INFO] [airplay-thread] role=airplay-client event=joined generation=3 created=3 joined=3 live=0 failed=0 underflow=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] v=2 t=102837242 f=2997 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:49646/0:49643/0:13958 media=0/1/0/0/0/0/0/0/0/0/0/0/0/1 log=0/45/240/0/0/0 mdns=waiting/1/0/1/127/83/19/11 ssdp=0
+[INFO] [network-heartbeat] v=2 mdns=1/1/select:127/127/201/0:none/0/0 ssdp=1/1/select:26/26/101/0:none/0/0 dlna-http=1/1/select:40/40/247/0:none/0/0 airplay-control=1/1/select:27/27/231/11:recv/0/0 airplay-timing=0/0/none:0/645/0/0:none/0/0 airplay-audio=0/0/none:0/0/0/0:none/0/0 airplay-mirror=0/0/none:0/0/0/0:none/0/0 iptv-background=0/0/none:0/0/0/0:none/0/0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] v=2 t=102839242 f=3117 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:51646/0:51643/0:15958 media=0/1/0/0/0/0/0/0/9/0/0/0/0/1 log=0/45/313/0/0/0 mdns=waiting/1/0/1/188/95/22/11 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[INFO] [media-trace] seq=3 t_ms=16965 layer=soap action=Stop phase=begin url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [media-trace] seq=3 t_ms=16965 layer=soap action=Stop phase=done url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Stop handler=avtransport_stop
+[INFO] [return-home] phase=request t_ms=102839775 playback_active=1 state=error media=1
+[INFO] [return-home] phase=player-stop begin state=error
+[INFO] [media-trace] seq=3 t_ms=16978 layer=player action=Stop phase=backend-call-begin url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=16978 layer=libmpv action=Stop phase=mutex-wait url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=16978 layer=libmpv action=Stop phase=mutex-acquired url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=16978 layer=libmpv action=Stop phase=dispatch url_hash=d06e2a93 detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=stop owner=none generation=0 app_threads=3/18/15/0/0 free_thread_slots=80 mem=3440488448/3444572160/4083712 heap=39778288/44216320/4438032/77808 sockets=4 mdns=1 ssdp=1 dlna-http=1 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=3 t_ms=16979 layer=player action=Stop phase=backend-call-done url_hash=d06e2a93 detail=ok
+[INFO] [media-trace] seq=3 t_ms=16979 layer=player action=Stop phase=snapshot-refresh-begin url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=16979 layer=player action=Stop phase=snapshot-refresh-done url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=16979 layer=player action=Stop phase=backend-wakeup-begin url_hash=d06e2a93 detail=-
+[INFO] [media-trace] seq=3 t_ms=16979 layer=player action=Stop phase=backend-wakeup-done url_hash=d06e2a93 detail=-
+[INFO] [return-home] phase=player-stop done state=error
+[INFO] [return-home] phase=wait-player-stopped ready_ms=102840025
+[INFO] [dlna-control] event=return-home reason=explicit-stop ok=1 stop=1 polls=0 poll_age_ms=102839775 state=error
+[INFO] [return-home] phase=show-home begin reason=player-stopped state=stopped media=1
+[INFO] [player-view] manual navigation target=home state=STOPPED
+[INFO] [return-home] phase=show-home done ok=1 reason=player-stopped pending=0
+[INFO] [input] action=return-home-complete ok=1 state=stopped
+[INFO] [runtime-heartbeat] v=2 t=102841242 f=3237 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:53646/0:53643/0:17958 media=0/1/0/0/0/0/0/0/5/0/0/0/0/1 log=0/45/1216/0/0/0 mdns=waiting/1/0/1/133/106/23/11 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102843242 f=3357 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:55646/0:55643/0:19958 media=0/1/0/0/0/0/0/0/4/0/0/0/0/1 log=0/45/2000/0/0/0 mdns=waiting/1/0/1/133/116/23/11 ssdp=0
+[INFO] [ssdp] send packet to <IP_REDACTED>:10465 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:10465 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:10465 st=upnp:rootdevice bytes=283
+[INFO] [runtime-heartbeat] v=2 t=102845242 f=3477 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:57646/0:57643/0:21958 media=0/1/0/0/0/0/0/0/3/0/0/0/0/1 log=0/45/745/0/0/0 mdns=waiting/1/0/1/132/126/23/11 ssdp=0
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI><URL_REDACTED></CurrentURI>
+[INFO] [media-trace] seq=4 t_ms=0 action=SetAVTransportURI phase=begin url_hash=917df2c7 metadata_bytes=2158 url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=0 layer=soap action=SetAVTransportURI phase=dispatch instance=0 url_hash=917df2c7 url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=claim previous_owner=none previous_token=0 previous_generation=0 owner=dlna token=1 generation=5
+[INFO] [resource-snapshot] event=claim owner=dlna generation=5 app_threads=3/18/15/0/0 free_thread_slots=80 mem=3440488448/3444572160/4083712 heap=39929408/44216320/4286912/77808 sockets=5 mdns=1 ssdp=1 dlna-http=2 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] revision=45->48 state=ready->media-active iptv=running->running dlna=running->running airplay=running->running owner=none->dlna token=1 generation=5 pin_visible=0 resource=home->home desired=dlna-exclusive transition=1 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [iptv] background-network suspended=1 quiesced=1
+[INFO] [airplay-thread] role=airplay-mdns event=joined generation=4 created=4 joined=4 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-listener event=joined generation=4 created=4 joined=4 live=0 failed=0 underflow=0
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=joined generation=4 created=4 joined=4 live=0 failed=0 underflow=0
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=5 reason=stale-lease
+[INFO] [protocol-coordinator] event=reject action=validate owner=none token=0 generation=0 current_owner=dlna current_token=1 current_generation=5 reason=stale-lease
+[INFO] [media-trace] seq=4 t_ms=18 layer=player action=set_media phase=begin url_hash=917df2c7 url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=18 layer=libmpv action=set_media phase=begin url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=18 layer=libmpv action=set_media phase=mutex-wait url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=18 layer=libmpv action=set_media phase=mutex-acquired url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=next-loadfile owner=dlna generation=5 app_threads=0/18/18/0/0 free_thread_slots=82 mem=3440488448/3444572160/4083712 heap=39990528/44216320/4225792/77808 sockets=3 mdns=0 ssdp=1 dlna-http=2 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=4 t_ms=19 layer=libmpv action=loadfile phase=dispatch url_hash=917df2c7 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=19 layer=libmpv action=loadfile phase=queued url_hash=917df2c7 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=19 layer=libmpv action=set_media phase=done url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=19 layer=player action=set_media phase=done url_hash=917df2c7 url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=19 layer=libmpv action=mpv-start-file phase=event url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=19 layer=soap action=SetAVTransportURI phase=done url_hash=917df2c7 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[INFO] [dlna-player-diag] phase=loading cache_bytes=unknown/unknown cache_s=unknown reader_pts=unknown cache_end=unknown eof=unknown underrun=unknown http=unknown range=loadfile video=unknown/unknown hwdec=unknown frames=decoded:unknown/presented:unknown/dropped:unknown+unknown
+[INFO] [protocol-coordinator] revision=48->51 state=media-active->media-active iptv=running->running dlna=running->running airplay=running->stopped owner=dlna->dlna token=1 generation=5 pin_visible=0 resource=home->dlna-exclusive desired=dlna-exclusive transition=0 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=3526
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[INFO] [media-trace] seq=4 t_ms=34 layer=soap action=Play phase=begin url_hash=917df2c7 detail=1 url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=34 layer=player action=Play phase=backend-call-begin url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=34 layer=libmpv action=Play phase=mutex-wait url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=34 layer=libmpv action=Play phase=mutex-acquired url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=34 layer=libmpv action=Play phase=deferred url_hash=917df2c7 detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=34 layer=player action=Play phase=backend-call-done url_hash=917df2c7 detail=ok
+[INFO] [media-trace] seq=4 t_ms=34 layer=player action=Play phase=snapshot-refresh-begin url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=34 layer=player action=Play phase=snapshot-refresh-done url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=34 layer=player action=Play phase=backend-wakeup-begin url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=34 layer=player action=Play phase=backend-wakeup-done url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=34 layer=soap action=Play phase=done url_hash=917df2c7 detail=1 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[WARN] [player-libmpv][ffmpeg] http: HTTP error 514 Frequency Capped
+[ERROR] [player-libmpv][stream] Failed to open <URL_REDACTED>
+[ERROR] [player-libmpv][ytdl_hook]
+[ERROR] [player-libmpv][ytdl_hook] youtube-dl failed: unexpected error occurred
+[INFO] [player-libmpv] end-file uri=<URL_REDACTED> reason=error error=loading failed
+[INFO] [media-trace] seq=4 t_ms=521 layer=libmpv action=mpv-end-file phase=event url_hash=917df2c7 detail=error url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=end-file owner=dlna generation=5 app_threads=0/18/18/0/0 free_thread_slots=83 mem=3440488448/3444572160/4083712 heap=39587680/44216320/4628640/77808 sockets=2 mdns=0 ssdp=1 dlna-http=1 airplay-control=0 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [protocol-coordinator] event=terminal-release owner=dlna token=1 generation=5 seen_active=1
+[INFO] [protocol-coordinator] event=release action=release owner=dlna token=1 generation=5 reason=completed
+[INFO] [protocol-coordinator] revision=51->54 state=media-active->ready iptv=running->running dlna=running->running airplay=stopped->stopped owner=dlna->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->dlna-exclusive desired=home transition=1 failed=0 discovery_suspended=0->0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [player-view] desired_view=home state=ERROR has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=home frame=3556
+[INFO] [input] active_view=home state=error media=1 snapshot=1
+[INFO] [airplay] t_ms=102846576 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=102846576 integration stage=ed25519 done
+[INFO] [airplay] t_ms=102846576 integration stage=mirror-runtime begin
+[INFO] [airplay-thread] role=airplay-mirror-runtime event=created generation=5 created=5 joined=4 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102846576 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=102846576 integration stage=remote-video begin
+[INFO] [airplay] t_ms=102846576 integration stage=remote-video done
+[INFO] [airplay] t_ms=102846576 integration stage=receiver begin
+[INFO] [airplay] t_ms=102846576 receiver stage=pairing-identity begin
+[INFO] [airplay] t_ms=102846582 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=102846582 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=102846582 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=102846582 receiver stage=handlers begin
+[INFO] [airplay] t_ms=102846582 handlers stage=validate begin
+[INFO] [airplay] t_ms=102846582 handlers stage=validate done
+[INFO] [airplay] t_ms=102846582 handlers stage=allocate begin bytes=792
+[INFO] [airplay] t_ms=102846582 handlers stage=allocate done
+[INFO] [airplay] t_ms=102846582 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=102846582 handlers stage=copy done
+[INFO] [airplay] t_ms=102846582 receiver stage=handlers done
+[INFO] [airplay] t_ms=102846582 receiver stage=control-server begin
+[INFO] [airplay-thread] role=airplay-listener event=created generation=5 created=5 joined=4 live=1 failed=0 underflow=0
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=102846583 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=102846583 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=102846583 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=102846583 receiver stage=mdns begin
+[INFO] [airplay] t_ms=102846583 mdns stage=local-address begin
+[INFO] [airplay] t_ms=102846583 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=102846583 mdns stage=service-record begin
+[INFO] [airplay] t_ms=102846583 mdns stage=service-record done
+[INFO] [airplay] t_ms=102846583 mdns stage=socket begin
+[INFO] [airplay] t_ms=102846584 mdns socket stage=create begin
+[INFO] [airplay] t_ms=102846584 mdns socket stage=create done fd=6
+[INFO] [airplay] t_ms=102846584 mdns socket stage=bind begin port=5353
+[INFO] [airplay] t_ms=102846584 mdns socket stage=bind done
+[INFO] [airplay] t_ms=102846584 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=102846584 mdns socket stage=multicast-join done
+[INFO] [airplay] t_ms=102846584 mdns stage=socket done
+[INFO] [airplay] t_ms=102846584 mdns stage=thread begin
+[INFO] [airplay] t_ms=102846584 mdns thread-create begin stack=65536
+[INFO] [airplay] t_ms=102846584 mdns thread-create done rc=0x00000000
+[INFO] [airplay] t_ms=102846584 mdns thread-start begin
+[INFO] [airplay] t_ms=102846584 mdns worker entered
+[INFO] [airplay] t_ms=102846584 mdns worker mode=0 priority=0x2b
+[INFO] [airplay] t_ms=102846584 mdns worker announce begin
+[INFO] [airplay] t_ms=102846584 mdns thread-start done rc=0x00000000
+[INFO] [airplay-thread] role=airplay-mdns event=created generation=5 created=5 joined=4 live=1 failed=0 underflow=0
+[INFO] [airplay] t_ms=102846584 mdns stage=thread done
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay] t_ms=102846584 receiver stage=mdns done
+[INFO] [airplay] t_ms=102846584 integration stage=receiver done
+[INFO] [airplay] integration started port=7000 discovery=1
+[INFO] [iptv] background-network suspended=0 quiesced=1
+[INFO] [airplay] t_ms=102846585 mdns worker announce done
+[INFO] [protocol-coordinator] revision=54->58 state=ready->ready iptv=running->running dlna=running->running airplay=stopped->running owner=none->none token=0 generation=0 pin_visible=0 resource=dlna-exclusive->home desired=home transition=0 failed=0 discovery_suspended=0->0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] v=2 t=102847242 f=3597 ui=home p=error/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:59646/0:59643/0:658 media=0/1/0/0/0/0/0/0/7/0/0/0/0/1 log=0/45/151/0/0/0 mdns=waiting/1/0/1/57/3/0/2 ssdp=0
+[INFO] [network-heartbeat] v=2 mdns=1/1/select:57/57/201/0:none/0/0 ssdp=1/1/select:44/44/101/0:none/0/0 dlna-http=1/1/select:51/51/247/0:none/0/0 airplay-control=1/1/select:59/59/231/11:recv/0/0 airplay-timing=0/0/none:0/10645/0/0:none/0/0 airplay-audio=0/0/none:0/0/0/0:none/0/0 airplay-mirror=0/0/none:0/0/0/0:none/0/0 iptv-background=0/0/none:0/0/0/0:none/0/0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[INFO] [media-trace] seq=4 t_ms=2217 layer=soap action=Stop phase=begin url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=reject action=guard owner=dlna token=1 current_owner=none current_token=0 current_generation=0 reason=owner-mismatch
+[INFO] [media-trace] seq=4 t_ms=2217 layer=soap action=Stop phase=done url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Stop handler=avtransport_stop
+[INFO] [return-home] phase=request t_ms=102848275 playback_active=1 state=error media=1
+[INFO] [return-home] phase=player-stop begin state=error
+[INFO] [media-trace] seq=4 t_ms=2232 layer=player action=Stop phase=backend-call-begin url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=2232 layer=libmpv action=Stop phase=mutex-wait url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=2232 layer=libmpv action=Stop phase=mutex-acquired url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=2232 layer=libmpv action=Stop phase=dispatch url_hash=917df2c7 detail=- url=<URL_REDACTED>
+[INFO] [resource-snapshot] event=stop owner=none generation=0 app_threads=3/21/18/0/0 free_thread_slots=80 mem=3440488448/3444572160/4083712 heap=39812736/44216320/4403584/77808 sockets=4 mdns=1 ssdp=1 dlna-http=1 airplay-control=1 airplay-timing=0 airplay-audio=0 airplay-mirror=0 iptv-background=0
+[INFO] [media-trace] seq=4 t_ms=2233 layer=player action=Stop phase=backend-call-done url_hash=917df2c7 detail=ok
+[INFO] [media-trace] seq=4 t_ms=2233 layer=player action=Stop phase=snapshot-refresh-begin url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=2233 layer=player action=Stop phase=snapshot-refresh-done url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=2233 layer=player action=Stop phase=backend-wakeup-begin url_hash=917df2c7 detail=-
+[INFO] [media-trace] seq=4 t_ms=2233 layer=player action=Stop phase=backend-wakeup-done url_hash=917df2c7 detail=-
+[INFO] [return-home] phase=player-stop done state=error
+[INFO] [return-home] phase=wait-player-stopped ready_ms=102848525
+[INFO] [dlna-control] event=return-home reason=explicit-stop ok=1 stop=1 polls=0 poll_age_ms=102848275 state=error
+[INFO] [return-home] phase=show-home begin reason=player-stopped state=stopped media=1
+[INFO] [player-view] manual navigation target=home state=STOPPED
+[INFO] [return-home] phase=show-home done ok=1 reason=player-stopped pending=0
+[INFO] [input] action=return-home-complete ok=1 state=stopped
+[INFO] [runtime-heartbeat] v=2 t=102849242 f=3717 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:61646/0:61643/0:2658 media=0/1/0/0/0/0/0/0/5/0/0/0/0/1 log=0/45/716/0/0/0 mdns=waiting/1/0/1/57/13/0/2 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102851242 f=3837 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:63646/0:63643/0:4658 media=0/1/0/0/0/0/0/0/4/0/0/0/0/1 log=0/45/2000/0/0/0 mdns=waiting/1/0/1/56/23/0/2 ssdp=0
+[INFO] [runtime-heartbeat] v=2 t=102853242 f=3957 ui=home p=stopped/1/0 proto=ready own=none/0 res=home/home/0/0/0 svc=0/0/0/0:65646/0:65643/0:6658 media=0/1/0/0/0/0/0/0/3/0/0/0/0/1 log=0/45/2000/0/0/0 mdns=waiting/1/0/1/56/33/0/2 ssdp=0
+exiting ...
+socket error 0x0 on poll

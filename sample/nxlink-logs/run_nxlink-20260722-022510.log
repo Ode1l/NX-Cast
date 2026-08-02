@@ -1,0 +1,800 @@
+pinging switch
+Sending NX-Cast.nro, 25596602 bytes
+12468638 sent (48.71%), 1112 blocks
+starting server
+server active ...
+[INFO] [log] nxlink logger connected host=<IP_REDACTED> port=28771 fd=3 mirror_fd=2 stdout=local
+[INFO] [diagnostic] profile_id=9 profile=mdns-receive-bsd8 protocol_start=parallel
+[INFO] [player-view] init render_owner=main-thread active_view=home
+[INFO] [player] auto resolve libmpv_available=1 mock_available=1
+[INFO] [player-actor] lifecycle=initialize phase=begin backend=libmpv
+[INFO] [player] init accepted backend=libmpv lifecycle=async-suspended actor_capacity=64 reserved=4
+[INFO] [ui] NX-Cast starting. Press + to exit.
+[INFO] [ui] Home view shows cast instructions and last error only.
+[INFO] [ui] Video view auto-activates while playback is active.
+[INFO] [runtime-heartbeat] t_ms=23674740 frame=1 view=home player_state=idle media=0 return_home_pending=0 protocol_state=stopped owner=none generation=0 service_workers=0,0,0 service_age_ms=0,0,0 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=22 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=1,0,0,0 log_queue=7 enqueued=14 processed=6 log_high=7 log_heartbeat_age_ms=9 log_waiting=0 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=stopped mdns_mode=3 mdns_running=0 mdns_socket=0 mdns_heartbeat_age_ms=0 mdns_select=0 mdns_recv=0 mdns_sent=0
+[INFO] [input] active_view=home state=idle media=0 snapshot=1
+[INFO] [player-libmpv] log subscription level=info
+[INFO] [player-libmpv] init volume_backend=aud:a-process
+[INFO] [player-libmpv] init
+[INFO] [player-actor] lifecycle=initialize phase=ready backend=libmpv
+[INFO] [player-view] dk3d render context attached early
+[INFO] [player-view] prepare_video ok=1 render_api_connected=0 render_path=0
+[INFO] [ui] video render prepare=1 player_activate=1 before_media_url=1
+[INFO] [protocol-coordinator] start accepted=1 state=starting iptv=starting dlna=starting airplay=starting network=1 root=sdmc:/switch/NX-Cast/iptv
+[INFO] [airplay] t_ms=23674784 integration stage=ed25519 begin
+[INFO] [airplay] t_ms=23674784 integration stage=ed25519 done
+[INFO] [airplay] t_ms=23674784 integration stage=mirror-runtime begin
+[INFO] [airplay] t_ms=23674784 integration stage=mirror-runtime done
+[INFO] [airplay] t_ms=23674784 integration stage=remote-video begin
+[INFO] [airplay] t_ms=23674784 integration stage=remote-video done
+[INFO] [airplay] t_ms=23674784 integration stage=receiver begin
+[INFO] [airplay] t_ms=23674784 receiver stage=pairing-identity begin
+[INFO] [dlna] loaded persistent device identity.
+[INFO] [player-view] render_api_connected=1 backend=dk3d
+[INFO] [player-view] home renderer active frame=1
+[INFO] [scpd] description templates ready.
+[INFO] [iptv] preinstalled source file loaded sources=1 changed=0 refresh=0
+[INFO] [airplay] t_ms=23674835 receiver stage=pairing-identity done
+[INFO] [airplay] t_ms=23674835 receiver stage=dns-sd-txt begin
+[INFO] [airplay] t_ms=23674835 receiver stage=dns-sd-txt done
+[INFO] [airplay] t_ms=23674836 receiver stage=handlers begin
+[INFO] [airplay] t_ms=23674836 handlers stage=validate begin
+[INFO] [airplay] t_ms=23674836 handlers stage=validate done
+[INFO] [airplay] t_ms=23674836 handlers stage=allocate begin bytes=792
+[INFO] [airplay] t_ms=23674837 handlers stage=allocate done
+[INFO] [airplay] t_ms=23674837 handlers stage=copy begin txt_bytes=214
+[INFO] [airplay] t_ms=23674838 handlers stage=copy done
+[INFO] [airplay] t_ms=23674838 receiver stage=handlers done
+[INFO] [airplay] t_ms=23674838 receiver stage=control-server begin
+[INFO] [soap] SOAP control module started.
+[INFO] [event] DLNA event server started.
+[INFO] [http-server] listening on :49152
+[INFO] [player-imgui] initialized deko3d overlay
+[INFO] [player-libmpv][osd/libass] can't find selected font provider
+[INFO] [airplay-server] listening on :7000
+[INFO] [airplay] t_ms=23675093 receiver stage=control-server done port=7000
+[INFO] [airplay] t_ms=23675093 receiver stage=lifecycle begin
+[INFO] [airplay] t_ms=23675093 receiver stage=lifecycle done
+[INFO] [airplay] t_ms=23675093 receiver stage=mdns begin
+[INFO] [airplay] t_ms=23675093 mdns stage=local-address begin
+[INFO] [airplay] t_ms=23675094 mdns stage=local-address done
+[INFO] [airplay-mdns] local-address=<IP_REDACTED>
+[INFO] [airplay] t_ms=23675095 mdns stage=service-record begin
+[INFO] [airplay] t_ms=23675095 mdns stage=service-record done
+[INFO] [airplay] t_ms=23675095 mdns stage=socket begin
+[INFO] [airplay] t_ms=23675095 mdns socket stage=create begin
+[INFO] [airplay] t_ms=23675095 mdns socket stage=create done fd=7
+[INFO] [airplay] t_ms=23675095 mdns socket stage=bind begin port=5353
+[INFO] [protocol-coordinator] revision=2->3 state=starting->starting iptv=starting->running dlna=starting->starting airplay=starting->starting owner=none->none token=0 generation=0 pin_visible=0 airplay_running=0 airplay_starting=0 status=none
+[INFO] [airplay] t_ms=23675097 mdns socket stage=bind done
+[INFO] [airplay] t_ms=23675097 mdns socket stage=multicast-join begin
+[INFO] [airplay] t_ms=23675097 mdns socket stage=multicast-join done
+[INFO] [ssdp] Responder ready on <URL_REDACTED>
+[INFO] [dlna] Control layer initialized (HTTP/SCPD on :49152).
+[INFO] [airplay] t_ms=23675098 mdns stage=socket done
+[INFO] [airplay] t_ms=23675098 mdns stage=thread begin
+[INFO] [airplay] t_ms=23675098 mdns thread-create begin stack=65536
+[INFO] [airplay] t_ms=23675098 mdns thread-create done rc=0x00000000
+[INFO] [airplay] t_ms=23675098 mdns thread-start begin
+[INFO] [airplay] t_ms=23675098 mdns worker entered
+[INFO] [airplay] t_ms=23675098 mdns worker mode=3 priority=0x2b
+[INFO] [airplay] t_ms=23675098 mdns thread-start done rc=0x00000000
+[INFO] [airplay] t_ms=23675098 mdns stage=thread done
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay-mdns] started airplay=NX-Cast raop=<IDENTIFIER_REDACTED>@NX-Cast port=7000 features=0x5A7FFEE6,0x0
+[INFO] [airplay] t_ms=23675098 receiver stage=mdns done
+[INFO] [airplay] t_ms=23675098 integration stage=receiver done
+[INFO] [airplay] integration started port=7000 discovery=1
+[INFO] [protocol-coordinator] revision=3->6 state=starting->ready iptv=running->running dlna=starting->running airplay=starting->running owner=none->none token=0 generation=0 pin_visible=0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [runtime-heartbeat] t_ms=23676746 frame=118 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=1653,1648,1648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=89 processed=89 log_high=25 log_heartbeat_age_ms=1632 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=48 mdns_select=8 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23678746 frame=238 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=3653,3648,3648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=90 processed=90 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=48 mdns_select=18 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23680746 frame=358 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=5653,5648,5648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=91 processed=91 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=48 mdns_select=28 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23682746 frame=478 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=7653,7648,7648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=92 processed=92 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=47 mdns_select=38 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23684746 frame=598 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=9653,9648,9648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=93 processed=93 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=47 mdns_select=48 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23686746 frame=718 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=11653,11648,11648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=10 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=94 processed=94 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=46 mdns_select=58 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23688746 frame=838 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=13653,13648,13648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=95 processed=95 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=46 mdns_select=68 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23690746 frame=958 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=15653,15648,15648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=96 processed=96 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=45 mdns_select=78 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23692746 frame=1078 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=17653,17648,17648 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=97 processed=97 log_high=25 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=43 mdns_select=88 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23694747 frame=1198 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=19654,19649,19649 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=98 processed=98 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=44 mdns_select=98 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23696763 frame=1319 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=21670,21665,21665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=10 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=99 processed=99 log_high=25 log_heartbeat_age_ms=2016 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=59 mdns_select=108 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23698763 frame=1439 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=23670,23665,23665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=100 processed=100 log_high=25 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=59 mdns_select=118 mdns_recv=0 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23700763 frame=1559 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=25670,25665,25665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=101 processed=101 log_high=25 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=183 mdns_select=128 mdns_recv=1 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23702763 frame=1679 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=27670,27665,27665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=102 processed=102 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=175 mdns_select=139 mdns_recv=2 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23704763 frame=1799 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=29670,29665,29665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=103 processed=103 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=103 mdns_select=150 mdns_recv=3 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23706763 frame=1919 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=31670,31665,31665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=104 processed=104 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=102 mdns_select=160 mdns_recv=3 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23708763 frame=2039 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=33670,33665,33665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=105 processed=105 log_high=25 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=102 mdns_select=170 mdns_recv=3 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23710763 frame=2159 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=35670,35665,35665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=106 processed=106 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=101 mdns_select=180 mdns_recv=3 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23712763 frame=2279 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=37670,37665,37665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=0 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=107 processed=107 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=101 mdns_select=190 mdns_recv=3 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23714763 frame=2399 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=39670,39665,39665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=108 processed=108 log_high=25 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=91 mdns_select=201 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23716763 frame=2519 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=41670,41665,41665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=109 processed=109 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=91 mdns_select=211 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23718763 frame=2639 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=43670,43665,43665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=110 processed=110 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=90 mdns_select=221 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23720763 frame=2759 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=45670,45665,45665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=111 processed=111 log_high=25 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=90 mdns_select=231 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23722763 frame=2879 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=47670,47665,47665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=112 processed=112 log_high=25 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=89 mdns_select=241 mdns_recv=4 mdns_sent=0
+[INFO] [input] buttons_down=0x4 view=home state=idle media=0
+[INFO] [input] action=iptv-panel open=1 page=channels
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/4a7088d3.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9efc58f1.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/52e0194c.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/a08eed09.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/6cb00861.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/f169131a.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/4f2e344b.img
+[INFO] [input] buttons_down=0x8000 view=home state=idle media=0
+[INFO] [runtime-heartbeat] t_ms=23724763 frame=2999 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=49670,49665,49665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=123 processed=123 log_high=25 log_heartbeat_age_ms=599 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=89 mdns_select=251 mdns_recv=4 mdns_sent=0
+[INFO] [input] buttons_down=0x8000 view=home state=idle media=0
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/5db69825.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9f213a16.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9aaf04cb.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/ce9fb65a.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/c125c614.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/e341d217.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/1f2d4256.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9559bcd1.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/d63f5cc0.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/f5841fc2.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/b6be5c32.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/e87c5112.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/c5a3a2b9.img
+[WARN] [player-imgui] failed to decode IPTV logo path=sdmc:/switch/NX-Cast/iptv/cache/logos/9ff9071d.img
+[INFO] [runtime-heartbeat] t_ms=23726763 frame=3119 view=home player_state=idle media=0 return_home_pending=0 protocol_state=ready owner=none generation=0 service_workers=0,0,0 service_age_ms=51670,51665,51665 media_queue=0 media_high=0 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=139 processed=139 log_high=25 log_heartbeat_age_ms=416 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=88 mdns_select=261 mdns_recv=4 mdns_sent=0
+[INFO] [input] buttons_down=0x1 view=home state=idle media=0
+[INFO] [media-trace] seq=1 t_ms=0 action=IPTVPlay phase=begin url_hash=9cc30efa metadata_bytes=14 url=<URL_REDACTED>
+[INFO] [iptv-play] seq=1 phase=begin channel_id=c5a3a2b9 url_hash=9cc30efa
+[INFO] [iptv-play] seq=1 phase=claim begin url_hash=9cc30efa
+[INFO] [protocol-coordinator] event=claim previous_owner=none previous_token=0 previous_generation=0 owner=iptv token=1 generation=2
+[INFO] [iptv-play] seq=1 phase=claim done generation=2 previous_owner=none url_hash=9cc30efa
+[INFO] [iptv-play] seq=1 phase=enqueue-open-autoplay begin generation=2 token=1 url_hash=9cc30efa
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=set_media phase=begin url_hash=9cc30efa url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=set_media phase=begin url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=set_media phase=mutex-wait url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=set_media phase=mutex-acquired url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=loadfile phase=dispatch url_hash=9cc30efa detail=paused=1 profile=default-stable url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=loadfile phase=queued url_hash=9cc30efa detail=paused=1 profile=default-stable url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=set_media phase=done url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=set_media phase=done url_hash=9cc30efa url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=backend-call-begin url_hash=9cc30efa detail=-
+[INFO] [iptv-play] seq=1 phase=enqueue-open-autoplay done status=accepted url_hash=9cc30efa
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=Play phase=mutex-wait url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=Play phase=mutex-acquired url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=libmpv action=Play phase=deferred url_hash=9cc30efa detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=backend-call-done url_hash=9cc30efa detail=ok
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=snapshot-refresh-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=snapshot-refresh-done url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=backend-wakeup-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=1 layer=player action=Play phase=backend-wakeup-done url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=2 layer=libmpv action=mpv-start-file phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [iptv-play] seq=1 phase=done channel_id=c5a3a2b9 url_hash=9cc30efa
+[INFO] [input] action=iptv-play ok=1 index=19
+[INFO] [protocol-coordinator] revision=6->7 state=ready->media-active iptv=running->running dlna=running->running airplay=running->running owner=none->iptv token=1 generation=2 pin_visible=0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=3140
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [runtime-heartbeat] t_ms=23728763 frame=3239 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=53670,53665,53665 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=173 processed=173 log_high=26 log_heartbeat_age_ms=1624 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=87 mdns_select=271 mdns_recv=4 mdns_sent=0
+[INFO] [player-libmpv][cplayer]  (+) Video --vid=1 (h264 1280x720 25.000fps)
+[INFO] [player-libmpv][cplayer]  (+) Audio --aid=1 (aac 2ch 48000Hz)
+[INFO] [media-trace] seq=1 t_ms=2770 layer=libmpv action=mpv-file-loaded phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] file-loaded uri=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=2770 layer=libmpv action=Play phase=dispatch url_hash=9cc30efa detail=file-loaded-autoplay url=<URL_REDACTED>
+[INFO] [player-libmpv][cplayer] AO: [hos] 48000Hz stereo 2ch s16
+[INFO] [player-libmpv][cplayer] VO: [libmpv] 1280x720 yuv420p
+[INFO] [media-trace] seq=1 t_ms=3013 layer=libmpv action=mpv-playback-restart phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=3013 layer=libmpv action=startup-gate phase=seek-window url_hash=9cc30efa detail=open url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=3368 layer=libmpv action=startup-gate phase=released url_hash=9cc30efa detail=initial-seek-window-expired url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=3480 layer=render action=first-frame phase=presented url_hash=9cc30efa frame=3342 presented=3342
+[INFO] [runtime-heartbeat] t_ms=23730776 frame=3354 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=55683,55678,55678 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=185 processed=185 log_high=26 log_heartbeat_age_ms=182 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=101 mdns_select=281 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23732778 frame=3448 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=57685,57680,57680 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=0 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=186 processed=186 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=101 mdns_select=291 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23734780 frame=3541 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=59687,59682,59682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=187 processed=187 log_high=26 log_heartbeat_age_ms=1998 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=102 mdns_select=301 mdns_recv=4 mdns_sent=0
+[INFO] [input] buttons_down=0x2 view=video state=playing media=1
+[INFO] [return-home] phase=request t_ms=23735734 playback_active=1 state=playing media=1
+[INFO] [return-home] phase=player-stop begin state=playing
+[INFO] [media-trace] seq=1 t_ms=8621 layer=player action=Stop phase=backend-call-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=8621 layer=libmpv action=Stop phase=mutex-wait url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=8622 layer=libmpv action=Stop phase=mutex-acquired url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=8622 layer=libmpv action=Stop phase=dispatch url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=1 t_ms=8622 layer=player action=Stop phase=backend-call-done url_hash=9cc30efa detail=ok
+[INFO] [media-trace] seq=1 t_ms=8622 layer=player action=Stop phase=snapshot-refresh-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=8622 layer=player action=Stop phase=snapshot-refresh-done url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=8622 layer=player action=Stop phase=backend-wakeup-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=1 t_ms=8622 layer=player action=Stop phase=backend-wakeup-done url_hash=9cc30efa detail=-
+[INFO] [return-home] phase=player-stop done state=playing
+[INFO] [return-home] phase=wait-player-stopped ready_ms=23735984
+[INFO] [input] action=return-home ok=1 stop=1 state=playing
+[INFO] [render] frame begin reason=input view=video state=playing media=1
+[INFO] [player-libmpv] end-file uri=<URL_REDACTED> reason=stop error=success
+[INFO] [media-trace] seq=1 t_ms=8642 layer=libmpv action=mpv-end-file phase=event url_hash=9cc30efa detail=stop url=<URL_REDACTED>
+[INFO] [render] frame done rendered=1 view=video state=playing media=1
+[INFO] [return-home] phase=show-home begin reason=player-stopped state=stopped media=1
+[INFO] [player-view] manual navigation target=home state=STOPPED
+[INFO] [return-home] phase=show-home done ok=1 reason=player-stopped pending=0
+[INFO] [input] action=return-home-complete ok=1 state=stopped
+[INFO] [player-view] active_view=home frame=3598
+[INFO] [input] active_view=home state=stopped media=1 snapshot=1
+[INFO] [runtime-heartbeat] t_ms=23736780 frame=3647 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=61687,61682,61682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=213 processed=213 log_high=26 log_heartbeat_age_ms=783 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=102 mdns_select=311 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23738780 frame=3767 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=63687,63682,63682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=214 processed=214 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=101 mdns_select=321 mdns_recv=4 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23740780 frame=3887 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=65687,65682,65682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=215 processed=215 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=75 mdns_select=332 mdns_recv=5 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23742780 frame=4007 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=67687,67682,67682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=216 processed=216 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=129 mdns_select=343 mdns_recv=8 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23744780 frame=4127 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=69687,69682,69682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=10 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=217 processed=217 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=129 mdns_select=353 mdns_recv=8 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23746780 frame=4247 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=71687,71682,71682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=218 processed=218 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=159 mdns_select=363 mdns_recv=9 mdns_sent=0
+[INFO] [ssdp] send packet to <IP_REDACTED>:3377 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:3377 st=upnp:rootdevice bytes=283
+[INFO] [ssdp] send packet to <IP_REDACTED>:3377 st=upnp:rootdevice bytes=283
+[INFO] [scpd] served path=/description.xml bytes=2696 template=Description.xml
+[INFO] [scpd] served path=/dlna/AVTransport.xml bytes=20658 template=AVTransport.xml
+[INFO] [scpd] served path=/dlna/RenderingControl.xml bytes=7102 template=RenderingControl.xml
+[INFO] [runtime-heartbeat] t_ms=23748780 frame=4367 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=2 service_workers=0,0,0 service_age_ms=73687,73682,73682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=225 processed=225 log_high=26 log_heartbeat_age_ms=1344 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=159 mdns_select=373 mdns_recv=9 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI><URL_REDACTED></CurrentURI>
+[INFO] [media-trace] seq=2 t_ms=0 action=SetAVTransportURI phase=begin url_hash=c2b9ff78 metadata_bytes=2119 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=0 layer=soap action=SetAVTransportURI phase=dispatch instance=0 url_hash=c2b9ff78 url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=claim previous_owner=iptv previous_token=1 previous_generation=2 owner=dlna token=1 generation=3
+[INFO] [media-trace] seq=2 t_ms=0 layer=player action=set_media phase=begin url_hash=c2b9ff78 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=0 layer=libmpv action=set_media phase=begin url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=0 layer=libmpv action=set_media phase=mutex-wait url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=0 layer=libmpv action=set_media phase=mutex-acquired url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=0 layer=libmpv action=loadfile phase=dispatch url_hash=c2b9ff78 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=0 layer=libmpv action=loadfile phase=queued url_hash=c2b9ff78 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=1 layer=libmpv action=set_media phase=done url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=1 layer=player action=set_media phase=done url_hash=c2b9ff78 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=1 layer=libmpv action=mpv-start-file phase=event url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=1 layer=soap action=SetAVTransportURI phase=done url_hash=c2b9ff78 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[INFO] [protocol-coordinator] revision=7->8 state=media-active->media-active iptv=running->running dlna=running->running airplay=running->running owner=iptv->dlna token=1 generation=3 pin_visible=0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=4367
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[INFO] [media-trace] seq=2 t_ms=17 layer=soap action=Play phase=begin url_hash=c2b9ff78 detail=1 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=17 layer=player action=Play phase=backend-call-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=17 layer=libmpv action=Play phase=mutex-wait url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=17 layer=libmpv action=Play phase=mutex-acquired url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=17 layer=libmpv action=Play phase=deferred url_hash=c2b9ff78 detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=17 layer=player action=Play phase=backend-call-done url_hash=c2b9ff78 detail=ok
+[INFO] [media-trace] seq=2 t_ms=17 layer=player action=Play phase=snapshot-refresh-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=17 layer=player action=Play phase=snapshot-refresh-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=17 layer=player action=Play phase=backend-wakeup-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=17 layer=player action=Play phase=backend-wakeup-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=17 layer=soap action=Play phase=done url_hash=c2b9ff78 detail=1 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23750780 frame=4487 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=75687,75682,75682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=267 processed=267 log_high=26 log_heartbeat_age_ms=954 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=158 mdns_select=383 mdns_recv=9 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[ERROR] [player-libmpv][ffmpeg] http: Stream ends prematurely at 655360, should be 145572072
+[WARN] [player-libmpv][ffmpeg] http: Will reconnect at 655360 in 0 second(s), error=I/O error.
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [player-libmpv][cplayer]  (+) Video --vid=1 (*) (h264 1280x720 29.970fps)
+[INFO] [player-libmpv][cplayer]  (+) Audio --aid=1 (*) (aac 2ch 48000Hz)
+[INFO] [player-libmpv][display-tags] File tags:
+[INFO] [player-libmpv][display-tags]  Description: Packed by Bilibili XCoder v2.0.2
+[INFO] [media-trace] seq=2 t_ms=3649 layer=libmpv action=mpv-file-loaded phase=event url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] file-loaded uri=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=3649 layer=libmpv action=Play phase=dispatch url_hash=c2b9ff78 detail=file-loaded-autoplay url=<URL_REDACTED>
+[INFO] [player-libmpv][cplayer] AO: [hos] 48000Hz stereo 2ch s16
+[INFO] [player-libmpv][cplayer] VO: [libmpv] 1280x720 yuv420p
+[INFO] [media-trace] seq=2 t_ms=3918 layer=libmpv action=mpv-playback-restart phase=event url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=3918 layer=libmpv action=startup-gate phase=seek-window url_hash=c2b9ff78 detail=open url=<URL_REDACTED>
+[INFO] [runtime-heartbeat] t_ms=23752780 frame=4607 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=77687,77682,77682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=289 processed=289 log_high=26 log_heartbeat_age_ms=72 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=157 mdns_select=393 mdns_recv=9 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [media-trace] seq=2 t_ms=4273 layer=libmpv action=startup-gate phase=released url_hash=c2b9ff78 detail=initial-seek-window-expired url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=4328 layer=render action=first-frame phase=presented url_hash=c2b9ff78 frame=4624 presented=4624
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23754780 frame=4725 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=79687,79682,79682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=300 processed=300 log_high=26 log_heartbeat_age_ms=954 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=148 mdns_select=404 mdns_recv=10 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23756780 frame=4845 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=81687,81682,81682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=309 processed=309 log_high=26 log_heartbeat_age_ms=890 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=148 mdns_select=414 mdns_recv=10 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23758780 frame=4965 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=83687,83682,83682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=318 processed=318 log_high=26 log_heartbeat_age_ms=845 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=147 mdns_select=424 mdns_recv=10 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23760780 frame=5085 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=85687,85682,85682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=327 processed=327 log_high=26 log_heartbeat_age_ms=955 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=147 mdns_select=434 mdns_recv=10 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23762780 frame=5205 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=87687,87682,87682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=10 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=336 processed=336 log_high=26 log_heartbeat_age_ms=748 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=146 mdns_select=444 mdns_recv=10 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23764780 frame=5325 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=89687,89682,89682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=345 processed=345 log_high=26 log_heartbeat_age_ms=948 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=99 mdns_select=456 mdns_recv=13 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[WARN] [player-libmpv][cplayer] Audio device underrun detected.
+[ERROR] [player-libmpv][ao/hos] Error writing audio to device.
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "Seek" <InstanceID>0</InstanceID> <Unit>REL_TIME</Unit> <Target>0:00:01</Target>
+[INFO] [media-trace] seq=2 t_ms=17053 layer=soap action=Seek phase=begin url_hash=c2b9ff78 detail=00:00:01 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=17053 layer=libmpv action=Seek phase=dispatch url_hash=c2b9ff78 detail=1.000 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=17053 layer=soap action=Seek phase=done url_hash=c2b9ff78 detail=00:00:01 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Seek handler=avtransport_seek
+[INFO] [runtime-heartbeat] t_ms=23766780 frame=5438 view=video player_state=seeking media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=91687,91682,91682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=361 processed=361 log_high=26 log_heartbeat_age_ms=936 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=98 mdns_select=466 mdns_recv=13 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23768780 frame=5558 view=video player_state=seeking media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=93687,93682,93682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=370 processed=370 log_high=26 log_heartbeat_age_ms=952 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=129 mdns_select=476 mdns_recv=14 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [media-trace] seq=2 t_ms=20102 layer=libmpv action=mpv-playback-restart phase=event url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23770780 frame=5668 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=95687,95682,95682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=380 processed=380 log_high=26 log_heartbeat_age_ms=955 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=128 mdns_select=486 mdns_recv=14 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23772780 frame=5784 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=97687,97682,97682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=389 processed=389 log_high=26 log_heartbeat_age_ms=918 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=128 mdns_select=496 mdns_recv=14 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23774780 frame=5904 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=99687,99682,99682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=398 processed=398 log_high=26 log_heartbeat_age_ms=869 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=127 mdns_select=506 mdns_recv=14 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23776780 frame=6024 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=101687,101682,101682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=0 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=407 processed=407 log_high=26 log_heartbeat_age_ms=925 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=126 mdns_select=516 mdns_recv=14 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23778780 frame=6144 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=103687,103682,103682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=416 processed=416 log_high=26 log_heartbeat_age_ms=875 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=126 mdns_select=526 mdns_recv=14 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23780780 frame=6264 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=105687,105682,105682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=425 processed=425 log_high=26 log_heartbeat_age_ms=931 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=125 mdns_select=536 mdns_recv=14 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23782780 frame=6384 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=107687,107682,107682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=434 processed=434 log_high=26 log_heartbeat_age_ms=881 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=114 mdns_select=547 mdns_recv=15 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23784780 frame=6504 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=109687,109682,109682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=443 processed=443 log_high=26 log_heartbeat_age_ms=931 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=114 mdns_select=557 mdns_recv=15 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23786780 frame=6624 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=111687,111682,111682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=452 processed=452 log_high=26 log_heartbeat_age_ms=889 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=113 mdns_select=567 mdns_recv=15 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "Pause" <InstanceID>0</InstanceID>
+[INFO] [media-trace] seq=2 t_ms=38776 layer=soap action=Pause phase=begin url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=38776 layer=player action=Pause phase=backend-call-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=38776 layer=libmpv action=Pause phase=dispatch url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=38776 layer=player action=Pause phase=backend-call-done url_hash=c2b9ff78 detail=ok
+[INFO] [media-trace] seq=2 t_ms=38776 layer=player action=Pause phase=snapshot-refresh-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=38776 layer=player action=Pause phase=snapshot-refresh-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=38776 layer=player action=Pause phase=backend-wakeup-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=38776 layer=player action=Pause phase=backend-wakeup-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=38776 layer=soap action=Pause phase=done url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Pause handler=avtransport_pause
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[INFO] [media-trace] seq=2 t_ms=39377 layer=soap action=Play phase=begin url_hash=c2b9ff78 detail=1 url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=39377 layer=player action=Play phase=backend-call-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=39377 layer=libmpv action=Play phase=mutex-wait url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=39377 layer=libmpv action=Play phase=mutex-acquired url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=39377 layer=libmpv action=Play phase=dispatch url_hash=c2b9ff78 detail=immediate url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=39377 layer=player action=Play phase=backend-call-done url_hash=c2b9ff78 detail=ok
+[INFO] [media-trace] seq=2 t_ms=39377 layer=player action=Play phase=snapshot-refresh-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=39377 layer=player action=Play phase=snapshot-refresh-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=39377 layer=player action=Play phase=backend-wakeup-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=39377 layer=player action=Play phase=backend-wakeup-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=39377 layer=soap action=Play phase=done url_hash=c2b9ff78 detail=1 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23788780 frame=6744 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=113687,113682,113682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=489 processed=489 log_high=26 log_heartbeat_age_ms=598 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=113 mdns_select=577 mdns_recv=15 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23790780 frame=6864 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=115687,115682,115682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=498 processed=498 log_high=26 log_heartbeat_age_ms=598 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=112 mdns_select=587 mdns_recv=15 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23792780 frame=6984 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=117687,117682,117682 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=0 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=507 processed=507 log_high=26 log_heartbeat_age_ms=540 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=112 mdns_select=597 mdns_recv=15 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[INFO] [media-trace] seq=2 t_ms=45012 layer=soap action=Stop phase=begin url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=45012 layer=player action=Stop phase=backend-call-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=45012 layer=libmpv action=Stop phase=mutex-wait url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=45012 layer=libmpv action=Stop phase=mutex-acquired url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=45012 layer=libmpv action=Stop phase=dispatch url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=2 t_ms=45012 layer=player action=Stop phase=backend-call-done url_hash=c2b9ff78 detail=ok
+[INFO] [media-trace] seq=2 t_ms=45013 layer=player action=Stop phase=snapshot-refresh-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=45013 layer=player action=Stop phase=snapshot-refresh-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=45013 layer=player action=Stop phase=backend-wakeup-begin url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=45013 layer=player action=Stop phase=backend-wakeup-done url_hash=c2b9ff78 detail=-
+[INFO] [media-trace] seq=2 t_ms=45013 layer=soap action=Stop phase=done url_hash=c2b9ff78 detail=- url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Stop handler=avtransport_stop
+[WARN] [player-libmpv][ffmpeg/demuxer] mov,mp4,m4a,3gp,3g2,mj2: Packet corrupt (stream = 0, dts = 67264).
+[ERROR] [player-libmpv][ffmpeg] NULL: Invalid NAL unit size (34561 > 23267).
+[ERROR] [player-libmpv][ffmpeg] NULL: missing picture in access unit with size 23271
+[INFO] [player-libmpv] end-file uri=<URL_REDACTED> reason=stop error=success
+[INFO] [media-trace] seq=2 t_ms=45169 layer=libmpv action=mpv-end-file phase=event url_hash=c2b9ff78 detail=stop url=<URL_REDACTED>
+[INFO] [runtime-heartbeat] t_ms=23794796 frame=7105 view=video player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=119703,119698,119698 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=530 processed=530 log_high=26 log_heartbeat_age_ms=837 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=19 mdns_select=609 mdns_recv=17 mdns_sent=0
+[INFO] [player-view] desired_view=home state=STOPPED has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=home frame=7135
+[INFO] [input] active_view=home state=stopped media=1 snapshot=1
+[INFO] [runtime-heartbeat] t_ms=23796796 frame=7226 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=121703,121698,121698 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=534 processed=534 log_high=26 log_heartbeat_age_ms=1483 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=199 mdns_select=619 mdns_recv=18 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23798796 frame=7346 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=123703,123698,123698 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=535 processed=535 log_high=26 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=30 mdns_select=630 mdns_recv=19 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23800797 frame=7466 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=125704,125699,125699 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=536 processed=536 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=30 mdns_select=640 mdns_recv=19 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23802813 frame=7587 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=127720,127715,127715 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=537 processed=537 log_high=26 log_heartbeat_age_ms=2016 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=46 mdns_select=650 mdns_recv=19 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23804813 frame=7707 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=129720,129715,129715 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=0 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=538 processed=538 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=45 mdns_select=660 mdns_recv=19 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23806813 frame=7827 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=3 service_workers=0,0,0 service_age_ms=131720,131715,131715 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=539 processed=539 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=44 mdns_select=670 mdns_recv=19 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "SetAVTransportURI" <InstanceID>0</InstanceID> <CurrentURI><URL_REDACTED></CurrentURI>
+[INFO] [media-trace] seq=3 t_ms=0 action=SetAVTransportURI phase=begin url_hash=cd91c8d8 metadata_bytes=2075 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=soap action=SetAVTransportURI phase=dispatch instance=0 url_hash=cd91c8d8 url=<URL_REDACTED>
+[INFO] [protocol-coordinator] event=claim previous_owner=dlna previous_token=1 previous_generation=3 owner=dlna token=1 generation=4
+[INFO] [media-trace] seq=3 t_ms=0 layer=player action=set_media phase=begin url_hash=cd91c8d8 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=libmpv action=set_media phase=begin url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=libmpv action=set_media phase=mutex-wait url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=libmpv action=set_media phase=mutex-acquired url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=libmpv action=loadfile phase=dispatch url_hash=cd91c8d8 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=libmpv action=loadfile phase=queued url_hash=cd91c8d8 detail=paused=1 profile=direct-mp4-fast url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=0 layer=libmpv action=set_media phase=done url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=1 layer=player action=set_media phase=done url_hash=cd91c8d8 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=1 layer=libmpv action=mpv-start-file phase=event url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=1 layer=soap action=SetAVTransportURI phase=done url_hash=cd91c8d8 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=SetAVTransportURI handler=avtransport_set_uri
+[INFO] [protocol-coordinator] revision=8->9 state=media-active->media-active iptv=running->running dlna=running->running airplay=running->running owner=dlna->dlna token=1 generation=4 pin_visible=0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=7832
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [soap] soap_call "AVTransport" "Play" <InstanceID>0</InstanceID> <Speed>1</Speed>
+[INFO] [media-trace] seq=3 t_ms=13 layer=soap action=Play phase=begin url_hash=cd91c8d8 detail=1 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=13 layer=player action=Play phase=backend-call-begin url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=13 layer=libmpv action=Play phase=mutex-wait url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=13 layer=libmpv action=Play phase=mutex-acquired url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=13 layer=libmpv action=Play phase=deferred url_hash=cd91c8d8 detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=13 layer=player action=Play phase=backend-call-done url_hash=cd91c8d8 detail=ok
+[INFO] [media-trace] seq=3 t_ms=13 layer=player action=Play phase=snapshot-refresh-begin url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=13 layer=player action=Play phase=snapshot-refresh-done url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=13 layer=player action=Play phase=backend-wakeup-begin url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=13 layer=player action=Play phase=backend-wakeup-done url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=13 layer=soap action=Play phase=done url_hash=cd91c8d8 detail=1 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Play handler=avtransport_play
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23808813 frame=7947 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=133720,133715,133715 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=1 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=581 processed=581 log_high=26 log_heartbeat_age_ms=803 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=35 mdns_select=681 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [player-libmpv][cplayer]  (+) Video --vid=1 (*) (h264 720x1280 30.000fps)
+[INFO] [player-libmpv][cplayer]  (+) Audio --aid=1 (*) (aac 2ch 44100Hz)
+[INFO] [player-libmpv][display-tags] File tags:
+[INFO] [player-libmpv][display-tags]  Description: Packed by Bilibili XCoder v2.0.2
+[INFO] [media-trace] seq=3 t_ms=2101 layer=libmpv action=mpv-file-loaded phase=event url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] file-loaded uri=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=2101 layer=libmpv action=Play phase=dispatch url_hash=cd91c8d8 detail=file-loaded-autoplay url=<URL_REDACTED>
+[INFO] [player-libmpv][cplayer] AO: [hos] 44100Hz stereo 2ch s16
+[INFO] [player-libmpv][cplayer] VO: [libmpv] 720x1280 yuv420p
+[INFO] [media-trace] seq=3 t_ms=2410 layer=libmpv action=mpv-playback-restart phase=event url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=2410 layer=libmpv action=startup-gate phase=seek-window url_hash=cd91c8d8 detail=open url=<URL_REDACTED>
+[ERROR] [player-libmpv][ffmpeg] http: Stream ends prematurely at 655360, should be 34908580
+[WARN] [player-libmpv][ffmpeg] http: Will reconnect at 655360 in 0 second(s), error=I/O error.
+[INFO] [media-trace] seq=3 t_ms=2765 layer=libmpv action=startup-gate phase=released url_hash=cd91c8d8 detail=initial-seek-window-expired url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=2810 layer=render action=first-frame phase=presented url_hash=cd91c8d8 frame=7998 presented=7998
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[ERROR] [player-libmpv][ffmpeg] http: Stream ends prematurely at 1048576, should be 34908580
+[WARN] [player-libmpv][ffmpeg] http: Will reconnect at 1048576 in 0 second(s), error=I/O error.
+[INFO] [runtime-heartbeat] t_ms=23810830 frame=8051 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=135737,135732,135732 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=607 processed=607 log_high=26 log_heartbeat_age_ms=528 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=52 mdns_select=691 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "Seek" <InstanceID>0</InstanceID> <Unit>REL_TIME</Unit> <Target>0:00:00</Target>
+[INFO] [media-trace] seq=3 t_ms=4049 layer=soap action=Seek phase=begin url_hash=cd91c8d8 detail=00:00:00 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=4049 layer=libmpv action=Seek phase=dispatch url_hash=cd91c8d8 detail=0.000 url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=4049 layer=soap action=Seek phase=done url_hash=cd91c8d8 detail=00:00:00 url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Seek handler=avtransport_seek
+[INFO] [media-trace] seq=3 t_ms=4237 layer=libmpv action=mpv-playback-restart phase=event url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23812850 frame=8153 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=137757,137752,137752 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=622 processed=622 log_high=26 log_heartbeat_age_ms=914 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=66 mdns_select=701 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23814850 frame=8256 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=139757,139752,139752 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=631 processed=631 log_high=26 log_heartbeat_age_ms=912 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=65 mdns_select=711 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23816852 frame=8360 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=141759,141754,141754 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=640 processed=640 log_high=26 log_heartbeat_age_ms=851 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=66 mdns_select=721 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23818863 frame=8465 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=143770,143765,143765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=649 processed=649 log_high=26 log_heartbeat_age_ms=818 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=76 mdns_select=731 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [runtime-heartbeat] t_ms=23820863 frame=8582 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=145770,145765,145765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=658 processed=658 log_high=26 log_heartbeat_age_ms=928 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=75 mdns_select=741 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23822863 frame=8702 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=147770,147765,147765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=667 processed=667 log_high=26 log_heartbeat_age_ms=825 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=75 mdns_select=751 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23824863 frame=8822 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=149770,149765,149765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=676 processed=676 log_high=26 log_heartbeat_age_ms=880 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=74 mdns_select=761 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23826863 frame=8942 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=151770,151765,151765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=3 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=685 processed=685 log_high=26 log_heartbeat_age_ms=925 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=74 mdns_select=771 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [runtime-heartbeat] t_ms=23828863 frame=9062 view=video player_state=buffering media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=153770,153765,153765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=2 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=694 processed=694 log_high=26 log_heartbeat_age_ms=884 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=73 mdns_select=781 mdns_recv=20 mdns_sent=0
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[ERROR] [player-libmpv][ffmpeg] NULL: Invalid NAL unit size (-1686327618 > 4217).
+[ERROR] [player-libmpv][ffmpeg] NULL: missing picture in access unit with size 4221
+[ERROR] [player-libmpv][ffmpeg/audio] aac: channel element 3.5 is not allocated
+[ERROR] [player-libmpv][ad] Error decoding audio.
+[ERROR] [player-libmpv][ffmpeg] NULL: Invalid NAL unit size (-1914125967 > 2202).
+[ERROR] [player-libmpv][ffmpeg/audio] aac: channel element 2.14 is not allocated
+[ERROR] [player-libmpv][ad] Error decoding audio.
+[ERROR] [player-libmpv][ffmpeg] NULL: missing picture in access unit with size 2206
+[ERROR] [player-libmpv][ffmpeg/audio] aac: channel element 2.11 is not allocated
+[ERROR] [player-libmpv][ad] Error decoding audio.
+[ERROR] [player-libmpv][ffmpeg] NULL: Invalid NAL unit size (1069295884 > 1470).
+[ERROR] [player-libmpv][ffmpeg/audio] aac: Reserved bit set.
+[ERROR] [player-libmpv][ffmpeg] NULL: missing picture in access unit with size 1474
+[ERROR] [player-libmpv][ffmpeg/audio] aac: Prediction is not allowed in AAC-LC.
+[WARN] [player-libmpv] suppressing repeated AAC decode log messages after 8 entries
+[ERROR] [player-libmpv][ffmpeg] NULL: Invalid NAL unit size (1298234805 > 1377).
+[ERROR] [player-libmpv][ffmpeg] NULL: missing picture in access unit with size 1381
+[WARN] [player-libmpv] suppressing repeated H.264 decode log messages after 8 entries
+[INFO] [soap] soap_call "AVTransport" "GetPositionInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetPositionInfo handler=avtransport_get_position_info
+[INFO] [soap] soap_call "AVTransport" "GetTransportInfo" <InstanceID>0</InstanceID>
+[INFO] [soap] assert_http_200 service=AVTransport action=GetTransportInfo handler=avtransport_get_transport_info
+[INFO] [soap] soap_call "AVTransport" "Stop" <InstanceID>0</InstanceID>
+[INFO] [media-trace] seq=3 t_ms=23146 layer=soap action=Stop phase=begin url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=23146 layer=player action=Stop phase=backend-call-begin url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=23146 layer=libmpv action=Stop phase=mutex-wait url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=23146 layer=libmpv action=Stop phase=mutex-acquired url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=23146 layer=libmpv action=Stop phase=dispatch url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=3 t_ms=23146 layer=player action=Stop phase=backend-call-done url_hash=cd91c8d8 detail=ok
+[INFO] [media-trace] seq=3 t_ms=23146 layer=player action=Stop phase=snapshot-refresh-begin url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=23146 layer=player action=Stop phase=snapshot-refresh-done url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=23146 layer=player action=Stop phase=backend-wakeup-begin url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=23146 layer=player action=Stop phase=backend-wakeup-done url_hash=cd91c8d8 detail=-
+[INFO] [media-trace] seq=3 t_ms=23146 layer=soap action=Stop phase=done url_hash=cd91c8d8 detail=- url=<URL_REDACTED>
+[INFO] [soap] assert_http_200 service=AVTransport action=Stop handler=avtransport_stop
+[WARN] [player-libmpv] suppressed 100 repeated H.264 decode log messages
+[WARN] [player-libmpv] suppressed 169 repeated AAC decode log messages
+[INFO] [player-libmpv] end-file uri=<URL_REDACTED> reason=stop error=success
+[INFO] [media-trace] seq=3 t_ms=23160 layer=libmpv action=mpv-end-file phase=event url_hash=cd91c8d8 detail=stop url=<URL_REDACTED>
+[INFO] [runtime-heartbeat] t_ms=23830863 frame=9182 view=video player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=155770,155765,155765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=9 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=738 processed=738 log_high=26 log_heartbeat_age_ms=795 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=73 mdns_select=791 mdns_recv=20 mdns_sent=0
+[INFO] [player-view] desired_view=home state=STOPPED has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=home frame=9222
+[INFO] [input] active_view=home state=stopped media=1 snapshot=1
+[INFO] [runtime-heartbeat] t_ms=23832863 frame=9303 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=157770,157765,157765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=8 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=742 processed=742 log_high=26 log_heartbeat_age_ms=1316 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=197 mdns_select=802 mdns_recv=22 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23834863 frame=9423 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=159770,159765,159765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=743 processed=743 log_high=26 log_heartbeat_age_ms=2000 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=197 mdns_select=812 mdns_recv=22 mdns_sent=0
+[INFO] [input] buttons_down=0x2 view=home state=stopped media=1
+[INFO] [runtime-heartbeat] t_ms=23836863 frame=9543 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=161770,161765,161765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=6 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=745 processed=745 log_high=26 log_heartbeat_age_ms=1116 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=27 mdns_select=823 mdns_recv=23 mdns_sent=0
+[INFO] [input] buttons_down=0x4 view=home state=stopped media=1
+[INFO] [input] action=iptv-panel open=1 page=channels
+[INFO] [input] buttons_down=0x8000 view=home state=stopped media=1
+[INFO] [runtime-heartbeat] t_ms=23838863 frame=9663 view=home player_state=stopped media=1 return_home_pending=0 protocol_state=media-active owner=dlna generation=4 service_workers=0,0,0 service_age_ms=163770,163765,163765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=4 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=749 processed=749 log_high=26 log_heartbeat_age_ms=383 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=26 mdns_select=833 mdns_recv=23 mdns_sent=0
+[INFO] [input] buttons_down=0x2000 view=home state=stopped media=1
+[INFO] [input] buttons_down=0x1 view=home state=stopped media=1
+[INFO] [media-trace] seq=4 t_ms=0 action=IPTVPlay phase=begin url_hash=9cc30efa metadata_bytes=14 url=<URL_REDACTED>
+[INFO] [iptv-play] seq=4 phase=begin channel_id=c5a3a2b9 url_hash=9cc30efa
+[INFO] [iptv-play] seq=4 phase=claim begin url_hash=9cc30efa
+[INFO] [protocol-coordinator] event=claim previous_owner=dlna previous_token=1 previous_generation=4 owner=iptv token=2 generation=5
+[INFO] [iptv-play] seq=4 phase=claim done generation=5 previous_owner=dlna url_hash=9cc30efa
+[INFO] [iptv-play] seq=4 phase=enqueue-open-autoplay begin generation=5 token=2 url_hash=9cc30efa
+[INFO] [media-trace] seq=4 t_ms=0 layer=player action=set_media phase=begin url_hash=9cc30efa url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=set_media phase=begin url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=set_media phase=mutex-wait url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=set_media phase=mutex-acquired url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=loadfile phase=dispatch url_hash=9cc30efa detail=paused=1 profile=default-stable url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=loadfile phase=queued url_hash=9cc30efa detail=paused=1 profile=default-stable url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=set_media phase=done url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=player action=set_media phase=done url_hash=9cc30efa url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=player action=Play phase=backend-call-begin url_hash=9cc30efa detail=-
+[INFO] [iptv-play] seq=4 phase=enqueue-open-autoplay done status=accepted url_hash=9cc30efa
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=Play phase=mutex-wait url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=Play phase=mutex-acquired url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=libmpv action=Play phase=deferred url_hash=9cc30efa detail=waiting-file-loaded url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=1 layer=player action=Play phase=backend-call-done url_hash=9cc30efa detail=ok
+[INFO] [media-trace] seq=4 t_ms=1 layer=player action=Play phase=snapshot-refresh-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=4 t_ms=1 layer=player action=Play phase=snapshot-refresh-done url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=4 t_ms=1 layer=player action=Play phase=backend-wakeup-begin url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=4 t_ms=1 layer=player action=Play phase=backend-wakeup-done url_hash=9cc30efa detail=-
+[INFO] [media-trace] seq=4 t_ms=2 layer=libmpv action=mpv-start-file phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] start-file uri=<URL_REDACTED>
+[INFO] [iptv-play] seq=4 phase=done channel_id=c5a3a2b9 url_hash=9cc30efa
+[INFO] [input] action=iptv-play ok=1 index=19
+[INFO] [protocol-coordinator] revision=9->10 state=media-active->media-active iptv=running->running dlna=running->running airplay=running->running owner=dlna->iptv token=2 generation=5 pin_visible=0 airplay_running=1 airplay_starting=0 status=Ready for AirPlay video
+[INFO] [player-view] desired_view=video state=LOADING has_media=1 uri=<URL_REDACTED>
+[INFO] [player-view] active_view=video frame=9681
+[INFO] [input] active_view=video state=loading media=1 snapshot=1
+[INFO] [runtime-heartbeat] t_ms=23840863 frame=9783 view=video player_state=loading media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=5 service_workers=0,0,0 service_age_ms=165770,165765,165765 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=7 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=784 processed=784 log_high=26 log_heartbeat_age_ms=1675 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=26 mdns_select=843 mdns_recv=23 mdns_sent=0
+[INFO] [player-libmpv][cplayer]  (+) Video --vid=1 (h264 1280x720 25.000fps)
+[INFO] [player-libmpv][cplayer]  (+) Audio --aid=1 (aac 2ch 48000Hz)
+[INFO] [media-trace] seq=4 t_ms=2474 layer=libmpv action=mpv-file-loaded phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [player-libmpv] file-loaded uri=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=2474 layer=libmpv action=Play phase=dispatch url_hash=9cc30efa detail=file-loaded-autoplay url=<URL_REDACTED>
+[INFO] [player-libmpv][cplayer] AO: [hos] 48000Hz stereo 2ch s16
+[INFO] [player-libmpv][cplayer] VO: [libmpv] 1280x720 yuv420p
+[INFO] [media-trace] seq=4 t_ms=2697 layer=libmpv action=mpv-playback-restart phase=event url_hash=9cc30efa detail=- url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=2697 layer=libmpv action=startup-gate phase=seek-window url_hash=9cc30efa detail=open url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=3052 layer=libmpv action=startup-gate phase=released url_hash=9cc30efa detail=initial-seek-window-expired url=<URL_REDACTED>
+[INFO] [media-trace] seq=4 t_ms=3105 layer=render action=first-frame phase=presented url_hash=9cc30efa frame=9864 presented=9864
+[INFO] [runtime-heartbeat] t_ms=23842868 frame=9894 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=5 service_workers=0,0,0 service_age_ms=167775,167770,167770 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=796 processed=796 log_high=26 log_heartbeat_age_ms=600 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=30 mdns_select=853 mdns_recv=23 mdns_sent=0
+[INFO] [runtime-heartbeat] t_ms=23844868 frame=9988 view=video player_state=playing media=1 return_home_pending=0 protocol_state=media-active owner=iptv generation=5 service_workers=0,0,0 service_age_ms=169775,169770,169770 media_queue=0 media_high=1 media_command=0 media_kind=0 media_producer=0 media_token=0 media_generation=0 media_command_age_ms=0 media_heartbeat_age_ms=5 media_full=0 media_stale=0 media_timeout=0 media_coalesced=0 media_accepting=1 media_lifecycle=0,1,0,1 log_queue=0 enqueued=797 processed=797 log_high=26 log_heartbeat_age_ms=1999 log_waiting=1 queue_dropped=0 mirror_dropped=0 mirror_failures=0 mirror=1 worker=1 mdns_phase=waiting mdns_mode=3 mdns_running=1 mdns_socket=1 mdns_heartbeat_age_ms=29 mdns_select=863 mdns_recv=23 mdns_sent=0
+exiting ...
+socket error 0x0 on poll
