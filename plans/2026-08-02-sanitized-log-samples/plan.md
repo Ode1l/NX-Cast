@@ -1,6 +1,6 @@
 # Plan: Publish Sanitized nxlink Log Samples
 
-> Status: ACTIVE
+> Status: COMPLETED
 > Created: 2026-08-02
 > Last Updated: 2026-08-02
 
@@ -28,11 +28,11 @@ None.
 ## Spec-Lite
 
 ### Acceptance Criteria
-- [ ] `sample/nxlink-logs/` contains one sanitized file for every current `logs/*.log` input, with identical filenames and line counts.
-- [ ] Samples retain timestamps, diagnostic profile markers, state transitions, error codes, counters, and shutdown outcomes needed for debugging.
-- [ ] Automated scans find no raw HTTP(S) URL, IPv4/MAC/UUID, long cryptographic-looking token, sensitive header value, or personal/toolchain absolute path in the committed samples.
-- [ ] A Markdown index explains the sanitization contract and maps all samples to profiles/results.
-- [ ] Only intended sample, documentation, and workflow-plan files are committed and the `airplay` branch is pushed successfully.
+- [x] `sample/nxlink-logs/` contains one sanitized file for every current `logs/*.log` input, with identical filenames and line counts.
+- [x] Samples retain timestamps, diagnostic profile markers, state transitions, error codes, counters, and shutdown outcomes needed for debugging.
+- [x] Automated scans find no raw HTTP(S) URL, IPv4/MAC/UUID, long cryptographic-looking token, sensitive header value, or personal/toolchain absolute path in the committed samples.
+- [x] A Markdown index explains the sanitization contract and maps all samples to profiles/results.
+- [x] Only intended sample, documentation, and workflow-plan files are committed and the `airplay` branch is pushed successfully.
 
 ### Non-goals
 - Commit raw `logs/`, build outputs, `.vscode/tasks.json`, `.vscode/launch.json`, Makefile changes, or CI workflow changes.
@@ -56,7 +56,7 @@ None.
 |------|------|--------|------|
 | Step 1 | `steps/step-1.md` | COMPLETED | Generate the complete sanitized sample set and its local index. |
 | Step 2 | `steps/step-2.md` | COMPLETED | Independently validate fidelity/privacy and link the sample set from durable diagnostics docs. |
-| Step 3 | `steps/step-3.md` | IN_PROGRESS | Stage only approved files, commit, push, and verify the remote branch. |
+| Step 3 | `steps/step-3.md` | COMPLETED | Stage only approved files, commit, push, and verify the remote branch. |
 
 ## Validation Commands
 
@@ -98,9 +98,11 @@ None.
 - All 19 source/output filenames and line counts match; Profile markers, 147 media-time values, 32 Home tuples, and 247 `sdmc:/` references were preserved — verified by PowerShell corpus comparison, Step 1.
 - The final sanitized corpus has zero residual raw URL/address/identifier/header/host-path findings and zero tokens parsed as IPv6 addresses — verified by regex and `System.Net.IPAddress` scans, Step 1.
 - The sample index maps all 19 files exactly once (16 diagnostic Profiles plus three failed collection attempts), all links resolve, and an independent 12-pattern privacy scan passes — verified by PowerShell checks, Step 2.
+- The 27-file content commit excluded all environment-specific and compiled files and reached GitHub as `689b4e0aa32168eab47b5b698ce2a7ce0d75f24e` — verified by cached-path audit plus local/tracking/remote SHA comparison, Step 3.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
 | 2026-08-02 | Step 1 | Generated and indexed 19 sanitized nxlink traces; corrected a probe-detected IPv6/media-time false positive and passed fidelity/privacy scans. |
 | 2026-08-02 | Step 2 | Linked sanitized evidence from the docs/handoff and passed index, profile, privacy, link, whitespace, and diff checks. |
+| 2026-08-02 | Step 3 | Normalized log formatting, removed residual RAOP identifiers, committed the intended 27-file set, pushed over authenticated SSH, and verified the remote SHA. |
