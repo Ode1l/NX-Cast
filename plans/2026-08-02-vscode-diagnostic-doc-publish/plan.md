@@ -1,6 +1,6 @@
 # Plan: VS Code Diagnostic Workflow Documentation Publish
 
-> Status: ACTIVE
+> Status: COMPLETED
 > Created: 2026-08-02
 > Last Updated: 2026-08-02
 
@@ -18,11 +18,11 @@ None.
 ## Spec-Lite
 
 ### Acceptance Criteria
-- [ ] A Markdown document records the new diagnostic launch name, its pre-launch task, profile picker, execution flow, and platform adaptation rules.
-- [ ] The existing AirPlay/DLNA test handoff remains the source of truth and links to the new VS Code workflow record.
-- [ ] `makefile`, `.github/workflows/*`, `.vscode/tasks.json`, and `.vscode/launch.json` do not enter either commit.
-- [ ] The local Windows VS Code changes and `plans/2026-07-22-vscode-space-path-build/` remain present after publication.
-- [ ] The final local, tracking, and remote `airplay` SHAs match.
+- [x] A Markdown document records the new diagnostic launch name, its pre-launch task, profile picker, execution flow, and platform adaptation rules.
+- [x] The existing AirPlay/DLNA test handoff remains the source of truth and links to the new VS Code workflow record.
+- [x] `makefile`, `.github/workflows/*`, `.vscode/tasks.json`, and `.vscode/launch.json` do not enter either commit.
+- [x] The local Windows VS Code changes and `plans/2026-07-22-vscode-space-path-build/` remain present after publication.
+- [x] The final local, tracking, and remote `airplay` SHAs match.
 
 ### Non-goals
 - Change any Makefile rule, GitHub Actions job, VS Code JSON file, runtime code, diagnostic profile, or playback behavior.
@@ -45,7 +45,7 @@ None.
 | Step | File | Status | Goal |
 |------|------|--------|------|
 | Step 1 | `steps/step-1.md` | COMPLETED | Write and link the portable diagnostic launch workflow record. |
-| Step 2 | `steps/step-2.md` | IN_PROGRESS | Explicitly stage documentation only, commit, push, and verify exclusions and remote state. |
+| Step 2 | `steps/step-2.md` | COMPLETED | Explicitly stage documentation only, commit, push, and verify exclusions and remote state. |
 
 ## Validation Commands
 
@@ -85,8 +85,12 @@ None.
 - Local HEAD and remote `airplay` begin at `77cec6077d7bda9cc698881f9dd6408aa5767dc1` — verified by `git rev-parse` and `git ls-remote` on 2026-08-02.
 - The documented launch/pre-launch labels match parsed local JSON; the picker has 14 entries and defaults to `full-owner-exclusive-observe-bsd12` — verified by PowerShell, `rg`, and full document re-read on 2026-08-02.
 - All three documentation links resolve, the new record contains no drive-prefixed Bash executable, and the four Markdown targets pass `git diff --check` — verified by `Test-Path`, `rg`, and Git on 2026-08-02.
+- Commit `510383ea954eac4a681c9d1aad3f045f044096bc` contains only seven approved Markdown paths; forbidden-path, whitespace, sensitive URL/key, and drive-shell assertions passed — verified by cached Git inspection on 2026-08-02.
+- After SSH push, local HEAD, refreshed `origin/airplay`, and remote `airplay` matched `510383e`; the GitHub connector fetched the new workflow document — verified by Git and the connector on 2026-08-02.
+- Local `.vscode/tasks.json`, `.vscode/launch.json`, and `plans/2026-07-22-vscode-space-path-build/` remain outside the commit and visible in post-push status — verified by Git on 2026-08-02.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
 | 2026-08-02 | Step 1 | Added and linked the portable VS Code diagnostic workflow record; restored local JSON changes and passed contract, link, redaction, re-read, and whitespace validation. |
+| 2026-08-02 | Step 2 | Staged seven Markdown paths explicitly, committed as `510383e`, pushed over SSH, verified the remote document/SHA, and retained all environment-specific files locally. |
