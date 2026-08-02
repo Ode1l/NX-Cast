@@ -189,6 +189,11 @@ the Makefile.
 
 ## Local VS Code Task Contract
 
+The stable launch name, pre-launch task, profile picker, Windows path findings,
+and cross-platform reconstruction checklist are maintained in
+[`LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md`](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md).
+Use that document as the authoritative editor-integration record.
+
 `.vscode/tasks.json` and `.vscode/launch.json` are deliberately not included in
 this handoff commit. The current working copy contains Windows devkitPro MSYS
 paths, `cygpath` short-path handling, and a Windows Bash executable; those

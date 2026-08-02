@@ -18,12 +18,14 @@ All Markdown documents in this directory use English file names and English cont
 10. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
 11. [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
 12. [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
+13. [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
 
 ## Build And Media Toolchain
 
 - [libmpv-dependencies.md](libmpv-dependencies.md)
 - [ffmpeg-mpv-toolchain.md](ffmpeg-mpv-toolchain.md)
 - [c-safety.md](c-safety.md)
+- [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
 
 Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra` support.
 

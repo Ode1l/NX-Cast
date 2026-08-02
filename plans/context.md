@@ -1,12 +1,12 @@
 # Session Context
 
-> Last Updated: 2026-07-23 NZST
+> Last Updated: 2026-08-02 NZST
 
 ## Current Task
 
-Publish the accumulated AirPlay/DLNA resource-management and diagnostic work on
-the `airplay` branch, then continue on macOS using the consolidated handoff in
-`docs/MACOS_HANDOFF_2026-07-23.md`.
+Preserve the local VS Code diagnostic launch/task workflow as portable Markdown,
+publish documentation only on the `airplay` branch, and continue on macOS using
+the consolidated handoff in `docs/MACOS_HANDOFF_2026-07-23.md`.
 
 ## Implementation State
 
@@ -24,6 +24,10 @@ the `airplay` branch, then continue on macOS using the consolidated handoff in
 - The Windows `.vscode/tasks.json` and `.vscode/launch.json` changes remain local
   and uncommitted. They contain devkitPro MSYS/cygpath workarounds and must be
   recreated with native macOS shell commands if needed.
+- The stable diagnostic launch name, pre-launch task, Profiles 1-14 picker, and
+  platform substitution rules are recorded in
+  `docs/LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md`; environment-specific Make, GitHub
+  job, task, and launch changes remain excluded from publication.
 
 ## Latest Verified Results
 
@@ -51,14 +55,17 @@ the `airplay` branch, then continue on macOS using the consolidated handoff in
 
 ## macOS Next Actions
 
-1. Install/verify the devkitPro Switch packages and Homebrew `mbedtls@2`,
+1. Reconstruct the local VS Code adapter from
+   `docs/LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md` only after the native macOS Make
+   command works directly in the same shell.
+2. Install/verify the devkitPro Switch packages and Homebrew `mbedtls@2`,
    `libsodium`, and `ffmpeg` host dependencies.
-2. Run the focused host suite and `make test-airplay`, then clean-build Profile
+3. Run the focused host suite and `make test-airplay`, then clean-build Profile
    14 using the commands in the macOS handoff.
-3. Run the stable LAN DLNA five-cycle test before changing libmpv or FFmpeg.
-4. A/B the same item against the Bilibili source and compare HTTP/Range/cache
+4. Run the stable LAN DLNA five-cycle test before changing libmpv or FFmpeg.
+5. A/B the same item against the Bilibili source and compare HTTP/Range/cache
    evidence.
-5. Test AirPlay audio and screen mirroring separately, recording negotiation and
+6. Test AirPlay audio and screen mirroring separately, recording negotiation and
    the first non-advancing Profile 14 video-pipeline counter.
-6. Complete repeated mixed-protocol restoration and soak gates before promoting
+7. Complete repeated mixed-protocol restoration and soak gates before promoting
    the exclusive policy to the normal profile.
