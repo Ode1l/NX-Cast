@@ -35,6 +35,8 @@ Protocol success is not inferred from an iPhone UI alone. A real playback attemp
 - AirPlay discovery and pairing cannot directly call libmpv or release another protocol's lease.
 - A stale runtime generation cannot stop or release a newer AirPlay playback generation.
 - Closing one TCP connection cannot stop URL playback while another connection remains bound to the same logical Apple session.
+- Reverse HLS `/play` establishes session-local negotiation without claiming `airplay-video`; ownership and player load wait for the final `/action` `ACTION_READY`.
+- Audio-only `SETUP`/`RECORD` enables media ingress without claiming `airplay-mirror` or loading `airplay://mirror`. Type-110 setup is required for mirror ownership and player handoff.
 
 ## Route Contract
 
@@ -47,7 +49,7 @@ The table records the stable video-receiver subset. A successful protocol respon
 | `/fp-setup` | `POST` binary body | 200 | 400/405 | Advances the connection-local FairPlay exchange. |
 | `/reverse` | HTTP/1.1 `POST` with a logical Apple session id | 101 | 400/405 | Registers or replaces the session's serialized PTTH event channel. |
 | `/play` | `POST` with an absolute URL or FCUP HLS locator | 200 | 400/409/503 | Claims AirPlay URL ownership; HLS waits for bounded reverse responses before actor load. |
-| `/action` | `POST` binary plist | 200 | 400/405/409 | Correlates reverse HLS responses by session, request id, and URL. |
+| `/action` | `POST` binary plist | 200 | 400/405/409 | Correlates reverse HLS responses by session, request id, and URL; rejected payloads record a secret-free reason. |
 | `/rate`, `/scrub`, `/playback-info`, `/stop` | AirPlay remote-video methods | 200 | 400/405/409 | Enqueues playback control through the existing owner. |
 | `SETUP` | Timing, audio type 96, or mirror type 110 plist | 200 | 400/455/461 | Allocates transport state; audio may arrive before video. |
 | `RECORD` | After initial transport setup | 200 | 455 | Enables media ingress; actual load waits for muxable media. |

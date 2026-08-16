@@ -25,6 +25,7 @@ typedef struct
     bool audio_setup;
     bool record_requested;
     bool recording_started;
+    bool audio_recording_started;
     uint8_t aes_key[16];
     uint8_t aes_iv[16];
     uint64_t stream_connection_id;
@@ -174,10 +175,11 @@ static bool handler_state_valid(const AirPlayRtspSession *session,
     if (!session || !context)
         return false;
     has_stream = context->mirror_setup || context->audio_setup;
-    if ((has_stream || context->record_requested || context->recording_started) &&
+    if ((has_stream || context->record_requested ||
+         context->recording_started || context->audio_recording_started) &&
         !context->initial_setup)
         return false;
-    if (context->recording_started &&
+    if ((context->recording_started || context->audio_recording_started) &&
         (!has_stream || !context->record_requested))
         return false;
     if (session->state == AIRPLAY_RTSP_SESSION_CLOSED)
@@ -1012,14 +1014,25 @@ static bool handle_setup(AirPlayHandlers *handlers,
     }
     session->state = was_recording ? AIRPLAY_RTSP_SESSION_RECORDING
                                    : AIRPLAY_RTSP_SESSION_SETUP;
-    if (context->record_requested &&
-        (context->mirror_setup || context->audio_setup) &&
-        !context->recording_started)
+    if (context->record_requested)
     {
-        context->recording_started = true;
-        if (handlers->config.media_record_callback)
-            handlers->config.media_record_callback(
-                session->logical_session_id, handlers->config.callback_user_data);
+        if (context->mirror_setup && !context->recording_started)
+        {
+            context->recording_started = true;
+            if (handlers->config.media_record_callback)
+                handlers->config.media_record_callback(
+                    session->logical_session_id,
+                    handlers->config.callback_user_data);
+        }
+        else if (context->audio_setup &&
+                 !context->audio_recording_started)
+        {
+            context->audio_recording_started = true;
+            if (handlers->config.audio_record_callback)
+                handlers->config.audio_record_callback(
+                    session->logical_session_id,
+                    handlers->config.callback_user_data);
+        }
     }
     ok = handler_state_valid(session, context);
 
@@ -1041,6 +1054,7 @@ cleanup:
         context->audio_setup = false;
         context->record_requested = false;
         context->recording_started = false;
+        context->audio_recording_started = false;
         context->stream_connection_id = 0u;
         session->state = AIRPLAY_RTSP_SESSION_CONNECTED;
         airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
@@ -1065,13 +1079,20 @@ static bool handle_record(AirPlayHandlers *handlers,
         return airplay_rtsp_response_set_status(response, 455);
     context->record_requested = true;
     session->state = AIRPLAY_RTSP_SESSION_RECORDING;
-    if ((context->mirror_setup || context->audio_setup) &&
-        !context->recording_started)
+    if (context->mirror_setup && !context->recording_started)
     {
         context->recording_started = true;
         if (handlers->config.media_record_callback)
             handlers->config.media_record_callback(
                 session->logical_session_id, handlers->config.callback_user_data);
+    }
+    else if (context->audio_setup && !context->audio_recording_started)
+    {
+        context->audio_recording_started = true;
+        if (handlers->config.audio_record_callback)
+            handlers->config.audio_record_callback(
+                session->logical_session_id,
+                handlers->config.callback_user_data);
     }
     AIRPLAY_TRACE("[airplay] session=%llu method=RECORD mirror=%u deferred=%u\n",
                   (unsigned long long)session->id,
@@ -1140,6 +1161,7 @@ static bool handle_teardown(AirPlayHandlers *handlers,
     context->initial_setup = false;
     context->record_requested = false;
     context->recording_started = false;
+    context->audio_recording_started = false;
     airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
     airplay_crypto_secure_zero(context->aes_iv, sizeof(context->aes_iv));
     session->state = AIRPLAY_RTSP_SESSION_CLOSED;

@@ -41,4 +41,3 @@ if ! grep -Eq '[[:space:]]ff_matroska_muxer$' "${WORK_DIR}/libavformat.symbols";
 fi
 
 echo "Switch FFmpeg verified at ${PREFIX}: ALAC decoder, H.264 parser, Matroska muxer"
-

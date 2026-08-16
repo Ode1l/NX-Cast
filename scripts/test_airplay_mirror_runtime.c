@@ -448,7 +448,6 @@ static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
     uint64_t audio_only_session = 900u;
     uint64_t mirror_session = 901u;
     uint64_t connection_id = UINT64_C(0x1020304050607080);
-    uint32_t audio_generation = 0u;
     uint32_t combined_generation = 0u;
     size_t audio_packet_size;
     int socket_fd;
@@ -469,13 +468,16 @@ static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
         44100u,
         &audio_port, &control_port, runtime));
     CHECK(audio_port != 0u && control_port != 0u);
-    CHECK(airplay_mirror_runtime_status(runtime, &audio_generation) ==
+    CHECK(airplay_mirror_runtime_status(runtime, NULL) ==
           AIRPLAY_MIRROR_RUNTIME_PREPARING);
     CHECK(airplay_mirror_runtime_profile(runtime) ==
           AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY);
-    airplay_mirror_runtime_record(audio_only_session, runtime);
-    CHECK(wait_for_count(player, &player->set_uri_count,
-                         completed_cycles + 1u));
+    airplay_mirror_runtime_record_audio(audio_only_session, runtime);
+    pthread_mutex_lock(&player->mutex);
+    CHECK(player->set_uri_count == completed_cycles);
+    CHECK(player->play_count == completed_cycles);
+    CHECK(player->stop_count == completed_cycles);
+    pthread_mutex_unlock(&player->mutex);
     CHECK(send_audio_sync(control_port, 44100u,
                           UINT64_C(100) << 32));
     sleep_milliseconds(20u);
@@ -484,11 +486,15 @@ static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
         audio_payload_size, key, iv);
     CHECK(audio_packet_size != 0u &&
           send_udp(audio_port, audio_packet, audio_packet_size));
-    CHECK(wait_for_count(player, &player->play_count,
-                         completed_cycles + 1u));
+    sleep_milliseconds(20u);
+    pthread_mutex_lock(&player->mutex);
+    CHECK(player->set_uri_count == completed_cycles);
+    CHECK(player->play_count == completed_cycles);
+    pthread_mutex_unlock(&player->mutex);
     airplay_mirror_runtime_stop(audio_only_session, runtime);
-    CHECK(wait_for_count(player, &player->stop_count,
-                         completed_cycles + 1u));
+    pthread_mutex_lock(&player->mutex);
+    CHECK(player->stop_count == completed_cycles);
+    pthread_mutex_unlock(&player->mutex);
 
     timing_port = 0u;
     audio_port = 0u;
@@ -498,22 +504,27 @@ static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
     CHECK(airplay_mirror_runtime_audio_open(
         mirror_session, key, iv, AIRPLAY_MIRROR_AUDIO_CT_ALAC, 352u, 44100u,
         &audio_port, &control_port, runtime));
-    airplay_mirror_runtime_record(mirror_session, runtime);
-    CHECK(wait_for_count(player, &player->set_uri_count,
-                         completed_cycles + 2u));
+    airplay_mirror_runtime_record_audio(mirror_session, runtime);
     CHECK(airplay_mirror_runtime_open(
         mirror_session, key, connection_id, &mirror_port, runtime));
     CHECK(mirror_port != 0u);
-    CHECK(wait_for_count(player, &player->replace_count, 1u));
+    CHECK(airplay_mirror_runtime_status(runtime, NULL) ==
+          AIRPLAY_MIRROR_RUNTIME_PREPARING);
+    pthread_mutex_lock(&player->mutex);
+    CHECK(player->replace_count == 0u);
+    CHECK(player->set_uri_count == completed_cycles);
+    pthread_mutex_unlock(&player->mutex);
+    airplay_mirror_runtime_record(mirror_session, runtime);
     CHECK(wait_for_count(player, &player->set_uri_count,
-                         completed_cycles + 3u));
+                         completed_cycles + 1u));
     CHECK(airplay_mirror_runtime_profile(runtime) ==
           AIRPLAY_STREAM_BRIDGE_PROFILE_VIDEO_AUDIO);
     CHECK(airplay_mirror_runtime_status(runtime, &combined_generation) ==
           AIRPLAY_MIRROR_RUNTIME_WAITING_KEYFRAME);
     pthread_mutex_lock(&player->mutex);
-    CHECK(player->replace_previous_generation == audio_generation + 1u);
-    CHECK(player->replace_generation == combined_generation);
+    CHECK(player->replace_count == 0u);
+    CHECK(player->bind_generation == combined_generation);
+    CHECK(player->set_uri_generation == combined_generation);
     pthread_mutex_unlock(&player->mutex);
 
     CHECK(airplay_mirror_session_derive_crypto(
@@ -531,12 +542,12 @@ static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
         CHECK(send_packet(socket_fd, AIRPLAY_MIRROR_PACKET_VIDEO,
                           UINT64_C(1) << 32, encrypted_video, idr_size));
         CHECK(wait_for_count(player, &player->play_count,
-                             completed_cycles + 2u));
+                             completed_cycles + 1u));
         close(socket_fd);
     }
     airplay_mirror_runtime_stop(mirror_session, runtime);
     CHECK(wait_for_count(player, &player->stop_count,
-                         completed_cycles + 3u));
+                         completed_cycles + 1u));
     airplay_crypto_aes_ctr_deinit(&aes);
     free(encrypted_video);
 }

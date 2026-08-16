@@ -545,6 +545,12 @@ static void integration_mirror_record(uint64_t session_id, void *user_data)
     protocol_coordinator_media_end(&transaction);
 }
 
+static void integration_audio_record(uint64_t session_id, void *user_data)
+{
+    airplay_mirror_runtime_record_audio(session_id, user_data);
+    integration_set_status("Waiting for AirPlay video");
+}
+
 static void integration_pin_display(const char pin[5], void *user_data)
 {
     (void)user_data;
@@ -653,6 +659,7 @@ static bool integration_start_sync(void)
     receiver_config.transport_prepare_callback = integration_mirror_prepare;
     receiver_config.mirror_open_callback = integration_mirror_open;
     receiver_config.audio_open_callback = airplay_mirror_runtime_audio_open;
+    receiver_config.audio_record_callback = integration_audio_record;
     receiver_config.media_record_callback = integration_mirror_record;
     receiver_config.mirror_stop_callback = airplay_mirror_runtime_stop;
     receiver_config.remote_video = g_airplay.remote_video;

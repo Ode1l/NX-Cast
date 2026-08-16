@@ -6,6 +6,8 @@ does not attempt to implement AirPlay 2 multi-room audio, audio-only playback,
 AWDL, HEVC mirroring, DRM, MFi certification, or Apple platform services. An
 audio-first compatibility bridge is implemented because real video sessions
 may negotiate audio before type-110 video; this is not a music-player claim.
+Audio-only `RECORD` enables bounded audio ingress but does not claim the mirror
+player or switch the UI to video loading.
 
 ## Support Status
 
@@ -18,7 +20,7 @@ may negotiate audio before type-110 video; this is not a music-player claim.
 | HLS redirects and relative segments | Absolute URLs stay direct; sender-relative playlists use generation-bound loopback routes | Host-tested; hardware validation pending |
 | H.264 mirror transport | Bounded receive, decrypt, Annex B reassembly and keyframe recovery | Internal path implemented |
 | AAC/ALAC mirror audio and A/V clock | RTP reorder, Matroska mux and bounded clock correction | Internal path implemented |
-| Audio-first video sessions | Audio-only bridge generation followed by actor-serialized A/V generation replacement | Host-tested; hardware validation pending |
+| Audio-first video sessions | Audio-only ingress waits for type-110, which replaces the bridge and then claims mirror ownership/player loading | Host-tested; hardware validation pending |
 | iPhone screen mirroring | GPL PlayFair key compatibility, H.264/audio transport, Matroska bridge, nvtegra/deko3d | Advertised experimentally; real iPhone/Switch acceptance pending |
 | AirPlay 2 multi-room/music playback | Not planned | Unsupported |
 
@@ -41,6 +43,9 @@ iPhone
   -> mirror SETUP/RECORD
        -> H.264/AAC transport
        -> bounded Matroska stream bridge -> libmpv -> nvtegra/deko3d
+Audio may arrive before type-110 video and is buffered through an audio-only
+bridge without a mirror player load. Type-110 promotion is the mirror ownership
+and player-handoff boundary.
 ```
 
 `source/protocol/airplay/integration.c` is the Switch composition root. It
@@ -156,7 +161,7 @@ matrix. Commercial FairPlay/DRM streams remain outside the implementation.
 | Control Center screen mirror | PIN/reconnect, H.264 first frame, audio, 60-second run, disconnect to Home | Pending |
 | App absolute URL cast | Load, pause/resume, seek, stop, reconnect | Pending |
 | App relative HLS cast | Reverse upgrade, FCUP master/media responses, first frame, relative key/map/segment fetch | Pending |
-| Audio-first negotiation | Audio starts or waits safely; late video replaces the bridge once without a crash | Pending |
+| Audio-first negotiation | Audio starts or waits safely; type-110 replaces the bridge once, then mirror ownership/player loading proceeds | Pending |
 | Reconnect/teardown | Ten cycles, Wi-Fi interruption, stop while loading, exit during connection | Pending |
 | Protocol regression | DLNA, IPTV, AirPlay, then DLNA again in one process | Pending |
 

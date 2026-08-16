@@ -59,6 +59,8 @@ bool airplay_mirror_runtime_audio_open(
     uint8_t compression_type, uint16_t samples_per_frame,
     uint32_t sample_rate, uint16_t *data_port_out,
     uint16_t *control_port_out, void *user_data);
+void airplay_mirror_runtime_record_audio(uint64_t session_id,
+                                         void *user_data);
 void airplay_mirror_runtime_record(uint64_t session_id, void *user_data);
 void airplay_mirror_runtime_stop(uint64_t session_id, void *user_data);
 

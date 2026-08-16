@@ -27,6 +27,24 @@ typedef enum
     AIRPLAY_REMOTE_HLS_ACTION_READY
 } AirPlayRemoteHlsActionKind;
 
+typedef enum
+{
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK = 0,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_CONTENT_TYPE,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_INVALID_ARGUMENT,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_PLIST_DECODE,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_SHAPE,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATUS,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_REQUEST_ID,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_URL_OR_DATA,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_PLAYLIST,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_SESSION_MISMATCH,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_REQUEST_MISMATCH,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_URL_MISMATCH,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_REWRITE_FAILED,
+    AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATE
+} AirPlayRemoteHlsActionResult;
+
 typedef struct
 {
     AirPlayRemoteHlsActionKind kind;
@@ -49,7 +67,8 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
                                       uint64_t session_id,
                                       const uint8_t *body,
                                       size_t body_length,
-                                      AirPlayRemoteHlsAction *action_out);
+                                      AirPlayRemoteHlsAction *action_out,
+                                      AirPlayRemoteHlsActionResult *result_out);
 bool airplay_remote_hls_is_local_uri(const char *uri);
 bool airplay_remote_hls_serve(AirPlayRemoteHls *hls,
                               const AirPlayRtspRequest *request,
@@ -60,3 +79,5 @@ void airplay_remote_hls_reset(AirPlayRemoteHls *hls,
                               uint32_t generation);
 void airplay_remote_hls_event_clear(AirPlayRemoteHlsEvent *event);
 const char *airplay_remote_hls_action_name(AirPlayRemoteHlsActionKind kind);
+const char *airplay_remote_hls_action_result_name(
+    AirPlayRemoteHlsActionResult result);

@@ -25,6 +25,7 @@ typedef struct
     unsigned prepare_count;
     unsigned open_count;
     unsigned audio_open_count;
+    unsigned audio_record_count;
     unsigned record_count;
     unsigned stop_count;
     uint8_t prepared_key[16];
@@ -171,6 +172,13 @@ static void fake_record(uint64_t session_id, void *user_data)
     recorder->record_count++;
 }
 
+static void fake_audio_record(uint64_t session_id, void *user_data)
+{
+    Recorder *recorder = user_data;
+    CHECK(session_id == 42u);
+    recorder->audio_record_count++;
+}
+
 static void fake_stop(uint64_t session_id, void *user_data)
 {
     Recorder *recorder = user_data;
@@ -286,6 +294,7 @@ static AirPlayHandlers *create_handlers(Recorder *recorder,
         .transport_prepare_callback = fake_prepare,
         .mirror_open_callback = fake_open,
         .audio_open_callback = fake_audio_open,
+        .audio_record_callback = fake_audio_record,
         .media_record_callback = fake_record,
         .mirror_stop_callback = fake_stop,
         .remote_video = remote_video,
@@ -527,7 +536,9 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     CHECK(response.status_code == 200 && recorder->audio_open_count == 1u);
     CHECK(airplay_handlers_session_phase(&session) ==
           AIRPLAY_HANDLER_PHASE_RECORDING);
-    CHECK(recorder->open_count == 0u && recorder->record_count == 1u);
+    CHECK(recorder->open_count == 0u &&
+          recorder->audio_record_count == 1u &&
+          recorder->record_count == 0u);
     root = decode_response(&response);
     audio_stream = (AirPlayPlistValue *)airplay_plist_array_get(
         airplay_plist_dict_get(root, "streams"), 0u);
@@ -573,7 +584,9 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
                    "application/x-apple-binary-plist", &response));
     airplay_plist_buffer_free(body);
     CHECK(response.status_code == 200 && recorder->open_count == 1u);
-    CHECK(recorder->audio_open_count == 1u && recorder->record_count == 1u);
+    CHECK(recorder->audio_open_count == 1u &&
+          recorder->audio_record_count == 1u &&
+          recorder->record_count == 1u);
     CHECK(recorder->connection_id == 123456u);
     CHECK(memcmp(recorder->opened_key, expected_hash, 16u) == 0);
     root = decode_response(&response);
@@ -581,12 +594,14 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
         airplay_plist_dict_get(root, "streams"), 0u);
     CHECK(airplay_plist_get_uint(airplay_plist_dict_get(stream, "dataPort"), &value));
     CHECK(value == 7100u);
-    CHECK(recorder->record_count == 1u);
+    CHECK(recorder->record_count == 1u &&
+          recorder->audio_record_count == 1u);
     airplay_plist_free(root);
     airplay_rtsp_response_clear(&response);
 
     CHECK(dispatch(handlers, &session, "RECORD", "/stream", NULL, 0u, NULL, &response));
-    CHECK(response.status_code == 200 && recorder->record_count == 1u);
+    CHECK(response.status_code == 200 && recorder->record_count == 1u &&
+          recorder->audio_record_count == 1u);
     airplay_rtsp_response_clear(&response);
     CHECK(dispatch(handlers, &session, "FLUSH", "/stream", NULL, 0u, NULL,
                    &response));

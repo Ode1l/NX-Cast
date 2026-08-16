@@ -32,6 +32,19 @@ static bool body_contains(const AirPlayRtspResponse *response,
     return false;
 }
 
+static bool dict_set(AirPlayPlistValue *dict, const char *key,
+                     AirPlayPlistValue *value)
+{
+    if (!value)
+        return false;
+    if (!airplay_plist_dict_set(dict, key, value))
+    {
+        airplay_plist_free(value);
+        return false;
+    }
+    return true;
+}
+
 typedef struct
 {
     AirPlayRemoteVideoSnapshot snapshot;
@@ -44,6 +57,8 @@ typedef struct
     unsigned pause_count;
     unsigned stop_count;
     unsigned seek_count;
+    unsigned reverse_send_count;
+    unsigned control_port_count;
     int last_seek_ms;
 } Recorder;
 
@@ -51,7 +66,7 @@ static bool fake_claim(uint64_t session_id, void *user_data)
 {
     Recorder *recorder = user_data;
 
-    CHECK(session_id == 10u || session_id == 11u);
+    CHECK(session_id == 10u || session_id == 11u || session_id == 13u);
     recorder->claim_count++;
     return true;
 }
@@ -60,7 +75,7 @@ static void fake_release(uint64_t session_id, void *user_data)
 {
     Recorder *recorder = user_data;
 
-    CHECK(session_id == 10u || session_id == 11u);
+    CHECK(session_id == 10u || session_id == 11u || session_id == 13u);
     recorder->release_count++;
 }
 
@@ -126,6 +141,27 @@ static bool fake_snapshot(AirPlayRemoteVideoSnapshot *snapshot_out,
     return true;
 }
 
+static bool fake_send_reverse(uint64_t session_id,
+                              const AirPlayRtspOutboundRequest *request,
+                              void *user_data)
+{
+    Recorder *recorder = user_data;
+
+    CHECK(session_id == 13u);
+    CHECK(request && strcmp(request->uri, "/event") == 0);
+    CHECK(request->body && request->body_length != 0u);
+    recorder->reverse_send_count++;
+    return true;
+}
+
+static uint16_t fake_control_port(void *user_data)
+{
+    Recorder *recorder = user_data;
+
+    recorder->control_port_count++;
+    return 7000u;
+}
+
 static bool dispatch(AirPlayRemoteVideo *remote, uint64_t session_id,
                      const char *method, const char *uri, const void *body,
                      size_t body_size, const char *content_type,
@@ -145,8 +181,12 @@ static bool dispatch(AirPlayRemoteVideo *remote, uint64_t session_id,
                  "Content-Type");
         snprintf(request.headers[0].value, sizeof(request.headers[0].value),
                  "%s", content_type);
-        request.header_count = 1u;
     }
+    snprintf(request.headers[1].name, sizeof(request.headers[1].name),
+             "X-Apple-Session-ID");
+    snprintf(request.headers[1].value, sizeof(request.headers[1].value),
+             "test-session");
+    request.header_count = 2u;
     CHECK(airplay_rtsp_response_init(response, "HTTP/1.1", 200));
     return airplay_remote_video_route(remote, session_id, &request, response,
                                       &handled) &&
@@ -176,6 +216,60 @@ static uint8_t *binary_play_body(size_t *size_out)
     return body;
 }
 
+static uint8_t *reverse_play_body(size_t *size_out)
+{
+    AirPlayPlistValue *root = airplay_plist_new_dict();
+    uint8_t *body = NULL;
+    AirPlayPlistError error;
+
+    if (!root ||
+        !airplay_plist_dict_set(
+            root, "Content-Location",
+            airplay_plist_new_string(
+                "airplay://phone/library/master.m3u8")) ||
+        !airplay_plist_encode(root, &body, size_out, &error))
+    {
+        airplay_plist_buffer_free(body);
+        body = NULL;
+    }
+    airplay_plist_free(root);
+    return body;
+}
+
+static uint8_t *hls_action_body(uint32_t request_id, const char *url,
+                                const void *playlist,
+                                size_t playlist_length,
+                                size_t *body_size_out)
+{
+    AirPlayPlistValue *root = airplay_plist_new_dict();
+    AirPlayPlistValue *params = airplay_plist_new_dict();
+    AirPlayPlistError error;
+    uint8_t *body = NULL;
+
+    if (!root || !params ||
+        !dict_set(root, "type",
+                  airplay_plist_new_string("unhandledURLResponse")) ||
+        !dict_set(params, "FCUP_Response_StatusCode",
+                  airplay_plist_new_uint(200u)) ||
+        !dict_set(params, "FCUP_Response_RequestID",
+                  airplay_plist_new_uint(request_id)) ||
+        !dict_set(params, "FCUP_Response_URL",
+                  airplay_plist_new_string(url)) ||
+        !dict_set(params, "FCUP_Response_Data",
+                  airplay_plist_new_data(playlist, playlist_length)) ||
+        !airplay_plist_dict_set(root, "params", params))
+    {
+        airplay_plist_free(params);
+        airplay_plist_free(root);
+        return NULL;
+    }
+    params = NULL;
+    if (!airplay_plist_encode(root, &body, body_size_out, &error))
+        body = NULL;
+    airplay_plist_free(root);
+    return body;
+}
+
 static void test_remote_video(void)
 {
     Recorder recorder = {0};
@@ -188,6 +282,8 @@ static void test_remote_video(void)
         .stop = fake_stop,
         .seek_ms = fake_seek,
         .snapshot = fake_snapshot,
+        .send_reverse_request = fake_send_reverse,
+        .control_port = fake_control_port,
         .user_data = &recorder};
     AirPlayRemoteVideo *remote = NULL;
     AirPlayRtspResponse response = {0};
@@ -288,9 +384,95 @@ static void test_remote_video(void)
     airplay_remote_video_destroy(remote);
 }
 
+static void test_reverse_hls_deferral(void)
+{
+    static const char locator[] =
+        "airplay://phone/library/master.m3u8";
+    static const char media_url[] =
+        "https://cdn.example/live/video/program.m3u8";
+    static const char master[] =
+        "#EXTM3U\n"
+        "#EXT-X-STREAM-INF:BANDWIDTH=1200000\n"
+        "https://cdn.example/live/video/program.m3u8\n";
+    static const char media[] =
+        "#EXTM3U\n"
+        "#EXTINF:4.0,\n"
+        "segments/video-1.m4s\n";
+    Recorder recorder = {0};
+    AirPlayRemoteVideoOps ops = {
+        .claim_owner = fake_claim,
+        .release_owner = fake_release,
+        .load = fake_load,
+        .play = fake_play,
+        .pause = fake_pause,
+        .stop = fake_stop,
+        .seek_ms = fake_seek,
+        .snapshot = fake_snapshot,
+        .send_reverse_request = fake_send_reverse,
+        .control_port = fake_control_port,
+        .user_data = &recorder};
+    AirPlayRemoteVideo *remote = NULL;
+    AirPlayRtspResponse response = {0};
+    uint8_t *play_body;
+    uint8_t *action_body;
+    size_t play_size;
+    size_t action_size;
+
+    CHECK(airplay_remote_video_create(&ops, &remote));
+    play_body = reverse_play_body(&play_size);
+    CHECK(play_body != NULL);
+    CHECK(dispatch(remote, 13u, "POST", "/play", play_body, play_size,
+                   "application/x-apple-binary-plist", &response));
+    airplay_plist_buffer_free(play_body);
+    CHECK(response.status_code == 200);
+    CHECK(recorder.claim_count == 0u && recorder.load_count == 0u &&
+          recorder.play_count == 0u &&
+          recorder.reverse_send_count == 1u);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch(remote, 13u, "POST", "/rate?value=0", NULL, 0u, NULL,
+                   &response));
+    CHECK(response.status_code == 200 && recorder.pause_count == 0u);
+    airplay_rtsp_response_clear(&response);
+    CHECK(dispatch(remote, 13u, "GET", "/playback-info", NULL, 0u, NULL,
+                   &response));
+    CHECK(response.status_code == 200 &&
+          body_contains(&response, "<key>readyToPlay</key><false/>"));
+    airplay_rtsp_response_clear(&response);
+
+    action_body = hls_action_body(1u, locator, master,
+                                  sizeof(master) - 1u, &action_size);
+    CHECK(action_body != NULL);
+    CHECK(dispatch(remote, 13u, "POST", "/action", action_body, action_size,
+                   "application/x-apple-binary-plist", &response));
+    airplay_plist_buffer_free(action_body);
+    CHECK(response.status_code == 200 && recorder.claim_count == 0u &&
+          recorder.reverse_send_count == 2u);
+    airplay_rtsp_response_clear(&response);
+
+    action_body = hls_action_body(2u, media_url, media,
+                                  sizeof(media) - 1u, &action_size);
+    CHECK(action_body != NULL);
+    CHECK(dispatch(remote, 13u, "POST", "/action", action_body, action_size,
+                   "application/x-apple-binary-plist", &response));
+    airplay_plist_buffer_free(action_body);
+    CHECK(response.status_code == 200 && recorder.claim_count == 1u &&
+          recorder.load_count == 1u && recorder.play_count == 1u);
+    CHECK(strstr(recorder.url, "/airplay-hls/") != NULL);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch(remote, 13u, "POST", "/stop", NULL, 0u, NULL,
+                   &response));
+    CHECK(response.status_code == 200 && recorder.stop_count == 1u &&
+          recorder.release_count == 1u);
+    airplay_rtsp_response_clear(&response);
+    airplay_remote_video_destroy(remote);
+}
+
 int main(void)
 {
     test_remote_video();
+    test_reverse_hls_deferral();
     if (g_failures)
     {
         fprintf(stderr, "%d AirPlay remote video checks failed\n", g_failures);

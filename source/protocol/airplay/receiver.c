@@ -274,6 +274,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     handlers_config.transport_prepare_callback = config->transport_prepare_callback;
     handlers_config.mirror_open_callback = config->mirror_open_callback;
     handlers_config.audio_open_callback = config->audio_open_callback;
+    handlers_config.audio_record_callback = config->audio_record_callback;
     handlers_config.media_record_callback = config->media_record_callback;
     handlers_config.mirror_stop_callback = config->mirror_stop_callback;
     handlers_config.remote_video = config->remote_video;

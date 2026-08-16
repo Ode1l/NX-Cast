@@ -32,6 +32,7 @@ static bool dict_set(AirPlayPlistValue *dict, const char *key,
 
 static uint8_t *build_action(uint32_t request_id, const char *url,
                              const void *playlist, size_t playlist_length,
+                             uint64_t status_code,
                              size_t *body_length_out)
 {
     AirPlayPlistValue *root = airplay_plist_new_dict();
@@ -43,7 +44,7 @@ static uint8_t *build_action(uint32_t request_id, const char *url,
         !dict_set(root, "type",
                   airplay_plist_new_string("unhandledURLResponse")) ||
         !dict_set(params, "FCUP_Response_StatusCode",
-                  airplay_plist_new_uint(200u)) ||
+                  airplay_plist_new_uint(status_code)) ||
         !dict_set(params, "FCUP_Response_RequestID",
                   airplay_plist_new_uint(request_id)) ||
         !dict_set(params, "FCUP_Response_URL",
@@ -108,6 +109,8 @@ static void test_master_and_media_transcript(void)
     AirPlayRemoteHls *hls = NULL;
     AirPlayRemoteHlsEvent event = {0};
     AirPlayRemoteHlsAction action = {0};
+    AirPlayRemoteHlsActionResult action_result =
+        AIRPLAY_REMOTE_HLS_ACTION_RESULT_INVALID_ARGUMENT;
     AirPlayRtspRequest request = {0};
     AirPlayRtspResponse response = {0};
     const char *local_path;
@@ -128,18 +131,22 @@ static void test_master_and_media_transcript(void)
                         "phone-session&lt;&amp;&gt;"));
     airplay_remote_hls_event_clear(&event);
 
-    body = build_action(99u, locator, master, sizeof(master) - 1u,
+    body = build_action(99u, locator, master, sizeof(master) - 1u, 200u,
                         &body_length);
     CHECK(body != NULL);
-    CHECK(!airplay_remote_hls_handle_action(hls, session_id, body,
-                                            body_length, &action));
+    CHECK(!airplay_remote_hls_handle_action(
+        hls, session_id, body, body_length, &action, &action_result));
+    CHECK(action_result ==
+          AIRPLAY_REMOTE_HLS_ACTION_RESULT_REQUEST_MISMATCH);
     airplay_plist_buffer_free(body);
 
-    body = build_action(1u, locator, master, sizeof(master) - 1u,
+    body = build_action(1u, locator, master, sizeof(master) - 1u, 200u,
                         &body_length);
     CHECK(body != NULL);
     CHECK(airplay_remote_hls_handle_action(hls, session_id, body,
-                                           body_length, &action));
+                                           body_length, &action,
+                                           &action_result));
+    CHECK(action_result == AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK);
     CHECK(action.kind == AIRPLAY_REMOTE_HLS_ACTION_REQUEST_NEXT);
     CHECK(action.event.request_id == 2u);
     CHECK(body_contains(action.event.body, action.event.body_length,
@@ -147,11 +154,13 @@ static void test_master_and_media_transcript(void)
     airplay_plist_buffer_free(body);
     airplay_remote_hls_event_clear(&action.event);
 
-    body = build_action(2u, audio_url, audio, sizeof(audio) - 1u,
+    body = build_action(2u, audio_url, audio, sizeof(audio) - 1u, 200u,
                         &body_length);
     CHECK(body != NULL);
     CHECK(airplay_remote_hls_handle_action(hls, session_id, body,
-                                           body_length, &action));
+                                           body_length, &action,
+                                           &action_result));
+    CHECK(action_result == AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK);
     CHECK(action.kind == AIRPLAY_REMOTE_HLS_ACTION_REQUEST_NEXT);
     CHECK(action.event.request_id == 3u);
     CHECK(body_contains(action.event.body, action.event.body_length,
@@ -159,11 +168,13 @@ static void test_master_and_media_transcript(void)
     airplay_plist_buffer_free(body);
     airplay_remote_hls_event_clear(&action.event);
 
-    body = build_action(3u, video_url, video, sizeof(video) - 1u,
+    body = build_action(3u, video_url, video, sizeof(video) - 1u, 200u,
                         &body_length);
     CHECK(body != NULL);
     CHECK(airplay_remote_hls_handle_action(hls, session_id, body,
-                                           body_length, &action));
+                                           body_length, &action,
+                                           &action_result));
+    CHECK(action_result == AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK);
     CHECK(action.kind == AIRPLAY_REMOTE_HLS_ACTION_READY);
     CHECK(strcmp(action.playback_url,
                  "http://127.0.0.1:7000/airplay-hls/"
@@ -223,6 +234,8 @@ static void test_malformed_playlist(void)
     AirPlayRemoteHls *hls = NULL;
     AirPlayRemoteHlsEvent event = {0};
     AirPlayRemoteHlsAction action = {0};
+    AirPlayRemoteHlsActionResult action_result =
+        AIRPLAY_REMOTE_HLS_ACTION_RESULT_INVALID_ARGUMENT;
     uint8_t *body;
     size_t body_length;
 
@@ -230,10 +243,46 @@ static void test_malformed_playlist(void)
     CHECK(airplay_remote_hls_begin(hls, 5u, 1u, 7000u, "session",
                                    locator, &event));
     body = build_action(event.request_id, locator, invalid,
-                        sizeof(invalid) - 1u, &body_length);
+                        sizeof(invalid) - 1u, 200u, &body_length);
     CHECK(body != NULL);
-    CHECK(!airplay_remote_hls_handle_action(hls, 5u, body, body_length,
-                                            &action));
+    CHECK(!airplay_remote_hls_handle_action(
+        hls, 5u, body, body_length, &action, &action_result));
+    CHECK(action_result ==
+          AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_PLAYLIST);
+    airplay_plist_buffer_free(body);
+    airplay_remote_hls_event_clear(&event);
+    airplay_remote_hls_destroy(hls);
+}
+
+static void test_field_validation(void)
+{
+    static const char locator[] = "airplay://phone/fields/master.m3u8";
+    static const char master[] = "#EXTM3U\n#EXTINF:4.0,\nsegment.m3u8\n";
+    AirPlayRemoteHls *hls = NULL;
+    AirPlayRemoteHlsEvent event = {0};
+    AirPlayRemoteHlsAction action = {0};
+    AirPlayRemoteHlsActionResult result =
+        AIRPLAY_REMOTE_HLS_ACTION_RESULT_INVALID_ARGUMENT;
+    uint8_t *body;
+    size_t body_length;
+
+    CHECK(airplay_remote_hls_create(&hls));
+    CHECK(airplay_remote_hls_begin(hls, 6u, 2u, 7000u, "session",
+                                   locator, &event));
+    body = build_action(event.request_id, locator, master,
+                        sizeof(master) - 1u, 404u, &body_length);
+    CHECK(body != NULL);
+    CHECK(!airplay_remote_hls_handle_action(
+        hls, 6u, body, body_length, &action, &result));
+    CHECK(result == AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATUS);
+    airplay_plist_buffer_free(body);
+
+    body = build_action(0u, locator, master, sizeof(master) - 1u, 200u,
+                        &body_length);
+    CHECK(body != NULL);
+    CHECK(!airplay_remote_hls_handle_action(
+        hls, 6u, body, body_length, &action, &result));
+    CHECK(result == AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_REQUEST_ID);
     airplay_plist_buffer_free(body);
     airplay_remote_hls_event_clear(&event);
     airplay_remote_hls_destroy(hls);
@@ -243,6 +292,7 @@ int main(void)
 {
     test_master_and_media_transcript();
     test_malformed_playlist();
+    test_field_validation();
     if (g_failures)
     {
         fprintf(stderr, "%d AirPlay remote HLS checks failed\n", g_failures);

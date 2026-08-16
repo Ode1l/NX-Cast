@@ -928,7 +928,8 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
                                       uint64_t session_id,
                                       const uint8_t *body,
                                       size_t body_length,
-                                      AirPlayRemoteHlsAction *action_out)
+                                      AirPlayRemoteHlsAction *action_out,
+                                      AirPlayRemoteHlsActionResult *result_out)
 {
     AirPlayPlistValue *root = NULL;
     const AirPlayPlistValue *params;
@@ -940,44 +941,81 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
     uint64_t request_id = 0u;
     uint64_t status_code = 200u;
     AirPlayPlistError error;
+    AirPlayRemoteHlsActionResult result =
+        AIRPLAY_REMOTE_HLS_ACTION_RESULT_INVALID_ARGUMENT;
     bool ok = false;
 
     if (!hls || session_id == 0u || !body || body_length == 0u ||
         !action_out)
-        return false;
+        goto done;
+    if (!result_out)
+        goto done;
     memset(action_out, 0, sizeof(*action_out));
     if (!airplay_plist_decode(body, body_length, &root, &error) ||
         airplay_plist_type(root) != AIRPLAY_PLIST_TYPE_DICT)
+    {
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_PLIST_DECODE;
         goto cleanup;
+    }
     type = airplay_plist_get_string(airplay_plist_dict_get(root, "type"));
     params = airplay_plist_dict_get(root, "params");
     if (!type || airplay_plist_type(params) != AIRPLAY_PLIST_TYPE_DICT)
+    {
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_SHAPE;
         goto cleanup;
+    }
     if (strcmp(type, "unhandledURLResponse") != 0)
     {
         action_out->kind = AIRPLAY_REMOTE_HLS_ACTION_ACK;
         ok = true;
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK;
         goto cleanup;
     }
     if (!hls_get_uint(params, "FCUP_Response_StatusCode", &status_code,
                       false) ||
-        !hls_get_uint(params, "FCUP_Response_RequestID", &request_id, true) ||
-        request_id == 0u || request_id > UINT32_MAX || status_code < 200u ||
-        status_code > 299u)
+        status_code < 200u || status_code > 299u)
+    {
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATUS;
         goto cleanup;
+    }
+    if (!hls_get_uint(params, "FCUP_Response_RequestID", &request_id, true) ||
+        request_id == 0u || request_id > UINT32_MAX)
+    {
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_REQUEST_ID;
+        goto cleanup;
+    }
     value = airplay_plist_dict_get(params, "FCUP_Response_URL");
     url = airplay_plist_get_string(value);
     value = airplay_plist_dict_get(params, "FCUP_Response_Data");
     playlist = airplay_plist_get_data(value, &playlist_length);
-    if (!url || !playlist || !hls_playlist_valid(playlist, playlist_length))
+    if (!url || !playlist)
+    {
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_URL_OR_DATA;
         goto cleanup;
+    }
+    if (!hls_playlist_valid(playlist, playlist_length))
+    {
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_PLAYLIST;
+        goto cleanup;
+    }
 
     hls_mutex_lock(&hls->mutex);
-    if (!hls->active || hls->session_id != session_id ||
-        hls->expected_request_id != (uint32_t)request_id ||
-        strcmp(hls->expected_url, url) != 0)
+    if (!hls->active || hls->session_id != session_id)
     {
         hls_mutex_unlock(&hls->mutex);
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_SESSION_MISMATCH;
+        goto cleanup;
+    }
+    if (hls->expected_request_id != (uint32_t)request_id)
+    {
+        hls_mutex_unlock(&hls->mutex);
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_REQUEST_MISMATCH;
+        goto cleanup;
+    }
+    if (strcmp(hls->expected_url, url) != 0)
+    {
+        hls_mutex_unlock(&hls->mutex);
+        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_URL_MISMATCH;
         goto cleanup;
     }
     action_out->generation = hls->generation;
@@ -991,6 +1029,7 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
                                        &rewritten, &rewritten_length))
         {
             hls_mutex_unlock(&hls->mutex);
+            result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_REWRITE_FAILED;
             goto cleanup;
         }
         if (hls->media_count == 0u)
@@ -1003,6 +1042,7 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
                                    &rewritten_length))
             {
                 hls_mutex_unlock(&hls->mutex);
+                result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_REWRITE_FAILED;
                 goto cleanup;
             }
         }
@@ -1018,6 +1058,7 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
         if (hls->pending_media_index >= hls->media_count)
         {
             hls_mutex_unlock(&hls->mutex);
+            result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATE;
             goto cleanup;
         }
         media = &hls->media[hls->pending_media_index];
@@ -1025,6 +1066,7 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
                                &media->playlist, &media->playlist_length))
         {
             hls_mutex_unlock(&hls->mutex);
+            result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_REWRITE_FAILED;
             goto cleanup;
         }
         hls->pending_media_index++;
@@ -1036,6 +1078,7 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
                 &action_out->event))
         {
             hls_mutex_unlock(&hls->mutex);
+            result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_REWRITE_FAILED;
             goto cleanup;
         }
         action_out->kind = AIRPLAY_REMOTE_HLS_ACTION_REQUEST_NEXT;
@@ -1046,6 +1089,7 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
                       sizeof(action_out->playback_url), hls->playback_url))
         {
             hls_mutex_unlock(&hls->mutex);
+            result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATE;
             goto cleanup;
         }
         hls->expected_request_id = 0u;
@@ -1054,11 +1098,15 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
     }
     hls_mutex_unlock(&hls->mutex);
     ok = true;
+    result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK;
 
 cleanup:
     if (!ok)
         airplay_remote_hls_event_clear(&action_out->event);
     airplay_plist_free(root);
+done:
+    if (result_out)
+        *result_out = result;
     return ok;
 }
 
@@ -1163,6 +1211,44 @@ const char *airplay_remote_hls_action_name(AirPlayRemoteHlsActionKind kind)
         return "request-next";
     case AIRPLAY_REMOTE_HLS_ACTION_READY:
         return "ready";
+    default:
+        return "unknown";
+    }
+}
+
+const char *airplay_remote_hls_action_result_name(
+    AirPlayRemoteHlsActionResult result)
+{
+    switch (result)
+    {
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK:
+        return "ok";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_CONTENT_TYPE:
+        return "bad-content-type";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_INVALID_ARGUMENT:
+        return "invalid-argument";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_PLIST_DECODE:
+        return "plist-decode";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_SHAPE:
+        return "bad-shape";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATUS:
+        return "bad-status";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_REQUEST_ID:
+        return "bad-request-id";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_URL_OR_DATA:
+        return "bad-url-or-data";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_PLAYLIST:
+        return "bad-playlist";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_SESSION_MISMATCH:
+        return "session-mismatch";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_REQUEST_MISMATCH:
+        return "request-mismatch";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_URL_MISMATCH:
+        return "url-mismatch";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_REWRITE_FAILED:
+        return "rewrite-failed";
+    case AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATE:
+        return "bad-state";
     default:
         return "unknown";
     }

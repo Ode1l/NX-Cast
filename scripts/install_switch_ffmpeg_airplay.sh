@@ -25,4 +25,3 @@ sudo "${PACMAN}" -U --noconfirm "${PACKAGE_PATH}"
 
 "${ROOT_DIR}/scripts/verify_switch_ffmpeg_airplay.sh" "${PREFIX}"
 echo "Global Switch FFmpeg installation is ready for make release-build."
-
