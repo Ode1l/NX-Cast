@@ -5,9 +5,19 @@
 
 static char *player_strdup_or_null(const char *value)
 {
+    char *copy;
+    size_t length;
+
     if (!value)
         return NULL;
-    return strdup(value);
+
+    length = strlen(value) + 1;
+    copy = malloc(length);
+    if (!copy)
+        return NULL;
+
+    memcpy(copy, value, length);
+    return copy;
 }
 
 void player_media_clear(PlayerMedia *media)

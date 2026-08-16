@@ -4,13 +4,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
 
 #include <switch.h>
 
 #include "app/runtime_observability.h"
 #include "log/log.h"
 #include "player/backend/libmpv_airplay.h"
+#include "player/cache_policy.h"
 #include "player/core/ownership.h"
 #include "player/seek_target.h"
 #include "player/trace.h"
@@ -494,18 +494,6 @@ static void libmpv_observe_dlna_sample(void)
 }
 
 #endif
-
-static bool libmpv_is_direct_mp4(const char *uri)
-{
-    const char *end;
-
-    if (!uri || !uri[0])
-        return false;
-    end = strpbrk(uri, "?#");
-    if (!end)
-        end = uri + strlen(uri);
-    return end - uri >= 4 && strncasecmp(end - 4, ".mp4", 4) == 0;
-}
 
 static void libmpv_ensure_sync(void)
 {
@@ -1214,7 +1202,7 @@ static bool libmpv_async_load_current(bool paused)
     int rc;
     LibmpvPendingEvents pending = {0};
     char detail[96];
-    bool direct_mp4;
+    PlayerCachePolicy cache_policy;
 #if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
     PlayerOwnershipLease observe_lease = {0};
     bool observe_dlna =
@@ -1231,17 +1219,14 @@ static bool libmpv_async_load_current(bool paused)
         return false;
     }
 
-    direct_mp4 = libmpv_is_direct_mp4(g_uri);
-    if (direct_mp4)
+    cache_policy = player_cache_policy_for_uri(g_uri);
+    if (!player_cache_policy_format_options(&cache_policy, paused, options,
+                                            sizeof(options)))
     {
-        snprintf(options,
-                 sizeof(options),
-                 "pause=%s,cache=yes,cache-pause-initial=no,demuxer-readahead-secs=2,demuxer-max-bytes=8MiB,demuxer-max-back-bytes=2MiB",
-                 paused ? "yes" : "no");
-    }
-    else
-    {
-        snprintf(options, sizeof(options), "pause=%s", paused ? "yes" : "no");
+        log_error("[player-libmpv] cache policy option formatting failed policy=%s\n",
+                  player_cache_policy_name(cache_policy.kind));
+        mutexUnlock(&g_mutex);
+        return false;
     }
 
     args[0] = "loadfile";
@@ -1254,9 +1239,20 @@ static bool libmpv_async_load_current(bool paused)
 
     snprintf(detail,
              sizeof(detail),
-             "paused=%d profile=%s",
+             "paused=%d cache=%s/%u/%u/%u",
              paused ? 1 : 0,
-             direct_mp4 ? "direct-mp4-fast" : "default-stable");
+             player_cache_policy_name(cache_policy.kind),
+             cache_policy.forward_mib, cache_policy.backward_mib,
+             cache_policy.readahead_secs);
+    player_trace_log(
+        "[media-cache] seq=%u t_ms=%llu phase=selected url_hash=%08x "
+        "policy=%s enabled=%d forward_mib=%u backward_mib=%u readahead_s=%u\n",
+        player_trace_current_media_seq(),
+        (unsigned long long)player_trace_elapsed_ms(),
+        player_trace_current_media_hash(),
+        player_cache_policy_name(cache_policy.kind),
+        cache_policy.cache_enabled ? 1 : 0, cache_policy.forward_mib,
+        cache_policy.backward_mib, cache_policy.readahead_secs);
     libmpv_log_trace("loadfile", "dispatch", detail, g_uri);
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_LOADFILE, args);
     if (rc < 0)
@@ -1410,6 +1406,8 @@ static void libmpv_log_reply_error(uint64_t reply_userdata, int error)
 static void libmpv_handle_property_change(const mpv_event_property *prop, uint64_t reply_userdata)
 {
     LibmpvPendingEvents pending = {0};
+    bool cache_transition = false;
+    bool paused_for_cache = false;
 
     if (!prop)
         return;
@@ -1449,7 +1447,11 @@ static void libmpv_handle_property_change(const mpv_event_property *prop, uint64
         break;
     case LIBMPV_OBS_PAUSED_FOR_CACHE:
         if (prop->format == MPV_FORMAT_FLAG && prop->data)
-            g_paused_for_cache = (*(int *)prop->data) != 0;
+        {
+            paused_for_cache = (*(int *)prop->data) != 0;
+            cache_transition = paused_for_cache != g_paused_for_cache;
+            g_paused_for_cache = paused_for_cache;
+        }
         libmpv_refresh_state_locked(&pending);
         break;
     case LIBMPV_OBS_SEEKING:
@@ -1461,6 +1463,16 @@ static void libmpv_handle_property_change(const mpv_event_property *prop, uint64
         break;
     }
     mutexUnlock(&g_mutex);
+
+    if (cache_transition)
+    {
+        player_trace_log(
+            "[media-cache] seq=%u t_ms=%llu phase=%s url_hash=%08x\n",
+            player_trace_current_media_seq(),
+            (unsigned long long)player_trace_elapsed_ms(),
+            paused_for_cache ? "buffering-enter" : "buffering-leave",
+            player_trace_current_media_hash());
+    }
 
     libmpv_flush_events(&pending);
 }

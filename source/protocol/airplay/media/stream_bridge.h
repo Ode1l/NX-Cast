@@ -12,6 +12,12 @@
 #define AIRPLAY_STREAM_BRIDGE_DEFAULT_CAPACITY (2u * 1024u * 1024u)
 #define AIRPLAY_STREAM_BRIDGE_MIN_CAPACITY (16u * 1024u)
 
+typedef enum
+{
+    AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY = 0,
+    AIRPLAY_STREAM_BRIDGE_PROFILE_VIDEO_AUDIO
+} AirPlayStreamBridgeProfile;
+
 typedef struct
 {
     size_t capacity;
@@ -25,6 +31,7 @@ typedef struct
     uint64_t audio_bytes;
     uint64_t audio_push_failures;
     uint32_t video_config_generation;
+    AirPlayStreamBridgeProfile profile;
     AirPlayMirrorClockStats clock;
     bool eof;
     bool cancelled;
@@ -35,6 +42,11 @@ typedef struct AirPlayStreamBridge AirPlayStreamBridge;
 
 bool airplay_stream_bridge_create(size_t capacity,
                                   AirPlayStreamBridge **bridge_out);
+bool airplay_stream_bridge_create_profile(
+    size_t capacity, AirPlayStreamBridgeProfile profile,
+    AirPlayStreamBridge **bridge_out);
+AirPlayStreamBridgeProfile airplay_stream_bridge_profile(
+    const AirPlayStreamBridge *bridge);
 void airplay_stream_bridge_retain(AirPlayStreamBridge *bridge);
 void airplay_stream_bridge_release(AirPlayStreamBridge *bridge);
 bool airplay_stream_bridge_claim_reader(AirPlayStreamBridge *bridge);

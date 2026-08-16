@@ -13,6 +13,16 @@
 #define AIRPLAY_HANDLER_DEVICE_ID_STRING_SIZE 18u
 #define AIRPLAY_HANDLER_PAIRING_ID_SIZE 37u
 
+typedef enum
+{
+    AIRPLAY_HANDLER_PHASE_CONTROL = 0,
+    AIRPLAY_HANDLER_PHASE_TRANSPORT_READY,
+    AIRPLAY_HANDLER_PHASE_RECORD_PENDING,
+    AIRPLAY_HANDLER_PHASE_STREAM_READY,
+    AIRPLAY_HANDLER_PHASE_RECORDING,
+    AIRPLAY_HANDLER_PHASE_CLOSED
+} AirPlayHandlerPhase;
+
 typedef bool (*AirPlayKeyUnwrapCallback)(
     const uint8_t wrapped_key[AIRPLAY_FAIRPLAY_WRAPPED_KEY_SIZE],
     uint8_t key_out[AIRPLAY_FAIRPLAY_AES_KEY_SIZE],
@@ -42,7 +52,7 @@ typedef bool (*AirPlayAudioOpenCallback)(
     uint8_t compression_type, uint16_t samples_per_frame,
     uint32_t sample_rate, uint16_t *data_port_out,
     uint16_t *control_port_out, void *user_data);
-typedef void (*AirPlayMirrorRecordCallback)(uint64_t session_id, void *user_data);
+typedef void (*AirPlayMediaRecordCallback)(uint64_t session_id, void *user_data);
 typedef void (*AirPlayMirrorStopCallback)(uint64_t session_id, void *user_data);
 typedef struct AirPlayRemoteVideo AirPlayRemoteVideo;
 
@@ -60,7 +70,7 @@ typedef struct
     AirPlayTransportPrepareCallback transport_prepare_callback;
     AirPlayMirrorOpenCallback mirror_open_callback;
     AirPlayAudioOpenCallback audio_open_callback;
-    AirPlayMirrorRecordCallback mirror_record_callback;
+    AirPlayMediaRecordCallback media_record_callback;
     AirPlayMirrorStopCallback mirror_stop_callback;
     AirPlayRemoteVideo *remote_video;
     void *callback_user_data;
@@ -76,5 +86,7 @@ bool airplay_handlers_route(AirPlayRtspSession *session,
                             AirPlayRtspResponse *response,
                             void *user_data);
 void airplay_handlers_session_closed(AirPlayRtspSession *session, void *user_data);
+AirPlayHandlerPhase airplay_handlers_session_phase(const AirPlayRtspSession *session);
+const char *airplay_handler_phase_name(AirPlayHandlerPhase phase);
 
 #endif

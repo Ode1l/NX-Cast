@@ -154,10 +154,10 @@ def validate_records(
     assert by_kind[16].name == f"{instance}.{service}"
     txt = by_kind[16].data
     if service == "_airplay._tcp.local":
-        assert b"features=0x5A7FFEE6,0x0" in txt, txt
+        assert b"features=0x5A7FFEF7,0x0" in txt, txt
         assert b"pi=00112233-4455-4677-8899-aabbccddeeff" in txt, txt
     else:
-        assert b"ft=0x5A7FFEE6,0x0" in txt, txt
+        assert b"ft=0x5A7FFEF7,0x0" in txt, txt
         assert b"ch=2" in txt, txt
         assert b"et=0,3,5" in txt, txt
         assert b"sf=0x8c" in txt, txt

@@ -8,16 +8,26 @@
 #define AIRPLAY_MIRROR_AUDIO_RTP_HEADER_SIZE 12u
 #define AIRPLAY_MIRROR_AUDIO_MAX_PACKET (32u * 1024u)
 #define AIRPLAY_MIRROR_AUDIO_WINDOW 64u
+#define AIRPLAY_MIRROR_AUDIO_CT_ALAC 2u
 #define AIRPLAY_MIRROR_AUDIO_CT_AAC_LC 4u
 #define AIRPLAY_MIRROR_AUDIO_CT_AAC_ELD 8u
+#define AIRPLAY_MIRROR_AUDIO_CODEC_CONFIG_MAX 36u
+
+typedef enum
+{
+    AIRPLAY_MIRROR_AUDIO_CODEC_INVALID = 0,
+    AIRPLAY_MIRROR_AUDIO_CODEC_AAC,
+    AIRPLAY_MIRROR_AUDIO_CODEC_ALAC
+} AirPlayMirrorAudioCodec;
 
 typedef struct
 {
+    AirPlayMirrorAudioCodec codec;
     uint8_t compression_type;
     uint32_t sample_rate;
     uint16_t channels;
     uint16_t samples_per_frame;
-    uint8_t codec_config[4];
+    uint8_t codec_config[AIRPLAY_MIRROR_AUDIO_CODEC_CONFIG_MAX];
     size_t codec_config_size;
 } AirPlayMirrorAudioFormat;
 

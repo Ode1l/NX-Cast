@@ -24,7 +24,7 @@ The current baseline includes:
 - local/remote M3U source management, SD cache, and direct IPTV URL input
 - channel groups, search, favorites, recent history, logo cache, and XMLTV now/next EPG
 - controller and touch playback overlay
-- experimental AirPlay PIN pairing and direct URL/HLS playback path
+- experimental AirPlay PIN pairing, direct/reverse HLS playback, and H.264 mirroring
 - generation-safe media ownership across DLNA, IPTV, and AirPlay
 - Docker and GitHub Actions release builds
 
@@ -52,11 +52,11 @@ See [docs/iptv.md](docs/iptv.md) for supported formats, SD-card paths, source co
 
 ## Experimental AirPlay
 
-NX-Cast has an independent C implementation of AirPlay DNS-SD discovery, PIN pairing, persistent RTSP/HTTP control, and URL/HLS player commands. It passes deterministic host tests and strict Switch cross-compilation, but real iPhone compatibility has not yet completed the release matrix. Treat it as experimental rather than a guaranteed release feature.
+NX-Cast has an independent C implementation of AirPlay DNS-SD discovery, PIN pairing, persistent RTSP/HTTP control, reverse PTTH events, URL/HLS player commands, and H.264 mirroring. Absolute media URLs load directly; sender-relative HLS playlists are acquired through bounded FCUP events and exposed only through generation-bound loopback routes. It passes deterministic host tests and strict Switch cross-compilation, but real iPhone compatibility has not yet completed the release matrix. Treat it as experimental rather than a guaranteed release feature.
 
-The H.264/AAC mirror transport and nvtegra/deko3d bridge now use an isolated GPL PlayFair compatibility backend sourced from a fixed UxPlay commit. Automated protocol, media, sanitizer, and Switch builds pass, but this does not establish real-iPhone compatibility or Apple authorization. AirPlay 2 multi-room audio, audio-only playback, AWDL, commercial FairPlay/DRM content, and Apple certification are out of scope.
+The H.264/AAC/ALAC mirror transport and nvtegra/deko3d bridge use an isolated GPL PlayFair compatibility backend sourced from a fixed UxPlay commit. Audio SETUP may arrive before video and is promoted to a new A/V bridge generation when type-110 video arrives, without mutating libmpv from a network thread. Automated protocol, media, sanitizer, and Switch builds do not establish real-iPhone compatibility or Apple authorization. AirPlay 2 multi-room audio, music-player behavior, AWDL, HEVC mirroring, commercial FairPlay/DRM content, and Apple certification are out of scope.
 
-See [docs/AIRPLAY_DEVELOPMENT.md](docs/AIRPLAY_DEVELOPMENT.md) for the exact capability table, SD privacy rules, build requirements, and test matrix.
+See [docs/AIRPLAY_DEVELOPMENT.md](docs/AIRPLAY_DEVELOPMENT.md) for the capability table, SD privacy rules, build requirements, and hardware matrix. The stable route and ownership contract is documented in [docs/AIRPLAY_PROTOCOL_COMPATIBILITY.md](docs/AIRPLAY_PROTOCOL_COMPATIBILITY.md).
 
 ## Install
 
@@ -181,7 +181,10 @@ The Docker build installs the current recommended `wiliwili` media packages:
 - `switch-ffmpeg`
 - `switch-libmpv_deko3d`
 
-It also installs official devkitPro `switch-libsodium` and runs the AirPlay host suite before the strict Switch build.
+It then rebuilds the pinned wiliwili FFmpeg recipe with only the Matroska muxer
+enabled for the AirPlay bridge. The build also installs official devkitPro
+`switch-libsodium` and runs the AirPlay host suite before the strict Switch
+build.
 
 ### Local devkitPro Build
 
@@ -211,6 +214,20 @@ sudo dkp-pacman -U \
   "$base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst"
 ```
 
+Build and globally install NX-Cast's pinned FFmpeg package for AirPlay
+H.264/AAC/ALAC bridging:
+
+```bash
+source /opt/devkitpro/switchvars.sh
+make NXCAST_FFMPEG_JOBS=4 install-airplay-ffmpeg
+make verify-airplay-ffmpeg
+```
+
+The install target builds as the current user, requests `sudo` only for the
+local `dkp-pacman -U` step, and installs the complete target package under
+`/opt/devkitpro/portlibs/switch`. Matroska is a compile-time FFmpeg muxer, not
+an SD-card asset or a runtime plugin.
+
 Build:
 
 ```bash
@@ -219,7 +236,11 @@ make RELEASE_JOBS=2 release-build
 NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
-`release-build` requires Dear ImGui, libmpv, deko3d, AirPlay Ed25519, and the built-in PlayFair backend, then writes the build attestation required by the packaging script. This prevents a fallback or AirPlay-disabled NRO from being published accidentally. Use the individual flags only for development builds.
+`release-build` requires Dear ImGui, libmpv, deko3d, AirPlay Ed25519, the
+built-in PlayFair backend, and FFmpeg ALAC/H.264/Matroska support, then writes
+the build attestation required by the packaging script. This prevents a
+fallback, AirPlay-disabled, or muxer-less NRO from being published accidentally.
+Use the individual flags only for development builds.
 
 Trace build for playback/input debugging:
 

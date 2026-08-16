@@ -11,6 +11,7 @@
 
 #include "app/network_diagnostics.h"
 #include "app/protocol_coordinator.h"
+#include "app/runtime_diagnostics.h"
 #include "iptv/iptv.h"
 #include "log/log.h"
 #include "player/player.h"
@@ -77,6 +78,10 @@ typedef struct
 #define NXCAST_EXCLUSIVE_MEDIA_RESOURCES 0
 #endif
 
+#ifndef NXCAST_KEEP_RECEIVERS_DURING_MEDIA
+#define NXCAST_KEEP_RECEIVERS_DURING_MEDIA 1
+#endif
+
 #ifndef NXCAST_DLNA_CONTROLLER_EXIT_TIMEOUT_MS
 #define NXCAST_DLNA_CONTROLLER_EXIT_TIMEOUT_MS 0
 #endif
@@ -86,6 +91,10 @@ typedef struct
 #endif
 #if NXCAST_SOCKET_SB_EFFICIENCY > 8
 #error "NXCAST_SOCKET_SB_EFFICIENCY must be 0 (default) or in the standard 1-8 range"
+#endif
+#if NXCAST_KEEP_RECEIVERS_DURING_MEDIA != 0 && \
+    NXCAST_KEEP_RECEIVERS_DURING_MEDIA != 1
+#error "NXCAST_KEEP_RECEIVERS_DURING_MEDIA must be 0 or 1"
 #endif
 
 static int g_nxlinkSock = -1;
@@ -620,10 +629,19 @@ static bool main_protocol_airplay_get_status(void *context,
     return true;
 }
 
+#if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
 static void main_log_network_diagnostics(bool emit_summary)
 {
     NetworkDiagnosticSnapshot
         snapshots[NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT];
+    uint64_t instrumented_sockets = 0u;
+    uint64_t instrumented_operations = 0u;
+    uint64_t operation_slot_overflows = 0u;
+    uint64_t oldest_operation_age_ms = 0u;
+    uint64_t oldest_operation_token = 0u;
+    NetworkDiagnosticSubsystem oldest_subsystem =
+        NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT;
+    NetworkOperationKind oldest_operation = NETWORK_OPERATION_NONE;
 
     for (int index = 0; index < NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT; ++index)
     {
@@ -633,6 +651,18 @@ static void main_log_network_diagnostics(bool emit_summary)
 
         if (!network_diagnostics_get_snapshot(subsystem, snapshot))
             memset(snapshot, 0, sizeof(*snapshot));
+        instrumented_sockets += snapshot->open_sockets;
+        instrumented_operations += snapshot->active_operations;
+        operation_slot_overflows += snapshot->operation_slot_overflows;
+        if (snapshot->oldest_active_token != 0u &&
+            (oldest_operation_token == 0u ||
+             snapshot->oldest_active_age_ms > oldest_operation_age_ms))
+        {
+            oldest_operation_age_ms = snapshot->oldest_active_age_ms;
+            oldest_operation_token = snapshot->oldest_active_token;
+            oldest_subsystem = subsystem;
+            oldest_operation = snapshot->oldest_active_operation;
+        }
     }
 
     if (emit_summary)
@@ -674,7 +704,33 @@ static void main_log_network_diagnostics(bool emit_summary)
             }
             used += (size_t)written;
         }
-        log_info("[network-heartbeat] v=2 %s\n", summary);
+        log_info("[network-heartbeat] v=3 net_budget=%s "
+                 "bsd_sessions=%u sb_efficiency=%u "
+                 "instrumented_sockets=%llu instrumented_ops=%llu "
+                 "instrumented_slot_overflows=%llu "
+                 "instrumented_pressure=%d oldest=%s/%s/%llu/%llu %s\n",
+                 NXCAST_SOCKET_BSD_SESSIONS > 0 ||
+                         NXCAST_SOCKET_SB_EFFICIENCY > 0
+                     ? "configured"
+                     : "libnx-default",
+                 (unsigned)NXCAST_SOCKET_BSD_SESSIONS,
+                 (unsigned)NXCAST_SOCKET_SB_EFFICIENCY,
+                 (unsigned long long)instrumented_sockets,
+                 (unsigned long long)instrumented_operations,
+                 (unsigned long long)operation_slot_overflows,
+                 NXCAST_SOCKET_BSD_SESSIONS > 0 &&
+                         instrumented_operations >=
+                             NXCAST_SOCKET_BSD_SESSIONS
+                     ? 1
+                     : 0,
+                 oldest_operation_token != 0u
+                     ? network_diagnostics_subsystem_name(oldest_subsystem)
+                     : "none",
+                 oldest_operation_token != 0u
+                     ? network_diagnostics_operation_name(oldest_operation)
+                     : "none",
+                 (unsigned long long)oldest_operation_token,
+                 (unsigned long long)oldest_operation_age_ms, summary);
     }
 
     for (int index = 0; index < NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT; ++index)
@@ -698,6 +754,7 @@ static void main_log_network_diagnostics(bool emit_summary)
                  snapshot->last_error);
     }
 }
+#endif
 
 static bool main_protocol_set_background_network_suspended(void *context,
                                                             bool suspended)
@@ -1112,6 +1169,7 @@ static void render_home_view(const PlayerHomeViewState *state)
 
 static bool initialize_network(void)
 {
+    runtime_diagnostics_configure_network(0u, 0u);
 #if NXCAST_SOCKET_BSD_SESSIONS > 0 || NXCAST_SOCKET_SB_EFFICIENCY > 0
     SocketInitConfig socket_config = *socketGetDefaultInitConfig();
 #if NXCAST_SOCKET_BSD_SESSIONS > 0
@@ -1134,12 +1192,24 @@ static bool initialize_network(void)
         return false;
     }
 
+    runtime_diagnostics_configure_network(NXCAST_SOCKET_BSD_SESSIONS,
+                                          NXCAST_SOCKET_SB_EFFICIENCY);
     log_info("[net] Network stack initialized bsd_sessions=%s%u "
              "sb_efficiency=%s%u.\n",
              NXCAST_SOCKET_BSD_SESSIONS > 0 ? "override:" : "default:",
              (unsigned)NXCAST_SOCKET_BSD_SESSIONS,
              NXCAST_SOCKET_SB_EFFICIENCY > 0 ? "override:" : "default:",
              (unsigned)NXCAST_SOCKET_SB_EFFICIENCY);
+    log_info("[net-budget] bsd_sessions=%u sb_efficiency=%u "
+             "exclusive_media=%d keep_receivers=%d "
+             "metric_scope=nxcast-instrumented-only\n",
+             (unsigned)NXCAST_SOCKET_BSD_SESSIONS,
+             (unsigned)NXCAST_SOCKET_SB_EFFICIENCY,
+             NXCAST_EXCLUSIVE_MEDIA_RESOURCES &&
+                     !NXCAST_KEEP_RECEIVERS_DURING_MEDIA
+                 ? 1
+                 : 0,
+             NXCAST_KEEP_RECEIVERS_DURING_MEDIA ? 1 : 0);
     log_info("[net] Ensure Wi-Fi is connected before streaming.\n");
     return true;
 }
@@ -1272,7 +1342,8 @@ int main(int argc, char* argv[])
 #if defined(NXCAST_PROTOCOL_START_SERIAL) && NXCAST_PROTOCOL_START_SERIAL
         .serial_startup = true,
 #endif
-#if NXCAST_EXCLUSIVE_MEDIA_RESOURCES
+#if NXCAST_EXCLUSIVE_MEDIA_RESOURCES && \
+    !NXCAST_KEEP_RECEIVERS_DURING_MEDIA
         .exclusive_media_resources = true,
 #endif
 #if defined(NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA) && \

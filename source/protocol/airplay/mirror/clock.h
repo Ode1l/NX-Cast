@@ -38,6 +38,8 @@ void airplay_mirror_clock_destroy(AirPlayMirrorClock *clock);
 void airplay_mirror_clock_reset(AirPlayMirrorClock *clock);
 bool airplay_mirror_clock_set_audio_rate(AirPlayMirrorClock *clock,
                                          uint32_t sample_rate);
+void airplay_mirror_clock_set_audio_only(AirPlayMirrorClock *clock,
+                                         bool audio_only);
 AirPlayMirrorClockResult airplay_mirror_clock_update_audio_sync(
     AirPlayMirrorClock *clock, uint32_t rtp_timestamp, uint64_t ntp_timestamp,
     uint64_t local_time_us);

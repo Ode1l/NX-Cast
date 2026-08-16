@@ -39,6 +39,11 @@ typedef struct
     bool (*stop)(void *user_data);
     bool (*seek_ms)(int position_ms, void *user_data);
     bool (*snapshot)(AirPlayRemoteVideoSnapshot *snapshot_out, void *user_data);
+    bool (*send_reverse_request)(
+        uint64_t session_id,
+        const AirPlayRtspOutboundRequest *request,
+        void *user_data);
+    uint16_t (*control_port)(void *user_data);
     void *user_data;
 } AirPlayRemoteVideoOps;
 
@@ -51,6 +56,11 @@ bool airplay_remote_video_route(AirPlayRemoteVideo *remote, uint64_t session_id,
                                 const AirPlayRtspRequest *request,
                                 AirPlayRtspResponse *response,
                                 bool *handled_out);
+bool airplay_remote_video_is_local_uri(const char *uri);
+bool airplay_remote_video_route_local(AirPlayRemoteVideo *remote,
+                                      const AirPlayRtspRequest *request,
+                                      AirPlayRtspResponse *response,
+                                      bool *handled_out);
 void airplay_remote_video_session_closed(AirPlayRemoteVideo *remote,
                                          uint64_t session_id);
 bool airplay_remote_video_url_supported(const char *url);

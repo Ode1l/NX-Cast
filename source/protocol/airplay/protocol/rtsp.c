@@ -78,6 +78,25 @@ static bool rtsp_valid_header_value(const char *value)
     return true;
 }
 
+static bool rtsp_valid_uri(const char *value)
+{
+    const unsigned char *cursor = (const unsigned char *)value;
+    size_t length = 0u;
+
+    if (!cursor || *cursor == '\0')
+        return false;
+    while (*cursor)
+    {
+        if (*cursor < 0x21u || *cursor > 0x7eu)
+            return false;
+        cursor++;
+        length++;
+        if (length > AIRPLAY_RTSP_MAX_URI_BYTES)
+            return false;
+    }
+    return true;
+}
+
 static bool rtsp_copy_slice(char *destination,
                             size_t destination_size,
                             const uint8_t *start,
@@ -424,6 +443,8 @@ static const char *rtsp_reason_phrase(int status_code)
 {
     switch (status_code)
     {
+    case 101:
+        return "Switching Protocols";
     case 200:
         return "OK";
     case 400:
@@ -438,6 +459,8 @@ static const char *rtsp_reason_phrase(int status_code)
         return "Request Timeout";
     case 413:
         return "Content Too Large";
+    case 421:
+        return "Misdirected Request";
     case 455:
         return "Method Not Valid in This State";
     case 461:
@@ -633,6 +656,109 @@ failure:
     return false;
 }
 
+bool airplay_rtsp_outbound_request_encode(
+    const AirPlayRtspOutboundRequest *request,
+    uint8_t **bytes_out,
+    size_t *length_out)
+{
+    char line[AIRPLAY_RTSP_MAX_HEADER_NAME_BYTES +
+              AIRPLAY_RTSP_MAX_HEADER_VALUE_BYTES + 8u];
+    size_t total = 0u;
+    size_t used = 0u;
+    size_t index;
+    int written;
+    uint8_t *output;
+
+    if (!request || !bytes_out || !length_out ||
+        !rtsp_valid_token(request->method) || !rtsp_valid_uri(request->uri) ||
+        !request->protocol || strcmp(request->protocol, "HTTP/1.1") != 0 ||
+        request->header_count > AIRPLAY_RTSP_MAX_HEADERS ||
+        (request->header_count != 0u && !request->headers) ||
+        request->body_length > AIRPLAY_RTSP_MAX_BODY_BYTES ||
+        (request->body_length != 0u && !request->body))
+    {
+        return false;
+    }
+    *bytes_out = NULL;
+    *length_out = 0u;
+    written = snprintf(line, sizeof(line), "%s %s %s\r\n",
+                       request->method, request->uri, request->protocol);
+    if (written < 0 || (size_t)written >= sizeof(line) ||
+        !rtsp_size_add(total, (size_t)written, &total))
+        return false;
+    for (index = 0u; index < request->header_count; ++index)
+    {
+        const AirPlayRtspHeader *header = &request->headers[index];
+        size_t later;
+
+        if (!rtsp_valid_token(header->name) ||
+            !rtsp_valid_header_value(header->value) ||
+            strlen(header->name) > AIRPLAY_RTSP_MAX_HEADER_NAME_BYTES ||
+            strlen(header->value) > AIRPLAY_RTSP_MAX_HEADER_VALUE_BYTES ||
+            rtsp_header_name_equal(header->name, "Content-Length"))
+        {
+            return false;
+        }
+        for (later = index + 1u; later < request->header_count; ++later)
+        {
+            if (rtsp_header_name_equal(header->name,
+                                       request->headers[later].name))
+                return false;
+        }
+        written = snprintf(line, sizeof(line), "%s: %s\r\n",
+                           header->name, header->value);
+        if (written < 0 || (size_t)written >= sizeof(line) ||
+            !rtsp_size_add(total, (size_t)written, &total))
+            return false;
+    }
+    written = snprintf(line, sizeof(line), "Content-Length: %zu\r\n",
+                       request->body_length);
+    if (written < 0 || (size_t)written >= sizeof(line) ||
+        !rtsp_size_add(total, (size_t)written, &total) ||
+        !rtsp_size_add(total, 2u, &total) ||
+        !rtsp_size_add(total, request->body_length, &total) ||
+        total > AIRPLAY_RTSP_MAX_MESSAGE_BYTES)
+    {
+        return false;
+    }
+    output = malloc(total + 1u);
+    if (!output)
+        return false;
+    written = snprintf(line, sizeof(line), "%s %s %s\r\n",
+                       request->method, request->uri, request->protocol);
+    if (written < 0 ||
+        !rtsp_encoded_append(output, total, &used, line, (size_t)written))
+        goto failure;
+    for (index = 0u; index < request->header_count; ++index)
+    {
+        written = snprintf(line, sizeof(line), "%s: %s\r\n",
+                           request->headers[index].name,
+                           request->headers[index].value);
+        if (written < 0 ||
+            !rtsp_encoded_append(output, total, &used, line, (size_t)written))
+            goto failure;
+    }
+    written = snprintf(line, sizeof(line), "Content-Length: %zu\r\n",
+                       request->body_length);
+    if (written < 0 ||
+        !rtsp_encoded_append(output, total, &used, line, (size_t)written) ||
+        !rtsp_encoded_append(output, total, &used, "\r\n", 2u) ||
+        !rtsp_encoded_append(output, total, &used, request->body,
+                             request->body_length) ||
+        used != total)
+    {
+        goto failure;
+    }
+    output[total] = '\0';
+    *bytes_out = output;
+    *length_out = total;
+    return true;
+
+failure:
+    free(output);
+    return false;
+}
+
 void airplay_rtsp_response_clear(AirPlayRtspResponse *response)
 {
     if (!response)
@@ -647,6 +773,7 @@ void airplay_rtsp_session_init(AirPlayRtspSession *session, uint64_t id)
         return;
     memset(session, 0, sizeof(*session));
     session->id = id;
+    session->logical_session_id = id;
     session->state = AIRPLAY_RTSP_SESSION_CONNECTED;
 }
 
@@ -735,6 +862,7 @@ bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
                            AirPlayRtspResponse *response_out)
 {
     bool discovery_request;
+    bool secondary_pair_verify;
     bool handled;
 
     if (!session || !request || !response_out || session->state == AIRPLAY_RTSP_SESSION_CLOSED ||
@@ -744,7 +872,10 @@ bool airplay_rtsp_dispatch(AirPlayRtspSession *session,
     }
     discovery_request = strcmp(request->method, "GET") == 0 &&
                         (strstr(request->uri, "txtAirPlay") || strstr(request->uri, "txtRAOP"));
-    if (strcmp(request->protocol, "RTSP/1.0") == 0 && !request->has_cseq && !discovery_request)
+    secondary_pair_verify = strcmp(request->method, "POST") == 0 &&
+                            strcmp(request->uri, "/pair-verify") == 0;
+    if (strcmp(request->protocol, "RTSP/1.0") == 0 &&
+        !request->has_cseq && !discovery_request && !secondary_pair_verify)
     {
         response_out->close_connection = true;
         return airplay_rtsp_response_set_status(response_out, 400);

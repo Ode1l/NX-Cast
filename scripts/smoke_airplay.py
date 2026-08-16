@@ -114,16 +114,33 @@ class HlsFixtureHandler(SimpleHTTPRequestHandler):
 
 
 def run_remote_hls_smoke(root: Path) -> None:
-    fixture = root / "build" / "tests" / "airplay-mirror-av.ts"
+    fixture = root / "build" / "tests" / "airplay-mirror-aac.mkv"
+    ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
 
     if not fixture.is_file():
         raise AssertionError(f"fixture not found: {fixture}; run make test-airplay first")
-    if not ffprobe:
-        raise AssertionError("ffprobe is required for the AirPlay HLS smoke")
+    if not ffmpeg or not ffprobe:
+        raise AssertionError("ffmpeg and ffprobe are required for the AirPlay HLS smoke")
     with tempfile.TemporaryDirectory(prefix="nxcast-airplay-hls-") as directory:
         fixture_dir = Path(directory)
-        shutil.copy2(fixture, fixture_dir / "segment0.ts")
+        subprocess.run(
+            [
+                ffmpeg,
+                "-v",
+                "error",
+                "-i",
+                str(fixture),
+                "-c",
+                "copy",
+                "-f",
+                "mpegts",
+                str(fixture_dir / "segment0.ts"),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=15.0,
+        )
         (fixture_dir / "master.m3u8").write_text(
             "#EXTM3U\n"
             "#EXT-X-VERSION:3\n"

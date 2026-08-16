@@ -40,6 +40,20 @@ static void expect_parse_error(const char *message, AirPlayRtspError expected)
     airplay_rtsp_request_clear(&request);
 }
 
+static bool record_route(AirPlayRtspSession *session,
+                         const AirPlayRtspRequest *request,
+                         AirPlayRtspResponse *response, void *user_data)
+{
+    unsigned *calls = user_data;
+
+    (void)session;
+    (void)request;
+    (void)response;
+    if (calls)
+        (*calls)++;
+    return true;
+}
+
 static void test_fragmented_body_request(void)
 {
     static const char body[] = "volume: -12.0\r\n";
@@ -159,6 +173,13 @@ static void test_response_and_session(void)
     static const char get_parameter[] = "GET_PARAMETER rtsp://receiver/stream RTSP/1.0\r\nCSeq: 10\r\n\r\n";
     static const char teardown[] = "TEARDOWN rtsp://receiver/stream RTSP/1.0\r\nCSeq: 11\r\n\r\n";
     static const char missing_cseq[] = "OPTIONS * RTSP/1.0\r\n\r\n";
+    static const char missing_cseq_setup[] =
+        "SETUP rtsp://receiver/stream RTSP/1.0\r\n"
+        "Content-Length: 0\r\n\r\n";
+    static const char secondary_pair_verify[] =
+        "POST /pair-verify RTSP/1.0\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: 0\r\n\r\n";
     static const char discovery[] = "GET /info?txtAirPlay RTSP/1.0\r\n\r\n";
     const char *messages[] = {options, setup, record, get_parameter, teardown};
     const AirPlayRtspSessionState states[] = {
@@ -172,6 +193,7 @@ static void test_response_and_session(void)
     size_t index;
 
     airplay_rtsp_session_init(&session, 99U);
+    assert(session.logical_session_id == 99U);
     for (index = 0; index < sizeof(messages) / sizeof(messages[0]); ++index)
     {
         AirPlayRtspRequest request = parse_complete(messages[index], NULL);
@@ -217,6 +239,31 @@ static void test_response_and_session(void)
         airplay_rtsp_response_clear(&response);
         airplay_rtsp_request_clear(&request);
     }
+    {
+        AirPlayRtspRequest request = parse_complete(missing_cseq_setup, NULL);
+        AirPlayRtspResponse response = {0};
+        assert(airplay_rtsp_dispatch(&session, &request, record_route, NULL,
+                                     &response));
+        assert(response.status_code == 400 && response.close_connection);
+        assert(session.request_count == 1U);
+        airplay_rtsp_response_clear(&response);
+        airplay_rtsp_request_clear(&request);
+    }
+
+    airplay_rtsp_session_init(&session, 102U);
+    {
+        AirPlayRtspRequest request = parse_complete(secondary_pair_verify, NULL);
+        AirPlayRtspResponse response = {0};
+        unsigned route_calls = 0U;
+
+        assert(airplay_rtsp_dispatch(&session, &request, record_route,
+                                     &route_calls, &response));
+        assert(response.status_code == 200 && !response.close_connection);
+        assert(route_calls == 1U && session.request_count == 1U);
+        assert(airplay_rtsp_request_header(&request, "CSeq") == NULL);
+        airplay_rtsp_response_clear(&response);
+        airplay_rtsp_request_clear(&request);
+    }
 
     airplay_rtsp_session_init(&session, 101U);
     {
@@ -251,6 +298,51 @@ static void test_response_body(void)
     airplay_rtsp_response_clear(&response);
 }
 
+static void test_outbound_request(void)
+{
+    static const uint8_t body[] = {0x62u, 0x70u, 0x6cu, 0x69u, 0x73u, 0x74u};
+    AirPlayRtspHeader headers[2] = {0};
+    AirPlayRtspOutboundRequest request = {
+        .method = "POST",
+        .uri = "/event",
+        .protocol = "HTTP/1.1",
+        .headers = headers,
+        .header_count = 2u,
+        .body = body,
+        .body_length = sizeof(body),
+    };
+    uint8_t *encoded = NULL;
+    size_t encoded_length = 0u;
+
+    snprintf(headers[0].name, sizeof(headers[0].name),
+             "X-Apple-Session-ID");
+    snprintf(headers[0].value, sizeof(headers[0].value), "session-1");
+    snprintf(headers[1].name, sizeof(headers[1].name), "Content-Type");
+    snprintf(headers[1].value, sizeof(headers[1].value),
+             "text/x-apple-plist+xml");
+    assert(airplay_rtsp_outbound_request_encode(&request, &encoded,
+                                                &encoded_length));
+    assert(strncmp((const char *)encoded, "POST /event HTTP/1.1\r\n", 22u) == 0);
+    assert(strstr((const char *)encoded,
+                  "X-Apple-Session-ID: session-1\r\n") != NULL);
+    assert(strstr((const char *)encoded, "Content-Length: 6\r\n") != NULL);
+    assert(memcmp(encoded + encoded_length - sizeof(body), body,
+                  sizeof(body)) == 0);
+    free(encoded);
+
+    request.method = "POST\r\nInjected";
+    assert(!airplay_rtsp_outbound_request_encode(&request, &encoded,
+                                                 &encoded_length));
+    request.method = "POST";
+    snprintf(headers[1].name, sizeof(headers[1].name), "Content-Length");
+    assert(!airplay_rtsp_outbound_request_encode(&request, &encoded,
+                                                 &encoded_length));
+    snprintf(headers[1].name, sizeof(headers[1].name), "Content-Type");
+    request.uri = "/event with-space";
+    assert(!airplay_rtsp_outbound_request_encode(&request, &encoded,
+                                                 &encoded_length));
+}
+
 int main(void)
 {
     AirPlayRtspRequest request = {0};
@@ -267,6 +359,7 @@ int main(void)
     test_parse_failures();
     test_response_and_session();
     test_response_body();
+    test_outbound_request();
 
     puts("AirPlay RTSP tests passed");
     return 0;

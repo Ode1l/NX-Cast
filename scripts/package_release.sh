@@ -20,7 +20,8 @@ if [ "${NXCAST_ALLOW_UNVERIFIED_PACKAGE:-0}" != "1" ]; then
        ! grep -Fxq 'deko3d=1' "${RELEASE_ATTESTATION}" || \
        ! grep -Fxq 'airplay-ed25519=1' "${RELEASE_ATTESTATION}" || \
        ! grep -Fxq 'airplay-randombytes=libnx' "${RELEASE_ATTESTATION}" || \
-       ! grep -Fxq 'airplay-playfair=1' "${RELEASE_ATTESTATION}"; then
+       ! grep -Fxq 'airplay-playfair=1' "${RELEASE_ATTESTATION}" || \
+       ! grep -Fxq 'airplay-matroska-muxer=1' "${RELEASE_ATTESTATION}"; then
         echo "Release build attestation is missing or incomplete. Run make release-build first." >&2
         exit 1
     fi
@@ -81,6 +82,13 @@ fi
 cp "${ROOT_DIR}/LICENSE" "${SDMC_DIR}/switch/NX-Cast/licenses/LICENSE.NX-Cast.txt"
 cp "${ROOT_DIR}/third_party/NOTICE.md" "${SDMC_DIR}/switch/NX-Cast/licenses/THIRD-PARTY-NOTICE.txt"
 cp "${ROOT_DIR}/third_party/imgui/LICENSE.txt" "${SDMC_DIR}/switch/NX-Cast/licenses/LICENSE.Dear-ImGui.txt"
+
+staged_nro_count=$(find "${SDMC_DIR}/switch" -type f -name '*.nro' -print | wc -l | tr -d ' ')
+if [ "${staged_nro_count}" -ne 1 ] || \
+   [ ! -s "${SDMC_DIR}/switch/NX-Cast/NX-Cast.nro" ]; then
+    echo "The staged SD package must contain exactly switch/NX-Cast/NX-Cast.nro." >&2
+    exit 1
+fi
 
 if [ ! -s "${PACKAGED_IPTV_SOURCES}" ] || ! cmp -s "${IPTV_SOURCES}" "${PACKAGED_IPTV_SOURCES}"; then
     echo "IPTV sources.txt was not copied intact into the staged SD package." >&2
@@ -145,26 +153,35 @@ cp "${ROOT_DIR}/NX-Cast.nro" "${DIST_DIR}/NX-Cast.nro"
     zip -qr "${PACKAGE}" README-NX-Cast.txt switch
 )
 
-if ! zip -sf "${PACKAGE}" | grep -Fq "  switch/NX-Cast/iptv/sources.txt"; then
+zip_listing=$(zip -sf "${PACKAGE}")
+zip_nro_count=$(printf '%s\n' "${zip_listing}" | awk '$1 ~ /^switch\/.*\.nro$/ { count++ } END { print count + 0 }')
+if [ "${zip_nro_count}" -ne 1 ] || \
+   ! printf '%s\n' "${zip_listing}" | grep -Fq "  switch/NX-Cast/NX-Cast.nro"; then
+    echo "The release ZIP must contain exactly switch/NX-Cast/NX-Cast.nro." >&2
+    exit 1
+fi
+
+if ! printf '%s\n' "${zip_listing}" | grep -Fq "  switch/NX-Cast/iptv/sources.txt"; then
     echo "IPTV sources.txt is missing from the release ZIP." >&2
     exit 1
 fi
 
-if ! zip -sf "${PACKAGE}" | grep -Fq "  switch/NX-Cast/airplay/README.txt"; then
+if ! printf '%s\n' "${zip_listing}" | grep -Fq "  switch/NX-Cast/airplay/README.txt"; then
     echo "AirPlay README is missing from the release ZIP." >&2
     exit 1
 fi
 
-if ! zip -sf "${PACKAGE}" | grep -Fq "  switch/NX-Cast/licenses/LICENSE.NX-Cast.txt"; then
+if ! printf '%s\n' "${zip_listing}" | grep -Fq "  switch/NX-Cast/licenses/LICENSE.NX-Cast.txt"; then
     echo "NX-Cast license is missing from the release ZIP." >&2
     exit 1
 fi
 
-if ! zip -sf "${PACKAGE}" | grep -Fq "  switch/NX-Cast/licenses/LICENSE.PlayFair.GPLv3.txt"; then
+if ! printf '%s\n' "${zip_listing}" | grep -Fq "  switch/NX-Cast/licenses/LICENSE.PlayFair.GPLv3.txt"; then
     echo "PlayFair GPL license is missing from the release ZIP." >&2
     exit 1
 fi
 
 echo "Verified IPTV presets in ${PACKAGE}"
+echo "Verified directory-local NRO and hbmenu-visible SD layout in ${PACKAGE}"
 echo "Verified AirPlay storage, PlayFair license, and sensitive-file exclusions in ${PACKAGE}"
 echo "Packaged ${PACKAGE}"

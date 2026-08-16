@@ -47,12 +47,24 @@ typedef struct
     uint64_t app_threads_live;
     uint64_t app_thread_create_failures;
     uint64_t app_thread_join_underflows;
+    bool network_budget_configured;
+    uint32_t network_bsd_sessions;
+    uint32_t network_sb_efficiency;
     uint64_t open_sockets;
     uint64_t open_sockets_by_subsystem[NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT];
+    uint64_t active_network_operations;
+    uint64_t network_operation_slot_overflows;
+    uint64_t oldest_network_operation_age_ms;
+    uint64_t oldest_network_operation_token;
+    NetworkDiagnosticSubsystem oldest_network_operation_subsystem;
+    NetworkOperationKind oldest_network_operation;
+    bool instrumented_network_pressure;
     RuntimeDiagnosticThreadSnapshot threads[RUNTIME_DIAGNOSTIC_THREAD_COUNT];
 } RuntimeDiagnosticResourceSnapshot;
 
 bool runtime_diagnostics_enabled(void);
+void runtime_diagnostics_configure_network(uint32_t bsd_sessions,
+                                           uint32_t sb_efficiency);
 uint32_t runtime_diagnostics_thread_created(RuntimeDiagnosticThreadRole role);
 void runtime_diagnostics_thread_create_failed(
     RuntimeDiagnosticThreadRole role);

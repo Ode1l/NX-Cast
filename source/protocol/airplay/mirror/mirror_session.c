@@ -47,6 +47,8 @@ struct AirPlayMirrorSession
     uint16_t port;
     uint32_t diagnostic_thread_generation;
     uint64_t diagnostic_last_log_ms;
+    bool diagnostic_config_seen;
+    bool diagnostic_keyframe_seen;
     atomic_uint_fast64_t connections_accepted;
     atomic_uint_fast64_t encrypted_packets;
     atomic_uint_fast64_t encrypted_bytes;
@@ -216,6 +218,28 @@ static void mirror_log_diagnostics(AirPlayMirrorSession *session,
 #endif
 }
 
+static void mirror_log_first_media_boundaries(AirPlayMirrorSession *session)
+{
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    AirPlayMirrorSessionStats stats;
+
+    if (!session || !airplay_mirror_session_get_stats(session, &stats))
+        return;
+    if (!session->diagnostic_config_seen && stats.video.config_ok != 0u)
+    {
+        session->diagnostic_config_seen = true;
+        mirror_log_diagnostics(session, "first-config", true);
+    }
+    if (!session->diagnostic_keyframe_seen && stats.video.keyframes != 0u)
+    {
+        session->diagnostic_keyframe_seen = true;
+        mirror_log_diagnostics(session, "first-keyframe", true);
+    }
+#else
+    (void)session;
+#endif
+}
+
 static bool socket_wait_readable(int socket_fd, const atomic_bool *running)
 {
     while (atomic_load(running))
@@ -335,6 +359,7 @@ static bool process_client(AirPlayMirrorSession *session, int client_fd)
             (unsigned long long)session->session_id, header.type,
             header.payload_size, (unsigned long long)header.timestamp,
             airplay_mirror_video_result_name(result));
+        mirror_log_first_media_boundaries(session);
         mirror_log_diagnostics(session, "sample", false);
         if (result == AIRPLAY_MIRROR_VIDEO_INVALID ||
             result == AIRPLAY_MIRROR_VIDEO_NO_MEMORY)

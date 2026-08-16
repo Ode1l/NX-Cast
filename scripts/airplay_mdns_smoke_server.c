@@ -43,7 +43,9 @@ int main(int argc, char **argv)
     config.friendly_name = "NX-Cast";
     config.control_port = 7000u;
     config.ipv4_address = inet_addr("127.0.0.1");
-    config.features = AIRPLAY_MDNS_FEATURES_MIRROR_COMPAT;
+    config.features = AIRPLAY_MDNS_FEATURES_MIRROR_COMPAT |
+                      AIRPLAY_MDNS_FEATURE_VIDEO |
+                      AIRPLAY_MDNS_FEATURE_HLS;
     config.pin_required = true;
     snprintf(config.pairing_id, sizeof(config.pairing_id),
              "00112233-4455-4677-8899-aabbccddeeff");

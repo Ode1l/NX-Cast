@@ -28,3 +28,6 @@ void airplay_server_stop(void);
 bool airplay_server_is_running(void);
 uint16_t airplay_server_port(void);
 size_t airplay_server_active_clients(void);
+bool airplay_server_send_reverse_request(
+    uint64_t logical_session_id,
+    const AirPlayRtspOutboundRequest *request);

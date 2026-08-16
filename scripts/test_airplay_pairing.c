@@ -93,19 +93,19 @@ static bool decode_hex(const char *text, uint8_t *output, size_t size)
     return true;
 }
 
-static bool dispatch(AirPlayPairingService *service,
-                     AirPlayRtspSession *session,
-                     const char *method, const char *uri,
-                     const uint8_t *body, size_t body_size,
-                     const char *content_type,
-                     AirPlayRtspResponse *response)
+static bool dispatch_with_cseq(AirPlayPairingService *service,
+                               AirPlayRtspSession *session,
+                               const char *method, const char *uri,
+                               const uint8_t *body, size_t body_size,
+                               const char *content_type, bool has_cseq,
+                               AirPlayRtspResponse *response)
 {
     AirPlayRtspRequest request = {0};
 
     snprintf(request.method, sizeof(request.method), "%s", method);
     snprintf(request.uri, sizeof(request.uri), "%s", uri);
     snprintf(request.protocol, sizeof(request.protocol), "RTSP/1.0");
-    request.has_cseq = true;
+    request.has_cseq = has_cseq;
     request.cseq = session->request_count + 1u;
     request.body = (uint8_t *)body;
     request.body_length = body_size;
@@ -117,6 +117,17 @@ static bool dispatch(AirPlayPairingService *service,
     }
     return airplay_rtsp_dispatch(session, &request, airplay_pairing_route,
                                  service, response);
+}
+
+static bool dispatch(AirPlayPairingService *service,
+                     AirPlayRtspSession *session,
+                     const char *method, const char *uri,
+                     const uint8_t *body, size_t body_size,
+                     const char *content_type,
+                     AirPlayRtspResponse *response)
+{
+    return dispatch_with_cseq(service, session, method, uri, body, body_size,
+                              content_type, true, response);
 }
 
 static bool encode_dict(AirPlayPlistValue *root, uint8_t **body, size_t *body_size)
@@ -368,6 +379,7 @@ static bool verify_pairing(AirPlayPairingService *service,
                            const uint8_t client_seed[32],
                            const uint8_t client_public[32],
                            const uint8_t server_public[32],
+                           bool has_cseq,
                            AirPlayRtspResponse *response)
 {
     uint8_t client_x_private[32];
@@ -392,8 +404,9 @@ static bool verify_pairing(AirPlayPairingService *service,
     request_body[0] = 1;
     memcpy(request_body + 4, client_x_public, 32);
     memcpy(request_body + 36, client_public, 32);
-    CHECK(dispatch(service, session, "POST", "/pair-verify", request_body,
-                   sizeof(request_body), "application/octet-stream", response));
+    CHECK(dispatch_with_cseq(service, session, "POST", "/pair-verify",
+                             request_body, sizeof(request_body),
+                             "application/octet-stream", has_cseq, response));
     CHECK(response->status_code == 200 && response->body_length == 96);
     memcpy(server_x_public, response->body, 32);
     CHECK(airplay_crypto_x25519_shared(&rng, client_x_private, server_x_public, shared));
@@ -416,13 +429,15 @@ static bool verify_pairing(AirPlayPairingService *service,
     request_body[0] = 0;
     CHECK(airplay_crypto_aes_ctr_crypt(&aes, signature, request_body + 4, sizeof(signature)));
     airplay_crypto_aes_ctr_deinit(&aes);
-    CHECK(dispatch(service, session, "POST", "/pair-verify", request_body,
-                   sizeof(request_body), "application/octet-stream", response));
+    CHECK(dispatch_with_cseq(service, session, "POST", "/pair-verify",
+                             request_body, sizeof(request_body),
+                             "application/octet-stream", has_cseq, response));
     CHECK(response->status_code == 200);
     {
         const char *content_type = response_header(response, "Content-Type");
         CHECK(content_type && strcmp(content_type, "application/octet-stream") == 0);
     }
+    CHECK((response_header(response, "CSeq") != NULL) == has_cseq);
     CHECK(airplay_pairing_session_verified(session));
     CHECK(airplay_pairing_session_state(session) == AIRPLAY_PAIRING_STATE_VERIFIED);
     airplay_rtsp_response_clear(response);
@@ -468,7 +483,7 @@ static void test_pairing_flow_and_persistence(const char *directory)
 
     airplay_rtsp_session_init(&session, 5);
     CHECK(verify_pairing(service, &session, client_seed, client_public,
-                         server_public, &response));
+                         server_public, true, &response));
     airplay_pairing_session_closed(&session, service);
     airplay_pairing_service_destroy(service);
 
@@ -476,7 +491,7 @@ static void test_pairing_flow_and_persistence(const char *directory)
     CHECK(airplay_pairing_service_create(&config, &service));
     airplay_rtsp_session_init(&session, 6);
     CHECK(verify_pairing(service, &session, client_seed, client_public,
-                         server_public, &response));
+                         server_public, false, &response));
     airplay_pairing_session_closed(&session, service);
     airplay_pairing_service_destroy(service);
 }

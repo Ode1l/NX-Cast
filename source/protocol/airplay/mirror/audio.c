@@ -87,8 +87,15 @@ bool airplay_mirror_audio_format(uint8_t compression_type,
                                  uint32_t sample_rate,
                                  AirPlayMirrorAudioFormat *format_out)
 {
+    static const uint8_t alac[] = {
+        0x00u, 0x00u, 0x00u, 0x24u, 0x61u, 0x6cu, 0x61u, 0x63u,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u, 0x60u,
+        0x00u, 0x10u, 0x28u, 0x0au, 0x0eu, 0x02u, 0x00u, 0xffu,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+        0x00u, 0x00u, 0xacu, 0x44u};
     static const uint8_t aac_lc[] = {0x12u, 0x10u};
     static const uint8_t aac_eld[] = {0xf8u, 0xe8u, 0x50u, 0x00u};
+    AirPlayMirrorAudioCodec codec;
     const uint8_t *config;
     size_t config_size;
 
@@ -96,8 +103,19 @@ bool airplay_mirror_audio_format(uint8_t compression_type,
         return false;
     if (sample_rate == 0u)
         sample_rate = 44100u;
-    if (compression_type == AIRPLAY_MIRROR_AUDIO_CT_AAC_LC)
+    if (compression_type == AIRPLAY_MIRROR_AUDIO_CT_ALAC)
     {
+        codec = AIRPLAY_MIRROR_AUDIO_CODEC_ALAC;
+        config = alac;
+        config_size = sizeof(alac);
+        if (samples_per_frame == 0u)
+            samples_per_frame = 352u;
+        if (samples_per_frame != 352u)
+            return false;
+    }
+    else if (compression_type == AIRPLAY_MIRROR_AUDIO_CT_AAC_LC)
+    {
+        codec = AIRPLAY_MIRROR_AUDIO_CODEC_AAC;
         config = aac_lc;
         config_size = sizeof(aac_lc);
         if (samples_per_frame == 0u)
@@ -105,6 +123,7 @@ bool airplay_mirror_audio_format(uint8_t compression_type,
     }
     else if (compression_type == AIRPLAY_MIRROR_AUDIO_CT_AAC_ELD)
     {
+        codec = AIRPLAY_MIRROR_AUDIO_CODEC_AAC;
         config = aac_eld;
         config_size = sizeof(aac_eld);
         if (samples_per_frame == 0u)
@@ -115,6 +134,7 @@ bool airplay_mirror_audio_format(uint8_t compression_type,
     if (sample_rate != 44100u || samples_per_frame == 0u)
         return false;
     memset(format_out, 0, sizeof(*format_out));
+    format_out->codec = codec;
     format_out->compression_type = compression_type;
     format_out->sample_rate = sample_rate;
     format_out->channels = 2u;
@@ -464,6 +484,7 @@ bool airplay_mirror_audio_create(const AirPlayMirrorAudioConfig *config,
     return true;
 
 failure:
+    (void)failure_stage;
     AIRPLAY_OBSERVE(
         "[airplay-setup-failure] session=%llu stream=audio stage=%s ct=%u spf=%u sr=%u\n",
         (unsigned long long)config->session_id, failure_stage,

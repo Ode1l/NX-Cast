@@ -39,6 +39,7 @@ switch/
       FREEWARE.ControllerFont.txt
     iptv/
       README.txt
+      sources.txt
     airplay/
       README.txt
     licenses/
@@ -50,6 +51,12 @@ switch/
 ```
 
 `NX-Cast.nro` is the application. The `dlna/` directory contains runtime device and service description files. The `fonts/` directory contains the packaged UI font. Copy local `.m3u` or `.m3u8` playlists into the `iptv/` directory. The `airplay/` directory initially contains only a privacy notice; NX-Cast creates private identity and pairing files there at runtime.
+
+`hbmenu` scans directories below `sdmc:/switch/`. A data-only
+`sdmc:/switch/NX-Cast/` directory can therefore appear as a folder during
+`nxlink` development. The published SD zip is checked during packaging and
+always places exactly one launchable NRO inside that directory, so normal users
+see the NX-Cast application entry rather than an empty data folder.
 
 ## NRO-Only Install
 

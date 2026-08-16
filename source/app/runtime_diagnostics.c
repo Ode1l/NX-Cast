@@ -22,6 +22,8 @@ typedef struct
 
 static RuntimeDiagnosticThreadState
     g_runtime_threads[RUNTIME_DIAGNOSTIC_THREAD_COUNT];
+static atomic_uint_fast32_t g_network_bsd_sessions;
+static atomic_uint_fast32_t g_network_sb_efficiency;
 
 static bool runtime_diagnostics_valid_role(RuntimeDiagnosticThreadRole role)
 {
@@ -36,6 +38,13 @@ bool runtime_diagnostics_enabled(void)
 #else
     return false;
 #endif
+}
+
+void runtime_diagnostics_configure_network(uint32_t bsd_sessions,
+                                           uint32_t sb_efficiency)
+{
+    atomic_store(&g_network_bsd_sessions, bsd_sessions);
+    atomic_store(&g_network_sb_efficiency, sb_efficiency);
 }
 
 uint32_t runtime_diagnostics_thread_created(RuntimeDiagnosticThreadRole role)
@@ -148,7 +157,16 @@ bool runtime_diagnostics_collect_resources(
     if (!snapshot_out)
         return false;
     memset(snapshot_out, 0, sizeof(*snapshot_out));
+    snapshot_out->oldest_network_operation_subsystem =
+        NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT;
     runtime_diagnostics_collect_process_resources(snapshot_out);
+    snapshot_out->network_bsd_sessions =
+        (uint32_t)atomic_load(&g_network_bsd_sessions);
+    snapshot_out->network_sb_efficiency =
+        (uint32_t)atomic_load(&g_network_sb_efficiency);
+    snapshot_out->network_budget_configured =
+        snapshot_out->network_bsd_sessions > 0u ||
+        snapshot_out->network_sb_efficiency > 0u;
 
     for (int role = 0; role < RUNTIME_DIAGNOSTIC_THREAD_COUNT; ++role)
     {
@@ -174,7 +192,28 @@ bool runtime_diagnostics_collect_resources(
         snapshot_out->open_sockets_by_subsystem[subsystem] =
             network.open_sockets;
         snapshot_out->open_sockets += network.open_sockets;
+        snapshot_out->active_network_operations += network.active_operations;
+        snapshot_out->network_operation_slot_overflows +=
+            network.operation_slot_overflows;
+        if (network.oldest_active_token != 0u &&
+            (snapshot_out->oldest_network_operation_token == 0u ||
+             network.oldest_active_age_ms >
+                 snapshot_out->oldest_network_operation_age_ms))
+        {
+            snapshot_out->oldest_network_operation_age_ms =
+                network.oldest_active_age_ms;
+            snapshot_out->oldest_network_operation_token =
+                network.oldest_active_token;
+            snapshot_out->oldest_network_operation_subsystem =
+                (NetworkDiagnosticSubsystem)subsystem;
+            snapshot_out->oldest_network_operation =
+                network.oldest_active_operation;
+        }
     }
+    snapshot_out->instrumented_network_pressure =
+        snapshot_out->network_bsd_sessions > 0u &&
+        snapshot_out->active_network_operations >=
+            snapshot_out->network_bsd_sessions;
     return true;
 }
 
@@ -259,8 +298,27 @@ bool runtime_diagnostics_format_resource_snapshot(
         return false;
 
     complete = runtime_diagnostics_append(
-        output, output_size, &used, "sockets=%llu",
-        (unsigned long long)snapshot->open_sockets);
+        output, output_size, &used,
+        "net_budget=%s bsd_sessions=%u sb_efficiency=%u "
+        "instrumented_sockets=%llu instrumented_ops=%llu "
+        "instrumented_slot_overflows=%llu instrumented_pressure=%d "
+        "oldest_instrumented=%s/%s/%llu/%llu",
+        snapshot->network_budget_configured ? "configured" : "libnx-default",
+        snapshot->network_bsd_sessions, snapshot->network_sb_efficiency,
+        (unsigned long long)snapshot->open_sockets,
+        (unsigned long long)snapshot->active_network_operations,
+        (unsigned long long)snapshot->network_operation_slot_overflows,
+        snapshot->instrumented_network_pressure ? 1 : 0,
+        snapshot->oldest_network_operation_token != 0u
+            ? network_diagnostics_subsystem_name(
+                  snapshot->oldest_network_operation_subsystem)
+            : "none",
+        snapshot->oldest_network_operation_token != 0u
+            ? network_diagnostics_operation_name(
+                  snapshot->oldest_network_operation)
+            : "none",
+        (unsigned long long)snapshot->oldest_network_operation_token,
+        (unsigned long long)snapshot->oldest_network_operation_age_ms);
     for (int subsystem = 0;
          complete && subsystem < NETWORK_DIAGNOSTIC_SUBSYSTEM_COUNT;
          ++subsystem)

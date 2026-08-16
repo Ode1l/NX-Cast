@@ -24,6 +24,7 @@
 
 typedef Thread AirPlayNativeThread;
 typedef void (*AirPlayNativeThreadEntry)(void *argument);
+typedef Mutex AirPlayNativeMutex;
 #define AIRPLAY_THREAD_RETURN void
 #define AIRPLAY_THREAD_FINISH() return
 #define AIRPLAY_SERVER_LOG_ERROR(...) log_error(__VA_ARGS__)
@@ -33,6 +34,7 @@ typedef void (*AirPlayNativeThreadEntry)(void *argument);
 
 typedef pthread_t AirPlayNativeThread;
 typedef void *(*AirPlayNativeThreadEntry)(void *argument);
+typedef pthread_mutex_t AirPlayNativeMutex;
 #define AIRPLAY_THREAD_RETURN void *
 #define AIRPLAY_THREAD_FINISH() return NULL
 #define AIRPLAY_SERVER_LOG_ERROR(...) ((void)fprintf(stderr, __VA_ARGS__))
@@ -55,6 +57,7 @@ typedef struct
     atomic_bool active;
     atomic_bool finished;
     atomic_int socket_fd;
+    atomic_uint_fast64_t reverse_session_id;
     uint32_t peer_ipv4_address;
     uint32_t diagnostic_thread_generation;
 } AirPlayServerClient;
@@ -73,6 +76,9 @@ struct AirPlayServerState
 };
 
 static AirPlayServerState g_airplay_server;
+static AirPlayNativeMutex g_airplay_client_send_mutexes[AIRPLAY_SERVER_MAX_CLIENTS];
+static AirPlayNativeMutex g_airplay_reverse_registry_mutex;
+static bool g_airplay_server_mutexes_ready;
 
 static uint64_t airplay_server_now_ms(void)
 {
@@ -124,6 +130,74 @@ static void airplay_native_thread_join(AirPlayNativeThread *thread)
 #else
     pthread_join(*thread, NULL);
 #endif
+}
+
+static bool airplay_native_mutex_init(AirPlayNativeMutex *mutex)
+{
+    if (!mutex)
+        return false;
+#ifdef __SWITCH__
+    mutexInit(mutex);
+    return true;
+#else
+    return pthread_mutex_init(mutex, NULL) == 0;
+#endif
+}
+
+static void airplay_native_mutex_destroy(AirPlayNativeMutex *mutex)
+{
+#ifndef __SWITCH__
+    if (mutex)
+        (void)pthread_mutex_destroy(mutex);
+#else
+    (void)mutex;
+#endif
+}
+
+static void airplay_native_mutex_lock(AirPlayNativeMutex *mutex)
+{
+#ifdef __SWITCH__
+    mutexLock(mutex);
+#else
+    (void)pthread_mutex_lock(mutex);
+#endif
+}
+
+static void airplay_native_mutex_unlock(AirPlayNativeMutex *mutex)
+{
+#ifdef __SWITCH__
+    mutexUnlock(mutex);
+#else
+    (void)pthread_mutex_unlock(mutex);
+#endif
+}
+
+static bool airplay_server_init_mutexes(void)
+{
+    size_t initialized = 0u;
+
+    if (g_airplay_server_mutexes_ready)
+        return true;
+    if (!airplay_native_mutex_init(&g_airplay_reverse_registry_mutex))
+        return false;
+    while (initialized < AIRPLAY_SERVER_MAX_CLIENTS)
+    {
+        if (!airplay_native_mutex_init(
+                &g_airplay_client_send_mutexes[initialized]))
+        {
+            while (initialized != 0u)
+            {
+                initialized--;
+                airplay_native_mutex_destroy(
+                    &g_airplay_client_send_mutexes[initialized]);
+            }
+            airplay_native_mutex_destroy(&g_airplay_reverse_registry_mutex);
+            return false;
+        }
+        initialized++;
+    }
+    g_airplay_server_mutexes_ready = true;
+    return true;
 }
 
 static int airplay_server_diagnostic_socket(int domain, int type, int protocol)
@@ -232,6 +306,28 @@ static void airplay_server_close_socket(atomic_int *socket_storage)
         airplay_server_diagnostic_close(socket_fd);
 }
 
+static int airplay_server_take_client_socket(AirPlayServerClient *client)
+{
+    int socket_fd;
+
+    if (!client || client->index >= AIRPLAY_SERVER_MAX_CLIENTS)
+        return -1;
+    airplay_native_mutex_lock(
+        &g_airplay_client_send_mutexes[client->index]);
+    socket_fd = airplay_server_take_socket(&client->socket_fd);
+    airplay_native_mutex_unlock(
+        &g_airplay_client_send_mutexes[client->index]);
+    return socket_fd;
+}
+
+static void airplay_server_close_client_socket(AirPlayServerClient *client)
+{
+    int socket_fd = airplay_server_take_client_socket(client);
+
+    if (socket_fd >= 0)
+        airplay_server_diagnostic_close(socket_fd);
+}
+
 static void airplay_server_set_socket_timeout(int socket_fd, int option, uint32_t timeout_ms)
 {
     struct timeval timeout;
@@ -265,7 +361,8 @@ static bool airplay_server_send_all(int socket_fd, const uint8_t *bytes, size_t 
     return true;
 }
 
-static bool airplay_server_send_response(int socket_fd, AirPlayRtspResponse *response)
+static bool airplay_server_send_response_unlocked(
+    int socket_fd, AirPlayRtspResponse *response)
 {
     uint8_t *encoded = NULL;
     size_t encoded_length = 0;
@@ -278,6 +375,81 @@ static bool airplay_server_send_response(int socket_fd, AirPlayRtspResponse *res
     return success;
 }
 
+static bool airplay_server_send_client_response(
+    AirPlayServerClient *client, int socket_fd, AirPlayRtspResponse *response)
+{
+    bool success;
+
+    if (!client || client->index >= AIRPLAY_SERVER_MAX_CLIENTS)
+        return false;
+    airplay_native_mutex_lock(
+        &g_airplay_client_send_mutexes[client->index]);
+    success = atomic_load(&client->active) &&
+              atomic_load(&client->socket_fd) == socket_fd &&
+              airplay_server_send_response_unlocked(socket_fd, response);
+    airplay_native_mutex_unlock(
+        &g_airplay_client_send_mutexes[client->index]);
+    return success;
+}
+
+static void airplay_server_register_reverse(
+    AirPlayServerClient *client, uint64_t logical_session_id)
+{
+    size_t index;
+    size_t replaced_slot = AIRPLAY_SERVER_MAX_CLIENTS;
+    int replaced_socket = -1;
+
+    if (!client || logical_session_id == 0u)
+        return;
+    airplay_native_mutex_lock(&g_airplay_reverse_registry_mutex);
+    for (index = 0u; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
+    {
+        AirPlayServerClient *other = &client->server->clients[index];
+
+        if (other != client &&
+            atomic_load(&other->reverse_session_id) == logical_session_id)
+        {
+            atomic_store(&other->reverse_session_id, 0u);
+            replaced_slot = other->index;
+            replaced_socket = atomic_load(&other->socket_fd);
+        }
+    }
+    atomic_store(&client->reverse_session_id, logical_session_id);
+    if (replaced_socket >= 0)
+        (void)shutdown(replaced_socket, SHUT_RDWR);
+    airplay_native_mutex_unlock(&g_airplay_reverse_registry_mutex);
+    AIRPLAY_TRACE_SYNC(
+        "[airplay] t_ms=%llu reverse registered slot=%zu logical=%llu\n",
+        (unsigned long long)AIRPLAY_TRACE_NOW_MS(), client->index,
+        (unsigned long long)logical_session_id);
+    if (replaced_slot != AIRPLAY_SERVER_MAX_CLIENTS)
+    {
+        AIRPLAY_TRACE_SYNC(
+            "[airplay] t_ms=%llu reverse replaced old-slot=%zu new-slot=%zu "
+            "logical=%llu\n",
+            (unsigned long long)AIRPLAY_TRACE_NOW_MS(), replaced_slot,
+            client->index, (unsigned long long)logical_session_id);
+    }
+}
+
+static void airplay_server_unregister_reverse(AirPlayServerClient *client)
+{
+    uint64_t logical_session_id;
+
+    if (!client)
+        return;
+    airplay_native_mutex_lock(&g_airplay_reverse_registry_mutex);
+    logical_session_id = atomic_exchange(&client->reverse_session_id, 0u);
+    airplay_native_mutex_unlock(&g_airplay_reverse_registry_mutex);
+    if (logical_session_id != 0u)
+    {
+        AIRPLAY_TRACE_SYNC(
+            "[airplay] t_ms=%llu reverse unregistered slot=%zu logical=%llu\n",
+            (unsigned long long)AIRPLAY_TRACE_NOW_MS(), client->index,
+            (unsigned long long)logical_session_id);
+    }
+}
+
 static void airplay_server_send_error(int socket_fd, int status_code)
 {
     AirPlayRtspResponse *response = calloc(1, sizeof(*response));
@@ -287,7 +459,7 @@ static void airplay_server_send_error(int socket_fd, int status_code)
     if (airplay_rtsp_response_init(response, "RTSP/1.0", status_code))
     {
         response->close_connection = true;
-        (void)airplay_server_send_response(socket_fd, response);
+        (void)airplay_server_send_response_unlocked(socket_fd, response);
         airplay_rtsp_response_clear(response);
     }
     free(response);
@@ -352,6 +524,42 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
     {
         AirPlayRtspError parse_error = AIRPLAY_RTSP_ERROR_NONE;
         size_t consumed = 0;
+
+        if (atomic_load(&client->reverse_session_id) != 0u)
+        {
+            ssize_t received;
+
+            if (buffer_length != 0u)
+            {
+                AIRPLAY_TRACE_SYNC(
+                    "[airplay] t_ms=%llu reverse discarded buffered response "
+                    "slot=%zu bytes=%zu\n",
+                    (unsigned long long)AIRPLAY_TRACE_NOW_MS(), client->index,
+                    buffer_length);
+                buffer_length = 0u;
+                request_started_ms = 0u;
+            }
+            received = airplay_server_diagnostic_recv(
+                socket_fd, buffer, buffer_capacity, 0);
+            if (received > 0)
+            {
+                AIRPLAY_TRACE_SYNC(
+                    "[airplay] t_ms=%llu reverse response slot=%zu bytes=%zu\n",
+                    (unsigned long long)AIRPLAY_TRACE_NOW_MS(), client->index,
+                    (size_t)received);
+                continue;
+            }
+            if (received == 0)
+            {
+                finish_reason = "reverse-peer-closed";
+                break;
+            }
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+                continue;
+            finish_reason = "reverse-recv-error";
+            finish_errno = errno;
+            break;
+        }
         AirPlayRtspParseResult parse_result = airplay_rtsp_parse_request(buffer,
                                                                          buffer_length,
                                                                          request,
@@ -361,11 +569,20 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
         {
             bool close_after_response;
             bool response_sent;
+            bool register_reverse;
 
-            AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control request session=%llu method=%s uri=%s body=%zu\n",
+            AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control request session=%llu "
+                               "protocol=%s method=%s uri=%s body=%zu cseq=%u "
+                               "apple_session=%u\n",
                                (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
-                               (unsigned long long)session.id, request->method,
-                               request->uri, request->body_length);
+                               (unsigned long long)session.id,
+                               request->protocol, request->method,
+                               request->uri, request->body_length,
+                               request->has_cseq ? 1u : 0u,
+                               airplay_rtsp_request_header(
+                                   request, "X-Apple-Session-ID")
+                                   ? 1u
+                                   : 0u);
             if (!airplay_rtsp_dispatch(&session,
                                        request,
                                        server->config.route_handler,
@@ -378,7 +595,9 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
                 break;
             }
             close_after_response = response->close_connection;
-            response_sent = airplay_server_send_response(socket_fd, response);
+            register_reverse = response->register_reverse_connection;
+            response_sent = airplay_server_send_client_response(
+                client, socket_fd, response);
             AIRPLAY_TRACE_SYNC(
                 "[airplay] t_ms=%llu control response session=%llu "
                 "request=%u status=%d body=%zu headers=%zu sent=%u close=%u\n",
@@ -392,6 +611,11 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
                 close_after_response = true;
                 finish_reason = "send-failed";
                 finish_errno = errno;
+            }
+            else if (register_reverse)
+            {
+                airplay_server_register_reverse(
+                    client, session.logical_session_id);
             }
             airplay_rtsp_response_clear(response);
             airplay_rtsp_request_clear(request);
@@ -466,6 +690,7 @@ finished:
             (unsigned long long)session.id, session.request_count,
             finish_reason, finish_errno);
     }
+    airplay_server_unregister_reverse(client);
     if (session_initialized && server->config.session_closed_handler)
         server->config.session_closed_handler(&session, server->config.route_user_data);
     airplay_rtsp_request_clear(request);
@@ -473,7 +698,7 @@ finished:
     free(request);
     free(response);
     free(buffer);
-    airplay_server_close_socket(&client->socket_fd);
+    airplay_server_close_client_socket(client);
     atomic_store(&client->active, false);
     atomic_store(&client->finished, true);
     AIRPLAY_THREAD_FINISH();
@@ -517,7 +742,7 @@ static void airplay_server_finish_clients(AirPlayServerState *server)
     size_t index;
 
     for (index = 0; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
-        airplay_server_close_socket(&server->clients[index].socket_fd);
+        airplay_server_close_client_socket(&server->clients[index]);
     for (index = 0; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
     {
         AirPlayServerClient *client = &server->clients[index];
@@ -532,6 +757,7 @@ static void airplay_server_finish_clients(AirPlayServerState *server)
         }
         atomic_store(&client->active, false);
         atomic_store(&client->finished, false);
+        atomic_store(&client->reverse_session_id, 0u);
     }
 }
 
@@ -606,13 +832,14 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         }
         atomic_store(&client->socket_fd, client_socket);
         client->peer_ipv4_address = peer.sin_addr.s_addr;
+        atomic_store(&client->reverse_session_id, 0u);
         atomic_store(&client->active, true);
         atomic_store(&client->finished, false);
         if (!airplay_native_thread_start(&client->thread, airplay_server_client_thread, client))
         {
             airplay_diagnostics_thread_create_failed(
                 RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_CLIENT);
-            airplay_server_close_socket(&client->socket_fd);
+            airplay_server_close_client_socket(client);
             atomic_store(&client->active, false);
             AIRPLAY_SERVER_LOG_ERROR("[airplay-server] client thread creation failed\n");
             continue;
@@ -639,7 +866,8 @@ bool airplay_server_start(const AirPlayServerConfig *config)
     int reuse = 1;
     size_t index;
 
-    if (!config || g_airplay_server.listener_started)
+    if (!config || g_airplay_server.listener_started ||
+        !airplay_server_init_mutexes())
         return false;
     memset(&g_airplay_server, 0, sizeof(g_airplay_server));
     g_airplay_server.config = *config;
@@ -658,6 +886,7 @@ bool airplay_server_start(const AirPlayServerConfig *config)
         atomic_init(&client->active, false);
         atomic_init(&client->finished, false);
         atomic_init(&client->socket_fd, -1);
+        atomic_init(&client->reverse_session_id, 0u);
     }
 
     listen_socket = airplay_server_diagnostic_socket(AF_INET, SOCK_STREAM, 0);
@@ -709,8 +938,8 @@ void airplay_server_stop(void)
     listen_socket =
         airplay_server_take_socket(&g_airplay_server.listen_socket);
     for (index = 0; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
-        client_sockets[index] = airplay_server_take_socket(
-            &g_airplay_server.clients[index].socket_fd);
+        client_sockets[index] = airplay_server_take_client_socket(
+            &g_airplay_server.clients[index]);
     airplay_native_thread_join(&g_airplay_server.listener_thread);
     airplay_diagnostics_thread_joined(
         RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_LISTENER,
@@ -749,4 +978,65 @@ size_t airplay_server_active_clients(void)
             count++;
     }
     return count;
+}
+
+bool airplay_server_send_reverse_request(
+    uint64_t logical_session_id,
+    const AirPlayRtspOutboundRequest *request)
+{
+    AirPlayServerClient *client = NULL;
+    uint8_t *encoded = NULL;
+    size_t encoded_length = 0u;
+    size_t index;
+    int socket_fd = -1;
+    bool success = false;
+
+    if (logical_session_id == 0u || !g_airplay_server_mutexes_ready ||
+        !airplay_rtsp_outbound_request_encode(request, &encoded,
+                                              &encoded_length))
+        return false;
+    airplay_native_mutex_lock(&g_airplay_reverse_registry_mutex);
+    if (!atomic_load(&g_airplay_server.running))
+        goto finished;
+    for (index = 0u; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
+    {
+        AirPlayServerClient *candidate = &g_airplay_server.clients[index];
+
+        if (atomic_load(&candidate->active) &&
+            atomic_load(&candidate->reverse_session_id) == logical_session_id)
+        {
+            client = candidate;
+            break;
+        }
+    }
+    if (!client)
+        goto finished;
+    airplay_native_mutex_lock(
+        &g_airplay_client_send_mutexes[client->index]);
+    socket_fd = atomic_load(&client->socket_fd);
+    if (socket_fd >= 0 && atomic_load(&client->active) &&
+        atomic_load(&client->reverse_session_id) == logical_session_id &&
+        atomic_load(&g_airplay_server.running))
+    {
+        success = airplay_server_send_all(socket_fd, encoded, encoded_length);
+        if (!success)
+        {
+            atomic_store(&client->reverse_session_id, 0u);
+            (void)shutdown(socket_fd, SHUT_RDWR);
+        }
+    }
+    airplay_native_mutex_unlock(
+        &g_airplay_client_send_mutexes[client->index]);
+
+finished:
+    airplay_native_mutex_unlock(&g_airplay_reverse_registry_mutex);
+    AIRPLAY_TRACE_SYNC(
+        "[airplay] t_ms=%llu reverse send logical=%llu bytes=%zu "
+        "slot=%zu sent=%u\n",
+        (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+        (unsigned long long)logical_session_id, encoded_length,
+        client ? client->index : AIRPLAY_SERVER_MAX_CLIENTS,
+        success ? 1u : 0u);
+    free(encoded);
+    return success;
 }

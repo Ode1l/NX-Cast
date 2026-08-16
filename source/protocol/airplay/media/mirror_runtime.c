@@ -35,6 +35,7 @@ typedef void *(*AirPlayRuntimeThreadEntry)(void *argument);
 typedef enum
 {
     AIRPLAY_RUNTIME_COMMAND_LOAD = 0,
+    AIRPLAY_RUNTIME_COMMAND_REPLACE,
     AIRPLAY_RUNTIME_COMMAND_PLAY,
     AIRPLAY_RUNTIME_COMMAND_STOP,
     AIRPLAY_RUNTIME_COMMAND_NOTIFY
@@ -46,6 +47,7 @@ typedef struct
     uint32_t generation;
     AirPlayMirrorRuntimeStatus status;
     AirPlayStreamBridge *bridge;
+    uint32_t previous_generation;
 } AirPlayRuntimeCommand;
 
 struct AirPlayMirrorRuntime
@@ -237,6 +239,7 @@ static void runtime_process_command(AirPlayMirrorRuntime *runtime,
                                     AirPlayRuntimeCommand *command)
 {
     AirPlayMirrorRuntimePlayerOps *player = &runtime->config.player;
+    bool bound;
     bool ok = true;
 
     switch (command->type)
@@ -244,24 +247,78 @@ static void runtime_process_command(AirPlayMirrorRuntime *runtime,
     case AIRPLAY_RUNTIME_COMMAND_LOAD:
         if (!runtime_generation_active(runtime, command->generation))
             break;
-        ok = player->bind_stream(command->bridge, player->user_data) &&
-             player->set_uri(PLAYER_LIBMPV_AIRPLAY_URI, "AirPlay Screen Mirroring",
-                             player->user_data);
+        bound = player->bind_stream(command->bridge, command->generation,
+                                    player->user_data);
+        AIRPLAY_OBSERVE(
+            "[airplay-video-pipeline] stage=player-handoff event=bridge-bind "
+            "generation=%u result=%s\n",
+            command->generation, bound ? "ok" : "failed");
+        ok = bound && runtime_generation_active(runtime, command->generation) &&
+             player->set_uri(PLAYER_LIBMPV_AIRPLAY_URI,
+                             airplay_stream_bridge_profile(command->bridge) ==
+                                     AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY
+                                 ? "AirPlay Audio"
+                                 : "AirPlay Screen Mirroring",
+                             command->generation, player->user_data);
+        AIRPLAY_OBSERVE(
+            "[airplay-video-pipeline] stage=player-handoff event=player-load "
+            "generation=%u result=%s\n",
+            command->generation, ok ? "ok" : "failed");
         if (!ok)
-            (void)player->bind_stream(NULL, player->user_data);
+            (void)player->bind_stream(NULL, command->generation,
+                                      player->user_data);
+        runtime_command_complete(runtime, command->generation, ok,
+                                 AIRPLAY_MIRROR_RUNTIME_WAITING_KEYFRAME);
+        break;
+    case AIRPLAY_RUNTIME_COMMAND_REPLACE:
+        if (!runtime_generation_active(runtime, command->generation))
+            break;
+        ok = player->stop(command->previous_generation, player->user_data) &&
+             player->bind_stream(NULL, command->previous_generation,
+                                 player->user_data) &&
+             player->replace_generation &&
+             player->replace_generation(command->previous_generation,
+                                        command->generation,
+                                        player->user_data);
+        bound = ok && player->bind_stream(command->bridge,
+                                          command->generation,
+                                          player->user_data);
+        ok = bound &&
+             runtime_generation_active(runtime, command->generation) &&
+             player->set_uri(PLAYER_LIBMPV_AIRPLAY_URI,
+                             "AirPlay Screen Mirroring",
+                             command->generation, player->user_data);
+        AIRPLAY_OBSERVE(
+            "[airplay-video-pipeline] stage=player-handoff event=bridge-replace "
+            "previous=%u generation=%u result=%s\n",
+            command->previous_generation, command->generation,
+            ok ? "ok" : "failed");
+        if (!ok && bound)
+            (void)player->bind_stream(NULL, command->generation,
+                                      player->user_data);
         runtime_command_complete(runtime, command->generation, ok,
                                  AIRPLAY_MIRROR_RUNTIME_WAITING_KEYFRAME);
         break;
     case AIRPLAY_RUNTIME_COMMAND_PLAY:
         if (!runtime_generation_active(runtime, command->generation))
             break;
-        ok = player->play(player->user_data);
+        ok = player->play(command->generation, player->user_data);
+        AIRPLAY_OBSERVE(
+            "[airplay-video-pipeline] stage=player-handoff event=player-play "
+            "generation=%u result=%s\n",
+            command->generation, ok ? "ok" : "failed");
         runtime_command_complete(runtime, command->generation, ok,
                                  AIRPLAY_MIRROR_RUNTIME_PLAYING);
         break;
     case AIRPLAY_RUNTIME_COMMAND_STOP:
-        (void)player->stop(player->user_data);
-        (void)player->bind_stream(NULL, player->user_data);
+        ok = player->stop(command->generation, player->user_data);
+        bound = player->bind_stream(NULL, command->generation,
+                                    player->user_data);
+        AIRPLAY_OBSERVE(
+            "[airplay-video-pipeline] stage=player-handoff event=player-stop "
+            "generation=%u result=%s unbind=%s\n",
+            command->generation, ok ? "ok" : "failed",
+            bound ? "ok" : "failed");
         break;
     case AIRPLAY_RUNTIME_COMMAND_NOTIFY:
         if (player->status_changed)
@@ -385,6 +442,8 @@ static void runtime_audio(const AirPlayMirrorAudioFrame *frame, void *user_data)
     AirPlayMirrorRuntime *runtime = user_data;
     AirPlayStreamBridge *bridge = NULL;
     uint32_t generation;
+    AirPlayStreamBridgeProfile profile;
+    AirPlayStreamBridgeStats stats = {0};
     bool pushed;
 
     runtime_mutex_lock(&runtime->mutex);
@@ -397,15 +456,31 @@ static void runtime_audio(const AirPlayMirrorAudioFrame *frame, void *user_data)
     runtime_mutex_unlock(&runtime->mutex);
     if (!bridge)
         return;
+    profile = airplay_stream_bridge_profile(bridge);
     pushed = airplay_stream_bridge_push_audio(bridge, frame);
+    if (pushed && profile == AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY)
+        (void)airplay_stream_bridge_get_stats(bridge, &stats);
     airplay_stream_bridge_release(bridge);
-    if (!pushed)
+    runtime_mutex_lock(&runtime->mutex);
+    if (runtime->generation == generation && runtime->recording)
     {
-        runtime_mutex_lock(&runtime->mutex);
-        if (runtime->generation == generation && runtime->recording)
+        if (!pushed)
             runtime_set_status_locked(runtime, AIRPLAY_MIRROR_RUNTIME_ERROR);
-        runtime_mutex_unlock(&runtime->mutex);
+        else if (profile == AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY &&
+                 stats.audio_packets != 0u && !runtime->play_queued)
+        {
+            AirPlayRuntimeCommand command = {
+                .type = AIRPLAY_RUNTIME_COMMAND_PLAY,
+                .generation = generation};
+
+            if (runtime_enqueue_locked(runtime, command))
+                runtime->play_queued = true;
+            else
+                runtime_set_status_locked(runtime,
+                                          AIRPLAY_MIRROR_RUNTIME_ERROR);
+        }
     }
+    runtime_mutex_unlock(&runtime->mutex);
 }
 
 static void runtime_audio_sync(uint32_t rtp_timestamp, uint64_t ntp_timestamp,
@@ -547,9 +622,14 @@ bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],
     AirPlayMirrorSessionConfig mirror_config = {0};
     AirPlayMirrorSession *mirror = NULL;
     AirPlayStreamBridge *bridge = NULL;
+    AirPlayStreamBridge *previous_bridge = NULL;
     AirPlayMirrorAudioFormat audio_format = {0};
+    AirPlayRuntimeCommand command = {0};
+    uint32_t previous_generation;
     uint32_t generation;
     bool configure_audio = false;
+    bool promotion = false;
+    bool recording = false;
     bool accepted = false;
     const char *failure_stage = "bridge-config";
 
@@ -557,15 +637,23 @@ bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],
         stream_connection_id == 0u)
         return false;
     runtime_mutex_lock(&runtime->mutex);
-    if (runtime->opening || runtime->session_id != 0u ||
+    if (runtime->opening || runtime->mirror ||
         (runtime->transport_session_id != 0u &&
-         runtime->transport_session_id != session_id))
+         runtime->transport_session_id != session_id) ||
+        (runtime->session_id != 0u &&
+         (runtime->session_id != session_id || !runtime->bridge ||
+          airplay_stream_bridge_profile(runtime->bridge) !=
+              AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY)))
     {
         runtime_mutex_unlock(&runtime->mutex);
         return false;
     }
+    promotion = runtime->session_id == session_id;
     runtime->opening = true;
-    generation = ++runtime->generation;
+    previous_generation = runtime->generation;
+    generation = previous_generation + 1u;
+    if (generation == 0u)
+        generation = 1u;
     if (runtime->audio && runtime->audio_format_ready)
     {
         audio_format = runtime->audio_format;
@@ -578,8 +666,9 @@ bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],
     mirror_config.stream_connection_id = stream_connection_id;
     mirror_config.video_callback = runtime_video;
     mirror_config.video_user_data = runtime;
-    if (!airplay_stream_bridge_create(runtime->config.stream_capacity,
-                                      &bridge))
+    if (!airplay_stream_bridge_create_profile(
+            runtime->config.stream_capacity,
+            AIRPLAY_STREAM_BRIDGE_PROFILE_VIDEO_AUDIO, &bridge))
         goto cleanup;
     if (configure_audio &&
         !airplay_stream_bridge_configure_audio(bridge, &audio_format))
@@ -590,45 +679,80 @@ bool airplay_mirror_runtime_open(uint64_t session_id, const uint8_t key[16],
     failure_stage = "runtime-state";
 
     runtime_mutex_lock(&runtime->mutex);
-    if (runtime->opening && runtime->generation == generation &&
-        runtime->session_id == 0u &&
+    if (runtime->opening && runtime->generation == previous_generation &&
+        !runtime->mirror &&
         (runtime->transport_session_id == 0u ||
-         runtime->transport_session_id == session_id))
+         runtime->transport_session_id == session_id) &&
+        ((!promotion && runtime->session_id == 0u) ||
+         (promotion && runtime->session_id == session_id &&
+          runtime->bridge &&
+          airplay_stream_bridge_profile(runtime->bridge) ==
+              AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY)) &&
+        (!runtime->recording ||
+         runtime->command_count < AIRPLAY_RUNTIME_COMMAND_CAPACITY))
     {
+        previous_bridge = runtime->bridge;
+        recording = runtime->recording;
         runtime->mirror = mirror;
         runtime->bridge = bridge;
         runtime->transport_session_id = session_id;
         runtime->session_id = session_id;
-        runtime->recording = false;
+        runtime->generation = generation;
         runtime->play_queued = false;
         runtime->diagnostic_last_video_ms = 0u;
         runtime->opening = false;
-        runtime_set_status_locked(runtime, AIRPLAY_MIRROR_RUNTIME_PREPARING);
+        if (recording)
+        {
+            command = (AirPlayRuntimeCommand){
+                .type = AIRPLAY_RUNTIME_COMMAND_REPLACE,
+                .generation = generation,
+                .bridge = bridge,
+                .previous_generation = previous_generation};
+            /* Capacity is reserved by the state predicate under this lock. */
+            (void)runtime_enqueue_locked(runtime, command);
+            runtime_set_status_locked(
+                runtime, AIRPLAY_MIRROR_RUNTIME_WAITING_KEYFRAME);
+        }
+        else
+            runtime_set_status_locked(runtime,
+                                      AIRPLAY_MIRROR_RUNTIME_PREPARING);
         accepted = true;
     }
     runtime_mutex_unlock(&runtime->mutex);
     if (accepted)
     {
+        if (recording)
+            airplay_mirror_session_set_recording(mirror, true);
+        if (previous_bridge)
+            airplay_stream_bridge_cancel(previous_bridge);
+        airplay_stream_bridge_release(previous_bridge);
         *data_port_out = airplay_mirror_session_port(mirror);
-        AIRPLAY_TRACE("[airplay-media] session=%llu generation=%u open port=%u\n",
-                      (unsigned long long)session_id, generation, *data_port_out);
+        AIRPLAY_TRACE(
+            "[airplay-media] session=%llu generation=%u open port=%u "
+            "promotion=%u recording=%u\n",
+            (unsigned long long)session_id, generation, *data_port_out,
+            promotion ? 1u : 0u, recording ? 1u : 0u);
         return *data_port_out != 0u;
     }
 
 cleanup:
+    (void)failure_stage;
     AIRPLAY_OBSERVE(
         "[airplay-setup-failure] session=%llu stream=video stage=%s generation=%u\n",
         (unsigned long long)session_id, failure_stage, generation);
     runtime_mutex_lock(&runtime->mutex);
-    if (runtime->opening && runtime->generation == generation)
+    if (runtime->opening && runtime->generation == previous_generation)
     {
         runtime->opening = false;
-        runtime_set_status_locked(runtime, AIRPLAY_MIRROR_RUNTIME_ERROR);
+        if (!promotion)
+            runtime_set_status_locked(runtime,
+                                      AIRPLAY_MIRROR_RUNTIME_ERROR);
     }
     runtime_mutex_unlock(&runtime->mutex);
     airplay_mirror_session_destroy(mirror);
     airplay_stream_bridge_release(bridge);
     return false;
+
 }
 
 bool airplay_mirror_runtime_audio_open(
@@ -642,9 +766,12 @@ bool airplay_mirror_runtime_audio_open(
     AirPlayMirrorAudioFormat format;
     AirPlayMirrorAudio *audio = NULL;
     AirPlayStreamBridge *bridge = NULL;
+    uint32_t previous_generation;
     uint32_t generation;
+    bool bridge_created = false;
     bool accepted = false;
     bool recording = false;
+    const char *failure_stage = "audio-create";
 
     if (!runtime || !key || !iv || !data_port_out || !control_port_out ||
         session_id == 0u)
@@ -658,7 +785,7 @@ bool airplay_mirror_runtime_audio_open(
     if (!airplay_mirror_audio_format(compression_type, samples_per_frame,
                                      sample_rate, &format))
     {
-        AIRPLAY_OBSERVE(
+        AIRPLAY_TRACE_SYNC(
             "[airplay-setup-failure] session=%llu stream=audio stage=format ct=%u spf=%u sr=%u\n",
             (unsigned long long)session_id, compression_type,
             samples_per_frame, sample_rate);
@@ -669,18 +796,51 @@ bool airplay_mirror_runtime_audio_open(
         runtime->transport_session_id != session_id ||
         (runtime->session_id != 0u && runtime->session_id != session_id))
     {
+        bool opening = runtime->opening;
+        bool has_audio = runtime->audio != NULL;
+        uint64_t transport_session_id = runtime->transport_session_id;
+        uint64_t mirror_session_id = runtime->session_id;
+
         runtime_mutex_unlock(&runtime->mutex);
+        (void)opening;
+        (void)has_audio;
+        (void)transport_session_id;
+        (void)mirror_session_id;
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-setup-failure] session=%llu stream=audio stage=runtime-state "
+            "opening=%u has_audio=%u transport_session=%llu mirror_session=%llu\n",
+            (unsigned long long)session_id, opening ? 1u : 0u,
+            has_audio ? 1u : 0u,
+            (unsigned long long)transport_session_id,
+            (unsigned long long)mirror_session_id);
         return false;
     }
     runtime->opening = true;
+    previous_generation = runtime->generation;
+    generation = previous_generation;
     bridge = runtime->bridge;
-    generation = runtime->generation;
-    if (bridge)
+    bridge_created = bridge == NULL;
+    if (bridge_created)
+    {
+        generation++;
+        if (generation == 0u)
+            generation = 1u;
+    }
+    else
         airplay_stream_bridge_retain(bridge);
     runtime_mutex_unlock(&runtime->mutex);
-    if (bridge && !airplay_stream_bridge_configure_audio(bridge, &format))
+    if (bridge_created &&
+        !airplay_stream_bridge_create_profile(
+            runtime->config.stream_capacity,
+            AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY, &bridge))
     {
-        AIRPLAY_OBSERVE(
+        failure_stage = "bridge-create";
+        goto cleanup;
+    }
+    if (!airplay_stream_bridge_configure_audio(bridge, &format))
+    {
+        failure_stage = "bridge-config";
+        AIRPLAY_TRACE_SYNC(
             "[airplay-setup-failure] session=%llu stream=audio stage=bridge-config ct=%u spf=%u sr=%u\n",
             (unsigned long long)session_id, compression_type,
             samples_per_frame, sample_rate);
@@ -698,15 +858,27 @@ bool airplay_mirror_runtime_audio_open(
     audio_config.callback_user_data = runtime;
     if (!airplay_mirror_audio_create(&audio_config, &audio))
         goto cleanup;
+    failure_stage = "runtime-state";
     runtime_mutex_lock(&runtime->mutex);
     if (runtime->opening &&
         runtime->transport_session_id == session_id &&
         (runtime->session_id == 0u || runtime->session_id == session_id) &&
-        runtime->generation == generation && !runtime->audio)
+        runtime->generation == previous_generation && !runtime->audio &&
+        ((bridge_created && !runtime->bridge && runtime->session_id == 0u) ||
+         (!bridge_created && runtime->bridge == bridge)))
     {
         runtime->audio = audio;
         runtime->audio_format = format;
         runtime->audio_format_ready = true;
+        if (bridge_created)
+        {
+            runtime->bridge = bridge;
+            runtime->session_id = session_id;
+            runtime->generation = generation;
+            runtime->play_queued = false;
+            runtime_set_status_locked(runtime,
+                                      AIRPLAY_MIRROR_RUNTIME_PREPARING);
+        }
         runtime->opening = false;
         recording = runtime->recording;
         accepted = true;
@@ -718,19 +890,26 @@ bool airplay_mirror_runtime_audio_open(
             airplay_mirror_audio_set_recording(audio, true);
         *data_port_out = airplay_mirror_audio_data_port(audio);
         *control_port_out = airplay_mirror_audio_control_port(audio);
-        airplay_stream_bridge_release(bridge);
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-audio] session=%llu stage=open ct=%u spf=%u sr=%u "
+            "data=%u control=%u profile=%s generation=%u\n",
+            (unsigned long long)session_id, compression_type,
+            format.samples_per_frame, format.sample_rate, *data_port_out,
+            *control_port_out,
+            bridge_created ? "audio-only" : "video-audio", generation);
+        if (!bridge_created)
+            airplay_stream_bridge_release(bridge);
         return *data_port_out != 0u && *control_port_out != 0u;
     }
 
 cleanup:
-    if (audio)
-    {
-        AIRPLAY_OBSERVE(
-            "[airplay-setup-failure] session=%llu stream=audio stage=runtime-state generation=%u\n",
-            (unsigned long long)session_id, generation);
-    }
+    (void)failure_stage;
+    AIRPLAY_TRACE_SYNC(
+        "[airplay-setup-failure] session=%llu stream=audio stage=%s generation=%u ct=%u spf=%u sr=%u\n",
+        (unsigned long long)session_id, failure_stage, generation,
+        compression_type, samples_per_frame, sample_rate);
     runtime_mutex_lock(&runtime->mutex);
-    if (runtime->opening && runtime->generation == generation &&
+    if (runtime->opening && runtime->generation == previous_generation &&
         runtime->transport_session_id == session_id)
         runtime->opening = false;
     runtime_mutex_unlock(&runtime->mutex);
@@ -747,16 +926,18 @@ void airplay_mirror_runtime_record(uint64_t session_id, void *user_data)
     if (!runtime)
         return;
     runtime_mutex_lock(&runtime->mutex);
-    if (runtime->session_id != session_id || !runtime->mirror || !runtime->bridge ||
-        runtime->recording)
+    if (runtime->session_id != session_id || !runtime->bridge ||
+        (!runtime->mirror && !runtime->audio) || runtime->recording)
     {
         runtime_mutex_unlock(&runtime->mutex);
         return;
     }
     runtime->recording = true;
     runtime->play_queued = false;
-    airplay_mirror_session_set_recording(runtime->mirror, true);
-    airplay_mirror_audio_set_recording(runtime->audio, true);
+    if (runtime->mirror)
+        airplay_mirror_session_set_recording(runtime->mirror, true);
+    if (runtime->audio)
+        airplay_mirror_audio_set_recording(runtime->audio, true);
     command = (AirPlayRuntimeCommand){
         .type = AIRPLAY_RUNTIME_COMMAND_LOAD,
         .generation = runtime->generation,
@@ -776,7 +957,8 @@ void airplay_mirror_runtime_stop(uint64_t session_id, void *user_data)
     AirPlayMirrorTiming *timing;
     AirPlayStreamBridge *bridge;
     AirPlayRuntimeCommand command;
-    bool had_media;
+    bool had_player;
+    bool had_session;
 
     if (!runtime)
         return;
@@ -792,7 +974,8 @@ void airplay_mirror_runtime_stop(uint64_t session_id, void *user_data)
         runtime_mutex_unlock(&runtime->mutex);
         return;
     }
-    had_media = runtime->session_id != 0u;
+    had_player = runtime->recording;
+    had_session = runtime->session_id != 0u;
     mirror = runtime->mirror;
     audio = runtime->audio;
     timing = runtime->timing;
@@ -809,14 +992,16 @@ void airplay_mirror_runtime_stop(uint64_t session_id, void *user_data)
     runtime->recording = false;
     runtime->play_queued = false;
     runtime->diagnostic_last_video_ms = 0u;
-    if (had_media)
+    if (had_player)
     {
         command = (AirPlayRuntimeCommand){
             .type = AIRPLAY_RUNTIME_COMMAND_STOP,
             .generation = runtime->generation};
         (void)runtime_enqueue_locked(runtime, command);
-        runtime_set_status_locked(runtime, AIRPLAY_MIRROR_RUNTIME_DISCONNECTED);
     }
+    if (had_session)
+        runtime_set_status_locked(runtime,
+                                  AIRPLAY_MIRROR_RUNTIME_DISCONNECTED);
     runtime_mutex_unlock(&runtime->mutex);
 
     airplay_mirror_timing_destroy(timing);
@@ -840,6 +1025,21 @@ AirPlayMirrorRuntimeStatus airplay_mirror_runtime_status(
         *generation_out = runtime->generation;
     runtime_mutex_unlock(&runtime->mutex);
     return status;
+}
+
+AirPlayStreamBridgeProfile airplay_mirror_runtime_profile(
+    AirPlayMirrorRuntime *runtime)
+{
+    AirPlayStreamBridgeProfile profile =
+        AIRPLAY_STREAM_BRIDGE_PROFILE_VIDEO_AUDIO;
+
+    if (!runtime)
+        return profile;
+    runtime_mutex_lock(&runtime->mutex);
+    if (runtime->bridge)
+        profile = airplay_stream_bridge_profile(runtime->bridge);
+    runtime_mutex_unlock(&runtime->mutex);
+    return profile;
 }
 
 const char *airplay_mirror_runtime_status_name(AirPlayMirrorRuntimeStatus status)

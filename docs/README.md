@@ -16,10 +16,11 @@ All Markdown documents in this directory use English file names and English cont
 8. [c-safety.md](c-safety.md)
 9. [source-compatibility.md](source-compatibility.md)
 10. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
-11. [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
-12. [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
-13. [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
-14. [Sanitized nxlink log samples](../sample/nxlink-logs/README.md)
+11. [AIRPLAY_PROTOCOL_COMPATIBILITY.md](AIRPLAY_PROTOCOL_COMPATIBILITY.md)
+12. [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
+13. [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
+14. [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
+15. [Sanitized nxlink log samples](../sample/nxlink-logs/README.md)
 
 ## Build And Media Toolchain
 
@@ -42,6 +43,7 @@ paths.
 - [soap-module.md](soap-module.md)
 - [connection-manager-sink-protocol-info.md](connection-manager-sink-protocol-info.md)
 - [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
+- [AIRPLAY_PROTOCOL_COMPATIBILITY.md](AIRPLAY_PROTOCOL_COMPATIBILITY.md)
 - [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
 - [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
 

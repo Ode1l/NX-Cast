@@ -14,6 +14,8 @@
 #define AIRPLAY_PLIST_CONTENT_TYPE "application/x-apple-binary-plist"
 #define AIRPLAY_OCTET_CONTENT_TYPE "application/octet-stream"
 #define AIRPLAY_TEXT_CONTENT_TYPE "text/parameters"
+#define AIRPLAY_XML_PLIST_CONTENT_TYPE "text/x-apple-plist+xml"
+#define AIRPLAY_HLS_SERVER_FEATURES 0x27fu
 
 typedef struct
 {
@@ -22,7 +24,7 @@ typedef struct
     bool mirror_setup;
     bool audio_setup;
     bool record_requested;
-    bool mirror_recording;
+    bool recording_started;
     uint8_t aes_key[16];
     uint8_t aes_iv[16];
     uint64_t stream_connection_id;
@@ -113,6 +115,101 @@ static AirPlayHandlerSession *session_context(AirPlayRtspSession *session)
     }
     session->protocol_context = context;
     return context;
+}
+
+static AirPlayHandlerPhase handler_phase(const AirPlayRtspSession *session,
+                                         const AirPlayHandlerSession *context)
+{
+    if (session && session->state == AIRPLAY_RTSP_SESSION_CLOSED)
+        return AIRPLAY_HANDLER_PHASE_CLOSED;
+    if (!context || !context->initial_setup)
+        return AIRPLAY_HANDLER_PHASE_CONTROL;
+    if (context->record_requested)
+    {
+        return context->mirror_setup || context->audio_setup
+                   ? AIRPLAY_HANDLER_PHASE_RECORDING
+                   : AIRPLAY_HANDLER_PHASE_RECORD_PENDING;
+    }
+    return context->mirror_setup || context->audio_setup
+               ? AIRPLAY_HANDLER_PHASE_STREAM_READY
+               : AIRPLAY_HANDLER_PHASE_TRANSPORT_READY;
+}
+
+AirPlayHandlerPhase airplay_handlers_session_phase(const AirPlayRtspSession *session)
+{
+    const AirPlayHandlerSession *context;
+
+    if (!session)
+        return AIRPLAY_HANDLER_PHASE_CONTROL;
+    context = session->protocol_context;
+    return handler_phase(session, context);
+}
+
+const char *airplay_handler_phase_name(AirPlayHandlerPhase phase)
+{
+    switch (phase)
+    {
+    case AIRPLAY_HANDLER_PHASE_CONTROL:
+        return "control";
+    case AIRPLAY_HANDLER_PHASE_TRANSPORT_READY:
+        return "transport-ready";
+    case AIRPLAY_HANDLER_PHASE_RECORD_PENDING:
+        return "record-pending";
+    case AIRPLAY_HANDLER_PHASE_STREAM_READY:
+        return "stream-ready";
+    case AIRPLAY_HANDLER_PHASE_RECORDING:
+        return "recording";
+    case AIRPLAY_HANDLER_PHASE_CLOSED:
+        return "closed";
+    default:
+        return "invalid";
+    }
+}
+
+static bool handler_state_valid(const AirPlayRtspSession *session,
+                                const AirPlayHandlerSession *context)
+{
+    bool has_stream;
+
+    if (!session || !context)
+        return false;
+    has_stream = context->mirror_setup || context->audio_setup;
+    if ((has_stream || context->record_requested || context->recording_started) &&
+        !context->initial_setup)
+        return false;
+    if (context->recording_started &&
+        (!has_stream || !context->record_requested))
+        return false;
+    if (session->state == AIRPLAY_RTSP_SESSION_CLOSED)
+        return !context->initial_setup && !has_stream &&
+               !context->record_requested && !context->recording_started;
+    if (context->initial_setup !=
+        (session->state == AIRPLAY_RTSP_SESSION_SETUP ||
+         session->state == AIRPLAY_RTSP_SESSION_RECORDING))
+        return false;
+    return context->record_requested ==
+           (session->state == AIRPLAY_RTSP_SESSION_RECORDING);
+}
+
+static void trace_phase_transition(const AirPlayRtspSession *session,
+                                   AirPlayHandlerPhase before,
+                                   const char *event,
+                                   bool ok)
+{
+    AirPlayHandlerPhase after = airplay_handlers_session_phase(session);
+
+    (void)event;
+    (void)ok;
+    if (before == after)
+        return;
+    AIRPLAY_TRACE_SYNC(
+        "[airplay-phase] connection=%llu logical=%llu event=%s from=%s to=%s result=%s\n",
+        (unsigned long long)session->id,
+        (unsigned long long)session->logical_session_id,
+        event,
+        airplay_handler_phase_name(before),
+        airplay_handler_phase_name(after),
+        ok ? "ok" : "failed");
 }
 
 bool airplay_handlers_create(const AirPlayHandlersConfig *config,
@@ -352,6 +449,37 @@ cleanup:
     return true;
 }
 
+static bool handle_server_info(AirPlayHandlers *handlers,
+                               const AirPlayRtspRequest *request,
+                               AirPlayRtspResponse *response)
+{
+    char body[1024];
+    int written;
+
+    if (strcmp(request->method, "GET") != 0)
+        return airplay_rtsp_response_set_status(response, 405);
+    written = snprintf(
+        body, sizeof(body),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+        "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+        "<plist version=\"1.0\"><dict>"
+        "<key>features</key><integer>%u</integer>"
+        "<key>macAddress</key><string>%s</string>"
+        "<key>model</key><string>AppleTV3,2</string>"
+        "<key>osBuildVersion</key><string>12B435</string>"
+        "<key>protovers</key><string>1.0</string>"
+        "<key>srcvers</key><string>220.68</string>"
+        "<key>vv</key><integer>2</integer>"
+        "<key>deviceid</key><string>%s</string>"
+        "</dict></plist>\n",
+        AIRPLAY_HLS_SERVER_FEATURES, handlers->device_id, handlers->device_id);
+    if (written <= 0 || (size_t)written >= sizeof(body))
+        return airplay_rtsp_response_set_status(response, 500);
+    return airplay_rtsp_response_set_body(response, body, (size_t)written,
+                                           AIRPLAY_XML_PLIST_CONTENT_TYPE);
+}
+
 static bool handle_fairplay(AirPlayHandlerSession *context,
                             const AirPlayRtspRequest *request,
                             AirPlayRtspResponse *response)
@@ -374,6 +502,95 @@ static bool handle_fairplay(AirPlayHandlerSession *context,
         return airplay_rtsp_response_set_status(response, 400);
     return airplay_rtsp_response_set_body(response, output, output_size,
                                           AIRPLAY_OCTET_CONTENT_TYPE);
+}
+
+static bool handle_fairplay_setup2(const AirPlayRtspRequest *request,
+                                   AirPlayRtspResponse *response)
+{
+    unsigned version = request->body && request->body_length > 4u
+                           ? request->body[4]
+                           : 0u;
+
+    if (strcmp(request->method, "POST") != 0)
+        return airplay_rtsp_response_set_status(response, 405);
+    (void)version;
+    AIRPLAY_TRACE_SYNC(
+        "[airplay-http-compat] endpoint=fp-setup2 bytes=%zu version=%u status=421\n",
+        request->body_length, version);
+    return airplay_rtsp_response_add_header(response, "Content-Type",
+                                            AIRPLAY_PLIST_CONTENT_TYPE) &&
+           airplay_rtsp_response_set_status(response, 421);
+}
+
+static bool set_property_known(const char *property)
+{
+    static const char *const known[] = {
+        "actionAtItemEnd",
+        "selectedMediaArray",
+        "reverseEndTime",
+        "forwardEndTime",
+        "interstitialEvents",
+        "textMarkupArray",
+        "isInterestedInDateRange"};
+
+    for (size_t index = 0u; index < sizeof(known) / sizeof(known[0]); ++index)
+    {
+        if (strcmp(property, known[index]) == 0)
+            return true;
+    }
+    return false;
+}
+
+static bool handle_set_property(const AirPlayRtspRequest *request,
+                                AirPlayRtspResponse *response)
+{
+    static const char prefix[] = "/setProperty?";
+    static const char success[] =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+        "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+        "<plist version=\"1.0\"><dict>"
+        "<key>errorCode</key><integer>0</integer>"
+        "</dict></plist>\n";
+    const char *property;
+    bool known;
+
+    if (strcmp(request->method, "PUT") != 0 ||
+        strncmp(request->uri, prefix, sizeof(prefix) - 1u) != 0)
+        return airplay_rtsp_response_set_status(response, 405);
+    property = request->uri + sizeof(prefix) - 1u;
+    known = set_property_known(property);
+    AIRPLAY_TRACE_SYNC(
+        "[airplay-http-compat] endpoint=setProperty property=%s known=%u status=200\n",
+        property[0] != '\0' ? property : "(empty)", known ? 1u : 0u);
+    if (!known)
+        return true;
+    return airplay_rtsp_response_set_body(
+        response, success, sizeof(success) - 1u,
+        AIRPLAY_XML_PLIST_CONTENT_TYPE);
+}
+
+static bool handle_audio_mode(const AirPlayRtspRequest *request,
+                              AirPlayRtspResponse *response)
+{
+    AirPlayPlistValue *root = NULL;
+    AirPlayPlistError error;
+    const char *mode = NULL;
+    bool ok;
+
+    ok = strcmp(request->method, "POST") == 0 &&
+         content_type_is(request, AIRPLAY_PLIST_CONTENT_TYPE) &&
+         airplay_plist_decode(request->body, request->body_length, &root,
+                              &error) &&
+         airplay_plist_type(root) == AIRPLAY_PLIST_TYPE_DICT;
+    if (ok)
+        mode = airplay_plist_get_string(
+            airplay_plist_dict_get(root, "audioMode"));
+    ok = ok && mode && mode[0] != '\0';
+    if (ok)
+        AIRPLAY_TRACE("[airplay] audio mode acknowledged\n");
+    airplay_plist_free(root);
+    return ok ? true : airplay_rtsp_response_set_status(response, 400);
 }
 
 static AirPlayPlistValue *decode_dict(const AirPlayRtspRequest *request)
@@ -470,7 +687,7 @@ static bool setup_initial(AirPlayHandlers *handlers,
                                &peer_timing_port) &&
         peer_timing_port > UINT16_MAX)
         return false;
-    transport.session_id = session->id;
+    transport.session_id = session->logical_session_id;
     transport.peer_ipv4_address = session->peer_ipv4_address;
     transport.peer_timing_port = (uint16_t)peer_timing_port;
     transport.uses_ntp_timing = peer_timing_port != 0u &&
@@ -552,7 +769,7 @@ static bool setup_streams(AirPlayHandlers *handlers,
                     (unsigned long long)session->id,
                     (unsigned long long)value);
                 if (!handlers->config.mirror_open_callback(
-                        session->id, context->aes_key, value, &data_port,
+                        session->logical_session_id, context->aes_key, value, &data_port,
                         handlers->config.callback_user_data) ||
                     data_port == 0u)
                     goto failure;
@@ -606,7 +823,7 @@ static bool setup_streams(AirPlayHandlers *handlers,
                     (unsigned long long)session->id, compression_type,
                     samples_per_frame, sample_rate);
                 if (!handlers->config.audio_open_callback(
-                        session->id, context->aes_key, context->aes_iv,
+                        session->logical_session_id, context->aes_key, context->aes_iv,
                         compression_type, samples_per_frame, sample_rate,
                         &data_port, &control_port,
                         handlers->config.callback_user_data) ||
@@ -666,6 +883,13 @@ static void trace_setup_metadata(const AirPlayRtspSession *session,
     bool remote_control_only = false;
     bool has_mirror = false;
     bool has_audio = false;
+    bool audio_using_screen = false;
+    bool audio_is_media = false;
+    uint64_t audio_ct = 0u;
+    uint64_t audio_spf = 0u;
+    uint64_t audio_sr = 0u;
+    uint64_t audio_format = 0u;
+    unsigned audio_fields = 0u;
     size_t stream_count = airplay_plist_array_size(streams);
 
     if (timing_protocol)
@@ -693,6 +917,28 @@ static void trace_setup_metadata(const AirPlayRtspSession *session,
             continue;
         has_mirror = has_mirror || type == 110u;
         has_audio = has_audio || type == 96u;
+        if (type != 96u)
+            continue;
+        if (airplay_plist_get_uint(airplay_plist_dict_get(stream, "ct"),
+                                   &audio_ct))
+            audio_fields |= 1u << 0;
+        if (airplay_plist_get_uint(airplay_plist_dict_get(stream, "spf"),
+                                   &audio_spf))
+            audio_fields |= 1u << 1;
+        if (airplay_plist_get_uint(airplay_plist_dict_get(stream, "sr"),
+                                   &audio_sr))
+            audio_fields |= 1u << 2;
+        if (airplay_plist_get_uint(
+                airplay_plist_dict_get(stream, "audioFormat"),
+                &audio_format))
+            audio_fields |= 1u << 3;
+        if (airplay_plist_get_bool(
+                airplay_plist_dict_get(stream, "usingScreen"),
+                &audio_using_screen))
+            audio_fields |= 1u << 4;
+        if (airplay_plist_get_bool(airplay_plist_dict_get(stream, "isMedia"),
+                                   &audio_is_media))
+            audio_fields |= 1u << 5;
     }
     (void)session;
     (void)has_initial;
@@ -701,15 +947,27 @@ static void trace_setup_metadata(const AirPlayRtspSession *session,
     (void)remote_control_only;
     (void)has_mirror;
     (void)has_audio;
+    (void)audio_using_screen;
+    (void)audio_is_media;
+    (void)audio_ct;
+    (void)audio_spf;
+    (void)audio_sr;
+    (void)audio_format;
+    (void)audio_fields;
     AIRPLAY_TRACE_SYNC(
         "[airplay] t_ms=%llu setup metadata session=%llu keys=%zu "
         "initial=%u timing=%s timing_port=%llu remote_control=%u "
-        "streams=%zu mirror=%u audio=%u\n",
+        "streams=%zu mirror=%u audio=%u audio_fields=0x%x "
+        "ct=%llu spf=%llu sr=%llu format=%llu using_screen=%u is_media=%u\n",
         (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
         (unsigned long long)session->id, airplay_plist_dict_size(root),
         has_initial ? 1u : 0u, timing_label,
         (unsigned long long)timing_port, remote_control_only ? 1u : 0u,
-        stream_count, has_mirror ? 1u : 0u, has_audio ? 1u : 0u);
+        stream_count, has_mirror ? 1u : 0u, has_audio ? 1u : 0u,
+        audio_fields, (unsigned long long)audio_ct,
+        (unsigned long long)audio_spf, (unsigned long long)audio_sr,
+        (unsigned long long)audio_format, audio_using_screen ? 1u : 0u,
+        audio_is_media ? 1u : 0u);
 }
 
 static bool handle_setup(AirPlayHandlers *handlers,
@@ -721,10 +979,12 @@ static bool handle_setup(AirPlayHandlers *handlers,
     AirPlayPlistValue *root = NULL;
     AirPlayPlistValue *response_root = NULL;
     const AirPlayPlistValue *streams;
+    AirPlayHandlerPhase phase_before;
     bool has_initial;
     bool was_recording;
     bool ok = false;
 
+    phase_before = airplay_handlers_session_phase(session);
     if (session->state != AIRPLAY_RTSP_SESSION_CONNECTED &&
         session->state != AIRPLAY_RTSP_SESSION_SETUP &&
         session->state != AIRPLAY_RTSP_SESSION_RECORDING)
@@ -752,15 +1012,16 @@ static bool handle_setup(AirPlayHandlers *handlers,
     }
     session->state = was_recording ? AIRPLAY_RTSP_SESSION_RECORDING
                                    : AIRPLAY_RTSP_SESSION_SETUP;
-    if (context->record_requested && context->mirror_setup &&
-        !context->mirror_recording)
+    if (context->record_requested &&
+        (context->mirror_setup || context->audio_setup) &&
+        !context->recording_started)
     {
-        context->mirror_recording = true;
-        if (handlers->config.mirror_record_callback)
-            handlers->config.mirror_record_callback(
-                session->id, handlers->config.callback_user_data);
+        context->recording_started = true;
+        if (handlers->config.media_record_callback)
+            handlers->config.media_record_callback(
+                session->logical_session_id, handlers->config.callback_user_data);
     }
-    ok = true;
+    ok = handler_state_valid(session, context);
 
 cleanup:
     airplay_plist_free(root);
@@ -773,18 +1034,21 @@ cleanup:
     if (!ok)
     {
         if (context->initial_setup && handlers->config.mirror_stop_callback)
-            handlers->config.mirror_stop_callback(session->id,
+            handlers->config.mirror_stop_callback(session->logical_session_id,
                                                   handlers->config.callback_user_data);
         context->initial_setup = false;
         context->mirror_setup = false;
         context->audio_setup = false;
         context->record_requested = false;
-        context->mirror_recording = false;
+        context->recording_started = false;
         context->stream_connection_id = 0u;
+        session->state = AIRPLAY_RTSP_SESSION_CONNECTED;
         airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
         airplay_crypto_secure_zero(context->aes_iv, sizeof(context->aes_iv));
+        trace_phase_transition(session, phase_before, "setup", false);
         return airplay_rtsp_response_set_status(response, 461);
     }
+    trace_phase_transition(session, phase_before, "setup", true);
     return true;
 }
 
@@ -793,23 +1057,27 @@ static bool handle_record(AirPlayHandlers *handlers,
                           AirPlayRtspSession *session,
                           AirPlayRtspResponse *response)
 {
+    AirPlayHandlerPhase phase_before = airplay_handlers_session_phase(session);
+
     if ((session->state != AIRPLAY_RTSP_SESSION_SETUP &&
          session->state != AIRPLAY_RTSP_SESSION_RECORDING) ||
         !context->initial_setup)
         return airplay_rtsp_response_set_status(response, 455);
     context->record_requested = true;
     session->state = AIRPLAY_RTSP_SESSION_RECORDING;
-    if (context->mirror_setup && !context->mirror_recording)
+    if ((context->mirror_setup || context->audio_setup) &&
+        !context->recording_started)
     {
-        context->mirror_recording = true;
-        if (handlers->config.mirror_record_callback)
-            handlers->config.mirror_record_callback(
-                session->id, handlers->config.callback_user_data);
+        context->recording_started = true;
+        if (handlers->config.media_record_callback)
+            handlers->config.media_record_callback(
+                session->logical_session_id, handlers->config.callback_user_data);
     }
     AIRPLAY_TRACE("[airplay] session=%llu method=RECORD mirror=%u deferred=%u\n",
                   (unsigned long long)session->id,
                   context->mirror_setup ? 1u : 0u,
-                  context->mirror_recording ? 0u : 1u);
+                  context->recording_started ? 0u : 1u);
+    trace_phase_transition(session, phase_before, "record", true);
     return airplay_rtsp_response_add_header(response, "Audio-Latency", "0") &&
            airplay_rtsp_response_add_header(response, "Audio-Jack-Status",
                                             "connected; type=analog");
@@ -838,25 +1106,45 @@ static bool handle_get_parameter(const AirPlayRtspRequest *request,
     return true;
 }
 
+static bool handle_reverse(const AirPlayRtspRequest *request,
+                           AirPlayRtspResponse *response)
+{
+    if (strcmp(request->method, "POST") != 0)
+        return airplay_rtsp_response_set_status(response, 405);
+    if (strcmp(request->protocol, "HTTP/1.1") != 0)
+        return airplay_rtsp_response_set_status(response, 400);
+    if (!airplay_rtsp_response_set_status(response, 101) ||
+        !airplay_rtsp_response_add_header(response, "Connection", "Upgrade") ||
+        !airplay_rtsp_response_add_header(response, "Upgrade", "PTTH/1.0"))
+    {
+        return false;
+    }
+    response->register_reverse_connection = true;
+    return true;
+}
+
 static bool handle_teardown(AirPlayHandlers *handlers,
                             AirPlayHandlerSession *context,
                             AirPlayRtspSession *session,
                             AirPlayRtspResponse *response)
 {
+    AirPlayHandlerPhase phase_before = airplay_handlers_session_phase(session);
+
     if (session->state == AIRPLAY_RTSP_SESSION_CLOSED)
         return airplay_rtsp_response_set_status(response, 455);
     if (context->initial_setup && handlers->config.mirror_stop_callback)
-        handlers->config.mirror_stop_callback(session->id,
+        handlers->config.mirror_stop_callback(session->logical_session_id,
                                               handlers->config.callback_user_data);
     context->mirror_setup = false;
     context->audio_setup = false;
     context->initial_setup = false;
     context->record_requested = false;
-    context->mirror_recording = false;
+    context->recording_started = false;
     airplay_crypto_secure_zero(context->aes_key, sizeof(context->aes_key));
     airplay_crypto_secure_zero(context->aes_iv, sizeof(context->aes_iv));
     session->state = AIRPLAY_RTSP_SESSION_CLOSED;
     response->close_connection = true;
+    trace_phase_transition(session, phase_before, "teardown", true);
     return true;
 }
 
@@ -873,16 +1161,28 @@ bool airplay_handlers_route(AirPlayRtspSession *session,
     context = session_context(session);
     if (!context)
         return false;
+    if (!handler_state_valid(session, context))
+    {
+        AIRPLAY_TRACE_WARN(
+            "[airplay-phase] connection=%llu logical=%llu event=validate phase=%s result=invalid\n",
+            (unsigned long long)session->id,
+            (unsigned long long)session->logical_session_id,
+            airplay_handler_phase_name(handler_phase(session, context)));
+        response->close_connection = true;
+        return airplay_rtsp_response_set_status(response, 500);
+    }
     AIRPLAY_TRACE("[airplay] session=%llu request=%u method=%s uri=%s bytes=%zu state=%s\n",
                   (unsigned long long)session->id, session->request_count,
                   request->method, request->uri, request->body_length,
                   airplay_rtsp_session_state_name(session->state));
+    if (strcmp(request->uri, "/reverse") == 0)
+        return handle_reverse(request, response);
     if (handlers->config.remote_video)
     {
         bool handled = false;
 
         if (!airplay_remote_video_route(handlers->config.remote_video,
-                                        session->id, request, response,
+                                        session->logical_session_id, request, response,
                                         &handled))
             return false;
         if (handled)
@@ -892,12 +1192,20 @@ bool airplay_handlers_route(AirPlayRtspSession *session,
         return airplay_rtsp_response_add_header(
             response, "Public",
             "SETUP, RECORD, FLUSH, TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER");
-    if (strcmp(request->uri, "/info") == 0 || strcmp(request->uri, "/server-info") == 0)
+    if (strcmp(request->uri, "/server-info") == 0)
+        return handle_server_info(handlers, request, response);
+    if (strcmp(request->uri, "/info") == 0)
         return handle_info(handlers, request, response);
     if (strcmp(request->uri, "/fp-setup") == 0)
         return handle_fairplay(context, request, response);
+    if (strcmp(request->uri, "/fp-setup2") == 0)
+        return handle_fairplay_setup2(request, response);
+    if (strncmp(request->uri, "/setProperty?", 13u) == 0)
+        return handle_set_property(request, response);
     if (strcmp(request->uri, "/feedback") == 0 && strcmp(request->method, "POST") == 0)
         return true;
+    if (strcmp(request->uri, "/audioMode") == 0)
+        return handle_audio_mode(request, response);
     if (strcmp(request->method, "SETUP") == 0)
         return handle_setup(handlers, context, session, request, response);
     if (strcmp(request->method, "RECORD") == 0)
@@ -914,7 +1222,8 @@ bool airplay_handlers_route(AirPlayRtspSession *session,
         if (session->state != AIRPLAY_RTSP_SESSION_SETUP &&
             session->state != AIRPLAY_RTSP_SESSION_RECORDING)
             return airplay_rtsp_response_set_status(response, 455);
-        return content_type_is(request, AIRPLAY_TEXT_CONTENT_TYPE) ||
+        return request->body_length == 0u ||
+                       content_type_is(request, AIRPLAY_TEXT_CONTENT_TYPE) ||
                        content_type_is(request, "application/x-dmap-tagged") ||
                        content_type_is(request, "image/jpeg")
                    ? true
@@ -933,20 +1242,24 @@ void airplay_handlers_session_closed(AirPlayRtspSession *session, void *user_dat
 {
     AirPlayHandlers *handlers = user_data;
     AirPlayHandlerSession *context;
+    AirPlayHandlerPhase phase_before;
 
     if (!session)
         return;
+    phase_before = airplay_handlers_session_phase(session);
     context = session->protocol_context;
     session->protocol_context = NULL;
+    session->state = AIRPLAY_RTSP_SESSION_CLOSED;
     if (!context)
+    {
+        trace_phase_transition(session, phase_before, "connection-close", true);
         return;
+    }
     if (context->initial_setup && handlers && handlers->config.mirror_stop_callback)
-        handlers->config.mirror_stop_callback(session->id,
+        handlers->config.mirror_stop_callback(session->logical_session_id,
                                               handlers->config.callback_user_data);
-    if (handlers && handlers->config.remote_video)
-        airplay_remote_video_session_closed(handlers->config.remote_video,
-                                            session->id);
     airplay_fairplay_destroy(context->fairplay);
     airplay_crypto_secure_zero(context, sizeof(*context));
     free(context);
+    trace_phase_transition(session, phase_before, "connection-close", true);
 }

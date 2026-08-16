@@ -21,7 +21,7 @@ typedef struct
     AirPlayTransportPrepareCallback transport_prepare_callback;
     AirPlayMirrorOpenCallback mirror_open_callback;
     AirPlayAudioOpenCallback audio_open_callback;
-    AirPlayMirrorRecordCallback mirror_record_callback;
+    AirPlayMediaRecordCallback media_record_callback;
     AirPlayMirrorStopCallback mirror_stop_callback;
     AirPlayRemoteVideo *remote_video;
     void *media_user_data;

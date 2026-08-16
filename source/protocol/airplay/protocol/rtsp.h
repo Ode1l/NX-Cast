@@ -59,7 +59,19 @@ typedef struct
     uint8_t *body;
     size_t body_length;
     bool close_connection;
+    bool register_reverse_connection;
 } AirPlayRtspResponse;
+
+typedef struct
+{
+    const char *method;
+    const char *uri;
+    const char *protocol;
+    const AirPlayRtspHeader *headers;
+    size_t header_count;
+    const void *body;
+    size_t body_length;
+} AirPlayRtspOutboundRequest;
 
 typedef enum
 {
@@ -72,6 +84,7 @@ typedef enum
 typedef struct
 {
     uint64_t id;
+    uint64_t logical_session_id;
     uint32_t request_count;
     uint32_t peer_ipv4_address;
     AirPlayRtspSessionState state;
@@ -106,6 +119,10 @@ bool airplay_rtsp_response_encode(const AirPlayRtspResponse *response,
                                   uint8_t **bytes_out,
                                   size_t *length_out);
 void airplay_rtsp_response_clear(AirPlayRtspResponse *response);
+bool airplay_rtsp_outbound_request_encode(
+    const AirPlayRtspOutboundRequest *request,
+    uint8_t **bytes_out,
+    size_t *length_out);
 
 void airplay_rtsp_session_init(AirPlayRtspSession *session, uint64_t id);
 void airplay_rtsp_session_set_peer_ipv4(AirPlayRtspSession *session,

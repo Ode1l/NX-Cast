@@ -9,6 +9,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <libavformat/avformat.h>
+
 #include "protocol/airplay/media/stream_bridge.h"
 #include "protocol/airplay/mirror/audio.h"
 #include "protocol/airplay/mirror/video.h"
@@ -322,7 +324,44 @@ static void capture_video(const AirPlayMirrorAccessUnit *access_unit, void *user
     }
 }
 
-static void test_dual_stream(const uint8_t *aac, size_t aac_size)
+static void check_container(const char *path,
+                            enum AVCodecID expected_audio_codec,
+                            unsigned expected_video_streams)
+{
+    AVFormatContext *format = NULL;
+    unsigned video_streams = 0u;
+    unsigned audio_streams = 0u;
+
+    CHECK(avformat_open_input(&format, path, NULL, NULL) >= 0);
+    if (!format)
+        return;
+    CHECK(format->iformat && strstr(format->iformat->name, "matroska"));
+    CHECK(avformat_find_stream_info(format, NULL) >= 0);
+    for (unsigned index = 0u; index < format->nb_streams; ++index)
+    {
+        const AVCodecParameters *codec = format->streams[index]->codecpar;
+
+        if (codec->codec_type == AVMEDIA_TYPE_VIDEO)
+        {
+            video_streams++;
+            CHECK(codec->codec_id == AV_CODEC_ID_H264);
+        }
+        else if (codec->codec_type == AVMEDIA_TYPE_AUDIO)
+        {
+            audio_streams++;
+            CHECK(codec->codec_id == expected_audio_codec);
+        }
+    }
+    CHECK(video_streams == expected_video_streams);
+    CHECK(audio_streams == 1u);
+    avformat_close_input(&format);
+}
+
+static void test_dual_stream(uint8_t compression_type,
+                             uint16_t samples_per_frame,
+                             const uint8_t *audio, size_t audio_size,
+                             const char *output_path,
+                             enum AVCodecID expected_audio_codec)
 {
     AirPlayMirrorVideo *video = NULL;
     AirPlayStreamBridge *bridge = NULL;
@@ -349,7 +388,7 @@ static void test_dual_stream(const uint8_t *aac, size_t aac_size)
                                                     UINT64_C(1) << 32) ==
           AIRPLAY_MIRROR_VIDEO_OK);
     CHECK(airplay_stream_bridge_create(0u, &bridge));
-    CHECK(airplay_mirror_audio_format(AIRPLAY_MIRROR_AUDIO_CT_AAC_LC, 1024u,
+    CHECK(airplay_mirror_audio_format(compression_type, samples_per_frame,
                                       44100u, &format));
     CHECK(airplay_stream_bridge_configure_audio(bridge, &format));
     CHECK(airplay_stream_bridge_update_audio_sync(
@@ -359,21 +398,21 @@ static void test_dual_stream(const uint8_t *aac, size_t aac_size)
     video_frame.timestamp = UINT64_C(1) << 32;
     video_frame.config_generation = 1u;
     video_frame.keyframe = true;
-    audio_frame.data = aac;
-    audio_frame.size = aac_size;
+    audio_frame.data = audio;
+    audio_frame.size = audio_size;
     audio_frame.sequence = 1u;
     audio_frame.rtp_timestamp = 44100u;
-    for (unsigned index = 0u; index < 180u; ++index)
+    for (unsigned index = 0u; index < 1u; ++index)
     {
         video_frame.timestamp = (UINT64_C(1) << 32) +
                                 ((uint64_t)index << 32) / 30u;
-        audio_frame.rtp_timestamp = 44100u + index * 1024u;
+        audio_frame.rtp_timestamp = 44100u + index * samples_per_frame;
         CHECK(airplay_stream_bridge_push_video(bridge, &video_frame));
         CHECK(airplay_stream_bridge_push_audio(bridge, &audio_frame));
     }
     CHECK(airplay_stream_bridge_finish(bridge));
     CHECK(airplay_stream_bridge_claim_reader(bridge));
-    output = fopen("build/tests/airplay-mirror-av.ts", "wb");
+    output = fopen(output_path, "wb");
     CHECK(output != NULL);
     while ((amount = airplay_stream_bridge_read(bridge, buffer, sizeof(buffer))) > 0)
     {
@@ -383,8 +422,9 @@ static void test_dual_stream(const uint8_t *aac, size_t aac_size)
     CHECK(amount == 0);
     if (output)
         fclose(output);
+    check_container(output_path, expected_audio_codec, 1u);
     CHECK(airplay_stream_bridge_get_stats(bridge, &stats));
-    CHECK(stats.video_packets == 180u && stats.audio_packets == 180u);
+    CHECK(stats.video_packets == 1u && stats.audio_packets == 1u);
     airplay_stream_bridge_release_reader(bridge);
     airplay_stream_bridge_release(bridge);
     airplay_mirror_video_destroy(video);
@@ -392,22 +432,94 @@ static void test_dual_stream(const uint8_t *aac, size_t aac_size)
     free(idr);
 }
 
+static void test_audio_only(const uint8_t *audio, size_t audio_size)
+{
+    AirPlayStreamBridge *bridge = NULL;
+    AirPlayMirrorAudioFormat format;
+    AirPlayMirrorAudioFrame frame = {
+        .data = audio,
+        .size = audio_size,
+        .sequence = 1u,
+        .rtp_timestamp = 44100u};
+    AirPlayStreamBridgeStats stats = {0};
+    uint8_t buffer[1024];
+    int64_t amount;
+    FILE *output;
+
+    CHECK(airplay_stream_bridge_create_profile(
+        0u, AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY, &bridge));
+    CHECK(airplay_stream_bridge_profile(bridge) ==
+          AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY);
+    CHECK(airplay_mirror_audio_format(AIRPLAY_MIRROR_AUDIO_CT_AAC_LC,
+                                      1024u, 44100u, &format));
+    CHECK(airplay_stream_bridge_configure_audio(bridge, &format));
+    CHECK(airplay_stream_bridge_update_audio_sync(
+        bridge, 44100u, UINT64_C(1) << 32));
+    CHECK(airplay_stream_bridge_push_audio(bridge, &frame));
+    CHECK(airplay_stream_bridge_finish(bridge));
+    CHECK(airplay_stream_bridge_claim_reader(bridge));
+    output = fopen("build/tests/airplay-audio-only.mkv", "wb");
+    CHECK(output != NULL);
+    while ((amount = airplay_stream_bridge_read(
+                bridge, buffer, sizeof(buffer))) > 0)
+    {
+        if (output)
+            CHECK(fwrite(buffer, 1u, (size_t)amount, output) ==
+                  (size_t)amount);
+    }
+    CHECK(amount == 0);
+    if (output)
+        fclose(output);
+    check_container("build/tests/airplay-audio-only.mkv", AV_CODEC_ID_AAC,
+                    0u);
+    CHECK(airplay_stream_bridge_get_stats(bridge, &stats));
+    CHECK(stats.profile == AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY);
+    CHECK(stats.video_packets == 0u && stats.audio_packets == 1u);
+    airplay_stream_bridge_release_reader(bridge);
+    airplay_stream_bridge_release(bridge);
+}
+
 int main(void)
 {
+    static const uint8_t alac_cookie[] = {
+        0x00u, 0x00u, 0x00u, 0x24u, 0x61u, 0x6cu, 0x61u, 0x63u,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u, 0x60u,
+        0x00u, 0x10u, 0x28u, 0x0au, 0x0eu, 0x02u, 0x00u, 0xffu,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+        0x00u, 0x00u, 0xacu, 0x44u};
+    static const uint8_t alac_packet[] = {0x20u, 0x00u, 0x00u, 0x00u};
     AirPlayMirrorAudioFormat format;
     uint8_t *aac;
     size_t aac_size;
 
     CHECK(airplay_mirror_audio_format(AIRPLAY_MIRROR_AUDIO_CT_AAC_ELD, 0u, 0u,
                                       &format));
+    CHECK(format.codec == AIRPLAY_MIRROR_AUDIO_CODEC_AAC);
     CHECK(format.codec_config_size == 4u && format.samples_per_frame == 480u);
-    CHECK(!airplay_mirror_audio_format(2u, 0u, 0u, &format));
+    CHECK(airplay_mirror_audio_format(AIRPLAY_MIRROR_AUDIO_CT_ALAC, 0u, 0u,
+                                      &format));
+    CHECK(format.codec == AIRPLAY_MIRROR_AUDIO_CODEC_ALAC);
+    CHECK(format.samples_per_frame == 352u);
+    CHECK(format.codec_config_size == sizeof(alac_cookie));
+    CHECK(memcmp(format.codec_config, alac_cookie, sizeof(alac_cookie)) == 0);
+    CHECK(!airplay_mirror_audio_format(AIRPLAY_MIRROR_AUDIO_CT_ALAC, 1024u,
+                                       44100u, &format));
+    CHECK(!airplay_mirror_audio_format(AIRPLAY_MIRROR_AUDIO_CT_ALAC, 352u,
+                                       48000u, &format));
     aac = read_hex("scripts/fixtures/airplay/mirror/aac-lc-frame.hex", &aac_size);
     CHECK(aac != NULL);
     if (aac)
     {
         test_audio_packets(aac, aac_size);
-        test_dual_stream(aac, aac_size);
+        test_audio_only(aac, aac_size);
+        test_dual_stream(AIRPLAY_MIRROR_AUDIO_CT_AAC_LC, 1024u,
+                         aac, aac_size,
+                         "build/tests/airplay-mirror-aac.mkv",
+                         AV_CODEC_ID_AAC);
+        test_dual_stream(AIRPLAY_MIRROR_AUDIO_CT_ALAC, 352u,
+                         alac_packet, sizeof(alac_packet),
+                         "build/tests/airplay-mirror-alac.mkv",
+                         AV_CODEC_ID_ALAC);
     }
     free(aac);
     if (g_failures)

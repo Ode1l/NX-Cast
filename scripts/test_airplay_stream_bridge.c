@@ -6,6 +6,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <libavformat/avformat.h>
+
 #include "protocol/airplay/media/stream_bridge.h"
 #include "protocol/airplay/mirror/video.h"
 
@@ -158,6 +160,8 @@ static void *produce_video(void *opaque)
     }
     if (ok)
         ok = airplay_stream_bridge_finish(producer->bridge);
+    else
+        airplay_stream_bridge_cancel(producer->bridge);
     atomic_store(&producer->result, ok);
     atomic_store(&producer->finished, true);
     return NULL;
@@ -192,7 +196,7 @@ static void test_stream_and_wrap(const AccessUnitFixture *fixture)
     atomic_init(&producer.finished, false);
     atomic_init(&producer.result, false);
     CHECK(pthread_create(&thread, NULL, produce_video, &producer) == 0);
-    output = fopen("build/tests/airplay-mirror.ts", "wb");
+    output = fopen("build/tests/airplay-mirror.mkv", "wb");
     CHECK(output != NULL);
     while ((amount = airplay_stream_bridge_read(bridge, buffer, sizeof(buffer))) > 0)
     {
@@ -203,6 +207,17 @@ static void test_stream_and_wrap(const AccessUnitFixture *fixture)
     CHECK(amount == 0);
     if (output)
         fclose(output);
+    {
+        AVFormatContext *format = NULL;
+
+        CHECK(avformat_open_input(&format, "build/tests/airplay-mirror.mkv",
+                                  NULL, NULL) >= 0);
+        if (format)
+        {
+            CHECK(format->iformat && strstr(format->iformat->name, "matroska"));
+            avformat_close_input(&format);
+        }
+    }
     CHECK(pthread_join(thread, NULL) == 0);
     CHECK(atomic_load(&producer.finished));
     CHECK(atomic_load(&producer.result));

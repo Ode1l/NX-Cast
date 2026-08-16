@@ -82,7 +82,7 @@ static void test_backpressure_is_dropped(void)
 
     do
     {
-        sent = send(sockets[0], payload, sizeof(payload), MSG_DONTWAIT);
+        sent = send(sockets[0], payload, sizeof(payload), 0);
     } while (sent > 0);
 
     assert(sent < 0);

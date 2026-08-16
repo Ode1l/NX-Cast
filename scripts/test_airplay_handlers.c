@@ -178,16 +178,18 @@ static void fake_stop(uint64_t session_id, void *user_data)
     recorder->stop_count++;
 }
 
-static bool dispatch(AirPlayHandlers *handlers, AirPlayRtspSession *session,
-                     const char *method, const char *uri, const uint8_t *body,
-                     size_t body_size, const char *content_type,
-                     AirPlayRtspResponse *response)
+static bool dispatch_protocol(AirPlayHandlers *handlers,
+                              AirPlayRtspSession *session,
+                              const char *protocol, const char *method,
+                              const char *uri, const uint8_t *body,
+                              size_t body_size, const char *content_type,
+                              AirPlayRtspResponse *response)
 {
     AirPlayRtspRequest request = {0};
 
     snprintf(request.method, sizeof(request.method), "%s", method);
     snprintf(request.uri, sizeof(request.uri), "%s", uri);
-    snprintf(request.protocol, sizeof(request.protocol), "RTSP/1.0");
+    snprintf(request.protocol, sizeof(request.protocol), "%s", protocol);
     request.body = (uint8_t *)body;
     request.body_length = body_size;
     request.has_cseq = true;
@@ -200,6 +202,44 @@ static bool dispatch(AirPlayHandlers *handlers, AirPlayRtspSession *session,
     }
     return airplay_rtsp_dispatch(session, &request, airplay_handlers_route,
                                  handlers, response);
+}
+
+static bool dispatch(AirPlayHandlers *handlers, AirPlayRtspSession *session,
+                     const char *method, const char *uri, const uint8_t *body,
+                     size_t body_size, const char *content_type,
+                     AirPlayRtspResponse *response)
+{
+    return dispatch_protocol(handlers, session, "RTSP/1.0", method, uri, body,
+                             body_size, content_type, response);
+}
+
+static const char *response_header(const AirPlayRtspResponse *response,
+                                   const char *name)
+{
+    for (size_t index = 0u; index < response->header_count; ++index)
+    {
+        if (strcmp(response->headers[index].name, name) == 0)
+            return response->headers[index].value;
+    }
+    return NULL;
+}
+
+static bool response_body_contains(const AirPlayRtspResponse *response,
+                                   const char *needle)
+{
+    size_t needle_size = strlen(needle);
+
+    if (needle_size == 0u)
+        return true;
+    if (!response->body || response->body_length < needle_size)
+        return false;
+    for (size_t offset = 0u;
+         offset <= response->body_length - needle_size; ++offset)
+    {
+        if (memcmp(response->body + offset, needle, needle_size) == 0)
+            return true;
+    }
+    return false;
 }
 
 static bool encode(AirPlayPlistValue *root, uint8_t **body, size_t *body_size)
@@ -246,7 +286,7 @@ static AirPlayHandlers *create_handlers(Recorder *recorder,
         .transport_prepare_callback = fake_prepare,
         .mirror_open_callback = fake_open,
         .audio_open_callback = fake_audio_open,
-        .mirror_record_callback = fake_record,
+        .media_record_callback = fake_record,
         .mirror_stop_callback = fake_stop,
         .remote_video = remote_video,
         .callback_user_data = recorder};
@@ -312,6 +352,99 @@ static void test_info_and_fairplay(AirPlayHandlers *handlers)
     airplay_handlers_session_closed(&session, handlers);
 }
 
+static void test_route_status_matrix(AirPlayHandlers *handlers)
+{
+    AirPlayRtspSession session;
+    AirPlayRtspResponse response = {0};
+    const char *public_methods;
+
+    airplay_rtsp_session_init(&session, 40u);
+    CHECK(dispatch(handlers, &session, "OPTIONS", "*", NULL, 0u, NULL,
+                   &response));
+    CHECK(response.status_code == 200);
+    public_methods = response_header(&response, "Public");
+    CHECK(public_methods && strstr(public_methods, "FLUSH") &&
+          strstr(public_methods, "TEARDOWN"));
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch(handlers, &session, "FLUSH", "/stream", NULL, 0u, NULL,
+                   &response));
+    CHECK(response.status_code == 455);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch(handlers, &session, "GET", "/unsupported", NULL, 0u, NULL,
+                   &response));
+    CHECK(response.status_code == 501);
+    airplay_rtsp_response_clear(&response);
+    airplay_handlers_session_closed(&session, handlers);
+}
+
+static void test_youtube_http_compatibility(AirPlayHandlers *handlers)
+{
+    AirPlayRtspSession session;
+    AirPlayRtspResponse response = {0};
+    uint8_t fp_setup2[120] = {0};
+
+    airplay_rtsp_session_init(&session, 45u);
+    CHECK(dispatch_protocol(handlers, &session, "HTTP/1.1", "GET",
+                            "/server-info", NULL, 0u, NULL, &response));
+    CHECK(response.status_code == 200);
+    CHECK(response_header(&response, "Content-Type") &&
+          strcmp(response_header(&response, "Content-Type"),
+                 "text/x-apple-plist+xml") == 0);
+    CHECK(response_body_contains(&response,
+                                 "<key>features</key><integer>639</integer>"));
+    CHECK(response_body_contains(&response,
+                                 "<key>osBuildVersion</key><string>12B435</string>"));
+    CHECK(response_body_contains(&response,
+                                 "<key>deviceid</key><string>10:11:12:13:14:15</string>"));
+    airplay_rtsp_response_clear(&response);
+
+    memcpy(fp_setup2, "FPLY", 4u);
+    fp_setup2[4] = 4u;
+    CHECK(dispatch_protocol(handlers, &session, "HTTP/1.1", "POST",
+                            "/fp-setup2", fp_setup2, sizeof(fp_setup2),
+                            "application/octet-stream", &response));
+    CHECK(response.status_code == 421);
+    CHECK(strcmp(response.reason, "Misdirected Request") == 0);
+    CHECK(response_header(&response, "Content-Type") &&
+          strcmp(response_header(&response, "Content-Type"),
+                 "application/x-apple-binary-plist") == 0);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch_protocol(handlers, &session, "HTTP/1.1", "POST",
+                            "/fp-setup2", fp_setup2, 4u,
+                            "application/octet-stream", &response));
+    CHECK(response.status_code == 421);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch_protocol(handlers, &session, "HTTP/1.1", "PUT",
+                            "/setProperty?selectedMediaArray", fp_setup2,
+                            sizeof(fp_setup2),
+                            "application/x-apple-binary-plist", &response));
+    CHECK(response.status_code == 200);
+    CHECK(response_header(&response, "Content-Type") &&
+          strcmp(response_header(&response, "Content-Type"),
+                 "text/x-apple-plist+xml") == 0);
+    CHECK(response_body_contains(&response,
+                                 "<key>errorCode</key><integer>0</integer>"));
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch_protocol(
+        handlers, &session, "HTTP/1.1", "PUT",
+        "/setProperty?mediaCharacteristicsForPreferredCustomMediaSelectionSchemes",
+        fp_setup2, sizeof(fp_setup2), "application/x-apple-binary-plist",
+        &response));
+    CHECK(response.status_code == 200 && response.body_length == 0u);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch_protocol(handlers, &session, "HTTP/1.1", "PUT",
+                            "/setProperty?", NULL, 0u, NULL, &response));
+    CHECK(response.status_code == 200 && response.body_length == 0u);
+    airplay_rtsp_response_clear(&response);
+    airplay_handlers_session_closed(&session, handlers);
+}
+
 static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorder)
 {
     AirPlayRtspSession session;
@@ -328,6 +461,7 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     AirPlayPlistValue *audio_stream;
     uint64_t value;
     static const uint8_t volume_query[] = "volume\r\n";
+    static const uint8_t unsupported_parameter[] = {0x01u};
 
     for (size_t index = 0u; index < sizeof(wrapped); ++index)
         wrapped[index] = (uint8_t)(0xa0u + index);
@@ -335,8 +469,12 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
         iv[index] = (uint8_t)(0x40u + index);
     airplay_rtsp_session_init(&session, 42u);
     airplay_rtsp_session_set_peer_ipv4(&session, UINT32_C(0x11223344));
+    CHECK(airplay_handlers_session_phase(&session) == AIRPLAY_HANDLER_PHASE_CONTROL);
+    CHECK(strcmp(airplay_handler_phase_name(AIRPLAY_HANDLER_PHASE_CONTROL),
+                 "control") == 0);
     CHECK(dispatch(handlers, &session, "RECORD", "/stream", NULL, 0u, NULL, &response));
     CHECK(response.status_code == 455);
+    CHECK(airplay_handlers_session_phase(&session) == AIRPLAY_HANDLER_PHASE_CONTROL);
     airplay_rtsp_response_clear(&response);
 
     root = airplay_plist_new_dict();
@@ -349,6 +487,8 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
                    "application/x-apple-binary-plist", &response));
     airplay_plist_buffer_free(body);
     CHECK(response.status_code == 200 && recorder->prepare_count == 1u);
+    CHECK(airplay_handlers_session_phase(&session) ==
+          AIRPLAY_HANDLER_PHASE_TRANSPORT_READY);
     root = decode_response(&response);
     CHECK(airplay_plist_get_uint(airplay_plist_dict_get(root, "timingPort"), &value));
     CHECK(value == 7010u);
@@ -367,6 +507,8 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
 
     CHECK(dispatch(handlers, &session, "RECORD", "/stream", NULL, 0u, NULL, &response));
     CHECK(response.status_code == 200 && recorder->record_count == 0u);
+    CHECK(airplay_handlers_session_phase(&session) ==
+          AIRPLAY_HANDLER_PHASE_RECORD_PENDING);
     airplay_rtsp_response_clear(&response);
 
     root = airplay_plist_new_dict();
@@ -383,7 +525,9 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
                    "application/x-apple-binary-plist", &response));
     airplay_plist_buffer_free(body);
     CHECK(response.status_code == 200 && recorder->audio_open_count == 1u);
-    CHECK(recorder->open_count == 0u && recorder->record_count == 0u);
+    CHECK(airplay_handlers_session_phase(&session) ==
+          AIRPLAY_HANDLER_PHASE_RECORDING);
+    CHECK(recorder->open_count == 0u && recorder->record_count == 1u);
     root = decode_response(&response);
     audio_stream = (AirPlayPlistValue *)airplay_plist_array_get(
         airplay_plist_dict_get(root, "streams"), 0u);
@@ -394,6 +538,26 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
         airplay_plist_dict_get(audio_stream, "controlPort"), &value));
     CHECK(value == 7201u);
     airplay_plist_free(root);
+    airplay_rtsp_response_clear(&response);
+
+    root = airplay_plist_new_dict();
+    CHECK(root &&
+          dict_set(root, "audioMode", airplay_plist_new_string("default")) &&
+          encode(root, &body, &body_size));
+    CHECK(dispatch(handlers, &session, "POST", "/audioMode", body, body_size,
+                   "application/x-apple-binary-plist", &response));
+    airplay_plist_buffer_free(body);
+    CHECK(response.status_code == 200);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch(handlers, &session, "SET_PARAMETER", "/stream", NULL, 0u,
+                   NULL, &response));
+    CHECK(response.status_code == 200);
+    airplay_rtsp_response_clear(&response);
+    CHECK(dispatch(handlers, &session, "SET_PARAMETER", "/stream",
+                   unsupported_parameter, sizeof(unsupported_parameter),
+                   "application/octet-stream", &response));
+    CHECK(response.status_code == 400);
     airplay_rtsp_response_clear(&response);
 
     root = airplay_plist_new_dict();
@@ -424,6 +588,10 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     CHECK(dispatch(handlers, &session, "RECORD", "/stream", NULL, 0u, NULL, &response));
     CHECK(response.status_code == 200 && recorder->record_count == 1u);
     airplay_rtsp_response_clear(&response);
+    CHECK(dispatch(handlers, &session, "FLUSH", "/stream", NULL, 0u, NULL,
+                   &response));
+    CHECK(response.status_code == 200);
+    airplay_rtsp_response_clear(&response);
     CHECK(dispatch(handlers, &session, "GET_PARAMETER", "/stream", volume_query,
                    sizeof(volume_query) - 1u, "text/parameters", &response));
     CHECK(response.status_code == 200 && response.body_length != 0u);
@@ -433,9 +601,11 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     airplay_rtsp_response_clear(&response);
     airplay_handlers_session_closed(&session, handlers);
     CHECK(recorder->stop_count == 1u);
+    CHECK(airplay_handlers_session_phase(&session) == AIRPLAY_HANDLER_PHASE_CLOSED);
 }
 
 static void test_remote_video_route(AirPlayHandlers *handlers,
+                                    AirPlayRemoteVideo *remote_video,
                                     RemoteRecorder *recorder)
 {
     AirPlayRtspSession session;
@@ -444,6 +614,7 @@ static void test_remote_video_route(AirPlayHandlers *handlers,
         "Content-Location: https://media.example/live.m3u8\r\n";
 
     airplay_rtsp_session_init(&session, 50u);
+    session.logical_session_id = 5000u;
     CHECK(dispatch(handlers, &session, "POST", "/play", play,
                    sizeof(play) - 1u, "text/parameters", &response));
     CHECK(response.status_code == 200 && recorder->load_count == 1u &&
@@ -454,7 +625,37 @@ static void test_remote_video_route(AirPlayHandlers *handlers,
     CHECK(response.status_code == 200 && response.body_length != 0u);
     airplay_rtsp_response_clear(&response);
     airplay_handlers_session_closed(&session, handlers);
+    CHECK(airplay_handlers_session_phase(&session) == AIRPLAY_HANDLER_PHASE_CLOSED);
+    CHECK(recorder->stop_count == 0u);
+    airplay_remote_video_session_closed(remote_video, session.id);
+    CHECK(recorder->stop_count == 0u);
+    airplay_remote_video_session_closed(remote_video, session.logical_session_id);
     CHECK(recorder->stop_count == 1u);
+}
+
+static void test_reverse_route(AirPlayHandlers *handlers)
+{
+    AirPlayRtspSession session;
+    AirPlayRtspResponse response = {0};
+
+    airplay_rtsp_session_init(&session, 60u);
+    session.logical_session_id = 6000u;
+    CHECK(dispatch_protocol(handlers, &session, "HTTP/1.1", "POST",
+                            "/reverse", NULL, 0u, NULL, &response));
+    CHECK(response.status_code == 101);
+    CHECK(response.register_reverse_connection);
+    CHECK(response_header(&response, "Connection") != NULL &&
+          strcmp(response_header(&response, "Connection"), "Upgrade") == 0);
+    CHECK(response_header(&response, "Upgrade") != NULL &&
+          strcmp(response_header(&response, "Upgrade"), "PTTH/1.0") == 0);
+    airplay_rtsp_response_clear(&response);
+
+    CHECK(dispatch_protocol(handlers, &session, "HTTP/1.1", "GET",
+                            "/reverse", NULL, 0u, NULL, &response));
+    CHECK(response.status_code == 405 &&
+          !response.register_reverse_connection);
+    airplay_rtsp_response_clear(&response);
+    airplay_handlers_session_closed(&session, handlers);
 }
 
 int main(void)
@@ -475,9 +676,12 @@ int main(void)
     CHECK(airplay_remote_video_create(&remote_ops, &remote_video));
     handlers = create_handlers(&recorder, remote_video);
 
+    test_route_status_matrix(handlers);
     test_info_and_fairplay(handlers);
+    test_youtube_http_compatibility(handlers);
     test_control_transcript(handlers, &recorder);
-    test_remote_video_route(handlers, &remote_recorder);
+    test_remote_video_route(handlers, remote_video, &remote_recorder);
+    test_reverse_route(handlers);
     airplay_handlers_destroy(handlers);
     airplay_remote_video_destroy(remote_video);
     if (g_failures != 0)

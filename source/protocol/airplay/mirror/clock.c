@@ -38,6 +38,7 @@ struct AirPlayMirrorClock
     bool audio_sync_ready;
     bool audio_ready;
     bool previous_sync_ready;
+    bool audio_only;
 };
 
 static uint64_t absolute_i64(int64_t value)
@@ -144,14 +145,24 @@ void airplay_mirror_clock_reset(AirPlayMirrorClock *clock)
 {
     uint32_t sample_rate;
     uint32_t generation;
+    bool audio_only;
 
     if (!clock)
         return;
     sample_rate = clock->sample_rate;
+    audio_only = clock->audio_only;
     generation = clock->stats.generation + 1u;
     memset(clock, 0, sizeof(*clock));
     clock->sample_rate = sample_rate;
+    clock->audio_only = audio_only;
     clock->stats.generation = generation ? generation : 1u;
+}
+
+void airplay_mirror_clock_set_audio_only(AirPlayMirrorClock *clock,
+                                         bool audio_only)
+{
+    if (clock)
+        clock->audio_only = audio_only;
 }
 
 bool airplay_mirror_clock_set_audio_rate(AirPlayMirrorClock *clock,
@@ -175,6 +186,14 @@ AirPlayMirrorClockResult airplay_mirror_clock_update_audio_sync(
     (void)local_time_us;
     if (!clock || !clock->sample_rate || !ntp_timestamp)
         return AIRPLAY_MIRROR_CLOCK_OUT_OF_RANGE;
+    if (clock->audio_only && !clock->video_ready)
+    {
+        clock->video_anchor_ntp = ntp_timestamp;
+        clock->video_anchor_pts = 0;
+        clock->last_video_ntp = ntp_timestamp;
+        clock->last_video_pts = 0;
+        clock->video_ready = true;
+    }
     if (clock->audio_sync_ready && clock->video_ready)
     {
         int32_t rtp_delta = (int32_t)(rtp_timestamp - clock->audio_sync_rtp);

@@ -18,10 +18,14 @@ typedef enum
 
 typedef struct
 {
-    bool (*bind_stream)(AirPlayStreamBridge *bridge, void *user_data);
-    bool (*set_uri)(const char *uri, const char *metadata, void *user_data);
-    bool (*play)(void *user_data);
-    bool (*stop)(void *user_data);
+    bool (*bind_stream)(AirPlayStreamBridge *bridge, uint32_t generation,
+                        void *user_data);
+    bool (*set_uri)(const char *uri, const char *metadata,
+                    uint32_t generation, void *user_data);
+    bool (*play)(uint32_t generation, void *user_data);
+    bool (*stop)(uint32_t generation, void *user_data);
+    bool (*replace_generation)(uint32_t previous_generation,
+                               uint32_t generation, void *user_data);
     void (*status_changed)(AirPlayMirrorRuntimeStatus status, uint32_t generation,
                            void *user_data);
     void *user_data;
@@ -60,6 +64,8 @@ void airplay_mirror_runtime_stop(uint64_t session_id, void *user_data);
 
 AirPlayMirrorRuntimeStatus airplay_mirror_runtime_status(
     AirPlayMirrorRuntime *runtime, uint32_t *generation_out);
+AirPlayStreamBridgeProfile airplay_mirror_runtime_profile(
+    AirPlayMirrorRuntime *runtime);
 const char *airplay_mirror_runtime_status_name(AirPlayMirrorRuntimeStatus status);
 
 #endif

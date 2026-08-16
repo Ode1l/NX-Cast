@@ -82,12 +82,30 @@ TRACE_MEDIA ?= 0
 TRACE_INPUT ?= 0
 TRACE_AIRPLAY ?= 0
 NXCAST_DIAG_PROFILE ?= normal
+NXCAST_MEDIA_CACHE_FORWARD_MIB ?= 20
+NXCAST_MEDIA_CACHE_BACKWARD_MIB ?= 10
+NXCAST_MEDIA_CACHE_READAHEAD_SECS ?= 20
+NXCAST_PRODUCTION_BSD_SESSIONS ?= 12
+NXCAST_PRODUCTION_SB_EFFICIENCY ?= 8
+NXCAST_KEEP_RECEIVERS_DURING_MEDIA ?= 1
 NXCAST_AIRPLAY_RUNTIME ?= 1
 NXCAST_REQUIRE_LIBMPV ?= 0
 NXCAST_REQUIRE_DEKO3D ?= 0
 NXCAST_REQUIRE_AIRPLAY_ED25519 ?= 0
+NXCAST_REQUIRE_AIRPLAY_MUXER ?= 0
 NXCAST_USE_IMGUI_UI ?= 0
+BUILD_JOBS ?= 4
 RELEASE_JOBS ?= 4
+SWITCH_NM ?= aarch64-none-elf-nm
+NXCAST_FULL_TRACE_PROFILE ?= full-owner-exclusive-observe-bsd12
+NXCAST_FFMPEG_JOBS ?= 4
+AIRPLAY_FFMPEG_OUTPUT_DIR ?= $(TOPDIR)/build/toolchain/ffmpeg
+NXCAST_APP_BUILD_FLAGS := NXCAST_USE_IMGUI_UI=1 \
+	NXCAST_REQUIRE_LIBMPV=1 \
+	NXCAST_REQUIRE_DEKO3D=1 \
+	NXCAST_REQUIRE_AIRPLAY_ED25519=1
+NXCAST_BUILD_CONFIG_KEY = profile=$(NXCAST_DIAG_PROFILE);trace-media=$(TRACE_MEDIA);trace-input=$(TRACE_INPUT);trace-airplay=$(TRACE_AIRPLAY);airplay-runtime=$(NXCAST_AIRPLAY_RUNTIME);imgui=$(NXCAST_USE_IMGUI_UI);libmpv=$(NXCAST_REQUIRE_LIBMPV);deko3d=$(NXCAST_REQUIRE_DEKO3D);ed25519=$(NXCAST_REQUIRE_AIRPLAY_ED25519);airplay-muxer=$(NXCAST_REQUIRE_AIRPLAY_MUXER);cache-forward=$(NXCAST_MEDIA_CACHE_FORWARD_MIB);cache-backward=$(NXCAST_MEDIA_CACHE_BACKWARD_MIB);cache-readahead=$(NXCAST_MEDIA_CACHE_READAHEAD_SECS);bsd-sessions=$(NXCAST_PRODUCTION_BSD_SESSIONS);sb-efficiency=$(NXCAST_PRODUCTION_SB_EFFICIENCY);keep-receivers=$(NXCAST_KEEP_RECEIVERS_DURING_MEDIA)
+NXCAST_BUILD_CONFIG_STAMP := $(TOPDIR)/$(BUILD)/.nxcast-build-config
 RELEASE_ATTESTATION := $(CURDIR)/$(BUILD)/release-features.txt
 HOST_CC ?= cc
 HOST_CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Isource -Ithird_party/playfair
@@ -96,6 +114,7 @@ HOST_THREAD_FLAGS ?= -pthread
 NETWORK_DIAGNOSTICS_SOURCE := source/app/network_diagnostics.c
 RUNTIME_DIAGNOSTICS_SOURCE := source/app/runtime_diagnostics.c
 AIRPLAY_OBSERVABILITY_TEST_FLAGS := -DNXCAST_RUNTIME_OBSERVABILITY=1 -DNXCAST_AIRPLAY_TRACE_VERBOSE=1
+AIRPLAY_REMOTE_HLS_SOURCE := source/protocol/airplay/media/remote_hls.c
 PLAYFAIR_SOURCES := third_party/playfair/hand_garble.c \
 	third_party/playfair/modified_md5.c \
 	third_party/playfair/omg_hax.c \
@@ -106,6 +125,7 @@ PLAYFAIR_LIBS := -lm
 AIRPLAY_LIFECYCLE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay
 AIRPLAY_PLIST_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_plist
 AIRPLAY_RTSP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_rtsp
+AIRPLAY_SESSION_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_session
 AIRPLAY_RTSP_STACK_CHECK_OBJ := $(CURDIR)/$(BUILD)/tests/airplay_rtsp_stack_check.o
 AIRPLAY_CRYPTO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_crypto
 AIRPLAY_SRP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_srp
@@ -122,7 +142,9 @@ AIRPLAY_STREAM_BRIDGE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_stream_b
 AIRPLAY_MIRROR_RUNTIME_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_mirror_runtime
 AIRPLAY_AUDIO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_audio
 AIRPLAY_CLOCK_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_clock
+AIRPLAY_REMOTE_HLS_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_remote_hls
 AIRPLAY_REMOTE_VIDEO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_remote_video
+PLAYER_CACHE_POLICY_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_player_cache_policy
 PLAYER_OWNERSHIP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_player_ownership
 PLAYER_ACTOR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_media_actor
 PROTOCOL_COORDINATOR_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_protocol_coordinator
@@ -150,6 +172,11 @@ NXCAST_DIAG_PROFILES := normal airplay-off control-only mdns-socket mdns-idle \
 ifeq ($(filter $(NXCAST_DIAG_PROFILE),$(NXCAST_DIAG_PROFILES)),)
 $(error Unknown NXCAST_DIAG_PROFILE '$(NXCAST_DIAG_PROFILE)'; expected one of: $(NXCAST_DIAG_PROFILES))
 endif
+
+CFLAGS += -DNXCAST_MEDIA_CACHE_FORWARD_MIB=$(NXCAST_MEDIA_CACHE_FORWARD_MIB) \
+	-DNXCAST_MEDIA_CACHE_BACKWARD_MIB=$(NXCAST_MEDIA_CACHE_BACKWARD_MIB) \
+	-DNXCAST_MEDIA_CACHE_READAHEAD_SECS=$(NXCAST_MEDIA_CACHE_READAHEAD_SECS) \
+	-DNXCAST_KEEP_RECEIVERS_DURING_MEDIA=$(NXCAST_KEEP_RECEIVERS_DURING_MEDIA)
 
 ifneq ($(NXCAST_DIAG_PROFILE),normal)
 CFLAGS += -DNXCAST_DIAGNOSTIC_BUILD=1 \
@@ -227,7 +254,11 @@ CFLAGS += -DNXCAST_DIAG_PROFILE_ID=14 \
 	-DNXCAST_RUNTIME_OBSERVABILITY=1
 else
 CFLAGS += -DNXCAST_DIAG_PROFILE_ID=0 \
-	-DNXCAST_DIAG_PROFILE_NAME=\"normal\"
+	-DNXCAST_DIAG_PROFILE_NAME=\"normal\" \
+	-DNXCAST_SOCKET_BSD_SESSIONS=$(NXCAST_PRODUCTION_BSD_SESSIONS) \
+	-DNXCAST_SOCKET_SB_EFFICIENCY=$(NXCAST_PRODUCTION_SB_EFFICIENCY) \
+	-DNXCAST_DLNA_CONTROLLER_EXIT_TIMEOUT_MS=10000 \
+	-DNXCAST_EXCLUSIVE_MEDIA_RESOURCES=1
 endif
 
 ifeq ($(TRACE_MEDIA),1)
@@ -292,6 +323,9 @@ MPV_STATIC_LIBS := $(shell PKG_CONFIG_PATH="$(MPV_PKG_CONFIG_PATH)" $(PKG_CONFIG
 MPV_RENDER_GL_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_gl.h" && echo 1)
 MPV_RENDER_DK3D_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/mpv/render_dk3d.h" && echo 1)
 FFMPEG_NVTEGRA_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/libavutil/hwcontext_nvtegra.h" && echo 1)
+FFMPEG_ALAC_DECODER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/lib/libavcodec.a" && $(SWITCH_NM) -g --defined-only "$(PORTLIBS_PREFIX)/lib/libavcodec.a" 2>/dev/null | grep -q '[[:space:]]ff_alac_decoder$$' && echo 1)
+FFMPEG_H264_PARSER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/lib/libavcodec.a" && $(SWITCH_NM) -g --defined-only "$(PORTLIBS_PREFIX)/lib/libavcodec.a" 2>/dev/null | grep -q '[[:space:]]ff_h264_parser$$' && echo 1)
+FFMPEG_MATROSKA_MUXER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/lib/libavformat.a" && $(SWITCH_NM) -g --defined-only "$(PORTLIBS_PREFIX)/lib/libavformat.a" 2>/dev/null | grep -q '[[:space:]]ff_matroska_muxer$$' && echo 1)
 SWITCH_EGL_GLES_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/EGL/egl.h" && test -f "$(PORTLIBS_PREFIX)/include/GLES2/gl2.h" && echo 1)
 MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND := $(shell strings "$(PORTLIBS_PREFIX)/lib/libmpv.a" 2>/dev/null | grep -q nvtegra && echo 1)
 MPV_USES_UAM := $(shell printf '%s\n' "$(MPV_STATIC_LIBS)" | grep -q -- ' -luam' && echo 1)
@@ -313,6 +347,12 @@ endif
 ifeq ($(NXCAST_REQUIRE_AIRPLAY_ED25519),1)
 ifeq ($(SODIUM_FOUND),)
 $(error NXCAST_REQUIRE_AIRPLAY_ED25519=1 but switch-libsodium was not found. Install it with dkp-pacman)
+endif
+endif
+
+ifeq ($(NXCAST_REQUIRE_AIRPLAY_MUXER),1)
+ifneq ($(FFMPEG_ALAC_DECODER_FOUND)$(FFMPEG_H264_PARSER_FOUND)$(FFMPEG_MATROSKA_MUXER_FOUND),111)
+$(error NXCAST_REQUIRE_AIRPLAY_MUXER=1 but Switch FFmpeg lacks ALAC, the H.264 parser, or the Matroska muxer. Run 'make install-airplay-ffmpeg')
 endif
 endif
 
@@ -471,10 +511,28 @@ ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
 endif
 
-.PHONY: $(BUILD) clean all release-build test-airplay test-airplay-dns test-airplay-mdns-suspend test-airplay-server-lifecycle test-c-safety test-c-safety-sanitize test-c-size test-soap-writer test-player-types test-seek-target test-iptv-url test-log-mirror test-log-policy test-network-diagnostics test-runtime-diagnostics test-player-actor test-protocol-coordinator test-dlna-controller-session test-shutdown-order
+.PHONY: $(BUILD) clean all prepare-build-config dev-build dev-rebuild playback-baseline-trace-build playback-baseline-trace-rebuild full-trace-build full-trace-rebuild build-airplay-ffmpeg install-airplay-ffmpeg verify-airplay-ffmpeg release-build test-airplay test-airplay-session test-airplay-dns test-airplay-mdns-suspend test-airplay-server-lifecycle test-c-safety test-c-safety-sanitize test-c-size test-soap-writer test-player-types test-seek-target test-iptv-url test-log-mirror test-log-policy test-network-diagnostics test-runtime-diagnostics test-player-actor test-protocol-coordinator test-dlna-controller-session test-shutdown-order
 
 #---------------------------------------------------------------------------------
 all: sdmc_init $(BUILD)
+
+prepare-build-config:
+	@mkdir -p "$(TOPDIR)/$(BUILD)"
+	@current='$(NXCAST_BUILD_CONFIG_KEY)'; \
+	previous="$$(cat "$(NXCAST_BUILD_CONFIG_STAMP)" 2>/dev/null || true)"; \
+	rebuild_reason=''; \
+	if [ -z "$$previous" ] && find "$(TOPDIR)/$(BUILD)" -type f -name '*.o' -print -quit | grep -q .; then \
+		rebuild_reason='existing objects have no configuration signature'; \
+	elif [ -n "$$previous" ] && [ "$$previous" != "$$current" ]; then \
+		rebuild_reason='configuration changed'; \
+	fi; \
+	if [ -n "$$rebuild_reason" ]; then \
+		echo "[build-config] $$rebuild_reason; rebuilding all objects"; \
+		rm -rf "$(TOPDIR)/$(BUILD)"; \
+		mkdir -p "$(TOPDIR)/$(BUILD)"; \
+	fi; \
+	printf '%s\n' "$$current" > "$(NXCAST_BUILD_CONFIG_STAMP)"; \
+	echo "[build-config] $$current"
 
 sdmc_init:
 	@echo "Preparing SDMC directory structure..."
@@ -490,7 +548,7 @@ sdmc_init:
 	@if [ -d "$(TOPDIR)/assets/licenses" ]; then cp -v $(TOPDIR)/assets/licenses/* $(TOPDIR)/sdmc/switch/NX-Cast/licenses/; else echo "Warning: assets/licenses not found"; fi
 	@ls -la $(TOPDIR)/sdmc/switch/NX-Cast/dlna/ 2>/dev/null || echo "SDMC dlna directory created (contents will be populated at runtime)"
 
-$(BUILD):
+$(BUILD): prepare-build-config
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(THIS_MAKEFILE) NXCAST_IN_BUILD=1
 
@@ -503,9 +561,48 @@ else
 	@rm -fr $(BUILD) $(TARGET).nsp $(TARGET).nso $(TARGET).npdm $(TARGET).elf
 endif
 
+dev-build:
+	+@$(MAKE) NXCAST_DIAG_PROFILE=normal $(NXCAST_APP_BUILD_FLAGS) all -j$(BUILD_JOBS)
+
+dev-rebuild:
+	+@$(MAKE) clean
+	+@$(MAKE) NXCAST_DIAG_PROFILE=normal $(NXCAST_APP_BUILD_FLAGS) all -j$(BUILD_JOBS)
+
+playback-baseline-trace-build:
+	+@$(MAKE) NXCAST_DIAG_PROFILE=normal TRACE_MEDIA=1 TRACE_INPUT=1 \
+		NXCAST_AIRPLAY_RUNTIME=0 $(NXCAST_APP_BUILD_FLAGS) all -j$(BUILD_JOBS)
+
+playback-baseline-trace-rebuild:
+	+@$(MAKE) clean
+	+@$(MAKE) NXCAST_DIAG_PROFILE=normal TRACE_MEDIA=1 TRACE_INPUT=1 \
+		NXCAST_AIRPLAY_RUNTIME=0 $(NXCAST_APP_BUILD_FLAGS) all -j$(BUILD_JOBS)
+
+full-trace-build:
+	+@$(MAKE) NXCAST_DIAG_PROFILE=$(NXCAST_FULL_TRACE_PROFILE) \
+		TRACE_MEDIA=1 TRACE_INPUT=1 TRACE_AIRPLAY=1 \
+		$(NXCAST_APP_BUILD_FLAGS) all -j$(BUILD_JOBS)
+
+full-trace-rebuild:
+	+@$(MAKE) clean
+	+@$(MAKE) NXCAST_DIAG_PROFILE=$(NXCAST_FULL_TRACE_PROFILE) \
+		TRACE_MEDIA=1 TRACE_INPUT=1 TRACE_AIRPLAY=1 \
+		$(NXCAST_APP_BUILD_FLAGS) all -j$(BUILD_JOBS)
+
+build-airplay-ffmpeg:
+	@NXCAST_FFMPEG_JOBS="$(NXCAST_FFMPEG_JOBS)" \
+		./scripts/build_switch_ffmpeg_airplay.sh "$(AIRPLAY_FFMPEG_OUTPUT_DIR)"
+
+install-airplay-ffmpeg:
+	@NXCAST_FFMPEG_JOBS="$(NXCAST_FFMPEG_JOBS)" \
+		NXCAST_FFMPEG_OUTPUT_DIR="$(AIRPLAY_FFMPEG_OUTPUT_DIR)" \
+		./scripts/install_switch_ffmpeg_airplay.sh
+
+verify-airplay-ffmpeg:
+	@./scripts/verify_switch_ffmpeg_airplay.sh "$(PORTLIBS_PREFIX)"
+
 release-build:
 	@$(MAKE) clean
-	@$(MAKE) NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 -j$(RELEASE_JOBS)
+	@$(MAKE) NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 NXCAST_REQUIRE_AIRPLAY_MUXER=1 -j$(RELEASE_JOBS)
 	@strings $(TOPDIR)/$(TARGET).nro | grep -Fxq 'libnx-kernel-chacha' || (printf '%s\n' 'Release NRO does not contain the libnx-backed libsodium random source.' >&2; exit 1)
 	@printf '%s\n' \
 		'nxcast-release-v1' \
@@ -513,7 +610,8 @@ release-build:
 		'deko3d=1' \
 		'airplay-ed25519=1' \
 		'airplay-randombytes=libnx' \
-		'airplay-playfair=1' > $(RELEASE_ATTESTATION)
+		'airplay-playfair=1' \
+		'airplay-matroska-muxer=1' > $(RELEASE_ATTESTATION)
 	@echo "release build attested at $(RELEASE_ATTESTATION)"
 
 test-protocol-coordinator:
@@ -540,6 +638,11 @@ test-player-actor:
 	@mkdir -p $(dir $(PLAYER_ACTOR_TEST_BIN))
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/player/core/media_actor.c scripts/test_media_actor.c -o $(PLAYER_ACTOR_TEST_BIN)
 	@$(PLAYER_ACTOR_TEST_BIN)
+
+test-player-cache-policy:
+	@mkdir -p $(dir $(PLAYER_CACHE_POLICY_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/player/cache_policy.c scripts/test_player_cache_policy.c -o $(PLAYER_CACHE_POLICY_TEST_BIN)
+	@$(PLAYER_CACHE_POLICY_TEST_BIN)
 
 test-log-mirror:
 	@mkdir -p $(dir $(LOG_MIRROR_TEST_BIN))
@@ -591,7 +694,12 @@ test-airplay-server-lifecycle:
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(AIRPLAY_OBSERVABILITY_TEST_FLAGS) $(NETWORK_DIAGNOSTICS_SOURCE) $(RUNTIME_DIAGNOSTICS_SOURCE) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c scripts/test_airplay_server_lifecycle.c -o $(AIRPLAY_SERVER_LIFECYCLE_TEST_BIN)
 	@$(AIRPLAY_SERVER_LIFECYCLE_TEST_BIN)
 
-test-c-safety: test-c-size test-soap-writer test-player-types test-seek-target test-iptv-url test-airplay-dns
+test-airplay-session:
+	@mkdir -p $(dir $(AIRPLAY_SESSION_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/protocol/logical_session.c scripts/test_airplay_session.c -o $(AIRPLAY_SESSION_TEST_BIN)
+	@$(AIRPLAY_SESSION_TEST_BIN)
+
+test-c-safety: test-c-size test-soap-writer test-player-types test-player-cache-policy test-seek-target test-iptv-url test-airplay-dns
 
 test-c-safety-sanitize:
 	@probe="$${TMPDIR:-/tmp}/nxcast-sanitizer-probe-$$$$"; \
@@ -612,7 +720,7 @@ test-c-safety-sanitize:
 test-shutdown-order:
 	@python3 scripts/test_shutdown_order.py
 
-test-airplay: test-airplay-server-lifecycle test-network-diagnostics test-protocol-coordinator test-dlna-controller-session test-player-actor test-log-mirror test-log-policy test-c-safety test-shutdown-order
+test-airplay: test-airplay-session test-airplay-server-lifecycle test-network-diagnostics test-protocol-coordinator test-dlna-controller-session test-player-actor test-log-mirror test-log-policy test-c-safety test-shutdown-order
 	@test "$(HOST_MBEDTLS_FOUND)" = "1" || (printf '%s\n' "mbedTLS 2.x host development files are required (macOS: brew install mbedtls@2)" >&2; exit 1)
 	@test "$(HOST_SODIUM_FOUND)" = "1" || (printf '%s\n' "libsodium host development files are required (macOS: brew install libsodium)" >&2; exit 1)
 	@test "$(HOST_FFMPEG_FOUND)" = "1" || (printf '%s\n' "FFmpeg host development files are required (macOS: brew install ffmpeg)" >&2; exit 1)
@@ -624,7 +732,7 @@ test-airplay: test-airplay-server-lifecycle test-network-diagnostics test-protoc
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c scripts/test_airplay_crypto.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_CRYPTO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/srp.c scripts/test_airplay_srp.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_SRP_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 -DAIRPLAY_TESTING=1 source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/test_airplay_pairing.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_TEST_BIN)
-	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(AIRPLAY_OBSERVABILITY_TEST_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c scripts/test_airplay_handlers.c $(HOST_MBEDTLS_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_HANDLERS_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(AIRPLAY_OBSERVABILITY_TEST_FLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) $(AIRPLAY_REMOTE_HLS_SOURCE) source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c scripts/test_airplay_handlers.c $(HOST_MBEDTLS_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_HANDLERS_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) source/protocol/airplay/security/crypto.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) scripts/test_airplay_fairplay.c $(HOST_MBEDTLS_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_FAIRPLAY_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(AIRPLAY_OBSERVABILITY_TEST_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(NETWORK_DIAGNOSTICS_SOURCE) $(RUNTIME_DIAGNOSTICS_SOURCE) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c scripts/test_airplay_mirror.c $(HOST_MBEDTLS_LIBS) -o $(AIRPLAY_MIRROR_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(AIRPLAY_OBSERVABILITY_TEST_FLAGS) $(NETWORK_DIAGNOSTICS_SOURCE) $(RUNTIME_DIAGNOSTICS_SOURCE) source/protocol/airplay/mirror/timing.c scripts/test_airplay_timing.c -o $(AIRPLAY_TIMING_TEST_BIN)
@@ -632,12 +740,13 @@ test-airplay: test-airplay-server-lifecycle test-network-diagnostics test-protoc
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(AIRPLAY_OBSERVABILITY_TEST_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_FFMPEG_CFLAGS) $(NETWORK_DIAGNOSTICS_SOURCE) $(RUNTIME_DIAGNOSTICS_SOURCE) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/audio.c source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/timing.c source/protocol/airplay/mirror/video.c source/protocol/airplay/mirror/mirror_session.c source/protocol/airplay/media/stream_bridge.c source/protocol/airplay/media/mirror_runtime.c scripts/test_airplay_mirror_runtime.c $(HOST_MBEDTLS_LIBS) $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_MIRROR_RUNTIME_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(AIRPLAY_OBSERVABILITY_TEST_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_FFMPEG_CFLAGS) $(NETWORK_DIAGNOSTICS_SOURCE) $(RUNTIME_DIAGNOSTICS_SOURCE) source/protocol/airplay/security/crypto.c source/protocol/airplay/mirror/audio.c source/protocol/airplay/mirror/clock.c source/protocol/airplay/mirror/video.c source/protocol/airplay/media/stream_bridge.c scripts/test_airplay_audio.c $(HOST_MBEDTLS_LIBS) $(HOST_FFMPEG_LIBS) -o $(AIRPLAY_AUDIO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/mirror/clock.c scripts/test_airplay_clock.c -o $(AIRPLAY_CLOCK_TEST_BIN)
-	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/media/remote_video.c scripts/test_airplay_remote_video.c -o $(AIRPLAY_REMOTE_VIDEO_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c $(AIRPLAY_REMOTE_HLS_SOURCE) scripts/test_airplay_remote_hls.c -o $(AIRPLAY_REMOTE_HLS_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c $(AIRPLAY_REMOTE_HLS_SOURCE) source/protocol/airplay/media/remote_video.c scripts/test_airplay_remote_video.c -o $(AIRPLAY_REMOTE_VIDEO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/player/core/ownership.c scripts/test_player_ownership.c -o $(PLAYER_OWNERSHIP_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(NETWORK_DIAGNOSTICS_SOURCE) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c scripts/airplay_smoke_server.c -o $(AIRPLAY_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 $(NETWORK_DIAGNOSTICS_SOURCE) source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/server.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/airplay_pairing_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_SMOKE_SERVER_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) -DAIRPLAY_TESTING=1 $(NETWORK_DIAGNOSTICS_SOURCE) source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c scripts/airplay_mdns_smoke_server.c -o $(AIRPLAY_MDNS_SMOKE_SERVER_BIN)
-	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 $(NETWORK_DIAGNOSTICS_SOURCE) source/protocol/airplay/airplay.c source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c source/protocol/airplay/server.c source/protocol/airplay/receiver.c scripts/airplay_receiver_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_RECEIVER_SMOKE_SERVER_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 $(NETWORK_DIAGNOSTICS_SOURCE) source/protocol/airplay/airplay.c source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/protocol/logical_session.c $(AIRPLAY_REMOTE_HLS_SOURCE) source/protocol/airplay/media/remote_video.c source/protocol/airplay/protocol/handlers.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c source/protocol/airplay/security/fairplay.c $(PLAYFAIR_SOURCES) source/protocol/airplay/discovery/dns.c source/protocol/airplay/discovery/mdns.c source/protocol/airplay/server.c source/protocol/airplay/receiver.c scripts/airplay_receiver_smoke_server.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) $(PLAYFAIR_LIBS) -o $(AIRPLAY_RECEIVER_SMOKE_SERVER_BIN)
 	@$(AIRPLAY_LIFECYCLE_TEST_BIN)
 	@$(AIRPLAY_PLIST_TEST_BIN)
 	@$(AIRPLAY_RTSP_TEST_BIN)
@@ -652,6 +761,7 @@ test-airplay: test-airplay-server-lifecycle test-network-diagnostics test-protoc
 	@$(AIRPLAY_MIRROR_RUNTIME_TEST_BIN)
 	@$(AIRPLAY_AUDIO_TEST_BIN)
 	@$(AIRPLAY_CLOCK_TEST_BIN)
+	@$(AIRPLAY_REMOTE_HLS_TEST_BIN)
 	@$(AIRPLAY_REMOTE_VIDEO_TEST_BIN)
 	@$(PLAYER_OWNERSHIP_TEST_BIN)
 	@python3 scripts/smoke_airplay.py --port 0

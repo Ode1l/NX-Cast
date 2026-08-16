@@ -43,10 +43,113 @@ Do not continue a round if the marker is absent or names the wrong profile.
 Record the NRO SHA-256 with the result so an uploaded binary cannot be confused
 with an older build.
 
-Heartbeat version 2 uses compact grouped tuples. Semantic names such as
-`discovery_suspended`, `mdns_phase`, and `resource_applied` used throughout
-this playbook refer to the tuple positions documented in **Heartbeat Fields**;
-event-specific coordinator logs retain their descriptive field names.
+## AirPlay Session And Phase Markers
+
+Connection identity and media progress are separate. Session markers never
+print the Apple-provided session value; `logical` is an internal token shared
+by related AirPlay HTTP connections.
+
+```text
+[airplay-session] connection=12 logical=9223372036854775808 kind=airplay refs=1 bound=1
+[airplay-phase] connection=8 logical=8 event=setup from=control to=transport-ready result=ok
+[airplay-phase] connection=8 logical=8 event=record from=transport-ready to=record-pending result=ok
+[airplay-phase] connection=8 logical=8 event=setup from=record-pending to=recording result=ok
+```
+
+The phase order is derived from existing protocol facts rather than maintained
+as a second mutable state machine:
+
+| Phase | Meaning |
+|---|---|
+| `control` | Pairing/FairPlay or remote control is connected; mirror transport is not ready |
+| `transport-ready` | Initial encrypted transport SETUP completed |
+| `record-pending` | RECORD arrived before the type-110/type-96 stream SETUP; this is valid |
+| `stream-ready` | A media stream is open and RECORD has not arrived yet |
+| `recording` | RECORD and at least one media stream are both ready |
+| `closed` | TEARDOWN or TCP connection cleanup completed |
+
+If the last phase is `transport-ready` or `record-pending`, investigate the
+subsequent stream SETUP rather than FFmpeg. If it reaches `recording` but no
+`media`/`bridge` boundary appears, the protocol handshake succeeded and the
+next fault domain is encrypted media reception or framing.
+
+`[runtime-heartbeat]` version 2 uses compact grouped tuples. Semantic names
+such as `discovery_suspended`, `mdns_phase`, and `resource_applied` used
+throughout this playbook refer to the tuple positions documented in
+**Heartbeat Fields**; event-specific coordinator logs retain their descriptive
+field names.
+
+`[network-heartbeat]` version 3 reports the configured network budget before
+the per-subsystem tuples. Its socket and operation values cover only NX-Cast
+call sites instrumented by `network_diagnostics`; they do not include internal
+libmpv/FFmpeg sockets and are not the process file-descriptor limit.
+
+## Production Media And Network Policy
+
+Normal and release builds use these fixed defaults:
+
+| Setting | Value | Meaning |
+|---|---:|---|
+| Network media forward cache | 20 MiB | Maximum demuxer bytes retained ahead of playback |
+| Network media backward cache | 10 MiB | Maximum demuxer bytes retained behind playback |
+| Network media readahead | 20 seconds | Time-based readahead ceiling; not a startup delay target |
+| AirPlay mirror cache | disabled | Keeps the live mirror path low latency |
+| BSD service sessions | 12 | Concurrent libnx BSD service-call capacity, not a socket limit |
+| Socket buffer efficiency | 8 | libnx socket buffer allocation policy |
+| Media resources | exclusive | The active IPTV/DLNA/AirPlay owner quiesces non-owner network stacks |
+
+The byte values are ceilings, not memory allocated at launch. A selected media
+policy emits one URL-safe record without the media URL or signed query string:
+
+```text
+[media-cache] phase=selected ... policy=network-buffered forward_mib=20 backward_mib=10 readahead_secs=20
+[media-cache] phase=selected ... policy=airplay-mirror-low-latency ... cache=no
+```
+
+Cache-driven pauses emit paired `buffering-enter` and `buffering-leave`
+records with the same media sequence/hash. Network traces emit:
+
+```text
+[net-budget] bsd_sessions=12 sb_efficiency=8 exclusive_media=1 metric_scope=nxcast-instrumented-only
+[network-heartbeat] v=3 net_budget=configured bsd_sessions=12 sb_efficiency=8 instrumented_sockets=... instrumented_ops=... instrumented_slot_overflows=... instrumented_pressure=... oldest=...
+```
+
+Interpret the fields as follows:
+
+- Repeated `buffering-enter` with no `[network-stall]` or instrumented pressure
+  points first to source throughput, CDN jitter, or demux/decode behavior.
+- `instrumented_pressure=1` means observed NX-Cast operations have reached the
+  configured 12-session budget. It is a pressure signal, not proof that the
+  OS has run out of sockets.
+- A growing oldest operation age plus `[network-stall]` names the local
+  subsystem and call type that is not returning.
+- `instrumented_slot_overflows` means one subsystem exceeded its eight detailed
+  operation slots. Totals remain valid, but not every active call has an age.
+- A remote HTTP/HLS error without local pressure or a persistent local stall is
+  a media-source failure until reproduced with the stable LAN baseline.
+
+## Ordered Hardware Validation
+
+Use Profile 14 for this matrix so cache, ownership, network, and resource
+markers are present. Use one app launch and one log file per row. Do not combine
+results from retries or change the sender, Wi-Fi position, and media source
+inside a row.
+
+| Order | Test | Procedure | Healthy result |
+|---:|---|---|---|
+| 1 | Cold Home | Launch, touch nothing for 30 seconds, open/close IPTV once | UI and two-second heartbeat remain alive; no pressure/stall; budget reports 12/8 |
+| 2 | Stable LAN DLNA | Cast the same local-network H.264/AAC file five times; each run plays 30 seconds, pauses, seeks twice, stops, and returns Home | Cache policy is 20/10/20; every cycle reaches playing; remote control and Home restoration keep working |
+| 3 | IPTV | Play one known-good channel for 60 seconds, switch channels five times, then return Home | Each load selects network-buffered; short buffering can recover; no persistent stall, ownership leak, or frozen UI |
+| 4 | AirPlay mirror | Connect from the iPhone, mirror for 60 seconds, disconnect, and repeat three times | Mirror selects the low-latency no-cache policy; video arrives; each disconnect restores discovery and Home |
+| 5 | Mixed protocols | Run DLNA → Home → IPTV → Home → AirPlay → Home → DLNA without restarting | Owner generation advances, desired/applied resource mode converges, and the final DLNA run behaves like the first |
+| 6 | Soak and exit | Play the stable DLNA file or IPTV channel for 20 minutes, use pause/seek periodically, return Home, then exit | No monotonic resource growth, persistent buffering/stall, dead controls, shutdown hang, or crash |
+
+Classify a failure before changing code. Reproduce DLNA failures first with the
+stable LAN file; this removes CDN and HLS variability. For IPTV, keep the exact
+channel and record whether the pause coincides with `buffering-enter`. For
+AirPlay, separate Home-screen mirroring from in-app video casting because they
+negotiate different media paths. Only compare one changed build/profile setting
+at a time.
 
 ## Profiles
 
@@ -273,7 +376,7 @@ The added records are intentionally event driven or rate limited:
 |---|---|---|
 | `[airplay-setup]` / `[airplay-setup-failure]` | Negotiated audio `ct/spf/sr`, video connection ID, and categorized setup failure | Supported audio reports negotiation; failures name one of `format`, `socket-data`, `socket-control`, `thread-create`, `response-plist`, `runtime-state`, or `bridge-config` |
 | `[airplay-thread]` | `created`, `joined`, `live`, failure, underflow, and generation for mDNS/listener/client/timing/audio/mirror/runtime workers | After disconnect and Home restoration, terminated session roles have equal created/joined counts and zero live count |
-| `[airplay-video-pipeline]` | Mirror accept, encrypted input, decrypt, video configuration/access units, bridge writes, and libmpv-facing bytes | Counters advance in order: accept → decrypt → config/AU → bridge; the first non-advancing stage identifies the video break |
+| `[airplay-video-pipeline]` | Mirror accept/decrypt, first configuration/keyframe, bridge bind/write/read, and player load/play | Expect accept → first-config → bridge-bind/player-load, followed by first-keyframe/first-write and then first-read/player-play; the exact order inside each slash-separated pair is asynchronous, while the first missing group identifies the failing layer |
 | `[dlna-player-diag]` | Once-per-second sample only while DLNA is loading, buffering, or seeking | Cache bytes/duration recover, `underrun` does not stay one, Range/seek reaches `restart`, and dropped-frame counts do not grow continuously |
 | `[resource-snapshot]` | Claim, next-loadfile, Stop, END_FILE, or replaced-END_FILE boundary | App live threads and owned sockets return toward the prior Home values; heap/memory do not grow monotonically across repeated plays |
 
@@ -292,12 +395,12 @@ For an AirPlay audio-only result, find the earliest stalled video counter:
   handling failed;
 - decrypt succeeds but config/AU stays zero: the sender format or packet parser
   is the boundary;
-- AU rises but bridge bytes do not: MPEG-TS bridge/mux is the boundary;
+- AU rises but bridge bytes do not: Matroska bridge/mux is the boundary;
 - bridge bytes rise while libmpv never loads video: the custom stream/demux/
   decoder/render path is the boundary.
 
 NX-Cast can run AirPlay video through its mirror TCP → decrypt → H.264 access
-unit → MPEG-TS bridge → libmpv/deko3d path. ID 14 observes that existing path;
+unit → Matroska bridge → libmpv/deko3d path. ID 14 observes that existing path;
 it does not claim compatibility with every sender format. Preserve the entire
 nxlink log from startup through shutdown so counters from separate generations
 can be paired correctly.

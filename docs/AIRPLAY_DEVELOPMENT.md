@@ -3,7 +3,9 @@
 NX-Cast contains an independent, experimental AirPlay video receiver path. It
 is designed for same-Wi-Fi iPhone-to-Switch video delivery and deliberately
 does not attempt to implement AirPlay 2 multi-room audio, audio-only playback,
-AWDL, DRM, MFi certification, or Apple platform services.
+AWDL, HEVC mirroring, DRM, MFi certification, or Apple platform services. An
+audio-first compatibility bridge is implemented because real video sessions
+may negotiate audio before type-110 video; this is not a music-player claim.
 
 ## Support Status
 
@@ -11,12 +13,14 @@ AWDL, DRM, MFi certification, or Apple platform services.
 |---|---|---|
 | DNS-SD discovery | Native `_airplay._tcp` responder | Host-tested; iPhone acceptance pending |
 | PIN Pair Setup / Pair Verify | SRP, X25519, Ed25519, persistent trust | Host-tested; iPhone acceptance pending |
-| URL and HLS video | `/play`, `/rate`, `/scrub`, `/playback-info`, `/stop` routed to the existing player | Implemented; real iPhone/Switch validation pending |
-| HLS redirects and relative segments | Passed directly to FFmpeg/libmpv | Host-tested without an NX-Cast proxy |
+| URL and HLS video | `/play`, `/rate`, `/scrub`, `/playback-info`, `/stop` routed to the existing player actor | Implemented; real iPhone/Switch validation pending |
+| Reverse HLS/FCUP | PTTH `/reverse`, serialized `POST /event`, correlated `/action`, and bounded playlist rewrite | Host-tested; real iPhone/Switch validation pending |
+| HLS redirects and relative segments | Absolute URLs stay direct; sender-relative playlists use generation-bound loopback routes | Host-tested; hardware validation pending |
 | H.264 mirror transport | Bounded receive, decrypt, Annex B reassembly and keyframe recovery | Internal path implemented |
-| AAC mirror audio and A/V clock | RTP reorder, MPEG-TS mux and bounded clock correction | Internal path implemented |
-| iPhone screen mirroring | GPL PlayFair key compatibility, H.264/AAC transport, MPEG-TS bridge, nvtegra/deko3d | Advertised experimentally; real iPhone/Switch acceptance pending |
-| AirPlay 2 multi-room/audio-only | Not planned | Unsupported |
+| AAC/ALAC mirror audio and A/V clock | RTP reorder, Matroska mux and bounded clock correction | Internal path implemented |
+| Audio-first video sessions | Audio-only bridge generation followed by actor-serialized A/V generation replacement | Host-tested; hardware validation pending |
+| iPhone screen mirroring | GPL PlayFair key compatibility, H.264/audio transport, Matroska bridge, nvtegra/deko3d | Advertised experimentally; real iPhone/Switch acceptance pending |
+| AirPlay 2 multi-room/music playback | Not planned | Unsupported |
 
 The distinction matters: passing host protocol tests does not establish iOS
 compatibility. Release notes must keep URL/HLS and screen mirroring marked
@@ -31,10 +35,12 @@ iPhone
   -> mDNS / DNS-SD
   -> persistent RTSP/HTTP server
   -> PIN pairing and verified session
-  -> remote URL/HLS handlers ----------> player ownership -> renderer/libmpv
+  -> remote URL/HLS handlers
+       -> direct absolute URL ----------> player ownership -> renderer/libmpv
+       -> reverse FCUP + local playlist -> player ownership -> renderer/libmpv
   -> mirror SETUP/RECORD
        -> H.264/AAC transport
-       -> bounded MPEG-TS stream bridge -> libmpv -> nvtegra/deko3d
+       -> bounded Matroska stream bridge -> libmpv -> nvtegra/deko3d
 ```
 
 `source/protocol/airplay/integration.c` is the Switch composition root. It
@@ -106,11 +112,13 @@ make test-airplay
 
 It covers plist and RTSP bounds, published crypto vectors, all four PlayFair
 stage-one replies, bounded stage-two/key unwrap behavior, pairing, DNS-SD,
-receiver lifecycle, remote video controls, mirror H.264/AAC, MPEG-TS bridging,
-clock behavior, player ownership, reconnects, and direct HLS redirect/relative
-segment resolution. The same target also runs real loopback TCP/UDP smoke tests
-for persistent RTSP, pairing authorization, mDNS and the composed receiver. CI
-then performs the strict Switch build and package inspection.
+receiver lifecycle, logical-session reconnects, concurrent reverse sends,
+remote FCUP/HLS, mirror H.264/audio, audio-first generation replacement,
+Matroska bridging, clock behavior, and player ownership. The same target also
+runs real loopback TCP/UDP smoke tests for persistent RTSP, pairing
+authorization, mDNS, the composed receiver, and direct HLS redirect/relative
+segment resolution. CI then performs the strict Switch build and package
+inspection.
 
 For redacted protocol/media traces:
 
@@ -142,6 +150,15 @@ Screen mirroring has a separate release claim gate: the current build may
 advertise its experimental GPL compatibility path, but documentation must not
 call it compatible or supported until the H.264/AAC hardware path passes this
 matrix. Commercial FairPlay/DRM streams remain outside the implementation.
+
+| Hardware case | Required observation | Status |
+|---|---|---|
+| Control Center screen mirror | PIN/reconnect, H.264 first frame, audio, 60-second run, disconnect to Home | Pending |
+| App absolute URL cast | Load, pause/resume, seek, stop, reconnect | Pending |
+| App relative HLS cast | Reverse upgrade, FCUP master/media responses, first frame, relative key/map/segment fetch | Pending |
+| Audio-first negotiation | Audio starts or waits safely; late video replaces the bridge once without a crash | Pending |
+| Reconnect/teardown | Ten cycles, Wi-Fi interruption, stop while loading, exit during connection | Pending |
+| Protocol regression | DLNA, IPTV, AirPlay, then DLNA again in one process | Pending |
 
 ## Reference Boundary
 

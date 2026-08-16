@@ -1,9 +1,12 @@
 #include "receiver.h"
 
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "protocol/airplay/discovery/mdns.h"
+#include "protocol/airplay/media/remote_video.h"
+#include "protocol/airplay/protocol/logical_session.h"
 #include "protocol/airplay/security/crypto.h"
 #include "protocol/airplay/security/fairplay.h"
 #include "protocol/airplay/security/identity.h"
@@ -22,6 +25,7 @@ typedef struct
 {
     AirPlayPairingService *pairing;
     AirPlayHandlers *handlers;
+    AirPlaySessionManager *sessions;
     AirPlayReceiverConfig config;
     bool lifecycle_started;
     bool discovery_started;
@@ -46,15 +50,21 @@ static bool requires_authorization(const char *method)
                       strcmp(method, "TEARDOWN") == 0);
 }
 
-static bool remote_video_uri(const char *uri)
+static int session_observe_status(AirPlaySessionObserveResult result)
 {
-    return uri && (strcmp(uri, "/play") == 0 ||
-                   strcmp(uri, "/rate") == 0 ||
-                   strncmp(uri, "/rate?", 6u) == 0 ||
-                   strcmp(uri, "/scrub") == 0 ||
-                   strncmp(uri, "/scrub?", 7u) == 0 ||
-                   strcmp(uri, "/playback-info") == 0 ||
-                   strcmp(uri, "/stop") == 0);
+    switch (result)
+    {
+    case AIRPLAY_SESSION_OBSERVE_INVALID_SESSION_ID:
+    case AIRPLAY_SESSION_OBSERVE_UNBOUND_MEDIA:
+        return 400;
+    case AIRPLAY_SESSION_OBSERVE_CONFLICT:
+        return 409;
+    case AIRPLAY_SESSION_OBSERVE_CAPACITY:
+        return 503;
+    case AIRPLAY_SESSION_OBSERVE_INVALID_ARGUMENT:
+    default:
+        return 500;
+    }
 }
 
 static bool receiver_route(AirPlayRtspSession *session,
@@ -63,11 +73,55 @@ static bool receiver_route(AirPlayRtspSession *session,
                            void *user_data)
 {
     AirPlayReceiverState *receiver = user_data;
+    AirPlaySessionSnapshot snapshot;
+    AirPlaySessionObserveResult observe_result;
+    uint64_t previous_logical_session_id = session->logical_session_id;
+
+    if (receiver->config.remote_video &&
+        airplay_remote_video_is_local_uri(request->uri))
+    {
+        bool handled = false;
+
+        if ((ntohl(session->peer_ipv4_address) >> 24u) != 127u)
+            return airplay_rtsp_response_set_status(response, 404);
+        return airplay_remote_video_route_local(receiver->config.remote_video,
+                                                request, response, &handled) &&
+               handled;
+    }
+
+    observe_result = airplay_session_manager_observe(receiver->sessions,
+                                                     session->id,
+                                                     request,
+                                                     &snapshot);
+    if (observe_result != AIRPLAY_SESSION_OBSERVE_OK)
+    {
+        AIRPLAY_TRACE_WARN(
+            "[airplay-session] connection=%llu result=%s method=%s uri=%s\n",
+            (unsigned long long)session->id,
+            airplay_session_observe_result_name(observe_result),
+            request->method,
+            request->uri);
+        response->close_connection = true;
+        return airplay_rtsp_response_set_status(
+            response, session_observe_status(observe_result));
+    }
+    session->logical_session_id = snapshot.logical_session_id;
+    if (session->request_count == 1U ||
+        previous_logical_session_id != session->logical_session_id)
+    {
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-session] connection=%llu logical=%llu kind=%s refs=%u bound=%u\n",
+            (unsigned long long)session->id,
+            (unsigned long long)session->logical_session_id,
+            airplay_connection_kind_name(snapshot.connection_kind),
+            snapshot.logical_connection_count,
+            snapshot.logical_session_bound ? 1U : 0U);
+    }
 
     if (is_pairing_uri(request->uri))
         return airplay_pairing_route(session, request, response, receiver->pairing);
     if ((requires_authorization(request->method) ||
-         remote_video_uri(request->uri)) &&
+         airplay_session_request_is_remote_video(request)) &&
         !airplay_pairing_session_verified(session))
         return airplay_pairing_route(session, request, response, receiver->pairing);
     return airplay_handlers_route(session, request, response, receiver->handlers);
@@ -76,9 +130,31 @@ static bool receiver_route(AirPlayRtspSession *session,
 static void receiver_session_closed(AirPlayRtspSession *session, void *user_data)
 {
     AirPlayReceiverState *receiver = user_data;
+    AirPlaySessionCloseResult close_result;
+    bool session_found;
 
     airplay_handlers_session_closed(session, receiver->handlers);
     airplay_pairing_session_closed(session, receiver->pairing);
+    session_found = airplay_session_manager_close(receiver->sessions,
+                                                  session->id,
+                                                  &close_result);
+    if (session_found)
+    {
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-session] connection=%llu logical=%llu event=closed bound=%u final=%u\n",
+            (unsigned long long)close_result.connection_id,
+            (unsigned long long)close_result.logical_session_id,
+            close_result.logical_session_bound ? 1U : 0U,
+            close_result.last_logical_connection ? 1U : 0U);
+    }
+    if (session_found &&
+        close_result.logical_session_bound &&
+        close_result.last_logical_connection &&
+        receiver->config.remote_video)
+    {
+        airplay_remote_video_session_closed(receiver->config.remote_video,
+                                            close_result.logical_session_id);
+    }
 }
 
 static bool receiver_shared_secret(const AirPlayRtspSession *session,
@@ -198,7 +274,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     handlers_config.transport_prepare_callback = config->transport_prepare_callback;
     handlers_config.mirror_open_callback = config->mirror_open_callback;
     handlers_config.audio_open_callback = config->audio_open_callback;
-    handlers_config.mirror_record_callback = config->mirror_record_callback;
+    handlers_config.media_record_callback = config->media_record_callback;
     handlers_config.mirror_stop_callback = config->mirror_stop_callback;
     handlers_config.remote_video = config->remote_video;
     handlers_config.callback_user_data = config->media_user_data;
@@ -209,6 +285,11 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
         goto failure;
     AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu receiver stage=%s done\n",
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
+
+    failure_stage = "session-manager";
+    g_receiver.sessions = airplay_session_manager_create();
+    if (!g_receiver.sessions)
+        goto failure;
 
     server_config.port = config->control_port;
     server_config.route_handler = receiver_route;
@@ -269,6 +350,8 @@ void airplay_receiver_stop(void)
         g_receiver.discovery_started = false;
     }
     airplay_server_stop();
+    airplay_session_manager_destroy(g_receiver.sessions);
+    g_receiver.sessions = NULL;
     if (g_receiver.lifecycle_started)
     {
         airplay_stop();
