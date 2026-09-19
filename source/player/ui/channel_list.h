@@ -37,6 +37,12 @@
 #define PLAYER_IPTV_DRAWER_ACTION_BOTTOM 662
 #define PLAYER_IPTV_SWIPE_MIN_PX 54
 
+static inline bool player_iptv_video_menu_available(bool iptv_playback_active,
+                                                     int channel_count)
+{
+    return iptv_playback_active && channel_count > 1;
+}
+
 static inline bool player_iptv_point_in_rect(int x,
                                              int y,
                                              int left,

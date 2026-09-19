@@ -154,6 +154,7 @@ static void main_log_protocol_transition(
     log_info("[protocol-coordinator] revision=%u->%u state=%s->%s "
              "iptv=%s->%s dlna=%s->%s airplay=%s->%s "
              "owner=%s->%s token=%llu generation=%u pin_visible=%d "
+             "media=%s playback=%s control=%s "
              "resource=%s->%s desired=%s transition=%d failed=%d "
              "discovery_suspended=%d->%d "
              "airplay_running=%d airplay_starting=%d status=%s\n",
@@ -172,6 +173,11 @@ static void main_log_protocol_transition(
              (unsigned long long)current->active_media.token,
              current->active_media.generation,
              current->airplay.pin_visible ? 1 : 0,
+             protocol_media_session_lifecycle_name(
+                 current->media_session.lifecycle),
+             protocol_media_playback_state_name(
+                 current->media_session.playback),
+             protocol_media_control_state_name(current->media_session.control),
              protocol_resource_mode_name(previous->applied_resource_mode),
              protocol_resource_mode_name(current->applied_resource_mode),
              protocol_resource_mode_name(current->desired_resource_mode),
@@ -484,7 +490,9 @@ static bool get_latest_error_line(char *out, size_t out_size)
         --count;
         if (!log_history_get_line(count, line, sizeof(line)))
             continue;
-        if (strncmp(line, "[ERROR]", 7) == 0)
+        if (strncmp(line, "[ERROR]", 7) == 0 &&
+            strncmp(line, "[ERROR] [player-libmpv][",
+                    sizeof("[ERROR] [player-libmpv][") - 1) != 0)
         {
             snprintf(out, out_size, "%s", line);
             return true;
@@ -543,7 +551,20 @@ static void build_home_view_state(PlayerHomeViewState *out,
     out->video_ready = video_ready;
     out->playback_active = main_snapshot_playback_active(snapshot);
     out->playback_state = snapshot ? snapshot->state : PLAYER_STATE_IDLE;
-    out->has_error = get_latest_error_line(out->error_line, sizeof(out->error_line));
+    if (snapshot && snapshot->state == PLAYER_STATE_ERROR)
+    {
+        out->has_error = true;
+        snprintf(out->error_line, sizeof(out->error_line),
+                 "[ERROR] Playback failed; see the runtime log for details");
+    }
+    else
+    {
+        out->has_error = get_latest_error_line(out->error_line,
+                                               sizeof(out->error_line));
+    }
+    out->iptv_playback_active =
+        protocols &&
+        protocols->active_media.owner == PLAYER_MEDIA_OWNER_IPTV;
     out->iptv_panel_open = iptv_panel_open;
     out->iptv_sources_open = iptv_sources_open;
     if (iptv_get_state(&iptv_state))
@@ -627,6 +648,13 @@ static bool main_protocol_airplay_get_status(void *context,
     memcpy(status_out->pin, status.pin, sizeof(status_out->pin));
     snprintf(status_out->status, sizeof(status_out->status), "%s", status.status);
     return true;
+}
+
+static bool main_protocol_airplay_release_active_media(
+    const PlayerOwnershipLease *lease, void *context)
+{
+    (void)context;
+    return airplay_integration_release_active_media(lease);
 }
 
 #if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
@@ -1375,6 +1403,8 @@ int main(int argc, char* argv[])
             }
         },
         .airplay_get_status = main_protocol_airplay_get_status,
+        .airplay_release_active_media =
+            main_protocol_airplay_release_active_media,
         .set_background_network_suspended =
             main_protocol_set_background_network_suspended,
 #if defined(NXCAST_SUSPEND_DISCOVERY_WHILE_MEDIA) && \
@@ -1435,6 +1465,7 @@ int main(int argc, char* argv[])
         bool have_snapshot = false;
         uint64_t input_now_ms = main_monotonic_time_ms();
 
+
 #if defined(NXCAST_INPUT_TRACE_VERBOSE) && NXCAST_INPUT_TRACE_VERBOSE
         runtime_frame++;
 #endif
@@ -1486,12 +1517,10 @@ int main(int argc, char* argv[])
         }
         if (videoPlatformReady && player_get_snapshot(&snapshot))
             have_snapshot = true;
-        protocol_coordinator_observe_playback(
-            have_snapshot && main_snapshot_playback_active(&snapshot),
-            have_snapshot &&
-                (snapshot.state == PLAYER_STATE_IDLE ||
-                 snapshot.state == PLAYER_STATE_STOPPED ||
-                 snapshot.state == PLAYER_STATE_ERROR));
+        if (have_snapshot)
+            protocol_coordinator_observe_player_state(snapshot.state);
+        else
+            protocol_coordinator_observe_playback(false, false);
         protocol_coordinator_tick();
         (void)protocol_coordinator_get_snapshot(&protocolStatus);
         main_log_protocol_transition(&loggedProtocolStatus, &protocolStatus);
@@ -1990,6 +2019,11 @@ int main(int argc, char* argv[])
 
             if (have_snapshot)
             {
+                bool iptv_video_controls_enabled =
+                    player_iptv_video_menu_available(
+                        home_state.iptv_playback_active,
+                        home_state.iptv_channel_count);
+
                 if (!snapshot.has_media)
                 {
                     player_ui_clear(&video_ui);
@@ -1997,9 +2031,17 @@ int main(int argc, char* argv[])
                 else
                     player_ui_sync(&video_ui, &snapshot);
 
-                bool stick_open_panel = !iptv_panel_open &&
+                if (!home_state.iptv_playback_active && iptv_panel_open)
+                {
+                    iptv_panel_open = false;
+                    iptv_sources_open = false;
+                    main_input_trace("[input] action=iptv-video-menu close reason=owner-changed\n");
+                }
+                bool stick_open_panel = iptv_video_controls_enabled &&
+                                        !iptv_panel_open &&
                                         (kDown & (HidNpadButton_StickL | HidNpadButton_StickR));
-                if (((kDown & HidNpadButton_X) || stick_open_panel) && home_state.iptv_channel_count > 1)
+                if (iptv_video_controls_enabled &&
+                    ((kDown & HidNpadButton_X) || stick_open_panel))
                 {
                     bool was_open = iptv_panel_open;
                     if (!iptv_panel_open)
@@ -2063,7 +2105,9 @@ int main(int argc, char* argv[])
                                                    snapshot.state == PLAYER_STATE_LOADING ||
                                                    snapshot.state == PLAYER_STATE_BUFFERING ||
                                                    snapshot.state == PLAYER_STATE_SEEKING;
-                        bool channels_button_visible = home_button_visible && home_state.iptv_channel_count > 1;
+                        bool channels_button_visible =
+                            home_button_visible &&
+                            iptv_video_controls_enabled;
                         bool action_hints_hit = main_touch_video_action_hints_hit((int)touch_tap_x, (int)touch_tap_y);
                         bool home_button_hit = home_button_visible &&
                                                action_hints_hit &&

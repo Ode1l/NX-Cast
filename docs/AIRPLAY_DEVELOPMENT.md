@@ -1,13 +1,15 @@
 # AirPlay Video Development
 
-NX-Cast contains an independent, experimental AirPlay video receiver path. It
-is designed for same-Wi-Fi iPhone-to-Switch video delivery and deliberately
-does not attempt to implement AirPlay 2 multi-room audio, audio-only playback,
-AWDL, HEVC mirroring, DRM, MFi certification, or Apple platform services. An
-audio-first compatibility bridge is implemented because real video sessions
-may negotiate audio before type-110 video; this is not a music-player claim.
-Audio-only `RECORD` enables bounded audio ingress but does not claim the mirror
-player or switch the UI to video loading.
+NX-Cast contains an independent, experimental AirPlay media receiver path. It
+is designed for same-Wi-Fi iPhone-to-Switch delivery and deliberately does not
+attempt to implement AirPlay 2 multi-room audio, a music-library UI, AWDL, HEVC
+mirroring, DRM, MFi certification, or Apple platform services. RAOP audio-only
+sessions are valid AirPlay media sessions, but NX-Cast currently accepts them
+through a diagnostic sink instead of starting the player. If type-110 video
+later arrives for the same protocol session, the normal mirror path creates a
+combined bridge and starts playback. If audio recording cannot begin, the
+handler rejects the setup/record transition with `461` and reports
+`AirPlay audio setup error`.
 
 ## Support Status
 
@@ -20,7 +22,8 @@ player or switch the UI to video loading.
 | HLS redirects and relative segments | Absolute URLs stay direct; sender-relative playlists use generation-bound loopback routes | Host-tested; hardware validation pending |
 | H.264 mirror transport | Bounded receive, decrypt, Annex B reassembly and keyframe recovery | Internal path implemented |
 | AAC/ALAC mirror audio and A/V clock | RTP reorder, Matroska mux and bounded clock correction | Internal path implemented |
-| Audio-first video sessions | Audio-only ingress waits for type-110, which replaces the bridge and then claims mirror ownership/player loading | Host-tested; hardware validation pending |
+| RAOP audio-only sessions | SETUP/RECORD and packet ingress are accepted and logged; standalone playback is not implemented | Diagnostic stub |
+| Audio-first video sessions | A later type-110 stream promotes the session to the normal combined mirror path | Host-tested; hardware validation pending |
 | iPhone screen mirroring | GPL PlayFair key compatibility, H.264/audio transport, Matroska bridge, nvtegra/deko3d | Advertised experimentally; real iPhone/Switch acceptance pending |
 | AirPlay 2 multi-room/music playback | Not planned | Unsupported |
 
@@ -39,13 +42,31 @@ iPhone
   -> PIN pairing and verified session
   -> remote URL/HLS handlers
        -> direct absolute URL ----------> player ownership -> renderer/libmpv
-       -> reverse FCUP + local playlist -> player ownership -> renderer/libmpv
+       -> reverse FCUP + local playlist -> ACTION_READY claim/activation
+       -> player ownership -> renderer/libmpv
   -> mirror SETUP/RECORD
        -> H.264/AAC transport
        -> bounded Matroska stream bridge -> libmpv -> nvtegra/deko3d
-Audio may arrive before type-110 video and is buffered through an audio-only
-bridge without a mirror player load. Type-110 promotion is the mirror ownership
-and player-handoff boundary.
+Audio may form a complete RAOP session or arrive before type-110 video. Audio
+RECORD enables ingress but does not claim player ownership; the diagnostic sink
+logs the first packet and discards payloads. A later type-110 setup promotes the
+session to the normal combined mirror path, which then claims ownership and
+loads through the runtime worker queue. Reverse HLS `/play` establishes negotiation
+without player ownership; the final `/action` `ACTION_READY` claims
+`airplay-video`, marks the remote session active, and only then issues the
+player load and play operations. Direct URL playback performs its optional
+claim outside the state lock, then revalidates the session generation and
+holds the state lock through load and play; a stop during the claim releases
+the new owner and rejects the stale play request. After an active direct or
+`ACTION_READY` session is established, ordinary HTTP or reverse connection
+close does not imply media stop. Playback ends on explicit `/stop`, replacement
+`/play`, player EOF/error, cross-protocol takeover, or AirPlay/application
+shutdown. RAOP transport remains scoped to its RTSP connection and negotiated
+stream types, while Apple Session ID remains authoritative for HTTP and
+reverse identity. A same-resource AirPlay claim replaces the owner in place;
+a DLNA or IPTV claim uses the
+coordinator takeover callback to stop retained AirPlay playback and
+synchronously release its owner before claiming the new protocol.
 ```
 
 `source/protocol/airplay/integration.c` is the Switch composition root. It
@@ -53,10 +74,18 @@ starts only after network, player, and video rendering are ready. It owns the
 receiver, remote-video controller, mirror runtime, libmpv stream bridge, and
 the small UI status/PIN snapshot.
 
+The video frontend uses libmpv's current-file readiness as a render epoch.
+Until `FILE_LOADED` and the startup seek/restart gate complete, it presents the
+loading layer instead of the previous deko3d surface and does not emit a new
+first-frame marker.
+
 The player has one generation-bearing owner at a time: DLNA, IPTV, AirPlay
 remote video, or AirPlay mirror. A new claim invalidates stale callbacks from
-the previous protocol. On shutdown, AirPlay connections and workers stop
-before DLNA, player/UI, logs, and network teardown.
+the previous protocol. Cross-protocol takeover is explicit: the AirPlay
+integration stops its current player path, releases the exact coordinator
+lease, and clears its retained lease before the new protocol proceeds. On
+shutdown, AirPlay connections and workers stop before DLNA, player/UI, logs,
+and network teardown.
 
 ## Storage And Privacy
 
@@ -118,12 +147,17 @@ make test-airplay
 It covers plist and RTSP bounds, published crypto vectors, all four PlayFair
 stage-one replies, bounded stage-two/key unwrap behavior, pairing, DNS-SD,
 receiver lifecycle, logical-session reconnects, concurrent reverse sends,
-remote FCUP/HLS, mirror H.264/audio, audio-first generation replacement,
-Matroska bridging, clock behavior, and player ownership. The same target also
-runs real loopback TCP/UDP smoke tests for persistent RTSP, pairing
-authorization, mDNS, the composed receiver, and direct HLS redirect/relative
-segment resolution. CI then performs the strict Switch build and package
-inspection.
+remote FCUP/HLS, action-ready claim and load-failure release, pending scrub
+serialization, advisory FCUP status handling, reverse claim failure, active
+close preservation and pending-close cancellation, condensed empty-parameter
+expansion, audio record failure propagation, mirror ownership races, direct
+claim cancellation, H.264/audio, audio-first generation replacement, Matroska
+bridging, clock behavior, and player ownership. Coordinator takeover tests
+cover same-resource replacement, AirPlay-to-DLNA/IPTV handoff, callback
+failure, mirror takeover, and stale release races. The same target also runs
+real loopback TCP/UDP smoke tests for persistent RTSP, pairing authorization,
+mDNS, the composed receiver, and direct HLS redirect/relative segment
+resolution. CI then performs the strict Switch build and package inspection.
 
 For redacted protocol/media traces:
 
@@ -135,6 +169,32 @@ make TRACE_AIRPLAY=1 TRACE_MEDIA=1 \
   NXCAST_REQUIRE_AIRPLAY_ED25519=1 \
   -j4
 ```
+
+### App Video Negotiation Trace
+
+Use `NX-Cast: Full Trace (DLNA+IPTV+AirPlay) Rebuild & Upload + nxlink server`
+for one clean App-internal AirPlay attempt. Do not start the attempt from iOS
+Control Center when diagnosing App video: Control Center may legitimately
+negotiate an audio-only path.
+
+After the sender disconnects, find the matching logical session in
+`[airplay-flow-summary]`. Its `first_missing` value identifies the next boundary:
+
+- `video-negotiation-request`: no type-110 `SETUP` and no HTTP `/play` arrived.
+- `video-setup-request`: initial transport setup succeeded, but no video stream
+  setup arrived.
+- `video-setup-accept` or `record-accept`: NX-Cast rejected that control stage;
+  inspect the preceding `[airplay-setup-failure]` and response status.
+- `mirror-media-first-packet`: type-110 setup and `RECORD` succeeded; inspect
+  `[airplay-video-pipeline]` for `first-config` and `first-keyframe`.
+- `remote-media-handoff`: HTTP `/play` was accepted; inspect player load and
+  FFmpeg/libmpv messages after the matching `[airplay-flow]` entry.
+- `video-setup-request-audio-only`: the sender negotiated audio but did not
+  request a video stream on this connection.
+
+Capture one launch and one casting attempt per log. The summary contains only
+IDs, booleans, counts, and status codes; URLs, request bodies, PINs, and key
+material are not logged.
 
 ## Real-Device Acceptance
 
@@ -161,8 +221,9 @@ matrix. Commercial FairPlay/DRM streams remain outside the implementation.
 | Control Center screen mirror | PIN/reconnect, H.264 first frame, audio, 60-second run, disconnect to Home | Pending |
 | App absolute URL cast | Load, pause/resume, seek, stop, reconnect | Pending |
 | App relative HLS cast | Reverse upgrade, FCUP master/media responses, first frame, relative key/map/segment fetch | Pending |
-| Audio-first negotiation | Audio starts or waits safely; type-110 replaces the bridge once, then mirror ownership/player loading proceeds | Pending |
+| RAOP audio and audio-first negotiation | Audio-only ingress is logged without player takeover; type-110 for the same session starts normal combined playback | Pending |
 | Reconnect/teardown | Ten cycles, Wi-Fi interruption, stop while loading, exit during connection | Pending |
+| AirPlay transport reconnect | Active playback survives ordinary control/reverse close; a new `/play` replaces it; DLNA/IPTV takeover stops and releases the old lease | Pending |
 | Protocol regression | DLNA, IPTV, AirPlay, then DLNA again in one process | Pending |
 
 ## Reference Boundary

@@ -21,6 +21,7 @@ static inline bool renderer_init(void) { return player_init(); }
 static inline void renderer_deinit(void) { player_deinit(); }
 static inline void renderer_set_event_callback(RendererEventCallback callback, void *user) { player_set_event_callback(callback, user); }
 static inline bool renderer_video_supported(void) { return player_video_supported(); }
+static inline bool renderer_video_render_ready(void) { return player_video_render_ready(); }
 static inline bool renderer_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx) { return player_video_attach_gl(get_proc_address, get_proc_address_ctx); }
 static inline bool renderer_video_attach_sw(void) { return player_video_attach_sw(); }
 static inline bool renderer_video_attach_dk3d(const PlayerVideoDk3dInit *init) { return player_video_attach_dk3d(init); }

@@ -76,6 +76,7 @@ static bool receiver_route(AirPlayRtspSession *session,
     AirPlaySessionSnapshot snapshot;
     AirPlaySessionObserveResult observe_result;
     uint64_t previous_logical_session_id = session->logical_session_id;
+    bool handled;
 
     if (receiver->config.remote_video &&
         airplay_remote_video_is_local_uri(request->uri))
@@ -89,10 +90,8 @@ static bool receiver_route(AirPlayRtspSession *session,
                handled;
     }
 
-    observe_result = airplay_session_manager_observe(receiver->sessions,
-                                                     session->id,
-                                                     request,
-                                                     &snapshot);
+    observe_result = airplay_session_manager_observe(
+        receiver->sessions, session->id, request, &snapshot);
     if (observe_result != AIRPLAY_SESSION_OBSERVE_OK)
     {
         AIRPLAY_TRACE_WARN(
@@ -119,12 +118,50 @@ static bool receiver_route(AirPlayRtspSession *session,
     }
 
     if (is_pairing_uri(request->uri))
-        return airplay_pairing_route(session, request, response, receiver->pairing);
+    {
+        uint8_t client_id[AIRPLAY_SESSION_CLIENT_ID_SIZE];
+
+        handled = airplay_pairing_route(session, request, response,
+                                        receiver->pairing);
+        if (handled && response->status_code >= 200 &&
+            response->status_code < 300 &&
+            airplay_pairing_session_client_id(session, client_id) &&
+            !airplay_session_manager_bind_client(receiver->sessions,
+                                                 session->id, client_id))
+        {
+            AIRPLAY_TRACE_WARN(
+                "[airplay-session] connection=%llu event=client-bind result=conflict\n",
+                (unsigned long long)session->id);
+            response->close_connection = true;
+            return airplay_rtsp_response_set_status(response, 409);
+        }
+        return handled;
+    }
     if ((requires_authorization(request->method) ||
          airplay_session_request_is_remote_video(request)) &&
         !airplay_pairing_session_verified(session))
         return airplay_pairing_route(session, request, response, receiver->pairing);
-    return airplay_handlers_route(session, request, response, receiver->handlers);
+    handled = airplay_handlers_route(session, request, response,
+                                     receiver->handlers);
+    if (handled && response->status_code >= 200 &&
+        response->status_code < 300 && strcmp(request->method, "TEARDOWN") == 0)
+    {
+        uint64_t terminal_media_session_id = 0U;
+
+        if (airplay_session_manager_mark_transport_teardown(
+                receiver->sessions, session->id,
+                &terminal_media_session_id) &&
+            terminal_media_session_id != 0U && receiver->config.remote_video)
+        {
+            AIRPLAY_TRACE_SYNC(
+                "[airplay-session] connection=%llu event=transport-terminal media=%llu action=stop\n",
+                (unsigned long long)session->id,
+                (unsigned long long)terminal_media_session_id);
+            (void)airplay_remote_video_terminate_session(
+                receiver->config.remote_video, terminal_media_session_id);
+        }
+    }
+    return handled;
 }
 
 static void receiver_session_closed(AirPlayRtspSession *session, void *user_data)
@@ -147,7 +184,18 @@ static void receiver_session_closed(AirPlayRtspSession *session, void *user_data
             close_result.logical_session_bound ? 1U : 0U,
             close_result.last_logical_connection ? 1U : 0U);
     }
-    if (session_found &&
+    if (session_found && close_result.terminal_media_session_id != 0U &&
+        receiver->config.remote_video)
+    {
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-session] connection=%llu event=control-terminal media=%llu action=stop\n",
+            (unsigned long long)close_result.connection_id,
+            (unsigned long long)close_result.terminal_media_session_id);
+        (void)airplay_remote_video_terminate_session(
+            receiver->config.remote_video,
+            close_result.terminal_media_session_id);
+    }
+    else if (session_found &&
         close_result.logical_session_bound &&
         close_result.last_logical_connection &&
         receiver->config.remote_video)
@@ -374,4 +422,28 @@ bool airplay_receiver_is_running(void)
 uint16_t airplay_receiver_port(void)
 {
     return airplay_receiver_is_running() ? airplay_server_port() : 0u;
+}
+
+bool airplay_receiver_retain_media_session(uint64_t logical_session_id)
+{
+    bool retained = g_receiver.sessions &&
+                    airplay_session_manager_retain_media(
+                        g_receiver.sessions, logical_session_id);
+
+    AIRPLAY_TRACE("[airplay-session] logical=%llu media-retain=%u\n",
+                  (unsigned long long)logical_session_id,
+                  retained ? 1U : 0U);
+    return retained;
+}
+
+bool airplay_receiver_release_media_session(uint64_t logical_session_id)
+{
+    bool released = g_receiver.sessions &&
+                    airplay_session_manager_release_media(
+                        g_receiver.sessions, logical_session_id);
+
+    AIRPLAY_TRACE("[airplay-session] logical=%llu media-release=%u\n",
+                  (unsigned long long)logical_session_id,
+                  released ? 1U : 0U);
+    return released;
 }

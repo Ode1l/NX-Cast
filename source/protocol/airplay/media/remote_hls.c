@@ -15,9 +15,11 @@ typedef pthread_mutex_t AirPlayRemoteHlsMutex;
 #endif
 
 #include "protocol/airplay/protocol/plist.h"
+#include "protocol/airplay/trace.h"
 
 #define AIRPLAY_REMOTE_HLS_MAX_PLAYLIST_BYTES (512u * 1024u)
-#define AIRPLAY_REMOTE_HLS_MAX_REWRITTEN_BYTES AIRPLAY_RTSP_MAX_BODY_BYTES
+#define AIRPLAY_REMOTE_HLS_MAX_REWRITTEN_BYTES \
+    AIRPLAY_RTSP_MAX_RESPONSE_BODY_BYTES
 #define AIRPLAY_REMOTE_HLS_MAX_MEDIA_PLAYLISTS 16u
 #define AIRPLAY_REMOTE_HLS_TOKEN_MAX 31u
 #define AIRPLAY_REMOTE_HLS_LOCAL_PREFIX "/airplay-hls/"
@@ -28,6 +30,7 @@ typedef struct
     char source_url[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
     uint8_t *playlist;
     size_t playlist_length;
+    bool served;
 } AirPlayRemoteHlsMedia;
 
 typedef struct
@@ -56,8 +59,12 @@ struct AirPlayRemoteHls
     uint8_t *master_playlist;
     size_t master_playlist_length;
     AirPlayRemoteHlsMedia media[AIRPLAY_REMOTE_HLS_MAX_MEDIA_PLAYLISTS];
+    unsigned master_variant_count;
+    unsigned master_filtered_variant_count;
+    unsigned master_audio_count;
     bool active;
     bool expecting_master;
+    bool master_served;
     bool mutex_ready;
 };
 
@@ -293,6 +300,9 @@ static void hls_reset_locked(AirPlayRemoteHls *hls)
     free(hls->master_playlist);
     hls->master_playlist = NULL;
     hls->master_playlist_length = 0u;
+    hls->master_variant_count = 0u;
+    hls->master_filtered_variant_count = 0u;
+    hls->master_audio_count = 0u;
     for (index = 0u; index < AIRPLAY_REMOTE_HLS_MAX_MEDIA_PLAYLISTS; ++index)
     {
         free(hls->media[index].playlist);
@@ -312,6 +322,7 @@ static void hls_reset_locked(AirPlayRemoteHls *hls)
     hls->playback_url[0] = '\0';
     hls->active = false;
     hls->expecting_master = false;
+    hls->master_served = false;
 }
 
 bool airplay_remote_hls_create(AirPlayRemoteHls **hls_out)
@@ -449,12 +460,6 @@ static bool hls_has_scheme(const char *uri)
     return *cursor == ':';
 }
 
-static bool hls_is_http_url(const char *uri)
-{
-    return uri && (strncasecmp(uri, "http://", 7u) == 0 ||
-                   strncasecmp(uri, "https://", 8u) == 0);
-}
-
 static bool hls_resolve_uri(const char *base, const char *reference,
                             char output[AIRPLAY_REMOTE_HLS_URL_MAX + 1u])
 {
@@ -496,12 +501,20 @@ static bool hls_resolve_uri(const char *base, const char *reference,
     return written > 0 && written <= (int)AIRPLAY_REMOTE_HLS_URL_MAX;
 }
 
-static bool hls_uri_is_playlist(const char *uri)
+static bool hls_uri_span_is_playlist(const char *uri, size_t length)
 {
-    const char *suffix = uri ? strstr(uri, ".m3u8") : NULL;
+    size_t index;
 
-    return suffix && (suffix[5] == '\0' || suffix[5] == '?' ||
-                      suffix[5] == '#');
+    if (!uri || length < 5u)
+        return false;
+    for (index = 0u; index <= length - 5u; ++index)
+    {
+        if (memcmp(uri + index, ".m3u8", 5u) == 0 &&
+            (index + 5u == length || uri[index + 5u] == '?' ||
+             uri[index + 5u] == '#'))
+            return true;
+    }
+    return false;
 }
 
 static bool hls_playlist_valid(const uint8_t *bytes, size_t length)
@@ -579,6 +592,95 @@ static bool hls_find_uri_attribute(const char *line, size_t length,
     return false;
 }
 
+static bool hls_line_starts_with(const char *line, size_t length,
+                                 const char *prefix)
+{
+    size_t prefix_length = strlen(prefix);
+
+    return prefix_length <= length &&
+           memcmp(line, prefix, prefix_length) == 0;
+}
+
+typedef enum
+{
+    HLS_VIDEO_CODEC_UNKNOWN = 0,
+    HLS_VIDEO_CODEC_H264,
+    HLS_VIDEO_CODEC_OTHER
+} HlsVideoCodec;
+
+static bool hls_span_contains_case(const char *text, size_t length,
+                                   const char *needle)
+{
+    size_t needle_length = strlen(needle);
+    size_t index;
+
+    if (!text || needle_length == 0u || needle_length > length)
+        return false;
+    for (index = 0u; index <= length - needle_length; ++index)
+    {
+        if (strncasecmp(text + index, needle, needle_length) == 0)
+            return true;
+    }
+    return false;
+}
+
+static HlsVideoCodec hls_stream_video_codec(const char *line, size_t length)
+{
+    static const char marker[] = "CODECS=\"";
+    size_t index;
+    size_t start;
+    size_t end;
+
+    for (index = 0u; index + sizeof(marker) - 1u <= length; ++index)
+    {
+        if (strncasecmp(line + index, marker, sizeof(marker) - 1u) == 0)
+            break;
+    }
+    if (index + sizeof(marker) - 1u > length)
+        return HLS_VIDEO_CODEC_UNKNOWN;
+    start = index + sizeof(marker) - 1u;
+    end = start;
+    while (end < length && line[end] != '"')
+        end++;
+    if (end == length)
+        return HLS_VIDEO_CODEC_UNKNOWN;
+    if (hls_span_contains_case(line + start, end - start, "avc1") ||
+        hls_span_contains_case(line + start, end - start, "avc3"))
+        return HLS_VIDEO_CODEC_H264;
+    if (hls_span_contains_case(line + start, end - start, "vp09") ||
+        hls_span_contains_case(line + start, end - start, "vp9") ||
+        hls_span_contains_case(line + start, end - start, "av01") ||
+        hls_span_contains_case(line + start, end - start, "hvc1") ||
+        hls_span_contains_case(line + start, end - start, "hev1"))
+        return HLS_VIDEO_CODEC_OTHER;
+    return HLS_VIDEO_CODEC_UNKNOWN;
+}
+
+static bool hls_master_has_h264_variant(const uint8_t *bytes, size_t length)
+{
+    size_t offset = 0u;
+
+    while (offset < length)
+    {
+        size_t start = offset;
+        size_t end;
+
+        while (offset < length && bytes[offset] != '\n')
+            offset++;
+        end = offset;
+        if (offset < length)
+            offset++;
+        if (end > start && bytes[end - 1u] == '\r')
+            end--;
+        if (hls_line_starts_with((const char *)bytes + start, end - start,
+                                 "#EXT-X-STREAM-INF:") &&
+            hls_stream_video_codec((const char *)bytes + start,
+                                   end - start) == HLS_VIDEO_CODEC_H264)
+            return true;
+    }
+    return false;
+}
+
 static bool hls_append_local_media_uri(AirPlayRemoteHlsBuffer *output,
                                        size_t index)
 {
@@ -597,6 +699,8 @@ static bool hls_rewrite_master_locked(AirPlayRemoteHls *hls,
     AirPlayRemoteHlsBuffer output = {
         .limit = AIRPLAY_REMOTE_HLS_MAX_REWRITTEN_BYTES};
     size_t offset = 0u;
+    bool keep_next_variant_uri = true;
+    const bool prefer_h264 = hls_master_has_h264_variant(bytes, length);
     bool ok = true;
 
     while (offset < length && ok)
@@ -617,13 +721,31 @@ static bool hls_rewrite_master_locked(AirPlayRemoteHls *hls,
             content_end--;
         line = (const char *)bytes + line_start;
         line_length = content_end - line_start;
+        if (hls_line_starts_with(line, line_length, "#EXT-X-STREAM-INF:"))
+        {
+            HlsVideoCodec codec = hls_stream_video_codec(line, line_length);
+
+            hls->master_variant_count++;
+            keep_next_variant_uri = !prefer_h264 ||
+                                    codec != HLS_VIDEO_CODEC_OTHER;
+            if (!keep_next_variant_uri)
+            {
+                hls->master_filtered_variant_count++;
+                continue;
+            }
+        }
+        else if (hls_line_starts_with(line, line_length, "#EXT-X-MEDIA:"))
+            hls->master_audio_count++;
+
         if (line_length != 0u && line[0] == '#')
         {
             size_t uri_start;
             size_t uri_end;
 
             if (hls_find_uri_attribute(line, line_length, &uri_start,
-                                       &uri_end))
+                                       &uri_end) &&
+                hls_uri_span_is_playlist(line + uri_start,
+                                         uri_end - uri_start))
             {
                 char uri[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
                 size_t media_index;
@@ -635,43 +757,41 @@ static bool hls_rewrite_master_locked(AirPlayRemoteHls *hls,
                 {
                     memcpy(uri, line + uri_start, uri_length);
                     uri[uri_length] = '\0';
-                    if (hls_uri_is_playlist(uri))
-                    {
-                        ok = hls_register_media_locked(
-                                 hls, hls->master_source, uri,
-                                 &media_index) &&
-                             hls_buffer_append(&output, line, uri_start) &&
-                             hls_append_local_media_uri(&output,
-                                                        media_index) &&
-                             hls_buffer_append(&output, line + uri_end,
-                                               line_length - uri_end);
-                    }
-                    else
-                        ok = hls_buffer_append(&output, line, line_length);
+                    ok = hls_register_media_locked(
+                             hls, hls->master_source, uri, &media_index) &&
+                         hls_buffer_append(&output, line, uri_start) &&
+                         hls_append_local_media_uri(&output, media_index) &&
+                         hls_buffer_append(&output, line + uri_end,
+                                           line_length - uri_end);
                 }
             }
             else
                 ok = hls_buffer_append(&output, line, line_length);
         }
-        else if (line_length != 0u)
+        else if (line_length != 0u &&
+                 hls_uri_span_is_playlist(line, line_length))
         {
             char uri[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
             size_t media_index;
 
+            if (!keep_next_variant_uri)
+            {
+                keep_next_variant_uri = true;
+                continue;
+            }
             if (line_length > AIRPLAY_REMOTE_HLS_URL_MAX)
                 ok = false;
             else
             {
                 memcpy(uri, line, line_length);
                 uri[line_length] = '\0';
-                if (hls_uri_is_playlist(uri))
-                    ok = hls_register_media_locked(
-                             hls, hls->master_source, uri, &media_index) &&
-                         hls_append_local_media_uri(&output, media_index);
-                else
-                    ok = hls_buffer_append(&output, line, line_length);
+                ok = hls_register_media_locked(
+                         hls, hls->master_source, uri, &media_index) &&
+                     hls_append_local_media_uri(&output, media_index);
             }
         }
+        else
+            ok = hls_buffer_append(&output, line, line_length);
         if (ok)
             ok = hls_buffer_append(&output, "\n", 1u);
     }
@@ -685,24 +805,31 @@ static bool hls_rewrite_master_locked(AirPlayRemoteHls *hls,
     return true;
 }
 
-static bool hls_parse_quoted_attribute(const char *line, const char *name,
-                                       char *output, size_t output_size)
+static char *hls_dup_quoted_attribute(const char *line, const char *name)
 {
     char pattern[32];
     const char *start;
     const char *end;
+    char *output;
+    size_t length;
     int written = snprintf(pattern, sizeof(pattern), "%s=\"", name);
 
     if (written <= 0 || (size_t)written >= sizeof(pattern))
-        return false;
+        return NULL;
     start = strstr(line, pattern);
     if (!start)
-        return false;
+        return NULL;
     start += (size_t)written;
     end = strchr(start, '\"');
-    return end && end > start && (size_t)(end - start) < output_size &&
-           (memcpy(output, start, (size_t)(end - start)),
-            output[end - start] = '\0', true);
+    if (!end)
+        return NULL;
+    length = (size_t)(end - start);
+    output = malloc(length + 1u);
+    if (!output)
+        return NULL;
+    memcpy(output, start, length);
+    output[length] = '\0';
+    return output;
 }
 
 static bool hls_expand_condensed(const uint8_t *bytes, size_t length,
@@ -714,9 +841,9 @@ static bool hls_expand_condensed(const uint8_t *bytes, size_t length,
         .limit = AIRPLAY_REMOTE_HLS_MAX_REWRITTEN_BYTES};
     char *copy;
     char *header;
-    char base[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
-    char params[1024];
-    char prefix[1024];
+    char *base = NULL;
+    char *params = NULL;
+    char *prefix = NULL;
     char *save = NULL;
     char *line;
     bool condensed = false;
@@ -736,16 +863,18 @@ static bool hls_expand_condensed(const uint8_t *bytes, size_t length,
 
         if (header_end)
             *header_end = '\0';
-        condensed = hls_parse_quoted_attribute(header, "BASE-URI", base,
-                                               sizeof(base)) &&
-                    hls_parse_quoted_attribute(header, "PARAMS", params,
-                                               sizeof(params)) &&
-                    hls_parse_quoted_attribute(header, "PREFIX", prefix,
-                                               sizeof(prefix));
+        base = hls_dup_quoted_attribute(header, "BASE-URI");
+        params = hls_dup_quoted_attribute(header, "PARAMS");
+        prefix = hls_dup_quoted_attribute(header, "PREFIX");
+        condensed = base && params && prefix && base[0] != '\0' &&
+                    prefix[0] != '\0';
         if (header_end)
             *header_end = '\n';
         if (!condensed)
         {
+            free(base);
+            free(params);
+            free(prefix);
             free(copy);
             return false;
         }
@@ -770,32 +899,42 @@ static bool hls_expand_condensed(const uint8_t *bytes, size_t length,
 
             if (prefix_at)
             {
-                char values[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
-                char params_copy[sizeof(params)];
-                char *value_save = NULL;
-                char *param_save = NULL;
-                char *value;
-                char *param;
+                const char *value = prefix_at + strlen(prefix);
+                const char *param = params;
 
                 ok = hls_buffer_append(&output, line,
                                        (size_t)(prefix_at - line)) &&
-                     hls_buffer_append_text(&output, base) &&
-                     hls_copy(values, sizeof(values),
-                              prefix_at + strlen(prefix)) &&
-                     hls_copy(params_copy, sizeof(params_copy), params);
-                value = ok ? strtok_r(values, "/", &value_save) : NULL;
-                param = ok ? strtok_r(params_copy, ",", &param_save) : NULL;
-                while (ok && value && param)
+                     hls_buffer_append_text(&output, base);
+                if (ok && params[0] == '\0')
                 {
-                    ok = hls_buffer_append_text(&output, "/") &&
-                         hls_buffer_append_text(&output, param) &&
-                         hls_buffer_append_text(&output, "/") &&
-                         hls_buffer_append_text(&output, value);
-                    value = strtok_r(NULL, "/", &value_save);
-                    param = strtok_r(NULL, ",", &param_save);
+                    ok = hls_buffer_append(
+                        &output, value,
+                        line_length - (size_t)(value - line));
                 }
-                if (value || param)
-                    ok = false;
+                while (ok && *param)
+                {
+                    const char *param_end = strchr(param, ',');
+                    const bool last_param = param_end == NULL;
+                    const char *value_end = last_param
+                                                ? line + line_length
+                                                : strchr(value, '/');
+
+                    if (!param_end)
+                        param_end = param + strlen(param);
+                    if (param_end == param || !value_end || value_end == value)
+                    {
+                        ok = false;
+                        break;
+                    }
+                    ok = hls_buffer_append_text(&output, "/") &&
+                         hls_buffer_append(&output, param,
+                                           (size_t)(param_end - param)) &&
+                         hls_buffer_append_text(&output, "/") &&
+                         hls_buffer_append(&output, value,
+                                           (size_t)(value_end - value));
+                    param = last_param ? param_end : param_end + 1;
+                    value = last_param ? value_end : value_end + 1;
+                }
             }
             else
                 ok = hls_buffer_append(&output, line, line_length);
@@ -806,6 +945,9 @@ static bool hls_expand_condensed(const uint8_t *bytes, size_t length,
             ok = hls_buffer_append(&output, "\n", 1u);
         line = strtok_r(NULL, "\n", &save);
     }
+    free(base);
+    free(params);
+    free(prefix);
     free(copy);
     if (!ok)
     {
@@ -819,13 +961,49 @@ static bool hls_expand_condensed(const uint8_t *bytes, size_t length,
 
 static bool hls_append_resolved_media_uri(AirPlayRemoteHlsBuffer *output,
                                           const char *base,
-                                          const char *uri)
+                                          const char *uri,
+                                          size_t uri_length)
 {
-    char resolved[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
+    const char *scheme;
+    const char *authority_end;
+    const char *path_end;
+    size_t index;
 
-    if (hls_resolve_uri(base, uri, resolved) && hls_is_http_url(resolved))
-        return hls_buffer_append_text(output, resolved);
-    return hls_buffer_append_text(output, uri);
+    if (!output || !base || (!uri && uri_length != 0u))
+        return false;
+    for (index = 0u; index < uri_length; ++index)
+    {
+        unsigned char character = (unsigned char)uri[index];
+
+        if (character < 0x21u || character > 0x7eu)
+            return false;
+    }
+    if ((uri_length >= 7u && strncasecmp(uri, "http://", 7u) == 0) ||
+        (uri_length >= 8u && strncasecmp(uri, "https://", 8u) == 0))
+        return hls_buffer_append(output, uri, uri_length);
+
+    scheme = strstr(base, "://");
+    if (!scheme)
+        return hls_buffer_append(output, uri, uri_length);
+    if (uri_length >= 2u && uri[0] == '/' && uri[1] == '/')
+        return hls_buffer_append(output, base,
+                                 (size_t)(scheme - base) + 1u) &&
+               hls_buffer_append(output, uri, uri_length);
+
+    authority_end = strchr(scheme + 3, '/');
+    if (!authority_end)
+        authority_end = base + strlen(base);
+    if (uri_length != 0u && uri[0] == '/')
+        return hls_buffer_append(output, base,
+                                 (size_t)(authority_end - base)) &&
+               hls_buffer_append(output, uri, uri_length);
+
+    path_end = strrchr(base, '/');
+    if (!path_end || path_end < authority_end)
+        path_end = base + strlen(base);
+    return hls_buffer_append(output, base, (size_t)(path_end - base)) &&
+           hls_buffer_append_text(output, "/") &&
+           hls_buffer_append(output, uri, uri_length);
 }
 
 static bool hls_rewrite_media(const char *source_url,
@@ -841,7 +1019,12 @@ static bool hls_rewrite_media(const char *source_url,
     bool ok = true;
 
     if (!hls_expand_condensed(bytes, length, &expanded, &expanded_length))
+    {
+        AIRPLAY_TRACE("[airplay-remote-hls] rewrite phase=condensed result=failed "
+                      "source-bytes=%zu\n",
+                      length);
         return false;
+    }
     while (offset < expanded_length && ok)
     {
         size_t line_start = offset;
@@ -868,37 +1051,21 @@ static bool hls_rewrite_media(const char *source_url,
             if (hls_find_uri_attribute(line, line_length, &uri_start,
                                        &uri_end))
             {
-                char uri[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
                 size_t uri_length = uri_end - uri_start;
 
-                if (uri_length > AIRPLAY_REMOTE_HLS_URL_MAX)
-                    ok = false;
-                else
-                {
-                    memcpy(uri, line + uri_start, uri_length);
-                    uri[uri_length] = '\0';
-                    ok = hls_buffer_append(&output, line, uri_start) &&
-                         hls_append_resolved_media_uri(&output, source_url,
-                                                       uri) &&
-                         hls_buffer_append(&output, line + uri_end,
-                                           line_length - uri_end);
-                }
+                ok = hls_buffer_append(&output, line, uri_start) &&
+                     hls_append_resolved_media_uri(
+                         &output, source_url, line + uri_start, uri_length) &&
+                     hls_buffer_append(&output, line + uri_end,
+                                       line_length - uri_end);
             }
             else
                 ok = hls_buffer_append(&output, line, line_length);
         }
         else if (line_length != 0u)
         {
-            char uri[AIRPLAY_REMOTE_HLS_URL_MAX + 1u];
-
-            if (line_length > AIRPLAY_REMOTE_HLS_URL_MAX)
-                ok = false;
-            else
-            {
-                memcpy(uri, line, line_length);
-                uri[line_length] = '\0';
-                ok = hls_append_resolved_media_uri(&output, source_url, uri);
-            }
+            ok = hls_append_resolved_media_uri(&output, source_url, line,
+                                               line_length);
         }
         if (ok)
             ok = hls_buffer_append(&output, "\n", 1u);
@@ -906,6 +1073,9 @@ static bool hls_rewrite_media(const char *source_url,
     free(expanded);
     if (!ok)
     {
+        AIRPLAY_TRACE("[airplay-remote-hls] rewrite phase=media result=failed "
+                      "source-bytes=%zu expanded-bytes=%zu offset=%zu\n",
+                      length, expanded_length, offset);
         hls_buffer_clear(&output);
         return false;
     }
@@ -939,7 +1109,7 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
     const uint8_t *playlist;
     size_t playlist_length = 0u;
     uint64_t request_id = 0u;
-    uint64_t status_code = 200u;
+    uint64_t status_code = 0u;
     AirPlayPlistError error;
     AirPlayRemoteHlsActionResult result =
         AIRPLAY_REMOTE_HLS_ACTION_RESULT_INVALID_ARGUMENT;
@@ -964,6 +1134,17 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
         result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_SHAPE;
         goto cleanup;
     }
+    AIRPLAY_TRACE(
+        "[airplay-remote-hls] session=%llu action-type=%s bytes=%zu\n",
+        (unsigned long long)session_id,
+        strcmp(type, "unhandledURLResponse") == 0
+            ? "unhandled-url-response"
+            : strcmp(type, "playlistRemove") == 0
+                  ? "playlist-remove"
+                  : strcmp(type, "playlistInsert") == 0
+                        ? "playlist-insert"
+                        : "other",
+        body_length);
     if (strcmp(type, "unhandledURLResponse") != 0)
     {
         action_out->kind = AIRPLAY_REMOTE_HLS_ACTION_ACK;
@@ -971,12 +1152,14 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
         result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_OK;
         goto cleanup;
     }
-    if (!hls_get_uint(params, "FCUP_Response_StatusCode", &status_code,
-                      false) ||
-        status_code < 200u || status_code > 299u)
+    if (hls_get_uint(params, "FCUP_Response_StatusCode", &status_code,
+                     false))
     {
-        result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_BAD_STATUS;
-        goto cleanup;
+        AIRPLAY_TRACE(
+            "[airplay-remote-hls] session=%llu action-status=%llu "
+            "advisory\n",
+            (unsigned long long)session_id,
+            (unsigned long long)status_code);
     }
     if (!hls_get_uint(params, "FCUP_Response_RequestID", &request_id, true) ||
         request_id == 0u || request_id > UINT32_MAX)
@@ -1050,6 +1233,12 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
         hls->master_playlist_length = rewritten_length;
         hls->expecting_master = false;
         hls->pending_media_index = 0u;
+        AIRPLAY_TRACE(
+            "[airplay-remote-hls] session=%llu playlist=master source-bytes=%zu "
+            "local-bytes=%zu media=%zu variants=%u filtered=%u audio-groups=%u\n",
+            (unsigned long long)session_id, playlist_length,
+            rewritten_length, hls->media_count, hls->master_variant_count,
+            hls->master_filtered_variant_count, hls->master_audio_count);
     }
     else
     {
@@ -1069,6 +1258,11 @@ bool airplay_remote_hls_handle_action(AirPlayRemoteHls *hls,
             result = AIRPLAY_REMOTE_HLS_ACTION_RESULT_REWRITE_FAILED;
             goto cleanup;
         }
+        AIRPLAY_TRACE(
+            "[airplay-remote-hls] session=%llu playlist=media index=%zu "
+            "source-bytes=%zu local-bytes=%zu\n",
+            (unsigned long long)session_id, hls->pending_media_index,
+            playlist_length, media->playlist_length);
         hls->pending_media_index++;
     }
     if (hls->pending_media_index < hls->media_count)
@@ -1133,6 +1327,7 @@ bool airplay_remote_hls_serve(AirPlayRemoteHls *hls,
     *handled_out = airplay_remote_hls_is_local_uri(request->uri);
     if (!*handled_out)
         return true;
+    response->close_connection = true;
     if (strcmp(request->method, "GET") != 0)
         return airplay_rtsp_response_set_status(response, 405);
     hls_mutex_lock(&hls->mutex);
@@ -1148,6 +1343,17 @@ bool airplay_remote_hls_serve(AirPlayRemoteHls *hls,
     {
         playlist = hls->master_playlist;
         playlist_length = hls->master_playlist_length;
+        if (playlist && !hls->master_served)
+        {
+            AIRPLAY_TRACE(
+                "[airplay-remote-hls] serve=master bytes=%zu media=%zu "
+                "variants=%u filtered=%u audio-groups=%u\n",
+                playlist_length, hls->media_count,
+                hls->master_variant_count,
+                hls->master_filtered_variant_count,
+                hls->master_audio_count);
+            hls->master_served = true;
+        }
     }
     else
     {
@@ -1162,6 +1368,14 @@ bool airplay_remote_hls_serve(AirPlayRemoteHls *hls,
             {
                 playlist = hls->media[index].playlist;
                 playlist_length = hls->media[index].playlist_length;
+                if (playlist && !hls->media[index].served)
+                {
+                    AIRPLAY_TRACE(
+                        "[airplay-remote-hls] serve=media index=%zu "
+                        "bytes=%zu\n",
+                        index, playlist_length);
+                    hls->media[index].served = true;
+                }
                 break;
             }
         }

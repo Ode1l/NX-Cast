@@ -50,7 +50,7 @@ switch/
       THIRD-PARTY-NOTICE.txt
 ```
 
-`NX-Cast.nro` is the application. The `dlna/` directory contains runtime device and service description files. The `fonts/` directory contains the packaged UI font. Copy local `.m3u` or `.m3u8` playlists into the `iptv/` directory. The `airplay/` directory initially contains only a privacy notice; NX-Cast creates private identity and pairing files there at runtime.
+`NX-Cast.nro` is the application. The `dlna/` directory contains runtime device and service description files. The `fonts/` directory contains the packaged Source Han font used by Chinese UI metadata and text subtitles. Copy local `.m3u` or `.m3u8` playlists into the `iptv/` directory. The `airplay/` directory initially contains only a privacy notice; NX-Cast creates private identity and pairing files there at runtime.
 
 `hbmenu` scans directories below `sdmc:/switch/`. A data-only
 `sdmc:/switch/NX-Cast/` directory can therefore appear as a folder during

@@ -23,6 +23,7 @@ The current baseline includes:
 - static home screen with cast instructions and last-error display
 - local/remote M3U source management, SD cache, and direct IPTV URL input
 - channel groups, search, favorites, recent history, logo cache, and XMLTV now/next EPG
+- Simplified Chinese channel/programme metadata and text subtitles through the packaged Source Han font
 - controller and touch playback overlay
 - experimental AirPlay PIN pairing, direct/reverse HLS playback, and H.264 mirroring
 - generation-safe media ownership across DLNA, IPTV, and AirPlay
@@ -81,7 +82,7 @@ switch/
 
 `NX-Cast-sdmc.zip` is already laid out like the SD card. Extract it directly to the SD root; do not put it inside an extra nested folder.
 
-`switch/NX-Cast/dlna/` contains runtime DLNA XML, CSV, HTML, and icon assets. `switch/NX-Cast/fonts/` contains the packaged UI font. Put local `.m3u` or `.m3u8` playlists in `switch/NX-Cast/iptv/`. AirPlay identity and trusted pairings are generated privately in `switch/NX-Cast/airplay/` and must not be shared.
+`switch/NX-Cast/dlna/` contains runtime DLNA XML, CSV, HTML, and icon assets. `switch/NX-Cast/fonts/` contains the packaged Chinese UI/subtitle font. Put local `.m3u` or `.m3u8` playlists in `switch/NX-Cast/iptv/`. AirPlay identity and trusted pairings are generated privately in `switch/NX-Cast/airplay/` and must not be shared.
 
 For full install and troubleshooting details, see [docs/install.md](docs/install.md).
 

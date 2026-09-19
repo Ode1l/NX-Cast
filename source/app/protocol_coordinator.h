@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #include "player/core/ownership.h"
+#include "player/types.h"
+#include "app/protocol_media_session.h"
 
 #define PROTOCOL_AIRPLAY_PIN_SIZE 5u
 #define PROTOCOL_AIRPLAY_STATUS_MAX 96u
@@ -79,6 +81,7 @@ typedef struct
     uint64_t service_transition_age_ms[PROTOCOL_SERVICE_COUNT];
     ProtocolAirPlayStatus airplay;
     PlayerOwnershipLease active_media;
+    ProtocolMediaSessionSnapshot media_session;
     ProtocolResourceMode desired_resource_mode;
     ProtocolResourceMode applied_resource_mode;
     bool resource_transition_active;
@@ -104,6 +107,9 @@ typedef struct
     ProtocolServiceOperations services[PROTOCOL_SERVICE_COUNT];
     bool (*airplay_get_status)(void *context,
                                ProtocolAirPlayStatus *status_out);
+    /* Must synchronously release the exact AirPlay owner before takeover. */
+    bool (*airplay_release_active_media)(const PlayerOwnershipLease *lease,
+                                         void *context);
     /* Must be nonblocking; discovery workers observe the requested state. */
     void (*set_discovery_suspended)(void *context, bool suspended);
     /* Must be nonblocking; gates catalog/logo/background network jobs only. */
@@ -132,6 +138,8 @@ void protocol_coordinator_stop(void);
 void protocol_coordinator_set_playback_active(bool active);
 /* Terminal applies to idle/stopped/error; active includes paused and seeking. */
 void protocol_coordinator_observe_playback(bool active, bool terminal);
+/* Preferred adapter for authoritative player lifecycle observations. */
+void protocol_coordinator_observe_player_state(PlayerState state);
 bool protocol_coordinator_begin_start(const ProtocolCoordinatorConfig *config);
 bool protocol_coordinator_set_service_state(ProtocolService service,
                                             ProtocolServiceState state);
@@ -166,6 +174,9 @@ void protocol_coordinator_media_guard_end(ProtocolMediaGuard *guard);
 bool protocol_coordinator_media_current(PlayerOwnershipLease *lease_out);
 bool protocol_coordinator_media_release_current(PlayerMediaOwner owner,
                                                 uint64_t token);
+/* CLAIMED, RELEASED, and RESET are coordinator-owned lifecycle events. */
+ProtocolMediaTransitionStatus protocol_coordinator_media_submit_event(
+    const ProtocolMediaEvent *event);
 
 const char *protocol_coordinator_state_name(ProtocolCoordinatorState state);
 const char *protocol_service_name(ProtocolService service);

@@ -440,6 +440,13 @@ static bool verify_pairing(AirPlayPairingService *service,
     CHECK((response_header(response, "CSeq") != NULL) == has_cseq);
     CHECK(airplay_pairing_session_verified(session));
     CHECK(airplay_pairing_session_state(session) == AIRPLAY_PAIRING_STATE_VERIFIED);
+    {
+        uint8_t verified_client_id[32];
+
+        CHECK(airplay_pairing_session_client_id(session, verified_client_id));
+        CHECK(memcmp(verified_client_id, client_public,
+                     sizeof(verified_client_id)) == 0);
+    }
     airplay_rtsp_response_clear(response);
     airplay_crypto_rng_deinit(&rng);
     return true;

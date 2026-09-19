@@ -236,6 +236,219 @@ static void test_reconnect_releases_capacity(void)
     airplay_session_manager_destroy(manager);
 }
 
+static void test_active_media_retains_detached_session(void)
+{
+    AirPlaySessionManager *manager = airplay_session_manager_create();
+    AirPlaySessionSnapshot first;
+    AirPlaySessionSnapshot reconnected;
+    AirPlaySessionSnapshot after_release;
+    AirPlaySessionCloseResult close_result;
+    AirPlayRtspRequest request;
+
+    assert(manager);
+    request = make_request("POST", "/play", "HTTP/1.1", false,
+                           "retained-session");
+    assert(airplay_session_manager_observe(manager, 150U, &request, &first) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_retain_media(
+        manager, first.logical_session_id));
+    assert(airplay_session_manager_retain_media(
+        manager, first.logical_session_id));
+    assert(airplay_session_manager_close(manager, 150U, &close_result));
+    assert(close_result.last_logical_connection);
+    assert(airplay_session_manager_release_media(
+        manager, first.logical_session_id));
+
+    request = make_request("GET", "/playback-info", "HTTP/1.1", false,
+                           "retained-session");
+    assert(airplay_session_manager_observe(
+               manager, 151U, &request, &reconnected) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(reconnected.logical_session_id == first.logical_session_id);
+    assert(reconnected.logical_connection_count == 1U);
+    assert(airplay_session_manager_close(manager, 151U, &close_result));
+    assert(close_result.last_logical_connection);
+    assert(airplay_session_manager_release_media(
+        manager, first.logical_session_id));
+    assert(!airplay_session_manager_release_media(
+        manager, first.logical_session_id));
+
+    request = make_request("POST", "/play", "HTTP/1.1", false,
+                           "retained-session");
+    assert(airplay_session_manager_observe(
+               manager, 152U, &request, &after_release) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(after_release.logical_session_id != first.logical_session_id);
+    assert(!airplay_session_manager_retain_media(manager, 999999U));
+    assert(!airplay_session_manager_release_media(manager, 999999U));
+    airplay_session_manager_destroy(manager);
+}
+
+static void test_raop_is_independent_from_apple_session(void)
+{
+    AirPlaySessionManager *manager = airplay_session_manager_create();
+    AirPlaySessionSnapshot raop;
+    AirPlaySessionSnapshot play;
+    AirPlaySessionSnapshot reverse;
+    AirPlaySessionSnapshot other;
+    AirPlaySessionCloseResult close_result;
+    AirPlayRtspRequest request;
+    assert(manager);
+    request = make_request("OPTIONS", "*", "RTSP/1.0", true, NULL);
+    assert(airplay_session_manager_observe(
+               manager, 200U, &request, &raop) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(!raop.logical_session_bound);
+
+    request = make_request("POST", "/play", "HTTP/1.1", false,
+                           "peer-session");
+    assert(airplay_session_manager_observe(
+               manager, 201U, &request, &play) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    request = make_request("POST", "/reverse", "HTTP/1.1", false,
+                           "peer-session");
+    assert(airplay_session_manager_observe(
+               manager, 202U, &request, &reverse) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(play.logical_session_id == reverse.logical_session_id);
+
+    request = make_request("POST", "/feedback", "RTSP/1.0", true, NULL);
+    assert(airplay_session_manager_observe(
+               manager, 200U, &request, &raop) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(!raop.logical_session_bound);
+    assert(raop.logical_session_id == 200U);
+    assert(play.logical_connection_count == 1U);
+    assert(reverse.logical_connection_count == 2U);
+
+    request = make_request("OPTIONS", "*", "RTSP/1.0", true, NULL);
+    assert(airplay_session_manager_observe(
+               manager, 203U, &request, &other) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(!other.logical_session_bound);
+
+    assert(airplay_session_manager_close(manager, 200U, &close_result));
+    assert(!close_result.logical_session_bound);
+    assert(!close_result.last_logical_connection);
+    assert(airplay_session_manager_close(manager, 201U, &close_result));
+    assert(!close_result.last_logical_connection);
+    assert(airplay_session_manager_close(manager, 202U, &close_result));
+    assert(close_result.last_logical_connection);
+    assert(airplay_session_manager_close(manager, 203U, &close_result));
+    airplay_session_manager_destroy(manager);
+}
+
+static void test_transport_teardown_waits_for_final_control_close(void)
+{
+    AirPlaySessionManager *manager = airplay_session_manager_create();
+    AirPlaySessionSnapshot raop;
+    AirPlaySessionSnapshot play;
+    AirPlaySessionSnapshot reverse;
+    AirPlaySessionCloseResult close_result;
+    AirPlayRtspRequest request;
+    uint8_t client_id[AIRPLAY_SESSION_CLIENT_ID_SIZE] = {1U};
+    uint64_t terminal_media = 0U;
+
+    assert(manager);
+    request = make_request("OPTIONS", "*", "RTSP/1.0", true, NULL);
+    assert(airplay_session_manager_observe(manager, 300U, &request, &raop) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_bind_client(manager, 300U, client_id));
+
+    request = make_request("POST", "/play", "HTTP/1.1", false,
+                           "terminal-after-close");
+    assert(airplay_session_manager_observe(manager, 301U, &request, &play) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_bind_client(manager, 301U, client_id));
+    request = make_request("POST", "/reverse", "HTTP/1.1", false,
+                           "terminal-after-close");
+    assert(airplay_session_manager_observe(manager, 302U, &request, &reverse) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_bind_client(manager, 302U, client_id));
+    assert(airplay_session_manager_retain_media(manager,
+                                                play.logical_session_id));
+
+    assert(airplay_session_manager_mark_transport_teardown(
+        manager, 300U, &terminal_media));
+    assert(terminal_media == 0U);
+    assert(airplay_session_manager_close(manager, 301U, &close_result));
+    assert(close_result.terminal_media_session_id == 0U);
+    assert(airplay_session_manager_close(manager, 302U, &close_result));
+    assert(close_result.terminal_media_session_id == play.logical_session_id);
+    assert(airplay_session_manager_release_media(manager,
+                                                 play.logical_session_id));
+    assert(airplay_session_manager_close(manager, 300U, &close_result));
+    airplay_session_manager_destroy(manager);
+}
+
+static void test_final_control_close_waits_for_transport_teardown(void)
+{
+    AirPlaySessionManager *manager = airplay_session_manager_create();
+    AirPlaySessionSnapshot snapshot;
+    AirPlaySessionCloseResult close_result;
+    AirPlayRtspRequest request;
+    uint8_t client_id[AIRPLAY_SESSION_CLIENT_ID_SIZE] = {2U};
+    uint64_t logical_id;
+    uint64_t terminal_media = 0U;
+
+    assert(manager);
+    request = make_request("OPTIONS", "*", "RTSP/1.0", true, NULL);
+    assert(airplay_session_manager_observe(manager, 310U, &request, &snapshot) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_bind_client(manager, 310U, client_id));
+    request = make_request("POST", "/play", "HTTP/1.1", false,
+                           "terminal-before-close");
+    assert(airplay_session_manager_observe(manager, 311U, &request, &snapshot) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_bind_client(manager, 311U, client_id));
+    logical_id = snapshot.logical_session_id;
+    assert(airplay_session_manager_retain_media(manager, logical_id));
+
+    assert(airplay_session_manager_close(manager, 311U, &close_result));
+    assert(close_result.last_logical_connection);
+    assert(close_result.terminal_media_session_id == 0U);
+    assert(airplay_session_manager_mark_transport_teardown(
+        manager, 310U, &terminal_media));
+    assert(terminal_media == logical_id);
+    assert(airplay_session_manager_release_media(manager, logical_id));
+    assert(airplay_session_manager_close(manager, 310U, &close_result));
+    airplay_session_manager_destroy(manager);
+}
+
+static void test_transport_teardown_does_not_cross_client_identity(void)
+{
+    AirPlaySessionManager *manager = airplay_session_manager_create();
+    AirPlaySessionSnapshot snapshot;
+    AirPlaySessionCloseResult close_result;
+    AirPlayRtspRequest request;
+    uint8_t transport_client[AIRPLAY_SESSION_CLIENT_ID_SIZE] = {3U};
+    uint8_t media_client[AIRPLAY_SESSION_CLIENT_ID_SIZE] = {4U};
+    uint64_t logical_id;
+    uint64_t terminal_media = 0U;
+
+    assert(manager);
+    request = make_request("OPTIONS", "*", "RTSP/1.0", true, NULL);
+    assert(airplay_session_manager_observe(manager, 320U, &request, &snapshot) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_bind_client(manager, 320U,
+                                               transport_client));
+    request = make_request("POST", "/play", "HTTP/1.1", false,
+                           "unrelated-media");
+    assert(airplay_session_manager_observe(manager, 321U, &request, &snapshot) ==
+           AIRPLAY_SESSION_OBSERVE_OK);
+    assert(airplay_session_manager_bind_client(manager, 321U, media_client));
+    logical_id = snapshot.logical_session_id;
+    assert(airplay_session_manager_retain_media(manager, logical_id));
+    assert(airplay_session_manager_close(manager, 321U, &close_result));
+    assert(close_result.terminal_media_session_id == 0U);
+    assert(airplay_session_manager_mark_transport_teardown(
+        manager, 320U, &terminal_media));
+    assert(terminal_media == 0U);
+    assert(airplay_session_manager_release_media(manager, logical_id));
+    assert(airplay_session_manager_close(manager, 320U, &close_result));
+    airplay_session_manager_destroy(manager);
+}
+
 int main(void)
 {
     test_connection_classification();
@@ -245,6 +458,11 @@ int main(void)
     test_conflicts_are_rejected();
     test_invalid_ids_and_capacity();
     test_reconnect_releases_capacity();
+    test_active_media_retains_detached_session();
+    test_raop_is_independent_from_apple_session();
+    test_transport_teardown_waits_for_final_control_close();
+    test_final_control_close_waits_for_transport_teardown();
+    test_transport_teardown_does_not_cross_client_identity();
     puts("airplay session tests passed");
     return 0;
 }

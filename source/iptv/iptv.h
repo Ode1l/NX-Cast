@@ -7,7 +7,7 @@
 
 #define IPTV_ROOT_DIR "sdmc:/switch/NX-Cast/iptv"
 #define IPTV_PREINSTALLED_SOURCES_FILE IPTV_ROOT_DIR "/sources.txt"
-#define IPTV_MAX_CHANNELS 1024
+#define IPTV_MAX_CHANNELS 4096
 #define IPTV_MAX_SOURCES 32
 #define IPTV_MAX_GROUPS 64
 #define IPTV_MAX_RECENT 32

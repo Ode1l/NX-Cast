@@ -1187,6 +1187,16 @@ bool player_video_supported(void)
     return true;
 }
 
+bool player_video_render_ready(void)
+{
+    if (!player_video_supported())
+        return false;
+    if (g_backend->render_ready)
+        return g_backend->render_ready();
+    return g_backend->get_state &&
+           g_backend->get_state() != PLAYER_STATE_LOADING;
+}
+
 bool player_video_attach_gl(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx)
 {
     if (!player_video_supported() || !g_backend->render_attach_gl)

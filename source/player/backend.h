@@ -25,6 +25,7 @@ typedef struct
     bool (*pump_events)(int timeout_ms);
     void (*wakeup)(void);
     bool (*render_supported)(void);
+    bool (*render_ready)(void);
     bool (*render_attach_gl)(void *(*get_proc_address)(void *ctx, const char *name), void *get_proc_address_ctx);
     bool (*render_attach_sw)(void);
     bool (*render_attach_dk3d)(const PlayerVideoDk3dInit *init);

@@ -52,7 +52,7 @@ typedef bool (*AirPlayAudioOpenCallback)(
     uint8_t compression_type, uint16_t samples_per_frame,
     uint32_t sample_rate, uint16_t *data_port_out,
     uint16_t *control_port_out, void *user_data);
-typedef void (*AirPlayAudioRecordCallback)(uint64_t session_id,
+typedef bool (*AirPlayAudioRecordCallback)(uint64_t session_id,
                                            void *user_data);
 typedef void (*AirPlayMediaRecordCallback)(uint64_t session_id, void *user_data);
 typedef void (*AirPlayMirrorStopCallback)(uint64_t session_id, void *user_data);

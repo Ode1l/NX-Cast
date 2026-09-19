@@ -24,7 +24,12 @@ typedef struct
     bool dlna_result;
     bool airplay_result;
     bool background_fail_once;
+    bool takeover_result;
+    bool takeover_claim_before_release;
     unsigned background_calls;
+    unsigned takeover_calls;
+    PlayerOwnershipLease takeover_lease;
+    PlayerOwnershipLease takeover_claimed;
     ProtocolAirPlayStatus airplay;
 } FakeRuntime;
 
@@ -64,6 +69,8 @@ static bool resource_cancellable_airplay_start(void *context);
 static void resource_request_stop(void *context);
 static void resource_stop(void *context);
 static bool resource_background_suspend(void *context, bool suspended);
+static bool resource_airplay_takeover(const PlayerOwnershipLease *lease,
+                                      void *context);
 
 static uint64_t monotonic_ms(void)
 {
@@ -205,6 +212,7 @@ static void test_stop_cancels_resource_transition_before_join(void)
             },
         },
         .airplay_get_status = delayed_airplay_get_status,
+        .airplay_release_active_media = resource_airplay_takeover,
         .set_background_network_suspended = resource_background_suspend,
     };
     ProtocolMediaTransaction dlna;
@@ -264,6 +272,7 @@ static void test_reclaim_cancels_superseded_home_restart(void)
             },
         },
         .airplay_get_status = delayed_airplay_get_status,
+        .airplay_release_active_media = resource_airplay_takeover,
         .set_background_network_suspended = resource_background_suspend,
     };
     ProtocolMediaTransaction first;
@@ -620,6 +629,33 @@ static bool fake_airplay_get_status(void *context,
     return true;
 }
 
+static bool fake_airplay_release_active_media(
+    const PlayerOwnershipLease *lease, void *context)
+{
+    FakeRuntime *runtime = context;
+    ProtocolCoordinatorSnapshot value;
+    PlayerOwnershipLease replacement;
+    bool result;
+    bool released;
+
+    assert(lease != NULL);
+    assert(protocol_coordinator_get_snapshot(&value));
+    pthread_mutex_lock(&runtime->mutex);
+    runtime->takeover_calls++;
+    runtime->takeover_lease = *lease;
+    result = runtime->takeover_result;
+    if (runtime->takeover_claim_before_release)
+    {
+        (void)player_ownership_claim(PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO,
+                                     999u, &replacement, NULL);
+        runtime->takeover_claimed = replacement;
+    }
+    pthread_mutex_unlock(&runtime->mutex);
+    fake_event(runtime, 't');
+    released = result && player_ownership_release(lease);
+    return released;
+}
+
 static void fake_set_discovery_suspended(void *context, bool suspended)
 {
     FakeRuntime *runtime = context;
@@ -655,6 +691,14 @@ static bool fake_set_background_network_suspended(void *context,
     return result;
 }
 
+static bool resource_airplay_takeover(const PlayerOwnershipLease *lease,
+                                      void *context)
+{
+    (void)lease;
+    (void)context;
+    return true;
+}
+
 static ProtocolCoordinatorOperations fake_operations(FakeRuntime *runtime)
 {
     ProtocolCoordinatorOperations operations = {
@@ -675,6 +719,8 @@ static ProtocolCoordinatorOperations fake_operations(FakeRuntime *runtime)
             }
         },
         .airplay_get_status = fake_airplay_get_status,
+        .airplay_release_active_media =
+            fake_airplay_release_active_media,
         .set_discovery_suspended = fake_set_discovery_suspended,
         .set_background_network_suspended =
             fake_set_background_network_suspended,
@@ -880,6 +926,193 @@ static void test_media_takeover_and_stale_lease(void)
     assert(protocol_coordinator_begin_stop());
     assert(!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_IPTV, 1u, &dlna));
     protocol_coordinator_finish_stop();
+}
+
+static void test_media_session_black_box_sequence(void)
+{
+    ProtocolMediaTransaction first;
+    ProtocolMediaTransaction replacement;
+    ProtocolCoordinatorSnapshot value;
+    ProtocolMediaEvent event;
+
+    start_ready();
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA, 10u,
+                                            &first));
+    protocol_coordinator_media_end(&first);
+    value = snapshot();
+    assert(value.media_session.lifecycle ==
+           PROTOCOL_MEDIA_SESSION_PREPARING);
+    assert(value.media_session.lease.generation == first.lease.generation);
+
+    event = (ProtocolMediaEvent){
+        .kind = PROTOCOL_MEDIA_EVENT_LOAD_REQUESTED,
+        .lease = first.lease,
+    };
+    assert(protocol_coordinator_media_submit_event(&event) ==
+           PROTOCOL_MEDIA_TRANSITION_APPLIED);
+    assert(snapshot().media_session.lifecycle ==
+           PROTOCOL_MEDIA_SESSION_LOADING);
+
+    event.kind = PROTOCOL_MEDIA_EVENT_PLAYING;
+    assert(protocol_coordinator_media_submit_event(&event) ==
+           PROTOCOL_MEDIA_TRANSITION_APPLIED);
+    value = snapshot();
+    assert(value.media_session.lifecycle == PROTOCOL_MEDIA_SESSION_ACTIVE);
+    assert(value.media_session.playback == PROTOCOL_MEDIA_PLAYBACK_PLAYING);
+
+    event.kind = PROTOCOL_MEDIA_EVENT_CONTROL_DETACHED;
+    assert(protocol_coordinator_media_submit_event(&event) ==
+           PROTOCOL_MEDIA_TRANSITION_APPLIED);
+    assert(snapshot().media_session.control ==
+           PROTOCOL_MEDIA_CONTROL_DETACHED);
+
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA, 11u,
+                                            &replacement));
+    protocol_coordinator_media_end(&replacement);
+    value = snapshot();
+    assert(value.media_session.lifecycle ==
+           PROTOCOL_MEDIA_SESSION_PREPARING);
+    assert(value.media_session.lease.generation ==
+           replacement.lease.generation);
+
+    event.kind = PROTOCOL_MEDIA_EVENT_ENDED;
+    assert(protocol_coordinator_media_submit_event(&event) ==
+           PROTOCOL_MEDIA_TRANSITION_STALE);
+    assert(snapshot().media_session.lease.generation ==
+           replacement.lease.generation);
+
+    event.kind = PROTOCOL_MEDIA_EVENT_PAUSED;
+    event.lease = replacement.lease;
+    assert(protocol_coordinator_media_submit_event(&event) ==
+           PROTOCOL_MEDIA_TRANSITION_APPLIED);
+    value = snapshot();
+    assert(value.media_session.lifecycle == PROTOCOL_MEDIA_SESSION_ACTIVE);
+    assert(value.media_session.playback == PROTOCOL_MEDIA_PLAYBACK_PAUSED);
+
+    assert(protocol_coordinator_media_release(&replacement.lease));
+    value = snapshot();
+    assert(value.media_session.lifecycle == PROTOCOL_MEDIA_SESSION_IDLE);
+    assert(value.media_session.lease.owner == PLAYER_MEDIA_OWNER_NONE);
+    assert(protocol_coordinator_begin_stop());
+    protocol_coordinator_finish_stop();
+}
+
+static void test_airplay_takeover_contract(void)
+{
+    ProtocolCoordinatorConfig config = {
+        .enabled = {true, true, true},
+        .exclusive_media_resources = true,
+    };
+    FakeRuntime runtime;
+    ProtocolCoordinatorOperations operations;
+    ProtocolMediaTransaction airplay_first;
+    ProtocolMediaTransaction airplay_replacement;
+    ProtocolMediaTransaction dlna;
+    ProtocolMediaTransaction dlna_replacement;
+    ProtocolMediaTransaction airplay_mirror;
+    ProtocolMediaTransaction iptv;
+
+    fake_runtime_init(&runtime);
+    runtime.iptv_result = true;
+    runtime.dlna_result = true;
+    runtime.airplay_result = true;
+    runtime.airplay.running = true;
+    operations = fake_operations(&runtime);
+    protocol_coordinator_reset();
+    assert(protocol_coordinator_start(&config, &operations));
+    assert(wait_for_service_state(PROTOCOL_SERVICE_AIRPLAY,
+                                  PROTOCOL_SERVICE_RUNNING));
+
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO,
+                                            44u, &airplay_first));
+    protocol_coordinator_media_end(&airplay_first);
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO,
+                                            45u, &airplay_replacement));
+    protocol_coordinator_media_end(&airplay_replacement);
+    assert(!protocol_coordinator_media_validate(&airplay_first.lease));
+    assert(protocol_coordinator_media_validate(&airplay_replacement.lease));
+    assert(fake_event_count(&runtime, 't') == 0);
+
+    assert(!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA, 1u,
+                                             &dlna));
+    assert(protocol_coordinator_media_validate(&airplay_replacement.lease));
+    assert(fake_event_count(&runtime, 't') == 1);
+    assert(runtime.takeover_calls == 1u);
+
+    runtime.takeover_result = true;
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA, 2u,
+                                            &dlna));
+    protocol_coordinator_media_end(&dlna);
+    assert(!protocol_coordinator_media_validate(&airplay_replacement.lease));
+    assert(protocol_coordinator_media_validate(&dlna.lease));
+    assert(fake_event_count(&runtime, 't') == 2);
+    assert(runtime.takeover_calls == 2u);
+    assert(runtime.takeover_lease.owner == PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO);
+    assert(runtime.takeover_lease.token == 45u);
+
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA, 3u,
+                                            &dlna_replacement));
+    protocol_coordinator_media_end(&dlna_replacement);
+    assert(runtime.takeover_calls == 2u);
+    assert(protocol_coordinator_media_release(&dlna_replacement.lease));
+
+    runtime.takeover_result = true;
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_AIRPLAY_MIRROR,
+                                            55u, &airplay_mirror));
+    protocol_coordinator_media_end(&airplay_mirror);
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_IPTV, 77u,
+                                            &iptv));
+    protocol_coordinator_media_end(&iptv);
+    assert(!protocol_coordinator_media_validate(&airplay_mirror.lease));
+    assert(protocol_coordinator_media_validate(&iptv.lease));
+    assert(runtime.takeover_calls == 3u);
+    assert(runtime.takeover_lease.owner == PLAYER_MEDIA_OWNER_AIRPLAY_MIRROR);
+    assert(protocol_coordinator_media_release(&iptv.lease));
+    protocol_coordinator_stop();
+    fake_runtime_destroy(&runtime);
+}
+
+static void test_airplay_takeover_stale_release(void)
+{
+    ProtocolCoordinatorConfig config = {
+        .enabled = {true, true, true},
+        .exclusive_media_resources = true,
+    };
+    FakeRuntime runtime;
+    ProtocolCoordinatorOperations operations;
+    ProtocolMediaTransaction airplay;
+    ProtocolMediaTransaction dlna;
+    PlayerOwnershipLease current;
+
+    fake_runtime_init(&runtime);
+    runtime.iptv_result = true;
+    runtime.dlna_result = true;
+    runtime.airplay_result = true;
+    runtime.airplay.running = true;
+    runtime.takeover_result = true;
+    runtime.takeover_claim_before_release = true;
+    operations = fake_operations(&runtime);
+    protocol_coordinator_reset();
+    assert(protocol_coordinator_start(&config, &operations));
+    assert(wait_for_service_state(PROTOCOL_SERVICE_AIRPLAY,
+                                  PROTOCOL_SERVICE_RUNNING));
+
+    assert(protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO,
+                                            44u, &airplay));
+    protocol_coordinator_media_end(&airplay);
+    assert(!protocol_coordinator_media_begin(PLAYER_MEDIA_OWNER_DLNA, 1u,
+                                             &dlna));
+    protocol_coordinator_tick();
+    assert(runtime.takeover_calls == 1u);
+    assert(runtime.takeover_claimed.owner == PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO);
+    assert(runtime.takeover_claimed.token == 999u);
+    assert(protocol_coordinator_media_current(&current));
+    assert(current.owner == PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO);
+    assert(current.token == 999u);
+    assert(snapshot().active_media.token == 999u);
+    assert(protocol_coordinator_media_release(&current));
+    protocol_coordinator_stop();
+    fake_runtime_destroy(&runtime);
 }
 
 static void test_media_guard(void)
@@ -1466,6 +1699,9 @@ int main(void)
     test_runtime_operation_order();
     test_runtime_degraded_and_network_disabled();
     test_media_takeover_and_stale_lease();
+    test_media_session_black_box_sequence();
+    test_airplay_takeover_contract();
+    test_airplay_takeover_stale_release();
     test_exclusive_resource_modes_and_first_owner();
     test_exclusive_resource_restart_retries();
     test_background_quiesce_failure_retries();

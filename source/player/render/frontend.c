@@ -623,6 +623,8 @@ void frontend_shutdown(ViewContext *ctx)
 
 bool frontend_render(ViewContext *ctx)
 {
+    bool media_render_ready;
+
     if (!ctx || !ctx->status.foreground_video_active)
     {
         return false;
@@ -660,7 +662,8 @@ bool frontend_render(ViewContext *ctx)
         if (ctx->status.active_view != PLAYER_VIEW_VIDEO)
             return false;
 
-        if (frontend_loading_only(ctx))
+        media_render_ready = player_video_render_ready();
+        if (frontend_loading_only(ctx) || !media_render_ready)
         {
 #if defined(NXCAST_USE_IMGUI_UI)
             slot = dkQueueAcquireImage(ctx->dk3d_queue, ctx->dk3d_swapchain);
@@ -732,7 +735,8 @@ bool frontend_render(ViewContext *ctx)
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        if (frontend_loading_only(ctx))
+        media_render_ready = player_video_render_ready();
+        if (frontend_loading_only(ctx) || !media_render_ready)
         {
             frontend_overlay_render_gl(ctx);
             if (eglSwapBuffers(ctx->egl_display, ctx->egl_surface) != EGL_TRUE)
@@ -769,7 +773,8 @@ bool frontend_render(ViewContext *ctx)
         return false;
 
     bool rendered = false;
-    if (!frontend_loading_only(ctx))
+    media_render_ready = player_video_render_ready();
+    if (!frontend_loading_only(ctx) && media_render_ready)
     {
         rendered = player_video_render_sw(pixels,
                                           (int)ctx->status.display_width,

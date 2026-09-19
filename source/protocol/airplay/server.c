@@ -60,6 +60,7 @@ typedef struct
     atomic_uint_fast64_t reverse_session_id;
     uint32_t peer_ipv4_address;
     uint32_t diagnostic_thread_generation;
+    bool local_media_pool;
 } AirPlayServerClient;
 
 struct AirPlayServerState
@@ -505,9 +506,11 @@ static AIRPLAY_THREAD_RETURN airplay_server_client_thread(void *argument)
         AIRPLAY_THREAD_FINISH();
     server = client->server;
     socket_fd = atomic_load(&client->socket_fd);
-    AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control client-worker entered slot=%zu fd=%d\n",
-                       (unsigned long long)AIRPLAY_TRACE_NOW_MS(), client->index,
-                       socket_fd);
+    AIRPLAY_TRACE_SYNC(
+        "[airplay] t_ms=%llu %s client-worker entered slot=%zu fd=%d\n",
+        (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+        client->local_media_pool ? "local-media" : "control",
+        client->index, socket_fd);
     buffer = malloc(buffer_capacity);
     request = calloc(1, sizeof(*request));
     response = calloc(1, sizeof(*response));
@@ -724,12 +727,21 @@ static void airplay_server_reap_clients(AirPlayServerState *server)
     }
 }
 
-static AirPlayServerClient *airplay_server_available_client(AirPlayServerState *server)
+static bool airplay_server_peer_is_loopback(uint32_t peer_ipv4_address)
 {
+    return (ntohl(peer_ipv4_address) & 0xff000000U) == 0x7f000000U;
+}
+
+static AirPlayServerClient *airplay_server_available_client(
+    AirPlayServerState *server, bool local_media)
+{
+    size_t begin = local_media ? AIRPLAY_SERVER_MAX_CONTROL_CLIENTS : 0u;
+    size_t end = local_media ? AIRPLAY_SERVER_MAX_CLIENTS
+                             : AIRPLAY_SERVER_MAX_CONTROL_CLIENTS;
     size_t index;
 
     airplay_server_reap_clients(server);
-    for (index = 0; index < AIRPLAY_SERVER_MAX_CLIENTS; ++index)
+    for (index = begin; index < end; ++index)
     {
         if (!server->clients[index].thread_started)
             return &server->clients[index];
@@ -799,6 +811,7 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         socklen_t peer_length = sizeof(peer);
         int client_socket = airplay_server_diagnostic_accept(
             listen_socket, (struct sockaddr *)&peer, &peer_length);
+        bool local_media;
         if (client_socket < 0)
             continue;
         if (!atomic_load(&server->running))
@@ -808,8 +821,10 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
             break;
         }
 
-        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu control accepted peer=%s:%u fd=%d\n",
+        local_media = airplay_server_peer_is_loopback(peer.sin_addr.s_addr);
+        AIRPLAY_TRACE_SYNC("[airplay] t_ms=%llu accepted pool=%s peer=%s:%u fd=%d\n",
                            (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                           local_media ? "local-media" : "control",
                            inet_ntoa(peer.sin_addr), ntohs(peer.sin_port),
                            client_socket);
 
@@ -822,9 +837,17 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         airplay_server_set_socket_timeout(client_socket, SO_RCVTIMEO, AIRPLAY_SERVER_SOCKET_POLL_MS);
         airplay_server_set_socket_timeout(client_socket, SO_SNDTIMEO, server->config.send_timeout_ms);
 
-        AirPlayServerClient *client = airplay_server_available_client(server);
+        AirPlayServerClient *client = airplay_server_available_client(
+            server, local_media);
         if (!client)
         {
+            AIRPLAY_TRACE_SYNC(
+                "[airplay] t_ms=%llu rejected pool=%s reason=capacity "
+                "limit=%u\n",
+                (unsigned long long)AIRPLAY_TRACE_NOW_MS(),
+                local_media ? "local-media" : "control",
+                local_media ? AIRPLAY_SERVER_MAX_LOCAL_MEDIA_CLIENTS
+                            : AIRPLAY_SERVER_MAX_CONTROL_CLIENTS);
             airplay_server_send_error(client_socket, 503);
             shutdown(client_socket, SHUT_RDWR);
             airplay_server_diagnostic_close(client_socket);
@@ -832,6 +855,7 @@ static AIRPLAY_THREAD_RETURN airplay_server_listener_thread(void *argument)
         }
         atomic_store(&client->socket_fd, client_socket);
         client->peer_ipv4_address = peer.sin_addr.s_addr;
+        client->local_media_pool = local_media;
         atomic_store(&client->reverse_session_id, 0u);
         atomic_store(&client->active, true);
         atomic_store(&client->finished, false);

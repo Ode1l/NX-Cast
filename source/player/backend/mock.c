@@ -295,6 +295,13 @@ static void mock_render_detach(void)
 {
 }
 
+static bool mock_render_ready(void)
+{
+    return g_has_media && g_state != PLAYER_STATE_LOADING &&
+           g_state != PLAYER_STATE_IDLE && g_state != PLAYER_STATE_STOPPED &&
+           g_state != PLAYER_STATE_ERROR;
+}
+
 static bool mock_render_frame_gl(int fbo, int width, int height, bool flip_y)
 {
     (void)fbo;
@@ -369,6 +376,7 @@ const BackendOps g_mock_ops = {
     .pump_events = mock_pump_events,
     .wakeup = mock_wakeup,
     .render_supported = mock_render_supported,
+    .render_ready = mock_render_ready,
     .render_attach_gl = mock_render_attach_gl,
     .render_attach_sw = mock_render_attach_sw,
     .render_attach_dk3d = mock_render_attach_dk3d,

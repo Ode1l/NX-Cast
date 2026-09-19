@@ -127,6 +127,7 @@ AIRPLAY_PLIST_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_plist
 AIRPLAY_RTSP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_rtsp
 AIRPLAY_SESSION_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_session
 AIRPLAY_RTSP_STACK_CHECK_OBJ := $(CURDIR)/$(BUILD)/tests/airplay_rtsp_stack_check.o
+AIRPLAY_AUDIO_STACK_CHECK_OBJ := $(CURDIR)/$(BUILD)/tests/airplay_audio_stack_check.o
 AIRPLAY_CRYPTO_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_crypto
 AIRPLAY_SRP_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_srp
 AIRPLAY_PAIRING_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_airplay_pairing
@@ -157,6 +158,7 @@ LOG_POLICY_TRACE_OBJ := $(CURDIR)/$(BUILD)/tests/test_log_policy_trace.o
 C_SIZE_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_c_size
 SOAP_WRITER_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_soap_writer
 PLAYER_TYPES_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_player_types
+PLAYER_UTF8_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_player_utf8
 IPTV_URL_TEST_BIN := $(CURDIR)/$(BUILD)/tests/test_iptv_url
 AIRPLAY_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_smoke_server
 AIRPLAY_PAIRING_SMOKE_SERVER_BIN := $(CURDIR)/$(BUILD)/tests/airplay_pairing_smoke_server
@@ -511,7 +513,7 @@ ifneq ($(APP_TITLEID),)
 	export NACPFLAGS += --titleid=$(APP_TITLEID)
 endif
 
-.PHONY: $(BUILD) clean all prepare-build-config dev-build dev-rebuild playback-baseline-trace-build playback-baseline-trace-rebuild full-trace-build full-trace-rebuild build-airplay-ffmpeg install-airplay-ffmpeg verify-airplay-ffmpeg release-build test-airplay test-airplay-session test-airplay-dns test-airplay-mdns-suspend test-airplay-server-lifecycle test-c-safety test-c-safety-sanitize test-c-size test-soap-writer test-player-types test-seek-target test-iptv-url test-log-mirror test-log-policy test-network-diagnostics test-runtime-diagnostics test-player-actor test-protocol-coordinator test-dlna-controller-session test-shutdown-order
+.PHONY: $(BUILD) clean all prepare-build-config dev-build dev-rebuild playback-baseline-trace-build playback-baseline-trace-rebuild full-trace-build full-trace-rebuild build-airplay-ffmpeg install-airplay-ffmpeg verify-airplay-ffmpeg release-build test-airplay test-airplay-session test-airplay-dns test-airplay-mdns-suspend test-airplay-server-lifecycle test-c-safety test-c-safety-sanitize test-c-size test-soap-writer test-player-types test-player-utf8 test-seek-target test-iptv-url test-log-mirror test-log-policy test-network-diagnostics test-runtime-diagnostics test-player-actor test-protocol-coordinator test-dlna-controller-session test-shutdown-order
 
 #---------------------------------------------------------------------------------
 all: sdmc_init $(BUILD)
@@ -616,7 +618,7 @@ release-build:
 
 test-protocol-coordinator:
 	@mkdir -p $(dir $(PROTOCOL_COORDINATOR_TEST_BIN))
-	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/player/core/ownership.c source/app/protocol_coordinator.c scripts/test_protocol_coordinator.c -o $(PROTOCOL_COORDINATOR_TEST_BIN)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/player/core/ownership.c source/app/protocol_media_session.c source/app/protocol_coordinator.c scripts/test_protocol_coordinator.c -o $(PROTOCOL_COORDINATOR_TEST_BIN)
 	@$(PROTOCOL_COORDINATOR_TEST_BIN)
 
 test-dlna-controller-session:
@@ -699,7 +701,12 @@ test-airplay-session:
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_THREAD_FLAGS) source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/protocol/logical_session.c scripts/test_airplay_session.c -o $(AIRPLAY_SESSION_TEST_BIN)
 	@$(AIRPLAY_SESSION_TEST_BIN)
 
-test-c-safety: test-c-size test-soap-writer test-player-types test-player-cache-policy test-seek-target test-iptv-url test-airplay-dns
+test-c-safety: test-c-size test-soap-writer test-player-types test-player-utf8 test-player-cache-policy test-seek-target test-iptv-url test-airplay-dns
+
+test-player-utf8:
+	@mkdir -p $(dir $(PLAYER_UTF8_TEST_BIN))
+	$(HOST_CC) $(HOST_CFLAGS) source/player/ui/utf8.c scripts/test_player_utf8.c -o $(PLAYER_UTF8_TEST_BIN)
+	@$(PLAYER_UTF8_TEST_BIN)
 
 test-c-safety-sanitize:
 	@probe="$${TMPDIR:-/tmp}/nxcast-sanitizer-probe-$$$$"; \
@@ -729,6 +736,7 @@ test-airplay: test-airplay-session test-airplay-server-lifecycle test-network-di
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/plist.c scripts/test_airplay_plist.c -o $(AIRPLAY_PLIST_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) source/protocol/airplay/protocol/rtsp.c scripts/test_airplay_rtsp.c -o $(AIRPLAY_RTSP_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) -Wframe-larger-than=32768 -c source/protocol/airplay/protocol/rtsp.c -o $(AIRPLAY_RTSP_STACK_CHECK_OBJ)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) -Wframe-larger-than=8192 -c source/protocol/airplay/mirror/audio.c -o $(AIRPLAY_AUDIO_STACK_CHECK_OBJ)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c scripts/test_airplay_crypto.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_CRYPTO_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 source/protocol/airplay/security/crypto.c source/protocol/airplay/security/srp.c scripts/test_airplay_srp.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_SRP_TEST_BIN)
 	$(HOST_CC) $(HOST_CFLAGS) $(HOST_MBEDTLS_CFLAGS) $(HOST_SODIUM_CFLAGS) -DAIRPLAY_CRYPTO_HAVE_ED25519=1 -DAIRPLAY_TESTING=1 source/protocol/airplay/protocol/plist.c source/protocol/airplay/protocol/rtsp.c source/protocol/airplay/security/crypto.c source/protocol/airplay/security/identity.c source/protocol/airplay/security/srp.c source/protocol/airplay/security/pairing_store.c source/protocol/airplay/security/pairing.c scripts/test_airplay_pairing.c $(HOST_MBEDTLS_LIBS) $(HOST_SODIUM_LIBS) -o $(AIRPLAY_PAIRING_TEST_BIN)

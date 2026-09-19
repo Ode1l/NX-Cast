@@ -32,5 +32,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config);
 void airplay_receiver_stop(void);
 bool airplay_receiver_is_running(void);
 uint16_t airplay_receiver_port(void);
+bool airplay_receiver_retain_media_session(uint64_t logical_session_id);
+bool airplay_receiver_release_media_session(uint64_t logical_session_id);
 
 #endif

@@ -57,6 +57,7 @@ typedef struct
     char airplay_pin[PLAYER_HOME_AIRPLAY_PIN_SIZE];
     char airplay_status[PLAYER_HOME_AIRPLAY_STATUS_MAX];
     bool iptv_ready;
+    bool iptv_playback_active;
     bool iptv_panel_open;
     bool iptv_sources_open;
     bool iptv_refreshing;

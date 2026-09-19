@@ -748,6 +748,17 @@ bool airplay_pairing_session_shared_secret(const AirPlayRtspSession *session,
     return true;
 }
 
+bool airplay_pairing_session_client_id(const AirPlayRtspSession *session,
+                                       uint8_t output[32])
+{
+    const AirPlayPairingSession *pairing = session ? session->security_context : NULL;
+
+    if (!pairing || pairing->state != AIRPLAY_PAIRING_STATE_VERIFIED || !output)
+        return false;
+    memcpy(output, pairing->client_ed_public, sizeof(pairing->client_ed_public));
+    return true;
+}
+
 bool airplay_pairing_service_device_id(const AirPlayPairingService *service,
                                        uint8_t output[6])
 {

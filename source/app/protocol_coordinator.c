@@ -94,6 +94,8 @@ static void coordinator_resource_worker_run(ProtocolResourceWorker *worker);
 static bool coordinator_launch_resource_worker(void);
 static bool coordinator_resource_services_match_locked(
     ProtocolResourceMode mode);
+static ProtocolMediaTransitionStatus coordinator_apply_media_event(
+    const ProtocolMediaEvent *event, bool allow_authority_event);
 
 static uint64_t coordinator_monotonic_ms(void)
 {
@@ -218,6 +220,10 @@ static bool operations_valid(const ProtocolCoordinatorConfig *config,
     if (config->exclusive_media_resources &&
         !operations->set_background_network_suspended)
         return false;
+    if (config->exclusive_media_resources &&
+        config->enabled[PROTOCOL_SERVICE_AIRPLAY] &&
+        !operations->airplay_release_active_media)
+        return false;
     for (index = 0; index < PROTOCOL_SERVICE_COUNT; ++index)
     {
         if (config->enabled[index] &&
@@ -299,6 +305,27 @@ static bool coordinator_accepts_guard(bool allow_stopping)
     return accepts;
 }
 
+static bool owner_is_airplay(PlayerMediaOwner owner)
+{
+    return owner == PLAYER_MEDIA_OWNER_AIRPLAY_VIDEO ||
+           owner == PLAYER_MEDIA_OWNER_AIRPLAY_MIRROR;
+}
+
+static bool coordinator_release_airplay_owner(
+    const PlayerOwnershipLease *lease)
+{
+    bool (*callback)(const PlayerOwnershipLease *, void *) = NULL;
+    void *context = NULL;
+
+    if (!lease || !owner_is_airplay(lease->owner))
+        return false;
+    coordinator_lock();
+    callback = g_coordinator.operations.airplay_release_active_media;
+    context = g_coordinator.operations.context;
+    coordinator_unlock();
+    return callback && callback(lease, context);
+}
+
 static bool coordinator_exclusive_resources_enabled(void)
 {
     bool enabled;
@@ -311,30 +338,21 @@ static bool coordinator_exclusive_resources_enabled(void)
 
 static void coordinator_set_active_media(const PlayerOwnershipLease *lease)
 {
-    coordinator_lock();
+    ProtocolMediaEvent event = {0};
+
     if (lease)
     {
-        if (g_coordinator.snapshot.active_media.generation != lease->generation)
-        {
-            g_coordinator.playback_observed_generation = lease->generation;
-            g_coordinator.playback_seen_active = false;
-            g_coordinator.media_claim_ms = coordinator_monotonic_ms();
-            g_coordinator.media_ready_ms = 0u;
-        }
-        g_coordinator.snapshot.active_media = *lease;
+        event.kind = PROTOCOL_MEDIA_EVENT_CLAIMED;
+        event.lease = *lease;
     }
     else
     {
-        memset(&g_coordinator.snapshot.active_media, 0,
-               sizeof(g_coordinator.snapshot.active_media));
-        g_coordinator.playback_observed_generation = 0u;
-        g_coordinator.playback_seen_active = false;
-        g_coordinator.media_claim_ms = 0u;
-        g_coordinator.media_ready_ms = 0u;
+        coordinator_lock();
+        event.kind = PROTOCOL_MEDIA_EVENT_RELEASED;
+        event.lease = g_coordinator.snapshot.media_session.lease;
+        coordinator_unlock();
     }
-    coordinator_recompute_state();
-    coordinator_bump_revision();
-    coordinator_unlock();
+    (void)coordinator_apply_media_event(&event, true);
 }
 
 static void coordinator_set_desired_resource_mode(ProtocolResourceMode mode)
@@ -492,42 +510,26 @@ static void coordinator_set_discovery_suspended_for_policy(
 static void coordinator_sync_active_media(void)
 {
     PlayerOwnershipLease current = {0};
+    PlayerOwnershipLease observed = {0};
+    ProtocolMediaEvent event = {0};
     bool has_current = player_ownership_current(&current);
+    bool changed;
 
     coordinator_lock();
-    if ((!has_current &&
-         g_coordinator.snapshot.active_media.owner != PLAYER_MEDIA_OWNER_NONE) ||
-        (has_current &&
-         (g_coordinator.snapshot.active_media.owner != current.owner ||
-          g_coordinator.snapshot.active_media.token != current.token ||
-          g_coordinator.snapshot.active_media.generation != current.generation)))
-    {
-        if (has_current)
-        {
-            if (g_coordinator.snapshot.active_media.generation !=
-                current.generation)
-            {
-                g_coordinator.playback_observed_generation =
-                    current.generation;
-                g_coordinator.playback_seen_active = false;
-                g_coordinator.media_claim_ms = coordinator_monotonic_ms();
-                g_coordinator.media_ready_ms = 0u;
-            }
-            g_coordinator.snapshot.active_media = current;
-        }
-        else
-        {
-            memset(&g_coordinator.snapshot.active_media, 0,
-                   sizeof(g_coordinator.snapshot.active_media));
-            g_coordinator.playback_observed_generation = 0u;
-            g_coordinator.playback_seen_active = false;
-            g_coordinator.media_claim_ms = 0u;
-            g_coordinator.media_ready_ms = 0u;
-        }
-        coordinator_recompute_state();
-        coordinator_bump_revision();
-    }
+    observed = g_coordinator.snapshot.media_session.lease;
     coordinator_unlock();
+    changed = has_current
+                  ? observed.owner != current.owner ||
+                        observed.token != current.token ||
+                        observed.generation != current.generation
+                  : observed.owner != PLAYER_MEDIA_OWNER_NONE;
+    if (changed)
+    {
+        event.kind = has_current ? PROTOCOL_MEDIA_EVENT_CLAIMED
+                                 : PROTOCOL_MEDIA_EVENT_RELEASED;
+        event.lease = has_current ? current : observed;
+        (void)coordinator_apply_media_event(&event, true);
+    }
     coordinator_set_desired_resource_mode(
         has_current ? resource_mode_for_owner(current.owner)
                     : PROTOCOL_RESOURCE_MODE_HOME);
@@ -1029,7 +1031,6 @@ static bool airplay_status_equal(const ProtocolAirPlayStatus *left,
 
 void protocol_coordinator_reset(void)
 {
-    PlayerOwnershipLease empty = {0};
     uint32_t revision;
     bool runtime_active;
 
@@ -1067,7 +1068,9 @@ void protocol_coordinator_reset(void)
     g_coordinator.media_ready_ms = 0u;
     g_coordinator.playback_observed_generation = 0u;
     g_coordinator.playback_seen_active = false;
-    g_coordinator.snapshot.active_media = empty;
+    protocol_media_session_init(&g_coordinator.snapshot.media_session);
+    g_coordinator.snapshot.active_media =
+        g_coordinator.snapshot.media_session.lease;
     g_coordinator.snapshot.desired_resource_mode =
         PROTOCOL_RESOURCE_MODE_HOME;
     g_coordinator.snapshot.applied_resource_mode =
@@ -1240,8 +1243,9 @@ bool protocol_coordinator_begin_start(const ProtocolCoordinatorConfig *config)
         return false;
     }
 
-    memset(&g_coordinator.snapshot.active_media, 0,
-           sizeof(g_coordinator.snapshot.active_media));
+    protocol_media_session_init(&g_coordinator.snapshot.media_session);
+    g_coordinator.snapshot.active_media =
+        g_coordinator.snapshot.media_session.lease;
     g_coordinator.snapshot.desired_resource_mode =
         PROTOCOL_RESOURCE_MODE_HOME;
     g_coordinator.snapshot.applied_resource_mode =
@@ -1331,8 +1335,9 @@ void protocol_coordinator_finish_stop(void)
                 coordinator_monotonic_ms();
         }
     }
-    memset(&g_coordinator.snapshot.active_media, 0,
-           sizeof(g_coordinator.snapshot.active_media));
+    protocol_media_session_init(&g_coordinator.snapshot.media_session);
+    g_coordinator.snapshot.active_media =
+        g_coordinator.snapshot.media_session.lease;
     g_coordinator.media_claim_ms = 0u;
     g_coordinator.media_ready_ms = 0u;
     g_coordinator.playback_observed_generation = 0u;
@@ -1358,14 +1363,74 @@ void protocol_coordinator_set_playback_active(bool active)
         PROTOCOL_DISCOVERY_SUSPEND_PLAYBACK_ACTIVITY, active);
 }
 
+static ProtocolMediaTransitionStatus coordinator_apply_media_event(
+    const ProtocolMediaEvent *event, bool allow_authority_event)
+{
+    ProtocolMediaTransitionStatus status;
+    uint32_t previous_generation;
+
+    if (!event)
+        return PROTOCOL_MEDIA_TRANSITION_INVALID;
+    if (!allow_authority_event &&
+        (event->kind == PROTOCOL_MEDIA_EVENT_CLAIMED ||
+         event->kind == PROTOCOL_MEDIA_EVENT_RELEASED ||
+         event->kind == PROTOCOL_MEDIA_EVENT_RESET))
+        return PROTOCOL_MEDIA_TRANSITION_INVALID;
+
+    coordinator_lock();
+    previous_generation =
+        g_coordinator.snapshot.media_session.lease.generation;
+    status = protocol_media_session_transition(
+        &g_coordinator.snapshot.media_session, event);
+    if (status == PROTOCOL_MEDIA_TRANSITION_APPLIED)
+    {
+        g_coordinator.snapshot.active_media =
+            g_coordinator.snapshot.media_session.lease;
+        if (g_coordinator.snapshot.media_session.lifecycle ==
+            PROTOCOL_MEDIA_SESSION_IDLE)
+        {
+            g_coordinator.playback_observed_generation = 0u;
+            g_coordinator.playback_seen_active = false;
+            g_coordinator.media_claim_ms = 0u;
+            g_coordinator.media_ready_ms = 0u;
+        }
+        else if (g_coordinator.snapshot.media_session.lease.generation !=
+                 previous_generation)
+        {
+            g_coordinator.playback_observed_generation =
+                g_coordinator.snapshot.media_session.lease.generation;
+            g_coordinator.playback_seen_active = false;
+            g_coordinator.media_claim_ms = coordinator_monotonic_ms();
+            g_coordinator.media_ready_ms = 0u;
+        }
+        coordinator_recompute_state();
+        coordinator_bump_revision();
+    }
+    coordinator_unlock();
+    return status;
+}
+
+ProtocolMediaTransitionStatus protocol_coordinator_media_submit_event(
+    const ProtocolMediaEvent *event)
+{
+    return coordinator_apply_media_event(event, false);
+}
+
 void protocol_coordinator_observe_playback(bool active, bool terminal)
 {
+    ProtocolMediaEvent playback_event = {0};
     PlayerOwnershipLease lease = {0};
     uint64_t now_ms = coordinator_monotonic_ms();
     bool seen_active = false;
     bool release = false;
 
     protocol_coordinator_set_playback_active(active);
+    if (active && protocol_coordinator_media_current(&lease))
+    {
+        playback_event.kind = PROTOCOL_MEDIA_EVENT_ACTIVE;
+        playback_event.lease = lease;
+        (void)protocol_coordinator_media_submit_event(&playback_event);
+    }
     coordinator_lock();
     if (g_coordinator.exclusive_media_resources &&
         g_coordinator.snapshot.active_media.owner != PLAYER_MEDIA_OWNER_NONE)
@@ -1414,6 +1479,9 @@ void protocol_coordinator_observe_playback(bool active, bool terminal)
 
     if (release)
     {
+        playback_event.kind = PROTOCOL_MEDIA_EVENT_ENDED;
+        playback_event.lease = lease;
+        (void)protocol_coordinator_media_submit_event(&playback_event);
         COORDINATOR_LOG_INFO(
             "[protocol-coordinator] event=terminal-release owner=%s "
             "token=%llu generation=%u seen_active=%d\n",
@@ -1422,6 +1490,63 @@ void protocol_coordinator_observe_playback(bool active, bool terminal)
             seen_active ? 1 : 0);
         (void)protocol_coordinator_media_release(&lease);
     }
+}
+
+void protocol_coordinator_observe_player_state(PlayerState state)
+{
+    ProtocolMediaEvent event = {0};
+    PlayerOwnershipLease lease = {0};
+    bool active = false;
+    bool terminal = false;
+    bool submit_event = false;
+
+    if (protocol_coordinator_media_current(&lease))
+    {
+        event.lease = lease;
+        switch (state)
+        {
+        case PLAYER_STATE_LOADING:
+        case PLAYER_STATE_BUFFERING:
+            event.kind = PROTOCOL_MEDIA_EVENT_LOAD_REQUESTED;
+            submit_event = true;
+            break;
+        case PLAYER_STATE_SEEKING:
+            event.kind = PROTOCOL_MEDIA_EVENT_ACTIVE;
+            active = true;
+            submit_event = true;
+            break;
+        case PLAYER_STATE_PLAYING:
+            event.kind = PROTOCOL_MEDIA_EVENT_PLAYING;
+            active = true;
+            submit_event = true;
+            break;
+        case PLAYER_STATE_PAUSED:
+            event.kind = PROTOCOL_MEDIA_EVENT_PAUSED;
+            active = true;
+            submit_event = true;
+            break;
+        case PLAYER_STATE_ERROR:
+            event.kind = PROTOCOL_MEDIA_EVENT_FAILED;
+            terminal = true;
+            submit_event = true;
+            break;
+        case PLAYER_STATE_IDLE:
+        case PLAYER_STATE_STOPPED:
+            terminal = true;
+            break;
+        default:
+            break;
+        }
+        if (submit_event)
+            (void)protocol_coordinator_media_submit_event(&event);
+    }
+    else
+    {
+        terminal = state == PLAYER_STATE_IDLE ||
+                   state == PLAYER_STATE_STOPPED ||
+                   state == PLAYER_STATE_ERROR;
+    }
+    protocol_coordinator_observe_playback(active, terminal);
 }
 
 bool protocol_coordinator_get_snapshot(ProtocolCoordinatorSnapshot *snapshot_out)
@@ -1461,6 +1586,7 @@ bool protocol_coordinator_media_begin(PlayerMediaOwner owner, uint64_t token,
 {
     PlayerOwnershipLease lease;
     PlayerOwnershipLease previous = {0};
+    PlayerOwnershipLease previous_before_takeover = {0};
     bool has_previous;
 
     if (!transaction_out || owner == PLAYER_MEDIA_OWNER_NONE)
@@ -1473,6 +1599,30 @@ bool protocol_coordinator_media_begin(PlayerMediaOwner owner, uint64_t token,
             "token=%llu reason=lifecycle\n",
             player_media_owner_name(owner), (unsigned long long)token);
         return false;
+    }
+
+    if (coordinator_exclusive_resources_enabled() &&
+        player_ownership_current(&previous_before_takeover) &&
+        owner_is_airplay(previous_before_takeover.owner) &&
+        resource_mode_for_owner(previous_before_takeover.owner) !=
+            resource_mode_for_owner(owner))
+    {
+        COORDINATOR_LOG_INFO(
+            "[protocol-coordinator] event=takeover-begin owner=%s "
+            "previous_owner=%s previous_token=%llu\n",
+            player_media_owner_name(owner),
+            player_media_owner_name(previous_before_takeover.owner),
+            (unsigned long long)previous_before_takeover.token);
+        if (!coordinator_release_airplay_owner(
+                &previous_before_takeover))
+        {
+            COORDINATOR_LOG_INFO(
+                "[protocol-coordinator] event=reject action=takeover "
+                "owner=%s token=%llu reason=airplay-release-failed\n",
+                player_media_owner_name(owner),
+                (unsigned long long)token);
+            return false;
+        }
     }
 
     player_ownership_transition_begin();

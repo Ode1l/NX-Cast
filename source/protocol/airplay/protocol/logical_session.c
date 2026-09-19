@@ -16,6 +16,8 @@ typedef struct
     uint64_t connection_id;
     uint64_t logical_session_id;
     AirPlayConnectionKind kind;
+    uint8_t client_id[AIRPLAY_SESSION_CLIENT_ID_SIZE];
+    bool client_id_bound;
     bool logical_session_bound;
     bool used;
 } AirPlayConnectionEntry;
@@ -25,6 +27,10 @@ typedef struct
     char apple_session_id[AIRPLAY_SESSION_APPLE_ID_MAX + 1U];
     uint64_t logical_session_id;
     uint32_t connection_count;
+    uint32_t media_reference_count;
+    uint8_t client_id[AIRPLAY_SESSION_CLIENT_ID_SIZE];
+    bool client_id_bound;
+    bool transport_terminated;
     bool used;
 } AirPlayLogicalSessionEntry;
 
@@ -226,6 +232,40 @@ static AirPlayLogicalSessionEntry *find_free_logical(AirPlaySessionManager *mana
     return NULL;
 }
 
+static void release_logical_if_unreferenced(AirPlayLogicalSessionEntry *logical)
+{
+    if (logical && logical->connection_count == 0U &&
+        logical->media_reference_count == 0U)
+        memset(logical, 0, sizeof(*logical));
+}
+
+static void bind_connection(AirPlaySessionManager *manager,
+                            AirPlayConnectionEntry *connection,
+                            AirPlayLogicalSessionEntry *logical)
+{
+    AirPlayLogicalSessionEntry *previous;
+
+    if (!manager || !connection || !logical ||
+        (connection->logical_session_bound &&
+         connection->logical_session_id == logical->logical_session_id))
+        return;
+    if (connection->logical_session_bound)
+    {
+        previous = find_logical_by_id(manager, connection->logical_session_id);
+        if (previous && previous->connection_count > 0U)
+            previous->connection_count--;
+    }
+    connection->logical_session_id = logical->logical_session_id;
+    connection->logical_session_bound = true;
+    logical->connection_count++;
+    if (connection->client_id_bound && !logical->client_id_bound)
+    {
+        memcpy(logical->client_id, connection->client_id,
+               sizeof(logical->client_id));
+        logical->client_id_bound = true;
+    }
+}
+
 static uint64_t allocate_logical_id(AirPlaySessionManager *manager)
 {
     uint64_t candidate;
@@ -375,6 +415,15 @@ AirPlaySessionObserveResult airplay_session_manager_observe(
 
     if (apple_session_id && !connection->logical_session_bound)
     {
+        if (connection->client_id_bound && logical->client_id_bound &&
+            memcmp(connection->client_id, logical->client_id,
+                   AIRPLAY_SESSION_CLIENT_ID_SIZE) != 0)
+        {
+            if (new_connection)
+                memset(connection, 0, sizeof(*connection));
+            session_mutex_unlock(&manager->mutex);
+            return AIRPLAY_SESSION_OBSERVE_CONFLICT;
+        }
         if (!logical->used)
         {
             memset(logical, 0, sizeof(*logical));
@@ -391,9 +440,7 @@ AirPlaySessionObserveResult airplay_session_manager_observe(
                    strlen(apple_session_id) + 1U);
             logical->used = true;
         }
-        logical->connection_count++;
-        connection->logical_session_id = logical->logical_session_id;
-        connection->logical_session_bound = true;
+        bind_connection(manager, connection, logical);
     }
 
     fill_snapshot(connection, logical, snapshot_out);
@@ -430,13 +477,144 @@ bool airplay_session_manager_close(AirPlaySessionManager *manager,
             if (logical->connection_count == 0U)
             {
                 result_out->last_logical_connection = true;
-                memset(logical, 0, sizeof(*logical));
+                if (logical->transport_terminated &&
+                    logical->media_reference_count > 0U)
+                {
+                    result_out->terminal_media_session_id =
+                        logical->logical_session_id;
+                }
+                release_logical_if_unreferenced(logical);
             }
         }
     }
     memset(connection, 0, sizeof(*connection));
     session_mutex_unlock(&manager->mutex);
     return true;
+}
+
+bool airplay_session_manager_bind_client(
+    AirPlaySessionManager *manager,
+    uint64_t connection_id,
+    const uint8_t client_id[AIRPLAY_SESSION_CLIENT_ID_SIZE])
+{
+    AirPlayConnectionEntry *connection;
+    AirPlayLogicalSessionEntry *logical = NULL;
+    bool bound = false;
+
+    if (!manager || !connection_id || !client_id)
+        return false;
+    session_mutex_lock(&manager->mutex);
+    connection = find_connection(manager, connection_id);
+    if (!connection)
+        goto cleanup;
+    if (connection->client_id_bound &&
+        memcmp(connection->client_id, client_id,
+               AIRPLAY_SESSION_CLIENT_ID_SIZE) != 0)
+        goto cleanup;
+    if (connection->logical_session_bound)
+    {
+        logical = find_logical_by_id(manager, connection->logical_session_id);
+        if (!logical ||
+            (logical->client_id_bound &&
+             memcmp(logical->client_id, client_id,
+                    AIRPLAY_SESSION_CLIENT_ID_SIZE) != 0))
+            goto cleanup;
+    }
+    memcpy(connection->client_id, client_id, sizeof(connection->client_id));
+    connection->client_id_bound = true;
+    if (logical && !logical->client_id_bound)
+    {
+        memcpy(logical->client_id, client_id, sizeof(logical->client_id));
+        logical->client_id_bound = true;
+    }
+    bound = true;
+
+cleanup:
+    session_mutex_unlock(&manager->mutex);
+    return bound;
+}
+
+bool airplay_session_manager_mark_transport_teardown(
+    AirPlaySessionManager *manager,
+    uint64_t connection_id,
+    uint64_t *terminal_media_session_id_out)
+{
+    AirPlayConnectionEntry *connection;
+    AirPlayLogicalSessionEntry *matching = NULL;
+    size_t index;
+    bool marked = false;
+
+    if (!manager || !connection_id || !terminal_media_session_id_out)
+        return false;
+    *terminal_media_session_id_out = 0U;
+    session_mutex_lock(&manager->mutex);
+    connection = find_connection(manager, connection_id);
+    if (!connection || connection->kind != AIRPLAY_CONNECTION_RAOP ||
+        !connection->client_id_bound)
+        goto cleanup;
+    for (index = 0U; index < AIRPLAY_SESSION_MAX_LOGICAL_SESSIONS; ++index)
+    {
+        AirPlayLogicalSessionEntry *logical = &manager->logical_sessions[index];
+
+        if (!logical->used || !logical->client_id_bound ||
+            logical->media_reference_count == 0U ||
+            memcmp(logical->client_id, connection->client_id,
+                   AIRPLAY_SESSION_CLIENT_ID_SIZE) != 0)
+            continue;
+        if (matching)
+            goto cleanup;
+        matching = logical;
+    }
+    marked = true;
+    if (matching)
+    {
+        matching->transport_terminated = true;
+        if (matching->connection_count == 0U)
+            *terminal_media_session_id_out = matching->logical_session_id;
+    }
+
+cleanup:
+    session_mutex_unlock(&manager->mutex);
+    return marked;
+}
+
+bool airplay_session_manager_retain_media(AirPlaySessionManager *manager,
+                                          uint64_t logical_session_id)
+{
+    AirPlayLogicalSessionEntry *logical;
+    bool retained = false;
+
+    if (!manager || !logical_session_id)
+        return false;
+    session_mutex_lock(&manager->mutex);
+    logical = find_logical_by_id(manager, logical_session_id);
+    if (logical && logical->media_reference_count < UINT32_MAX)
+    {
+        logical->media_reference_count++;
+        retained = true;
+    }
+    session_mutex_unlock(&manager->mutex);
+    return retained;
+}
+
+bool airplay_session_manager_release_media(AirPlaySessionManager *manager,
+                                           uint64_t logical_session_id)
+{
+    AirPlayLogicalSessionEntry *logical;
+    bool released = false;
+
+    if (!manager || !logical_session_id)
+        return false;
+    session_mutex_lock(&manager->mutex);
+    logical = find_logical_by_id(manager, logical_session_id);
+    if (logical && logical->media_reference_count > 0U)
+    {
+        logical->media_reference_count--;
+        release_logical_if_unreferenced(logical);
+        released = true;
+    }
+    session_mutex_unlock(&manager->mutex);
+    return released;
 }
 
 const char *airplay_connection_kind_name(AirPlayConnectionKind kind)

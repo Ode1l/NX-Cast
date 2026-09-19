@@ -539,7 +539,8 @@ bool airplay_rtsp_response_set_body(AirPlayRtspResponse *response,
 {
     uint8_t *copy = NULL;
 
-    if (!response || body_length > AIRPLAY_RTSP_MAX_BODY_BYTES || (body_length != 0 && !body))
+    if (!response || body_length > AIRPLAY_RTSP_MAX_RESPONSE_BODY_BYTES ||
+        (body_length != 0 && !body))
         return false;
     if (body_length != 0)
     {
@@ -585,7 +586,7 @@ bool airplay_rtsp_response_encode(const AirPlayRtspResponse *response,
     uint8_t *output;
 
     if (!response || !bytes_out || !length_out || response->status_code < 100 ||
-        response->body_length > AIRPLAY_RTSP_MAX_BODY_BYTES ||
+        response->body_length > AIRPLAY_RTSP_MAX_RESPONSE_BODY_BYTES ||
         (response->body_length != 0 && !response->body))
     {
         return false;
@@ -613,7 +614,7 @@ bool airplay_rtsp_response_encode(const AirPlayRtspResponse *response,
             return false;
     }
     if (!rtsp_size_add(total, 2U, &total) || !rtsp_size_add(total, response->body_length, &total) ||
-        total > AIRPLAY_RTSP_MAX_MESSAGE_BYTES)
+        total > AIRPLAY_RTSP_MAX_RESPONSE_MESSAGE_BYTES)
     {
         return false;
     }

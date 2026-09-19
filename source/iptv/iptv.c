@@ -1000,6 +1000,11 @@ static bool iptv_catalog_build(IptvCatalog *catalog)
         if (catalog->channels[i].now_title[0] || catalog->channels[i].next_title[0])
             ++catalog->epg_channel_count;
     }
+    if (catalog->channel_count >= IPTV_MAX_CHANNELS)
+    {
+        log_warn("[iptv] channel limit reached max=%d; remaining entries were skipped\n",
+                 IPTV_MAX_CHANNELS);
+    }
     return true;
 }
 

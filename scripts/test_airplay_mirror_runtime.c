@@ -472,7 +472,7 @@ static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
           AIRPLAY_MIRROR_RUNTIME_PREPARING);
     CHECK(airplay_mirror_runtime_profile(runtime) ==
           AIRPLAY_STREAM_BRIDGE_PROFILE_AUDIO_ONLY);
-    airplay_mirror_runtime_record_audio(audio_only_session, runtime);
+    CHECK(airplay_mirror_runtime_record_audio(audio_only_session, runtime));
     pthread_mutex_lock(&player->mutex);
     CHECK(player->set_uri_count == completed_cycles);
     CHECK(player->play_count == completed_cycles);
@@ -504,7 +504,7 @@ static void run_audio_first_cycles(AirPlayMirrorRuntime *runtime,
     CHECK(airplay_mirror_runtime_audio_open(
         mirror_session, key, iv, AIRPLAY_MIRROR_AUDIO_CT_ALAC, 352u, 44100u,
         &audio_port, &control_port, runtime));
-    airplay_mirror_runtime_record_audio(mirror_session, runtime);
+    CHECK(airplay_mirror_runtime_record_audio(mirror_session, runtime));
     CHECK(airplay_mirror_runtime_open(
         mirror_session, key, connection_id, &mirror_port, runtime));
     CHECK(mirror_port != 0u);
@@ -582,6 +582,7 @@ int main(void)
     CHECK(airplay_mirror_runtime_create(&config, &runtime));
     if (runtime && avcc && idr && aac)
     {
+        CHECK(!airplay_mirror_runtime_record_audio(999u, runtime));
         for (unsigned cycle = 0u; cycle < 10u; ++cycle)
             run_cycle(runtime, &player, avcc, avcc_size, idr, idr_size, cycle);
         run_audio_first_cycles(runtime, &player, avcc, avcc_size, idr,

@@ -22,6 +22,7 @@ extern "C" {
 #include "player/ui/channel_list.h"
 #include "player/ui/layout.h"
 #include "player/ui/overlay.h"
+#include "player/ui/utf8.h"
 }
 
 extern "C" {
@@ -217,13 +218,16 @@ bool load_embedded_shaders(DkDevice device)
     return true;
 }
 
-#if defined(NXCAST_USE_PACKAGED_FONT) && NXCAST_USE_PACKAGED_FONT
 bool load_packaged_font(ImGuiIO &io)
 {
     static const char *kFontPath = "sdmc:/switch/NX-Cast/fonts/switch_font.ttf";
     FILE *file = fopen(kFontPath, "rb");
     if (!file)
+    {
+        log_warn("[player-imgui] packaged font unavailable path=%s; using Switch shared fonts\n",
+                 kFontPath);
         return false;
+    }
 
     if (fseek(file, 0, SEEK_END) != 0)
     {
@@ -253,13 +257,13 @@ bool load_packaged_font(ImGuiIO &io)
 
     ImFontConfig cfg;
     cfg.FontDataOwnedByAtlas = true;
-    cfg.OversampleH = 2;
-    cfg.OversampleV = 2;
+    cfg.OversampleH = 1;
+    cfg.OversampleV = 1;
     if (!io.Fonts->AddFontFromMemoryTTF(data,
                                         (int)size,
                                         22.0f,
                                         &cfg,
-                                        io.Fonts->GetGlyphRangesDefault()))
+                                        io.Fonts->GetGlyphRangesChineseFull()))
     {
         free(data);
         return false;
@@ -268,34 +272,33 @@ bool load_packaged_font(ImGuiIO &io)
     log_info("[player-imgui] loaded packaged font path=%s bytes=%ld\n", kFontPath, size);
     return true;
 }
-#endif
 
 void load_switch_fonts(ImGuiIO &io)
 {
     PlFontData standard;
+    PlFontData simplified;
+    PlFontData extended_simplified;
     PlFontData extended;
     ImFontConfig cfg;
     ImWchar extended_range[] = {0xe000, 0xe152, 0};
 
-#if defined(NXCAST_USE_PACKAGED_FONT) && NXCAST_USE_PACKAGED_FONT
     if (load_packaged_font(io))
         return;
-#endif
 
     if (!g_pl_initialized && R_SUCCEEDED(plInitialize(PlServiceType_User)))
         g_pl_initialized = true;
 
     if (!g_pl_initialized ||
-        R_FAILED(plGetSharedFontByType(&standard, PlSharedFontType_Standard)) ||
-        R_FAILED(plGetSharedFontByType(&extended, PlSharedFontType_NintendoExt)))
+        R_FAILED(plGetSharedFontByType(&standard, PlSharedFontType_Standard)))
     {
+        log_warn("[player-imgui] Switch shared font service unavailable; using ImGui default font\n");
         io.Fonts->AddFontDefault();
         return;
     }
 
     cfg.FontDataOwnedByAtlas = false;
-    cfg.OversampleH = 2;
-    cfg.OversampleV = 2;
+    cfg.OversampleH = 1;
+    cfg.OversampleV = 1;
     io.Fonts->AddFontFromMemoryTTF(standard.address,
                                    standard.size,
                                    22.0f,
@@ -303,11 +306,36 @@ void load_switch_fonts(ImGuiIO &io)
                                    io.Fonts->GetGlyphRangesDefault());
 
     cfg.MergeMode = true;
-    io.Fonts->AddFontFromMemoryTTF(extended.address,
-                                   extended.size,
-                                   22.0f,
-                                   &cfg,
-                                   extended_range);
+    if (R_SUCCEEDED(plGetSharedFontByType(
+            &simplified, PlSharedFontType_ChineseSimplified)))
+    {
+        io.Fonts->AddFontFromMemoryTTF(
+            simplified.address,
+            simplified.size,
+            22.0f,
+            &cfg,
+            io.Fonts->GetGlyphRangesChineseFull());
+    }
+    if (R_SUCCEEDED(plGetSharedFontByType(
+            &extended_simplified, PlSharedFontType_ExtChineseSimplified)))
+    {
+        io.Fonts->AddFontFromMemoryTTF(
+            extended_simplified.address,
+            extended_simplified.size,
+            22.0f,
+            &cfg,
+            io.Fonts->GetGlyphRangesChineseFull());
+    }
+    if (R_SUCCEEDED(plGetSharedFontByType(
+            &extended, PlSharedFontType_NintendoExt)))
+    {
+        io.Fonts->AddFontFromMemoryTTF(extended.address,
+                                       extended.size,
+                                       22.0f,
+                                       &cfg,
+                                       extended_range);
+    }
+    log_info("[player-imgui] loaded Switch shared font fallback\n");
 }
 
 bool create_imgui_context()
@@ -1314,12 +1342,22 @@ void draw_iptv_channel_drawer(ImDrawList *draw, const PlayerHomeViewState &home,
                              16.0f,
                              kPlayerText);
 
-    snprintf(filter_text,
-             sizeof(filter_text),
-             "%.72s%s%.64s",
-             home.iptv_active_filter[0] ? home.iptv_active_filter : "All channels",
-             home.iptv_search[0] ? "  /  Search: " : "",
-             home.iptv_search);
+    {
+        char filter_name[73];
+        char search[65];
+
+        player_utf8_copy_prefix(
+            filter_name, sizeof(filter_name),
+            home.iptv_active_filter[0] ? home.iptv_active_filter : "All channels",
+            72u);
+        player_utf8_copy_prefix(search, sizeof(search), home.iptv_search, 64u);
+        snprintf(filter_text,
+                 sizeof(filter_text),
+                 "%s%s%s",
+                 filter_name,
+                 search[0] ? "  /  Search: " : "",
+                 search);
+    }
     draw_home_text(draw, list_x, 132.0f, 15.0f, kPlayerAccent, filter_text);
     snprintf(page_text, sizeof(page_text), "%d / %d", current_page, page_count);
     draw_home_text(draw, 566.0f, 132.0f, 14.0f, kPlayerMuted, page_text);
@@ -1365,11 +1403,12 @@ void draw_iptv_channel_drawer(ImDrawList *draw, const PlayerHomeViewState &home,
             if (item_index >= item_count || !iptv_get_channel(item_index, &channel))
                 break;
 
-            snprintf(name, sizeof(name), "%.34s", channel.name);
-            snprintf(programme,
-                     sizeof(programme),
-                     "%.48s",
-                     channel.now_title[0] ? channel.now_title : "Programme guide unavailable");
+            player_utf8_copy_prefix(name, sizeof(name), channel.name, 34u);
+            player_utf8_copy_prefix(
+                programme,
+                sizeof(programme),
+                channel.now_title[0] ? channel.now_title : "Programme guide unavailable",
+                48u);
             format_program_window(channel.now_start, channel.now_stop, window, sizeof(window));
 
             draw->AddRectFilled(ImVec2(list_x, y),
@@ -1430,7 +1469,7 @@ void draw_iptv_channel_drawer(ImDrawList *draw, const PlayerHomeViewState &home,
 
     {
         char status[96];
-        snprintf(status, sizeof(status), "%.42s", home.iptv_status);
+        player_utf8_copy_prefix(status, sizeof(status), home.iptv_status, 42u);
         draw_home_text(draw, list_x, 630.0f, 13.0f, kPlayerMuted, status);
     }
     draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_DRAWER_ACTION_LEFT, (float)PLAYER_IPTV_DRAWER_ACTION_TOP),
@@ -1630,7 +1669,7 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
     char error_preview[128];
 
     if (home.has_error && home.error_line[0])
-        snprintf(error_preview, sizeof(error_preview), "%.52s", home.error_line);
+        player_utf8_copy_prefix(error_preview, sizeof(error_preview), home.error_line, 52u);
     else
         snprintf(error_preview, sizeof(error_preview), "No error recorded.");
 
@@ -1732,7 +1771,11 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
                  home.iptv_channel_count == 1 ? "" : "s",
                  home.iptv_source_count,
                  home.iptv_source_count == 1 ? "" : "s");
-        snprintf(status, sizeof(status), "%.52s", home.iptv_status[0] ? home.iptv_status : "IPTV is not initialized.");
+        player_utf8_copy_prefix(
+            status,
+            sizeof(status),
+            home.iptv_status[0] ? home.iptv_status : "IPTV is not initialized.",
+            52u);
         draw_home_text(draw, iptv_left + 32.0f, card_top + 166.0f, 20.0f, white, summary);
         draw_home_text(draw, iptv_left + 32.0f, card_top + 198.0f, 15.0f, IM_COL32(226, 249, 252, 220), status);
     }
@@ -1870,12 +1913,20 @@ void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float wi
     if (!home.iptv_sources_open)
     {
         char filter[192];
+        char filter_name[64];
+        char search[64];
+
+        player_utf8_copy_prefix(
+            filter_name, sizeof(filter_name),
+            home.iptv_active_filter[0] ? home.iptv_active_filter : "All channels",
+            28u);
+        player_utf8_copy_prefix(search, sizeof(search), home.iptv_search, 22u);
         snprintf(filter,
                  sizeof(filter),
-                 "FILTER  %.28s%s%.22s",
-                 home.iptv_active_filter[0] ? home.iptv_active_filter : "All channels",
-                 home.iptv_search[0] ? "     SEARCH  " : "",
-                 home.iptv_search);
+                 "FILTER  %s%s%s",
+                 filter_name,
+                 search[0] ? "     SEARCH  " : "",
+                 search);
         draw_home_text(draw, 72.0f, 136.0f, 15.0f, cyan, filter);
     }
 
@@ -1954,7 +2005,7 @@ void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float wi
                 IptvSource source = {};
                 if (!iptv_get_source(item_index, &source))
                     break;
-                snprintf(name_text, sizeof(name_text), "%.34s", source.name);
+                player_utf8_copy_prefix(name_text, sizeof(name_text), source.name, 34u);
                 snprintf(secondary_text,
                          sizeof(secondary_text),
                          "%s  /  %d channels%s",
@@ -1970,12 +2021,17 @@ void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float wi
                 IptvChannel channel = {};
                 if (!iptv_get_channel(item_index, &channel))
                     break;
-                snprintf(name_text, sizeof(name_text), "%.28s", channel.name);
-                snprintf(group_text, sizeof(group_text), "%.18s", channel.group[0] ? channel.group : "Ungrouped");
-                snprintf(secondary_text,
-                         sizeof(secondary_text),
-                         "%.48s",
-                         channel.now_title[0] ? channel.now_title : "Programme guide unavailable");
+                player_utf8_copy_prefix(name_text, sizeof(name_text), channel.name, 28u);
+                player_utf8_copy_prefix(
+                    group_text,
+                    sizeof(group_text),
+                    channel.group[0] ? channel.group : "Ungrouped",
+                    18u);
+                player_utf8_copy_prefix(
+                    secondary_text,
+                    sizeof(secondary_text),
+                    channel.now_title[0] ? channel.now_title : "Programme guide unavailable",
+                    48u);
                 favorite = channel.favorite;
                 has_program = channel.now_title[0] != '\0';
                 badge_id = channel.id;
@@ -2048,18 +2104,29 @@ void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float wi
         float programme_progress = 0.0f;
         const time_t now = time(nullptr);
 
-        snprintf(selected_name, sizeof(selected_name), "%.26s", selected_channel.name);
+        char selected_group[24];
+        char selected_source_name[26];
+        char tvg_id[80];
+
+        player_utf8_copy_prefix(selected_name, sizeof(selected_name), selected_channel.name, 26u);
+        player_utf8_copy_prefix(
+            selected_group,
+            sizeof(selected_group),
+            selected_channel.group[0] ? selected_channel.group : "Ungrouped",
+            22u);
+        player_utf8_copy_prefix(selected_source_name, sizeof(selected_source_name), selected_channel.source, 24u);
         snprintf(selected_source,
                  sizeof(selected_source),
-                 "%.22s  /  %.24s",
-                 selected_channel.group[0] ? selected_channel.group : "Ungrouped",
-                 selected_channel.source);
+                 "%s  /  %s",
+                 selected_group,
+                 selected_source_name);
         snprintf(selected_url, sizeof(selected_url), "%.44s", selected_channel.url);
+        player_utf8_copy_prefix(tvg_id, sizeof(tvg_id), selected_channel.tvg_id, 72u);
         snprintf(metadata,
                  sizeof(metadata),
-                 "%s%.72s%s",
-                 selected_channel.tvg_id[0] ? "tvg-id  " : "",
-                 selected_channel.tvg_id,
+                 "%s%s%s",
+                 tvg_id[0] ? "tvg-id  " : "",
+                 tvg_id,
                  selected_channel.logo_cached ? "  /  Logo cached" : (selected_channel.logo_url[0] ? "  /  Logo queued" : ""));
         format_program_window(selected_channel.now_start, selected_channel.now_stop, now_window, sizeof(now_window));
         format_program_window(selected_channel.next_start, selected_channel.next_stop, next_window, sizeof(next_window));
@@ -2112,7 +2179,7 @@ void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float wi
         const ImU32 guide_accent = guide_connected ? IM_COL32(74, 190, 151, 255) : IM_COL32(235, 160, 66, 255);
         const char *guide_action;
 
-        snprintf(source_name, sizeof(source_name), "%.28s", selected_source.name);
+        player_utf8_copy_prefix(source_name, sizeof(source_name), selected_source.name, 28u);
         snprintf(source_url, sizeof(source_url), "%.46s", selected_source.url);
         snprintf(source_state,
                  sizeof(source_state),
@@ -2197,7 +2264,7 @@ void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float wi
                         kPlayerControlRadius);
     {
         char status[72];
-        snprintf(status, sizeof(status), "%.48s", home.iptv_status);
+        player_utf8_copy_prefix(status, sizeof(status), home.iptv_status, 48u);
         draw_home_text(draw, 92.0f, height - 76.0f, 14.0f, home.iptv_ready ? muted : red, status);
     }
     if (home.iptv_sources_open)
@@ -2447,7 +2514,9 @@ extern "C" bool frontend_imgui_overlay_render(ViewContext *ctx, int slot)
     if (!frontend_imgui_overlay_init(ctx))
         return false;
     has_player_overlay = player_ui_overlay_get_snapshot(&overlay) && overlay.kind != PLAYER_UI_OVERLAY_NONE;
-    show_iptv_panel = ctx->home_state_valid && ctx->home_state.iptv_panel_open;
+    show_iptv_panel = ctx->home_state_valid &&
+                      ctx->home_state.iptv_playback_active &&
+                      ctx->home_state.iptv_panel_open;
     if (!has_player_overlay && !show_iptv_panel)
         return false;
 
@@ -2472,7 +2541,10 @@ extern "C" bool frontend_imgui_overlay_render(ViewContext *ctx, int slot)
         draw_video_action_hints(draw,
                                 io->DisplaySize.x,
                                 io->DisplaySize.y,
-                                ctx->home_state_valid && ctx->home_state.iptv_channel_count > 1);
+                                ctx->home_state_valid &&
+                                    player_iptv_video_menu_available(
+                                        ctx->home_state.iptv_playback_active,
+                                        ctx->home_state.iptv_channel_count));
     }
     ImGui::Render();
 
@@ -2504,7 +2576,9 @@ extern "C" bool frontend_imgui_loading_render(ViewContext *ctx, int slot)
     ImGui::NewFrame();
     draw = ImGui::GetBackgroundDrawList();
     draw->AddRectFilled(ImVec2(0.0f, 0.0f), io->DisplaySize, IM_COL32(4, 6, 10, 255));
-    if (ctx->home_state_valid && ctx->home_state.iptv_panel_open)
+    if (ctx->home_state_valid &&
+        ctx->home_state.iptv_playback_active &&
+        ctx->home_state.iptv_panel_open)
     {
         draw_iptv_panel(draw, ctx->home_state, io->DisplaySize.x, io->DisplaySize.y);
     }
@@ -2518,12 +2592,17 @@ extern "C" bool frontend_imgui_loading_render(ViewContext *ctx, int slot)
         snprintf(fallback.line1, sizeof(fallback.line1), "PREPARING STREAM");
         draw_message(draw, fallback, PLAYER_STATE_LOADING, io->DisplaySize.x, io->DisplaySize.y);
     }
-    if (!ctx->home_state_valid || !ctx->home_state.iptv_panel_open)
+    if (!ctx->home_state_valid ||
+        !ctx->home_state.iptv_playback_active ||
+        !ctx->home_state.iptv_panel_open)
     {
         draw_video_action_hints(draw,
                                 io->DisplaySize.x,
                                 io->DisplaySize.y,
-                                ctx->home_state_valid && ctx->home_state.iptv_channel_count > 1);
+                                ctx->home_state_valid &&
+                                    player_iptv_video_menu_available(
+                                        ctx->home_state.iptv_playback_active,
+                                        ctx->home_state.iptv_channel_count));
     }
     ImGui::Render();
 

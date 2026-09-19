@@ -16,7 +16,7 @@ typedef Thread AirPlayAudioThread;
 typedef void (*AirPlayAudioThreadEntry)(void *argument);
 #define AIRPLAY_AUDIO_THREAD_RETURN void
 #define AIRPLAY_AUDIO_THREAD_FINISH() return
-#define AIRPLAY_AUDIO_THREAD_STACK_SIZE 0x10000u
+#define AIRPLAY_AUDIO_THREAD_STACK_SIZE 0x18000u
 #else
 #include <pthread.h>
 typedef pthread_t AirPlayAudioThread;
@@ -356,7 +356,10 @@ static void close_owned_socket(atomic_int *owner)
 static AIRPLAY_AUDIO_THREAD_RETURN audio_thread(void *argument)
 {
     AirPlayMirrorAudio *audio = argument;
-    uint8_t packet[AIRPLAY_MIRROR_AUDIO_MAX_PACKET];
+    uint8_t *packet = malloc(AIRPLAY_MIRROR_AUDIO_MAX_PACKET);
+
+    if (!packet)
+        AIRPLAY_AUDIO_THREAD_FINISH();
 
     while (atomic_load(&audio->running))
     {
@@ -381,20 +384,24 @@ static AIRPLAY_AUDIO_THREAD_RETURN audio_thread(void *argument)
             continue;
         if (data_fd >= 0 && FD_ISSET(data_fd, &read_set))
         {
-            ssize_t received = recvfrom(data_fd, packet, sizeof(packet), 0, NULL, NULL);
+            ssize_t received = recvfrom(data_fd, packet,
+                                        AIRPLAY_MIRROR_AUDIO_MAX_PACKET,
+                                        0, NULL, NULL);
             if (received > 0)
                 (void)airplay_mirror_audio_process_packet(audio, packet,
                                                           (size_t)received);
         }
         if (control_fd >= 0 && FD_ISSET(control_fd, &read_set))
         {
-            ssize_t received = recvfrom(control_fd, packet, sizeof(packet), 0,
-                                        NULL, NULL);
+            ssize_t received = recvfrom(control_fd, packet,
+                                        AIRPLAY_MIRROR_AUDIO_MAX_PACKET,
+                                        0, NULL, NULL);
             if (received > 0)
                 (void)airplay_mirror_audio_process_control_packet(
                     audio, packet, (size_t)received);
         }
     }
+    free(packet);
     AIRPLAY_AUDIO_THREAD_FINISH();
 }
 

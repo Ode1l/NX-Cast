@@ -5,6 +5,10 @@
 
 int main(void)
 {
+    assert(player_iptv_video_menu_available(true, 2));
+    assert(!player_iptv_video_menu_available(false, 2));
+    assert(!player_iptv_video_menu_available(true, 1));
+
     assert(player_iptv_page_start(0) == 0);
     assert(player_iptv_page_start(6) == 0);
     assert(player_iptv_page_start(7) == 7);

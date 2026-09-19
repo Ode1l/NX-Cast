@@ -28,16 +28,20 @@
 typedef enum
 {
     PLAYER_CACHE_POLICY_NETWORK = 0,
+    PLAYER_CACHE_POLICY_DIRECT_MP4,
+    PLAYER_CACHE_POLICY_AIRPLAY_REMOTE_HLS,
     PLAYER_CACHE_POLICY_AIRPLAY_MIRROR
 } PlayerCachePolicyKind;
 
 typedef struct
 {
     PlayerCachePolicyKind kind;
+    bool configure_cache;
     bool cache_enabled;
     unsigned int forward_mib;
     unsigned int backward_mib;
     unsigned int readahead_secs;
+    bool disable_http_persistence;
 } PlayerCachePolicy;
 
 PlayerCachePolicy player_cache_policy_for_uri(const char *uri);

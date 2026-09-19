@@ -33,6 +33,8 @@ typedef struct
 {
     bool (*claim_owner)(uint64_t session_id, void *user_data);
     void (*release_owner)(uint64_t session_id, void *user_data);
+    void (*control_attached)(uint64_t session_id, void *user_data);
+    void (*control_detached)(uint64_t session_id, void *user_data);
     bool (*load)(const char *url, const char *metadata, void *user_data);
     bool (*play)(void *user_data);
     bool (*pause)(void *user_data);
@@ -63,6 +65,11 @@ bool airplay_remote_video_route_local(AirPlayRemoteVideo *remote,
                                       bool *handled_out);
 void airplay_remote_video_session_closed(AirPlayRemoteVideo *remote,
                                          uint64_t session_id);
+bool airplay_remote_video_terminate_session(AirPlayRemoteVideo *remote,
+                                            uint64_t session_id);
+/* Clears protocol-side ownership after an external coordinator stopped media. */
+bool airplay_remote_video_relinquish_session(AirPlayRemoteVideo *remote,
+                                             uint64_t session_id);
 bool airplay_remote_video_url_supported(const char *url);
 
 #endif

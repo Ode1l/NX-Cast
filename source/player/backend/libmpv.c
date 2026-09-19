@@ -785,9 +785,8 @@ static void libmpv_reset_log_noise_locked(void)
     memset(g_log_noise_suppressed, 0, sizeof(g_log_noise_suppressed));
 }
 
-static bool libmpv_should_suppress_log(const char *prefix, const char *text)
+static bool libmpv_should_suppress_log(LibmpvLogNoise noise)
 {
-    LibmpvLogNoise noise = libmpv_classify_noisy_log(prefix, text);
     unsigned int seen;
     bool announce = false;
     bool suppress;
@@ -813,6 +812,19 @@ static bool libmpv_should_suppress_log(const char *prefix, const char *text)
     }
 
     return suppress;
+}
+
+static bool libmpv_noise_follows_media_transition(LibmpvLogNoise noise)
+{
+    bool transitioning;
+
+    if (noise == LIBMPV_LOG_NOISE_NONE)
+        return false;
+
+    mutexLock(&g_mutex);
+    transitioning = g_stopped || g_load_pending;
+    mutexUnlock(&g_mutex);
+    return transitioning;
 }
 
 static void libmpv_flush_log_noise_summary(void)
@@ -853,6 +865,8 @@ static void libmpv_set_option_string_checked(const char *name, const char *value
 
 static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
 {
+    LibmpvLogNoise noise;
+    bool expected_transition_noise;
     char *text;
     size_t len;
 
@@ -875,13 +889,15 @@ static void libmpv_log_mpv_message(const mpv_event_log_message *msg)
         return;
     }
 
-    if (libmpv_should_suppress_log(msg->prefix, text))
+    noise = libmpv_classify_noisy_log(msg->prefix, text);
+    expected_transition_noise = libmpv_noise_follows_media_transition(noise);
+    if (libmpv_should_suppress_log(noise))
     {
         free(text);
         return;
     }
 
-    if (msg->log_level <= MPV_LOG_LEVEL_ERROR)
+    if (msg->log_level <= MPV_LOG_LEVEL_ERROR && !expected_transition_noise)
         log_error("[player-libmpv][%s] %s\n", msg->prefix ? msg->prefix : "mpv", text);
     else if (msg->log_level <= MPV_LOG_LEVEL_WARN)
         log_warn("[player-libmpv][%s] %s\n", msg->prefix ? msg->prefix : "mpv", text);
@@ -1239,20 +1255,24 @@ static bool libmpv_async_load_current(bool paused)
 
     snprintf(detail,
              sizeof(detail),
-             "paused=%d cache=%s/%u/%u/%u",
+             "paused=%d cache=%s/%u/%u/%u demux=%s http-persistent=%d",
              paused ? 1 : 0,
              player_cache_policy_name(cache_policy.kind),
              cache_policy.forward_mib, cache_policy.backward_mib,
-             cache_policy.readahead_secs);
+             cache_policy.readahead_secs, "auto",
+             cache_policy.disable_http_persistence ? 0 : 1);
     player_trace_log(
         "[media-cache] seq=%u t_ms=%llu phase=selected url_hash=%08x "
-        "policy=%s enabled=%d forward_mib=%u backward_mib=%u readahead_s=%u\n",
+        "policy=%s enabled=%d forward_mib=%u backward_mib=%u readahead_s=%u "
+        "configured=%d demux=%s http_persistent=%d\n",
         player_trace_current_media_seq(),
         (unsigned long long)player_trace_elapsed_ms(),
         player_trace_current_media_hash(),
         player_cache_policy_name(cache_policy.kind),
         cache_policy.cache_enabled ? 1 : 0, cache_policy.forward_mib,
-        cache_policy.backward_mib, cache_policy.readahead_secs);
+        cache_policy.backward_mib, cache_policy.readahead_secs,
+        cache_policy.configure_cache ? 1 : 0, "auto",
+        cache_policy.disable_http_persistence ? 0 : 1);
     libmpv_log_trace("loadfile", "dispatch", detail, g_uri);
     rc = mpv_command_async(g_mpv, LIBMPV_REPLY_LOADFILE, args);
     if (rc < 0)
@@ -1725,9 +1745,15 @@ static bool libmpv_init(void)
     libmpv_set_option_string_checked("audio-display", "no");
     libmpv_set_option_string_checked("image-display-duration", "inf");
     libmpv_set_option_string_checked("idle", "yes");
-    // Switch libass builds often lack fontconfig/coretext providers.
-    // Disable provider probing to avoid startup warnings for an OSD path we do not use.
+    // Switch libass has no system provider; use the font shipped on the SD card.
     libmpv_set_option_string_checked("sub-font-provider", "none");
+    libmpv_set_option_string_checked("sub-fonts-dir",
+                                     "sdmc:/switch/NX-Cast/fonts");
+    libmpv_set_option_string_checked("sub-font", "Source Han Sans CN");
+    libmpv_set_option_string_checked("osd-font-provider", "none");
+    libmpv_set_option_string_checked("osd-fonts-dir",
+                                     "sdmc:/switch/NX-Cast/fonts");
+    libmpv_set_option_string_checked("osd-font", "Source Han Sans CN");
     // Prefer hardware decode on Switch. If the libmpv package exposes the
     // explicit nvtegra backend, use it directly; otherwise fall back to mpv's
     // generic enabled path and let the selected render backend negotiate interop.
@@ -2344,6 +2370,17 @@ static void libmpv_render_detach(void)
         mpv_render_context_free(render_ctx);
 }
 
+static bool libmpv_render_ready(void)
+{
+    bool ready;
+
+    mutexLock(&g_mutex);
+    ready = g_has_media && g_file_loaded && !g_startup_render_hold &&
+            !g_stopped && g_last_error == 0;
+    mutexUnlock(&g_mutex);
+    return ready;
+}
+
 #ifdef HAVE_MPV_RENDER_GL
 static bool libmpv_render_frame_gl(int fbo, int width, int height, bool flip_y)
 {
@@ -2565,6 +2602,7 @@ const BackendOps g_libmpv_ops = {
     .pump_events = libmpv_pump_events,
     .wakeup = libmpv_wakeup,
     .render_supported = libmpv_render_supported,
+    .render_ready = libmpv_render_ready,
     .render_attach_gl = libmpv_render_attach_gl,
     .render_attach_sw = libmpv_render_attach_sw,
     .render_attach_dk3d = libmpv_render_attach_dk3d,
