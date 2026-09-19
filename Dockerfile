@@ -18,6 +18,7 @@ ARG NXCAST_FFMPEG_JOBS=4
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       build-essential \
+      fakeroot \
       ffmpeg \
       libavcodec-dev \
       libavformat-dev \
