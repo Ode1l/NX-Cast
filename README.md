@@ -271,8 +271,8 @@ Any branch push builds the project and updates the rolling prerelease:
 Formal release:
 
 ```bash
-git tag -a v0.2.0 -m "NX-Cast v0.2.0"
-git push origin v0.2.0
+git tag -a v0.3.0 -m "NX-Cast v0.3.0"
+git push origin v0.3.0
 ```
 
 The release workflow runs AirPlay host tests, requires `libmpv/deko3d` plus Ed25519, rejects obviously invalid small `NRO` outputs, and rejects packages containing runtime AirPlay secrets or diagnostic captures.

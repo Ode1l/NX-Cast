@@ -1,10 +1,10 @@
-# NX-Cast Release Notes
+# NX-Cast v0.3.0 Release Notes
 
 ## Release Highlights
 
-NX-Cast now combines its DLNA media receiver with an integrated IPTV player for Nintendo Switch homebrew.
+NX-Cast v0.3.0 combines its DLNA media receiver and IPTV player with experimental AirPlay video playback for Nintendo Switch homebrew.
 
-This build also includes experimental AirPlay URL/HLS playback and iPhone screen mirroring with PIN pairing. Both paths have automated host and Switch build coverage but are not yet claimed as real-device compatible.
+This release includes experimental AirPlay URL/HLS playback and iPhone screen mirroring with PIN pairing. These paths now have automated host/Switch build coverage and real-device testing, but remain experimental and are not a complete AirPlay 2 implementation.
 
 ### IPTV
 
@@ -15,6 +15,7 @@ This build also includes experimental AirPlay URL/HLS playback and iPhone screen
 - Cache `tvg-logo` metadata and image files for future UI use.
 - Open the channel browser during playback and switch channels without returning to Home.
 - Use controller or left-stick navigation throughout the channel and source screens.
+- Load up to 4,096 channels (586 seven-row pages) and render full CJK channel/programme names.
 
 ### Playback And UI
 
@@ -23,12 +24,14 @@ This build also includes experimental AirPlay URL/HLS playback and iPhone screen
 - Controller and touch playback overlay with timeline seeking.
 - Safer IPTV channel replacement that tears down the previous stream before loading the next one.
 - Single-owner arbitration prevents stale DLNA, IPTV, or AirPlay sessions from controlling a newer playback source.
+- Cleaner release diagnostics: expected decoder tail messages after Stop no longer appear as persistent Home-screen errors.
 
 ### Experimental AirPlay
 
 - Native DNS-SD discovery, persistent RTSP/HTTP control, PIN pairing, and trusted-client storage.
 - Direct URL/HLS playback, pause, seek, rate, status, and stop commands through the existing hardware player.
 - Experimental H.264/AAC screen mirroring through an isolated, fixed-source GPL PlayFair compatibility backend and the existing nvtegra/deko3d player.
+- Session and media lifecycles are separated so reconnects, explicit stops, and replacement videos do not reuse stale playback ownership.
 - Runtime identity and pairing files remain private on the SD card and are excluded from release packages.
 - AirPlay 2 multi-room/audio-only playback, AWDL, commercial FairPlay/DRM content, and Apple certification are not supported.
 

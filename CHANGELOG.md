@@ -4,18 +4,31 @@ All notable user-facing changes to NX-Cast are documented here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-19
+
 ### Added
 
 - Experimental AirPlay DNS-SD discovery, PIN pairing, URL/HLS controls, and private SD-card identity storage.
-- Experimental H.264/AAC screen mirroring with a fixed-source GPL PlayFair compatibility backend, MPEG-TS bridge, media clock, and nvtegra/deko3d playback integration; real iPhone/Switch acceptance remains pending.
+- Experimental H.264/AAC screen mirroring with a fixed-source GPL PlayFair compatibility backend, MPEG-TS bridge, media clock, and nvtegra/deko3d playback integration; representative real iPhone/Switch paths have been validated, but compatibility remains experimental.
 - Deterministic PlayFair stage-one/key tests, receiver capability smoke coverage, provenance, and packaged GPL license text.
 - Generation-safe player ownership across DLNA, IPTV, AirPlay remote video, and AirPlay mirroring.
 - AirPlay host protocol/media tests and strict Ed25519 release-build enforcement.
+- Protocol-neutral media ownership and lifecycle coordination across AirPlay, DLNA, and IPTV.
+- Full CJK UI glyph coverage with a packaged Source Han font and Switch shared-font fallback.
 
 ### Changed
 
 - Shutdown now stops AirPlay/DLNA workers before player, UI, logs, and network teardown.
 - Release packages include AirPlay storage, libsodium, and PlayFair notices while rejecting private identities, pairings, keys, logs, traces, dumps, and captures.
+- IPTV channel capacity increased from 1,024 to 4,096 entries (up to 586 seven-row pages).
+- Media caching, initial rendering, replacement playback, and controller-session handling were hardened for long-running network streams.
+
+### Fixed
+
+- Fixed stale AirPlay sessions preventing subsequent videos from replacing the current media.
+- Fixed player ownership races during cross-protocol takeover and asynchronous stop/reload paths.
+- Fixed benign FFmpeg tail errors after Stop appearing as persistent Home-screen failures.
+- Fixed Chinese IPTV channel names rendering as question marks when packaged or optional Switch fonts were unavailable.
 
 ## [0.2.0] - 2026-07-19
 
