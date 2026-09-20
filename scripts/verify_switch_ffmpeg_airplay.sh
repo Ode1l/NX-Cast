@@ -8,8 +8,13 @@ LIBAVCODEC="${PREFIX}/lib/libavcodec.a"
 LIBAVFORMAT="${PREFIX}/lib/libavformat.a"
 
 if ! command -v "${NM}" >/dev/null 2>&1; then
-    echo "Switch nm tool not found: ${NM}" >&2
-    exit 1
+    DEVKIT_NM="${DEVKITPRO:-/opt/devkitpro}/devkitA64/bin/aarch64-none-elf-nm"
+    if [[ ${NM} == aarch64-none-elf-nm && -x ${DEVKIT_NM} ]]; then
+        NM=${DEVKIT_NM}
+    else
+        echo "Switch nm tool not found: ${NM}" >&2
+        exit 1
+    fi
 fi
 
 for archive in "${LIBAVCODEC}" "${LIBAVFORMAT}"; do
