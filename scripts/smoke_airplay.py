@@ -287,7 +287,11 @@ def run_smoke(host: str, requested_port: int, server_binary: Path) -> None:
             shutdown_probe.sendall(b"POST /pair-setup RTSP/1.0\r\nCSeq: 9\r\n")
             process.terminate()
             process.wait(timeout=2.0)
-            assert shutdown_probe.recv(1) == b""
+            try:
+                assert shutdown_probe.recv(1) == b""
+            except ConnectionResetError:
+                # Closing with unread request bytes can reset TCP on Linux.
+                pass
         finally:
             shutdown_probe.close()
     finally:

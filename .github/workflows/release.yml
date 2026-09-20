@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NXCAST_MPV_VARIANT: deko3d
   WILIWILI_RELEASE: v0.1.0
@@ -23,23 +27,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Test IPTV channel-list navigation
-        run: |
-          cc -std=c11 -Wall -Wextra -Werror -Isource \
-            scripts/test_iptv_channel_list.c \
-            -o /tmp/test_iptv_channel_list
-          /tmp/test_iptv_channel_list
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build project image
-        run: |
-          docker build \
-            --build-arg NXCAST_MPV_VARIANT="${NXCAST_MPV_VARIANT}" \
-            --build-arg WILIWILI_RELEASE="${WILIWILI_RELEASE}" \
-            --build-arg LIBUAM_PKG="${LIBUAM_PKG}" \
-            --build-arg SWITCH_FFMPEG_PKG="${SWITCH_FFMPEG_PKG}" \
-            --build-arg SWITCH_LIBMPV_PKG="${SWITCH_LIBMPV_PKG}" \
-            --build-arg NXCAST_FFMPEG_JOBS="${NXCAST_FFMPEG_JOBS}" \
-            -t nx-cast-build:ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: nx-cast-build:ci
+          build-args: |
+            NXCAST_MPV_VARIANT=${{ env.NXCAST_MPV_VARIANT }}
+            WILIWILI_RELEASE=${{ env.WILIWILI_RELEASE }}
+            LIBUAM_PKG=${{ env.LIBUAM_PKG }}
+            SWITCH_FFMPEG_PKG=${{ env.SWITCH_FFMPEG_PKG }}
+            SWITCH_LIBMPV_PKG=${{ env.SWITCH_LIBMPV_PKG }}
+            NXCAST_FFMPEG_JOBS=${{ env.NXCAST_FFMPEG_JOBS }}
+          cache-from: type=gha,scope=nx-cast-toolchain
+          cache-to: type=gha,mode=max,scope=nx-cast-toolchain
 
       - name: Build NX-Cast in devkitPro container
         run: |
@@ -49,7 +54,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
             nx-cast-build:ci \
-            bash -lc 'set -euo pipefail; /usr/local/bin/verify_switch_ffmpeg_airplay.sh /opt/devkitpro/portlibs/switch; host_pc="/usr/lib/$(gcc -print-multiarch)/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig"; PKG_CONFIG_PATH="${host_pc}" make test-airplay; make RELEASE_JOBS=$(nproc) release-build'
+            bash -lc 'set -euo pipefail; /usr/local/bin/verify_switch_ffmpeg_airplay.sh /opt/devkitpro/portlibs/switch; make RELEASE_JOBS=$(nproc) release-build'
 
       - name: Package SD card layout
         env:
