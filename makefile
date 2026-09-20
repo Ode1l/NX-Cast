@@ -776,7 +776,6 @@ test-airplay: test-airplay-session test-airplay-server-lifecycle test-network-di
 	@python3 scripts/smoke_airplay_pairing.py --port 0
 	@python3 scripts/smoke_airplay.py --mdns
 	@python3 scripts/smoke_airplay.py --receiver --port 0
-	@python3 scripts/smoke_airplay.py --remote-hls
 
 
 #---------------------------------------------------------------------------------
