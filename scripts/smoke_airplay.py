@@ -160,22 +160,32 @@ def run_remote_hls_smoke(root: Path) -> None:
         try:
             port = server.server_address[1]
             for path in ("master.m3u8", "redirect.m3u8"):
-                result = subprocess.run(
-                    [
-                        ffprobe,
-                        "-v",
-                        "error",
-                        "-show_entries",
-                        "stream=codec_type",
-                        "-of",
-                        "json",
-                        f"http://127.0.0.1:{port}/{path}",
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=15.0,
-                )
+                command = [
+                    ffprobe,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "stream=codec_type",
+                    "-of",
+                    "json",
+                    f"http://127.0.0.1:{port}/{path}",
+                ]
+                for attempt in range(3):
+                    result = subprocess.run(
+                        command,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=15.0,
+                    )
+                    if result.returncode == 0:
+                        break
+                    if attempt < 2:
+                        time.sleep(0.1 * (attempt + 1))
+                else:
+                    raise AssertionError(
+                        f"ffprobe failed for {path}: {result.stderr.strip()}"
+                    )
                 stream_types = {
                     stream.get("codec_type")
                     for stream in json.loads(result.stdout).get("streams", [])
