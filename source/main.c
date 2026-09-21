@@ -16,6 +16,7 @@
 #include "log/log.h"
 #include "player/player.h"
 #include "player/ui/channel_list.h"
+#include "player/ui/home.h"
 #include "player/ui/layout.h"
 #include "player/ui/ui.h"
 #include "player/view.h"
@@ -519,6 +520,10 @@ static bool main_snapshot_playback_active(const PlayerSnapshot *snapshot)
            snapshot->state == PLAYER_STATE_PAUSED;
 }
 
+static HomeFocus g_home_focus = HOME_FOCUS_TV;
+static bool g_home_language_save_failed;
+static u64 g_home_navigation_previous;
+
 static void build_home_view_state(PlayerHomeViewState *out,
                                   bool storage_ready,
                                   bool network_ready,
@@ -535,6 +540,8 @@ static void build_home_view_state(PlayerHomeViewState *out,
 
     memset(out, 0, sizeof(*out));
     out->storage_ready = storage_ready;
+    out->home_language_focused = g_home_focus == HOME_FOCUS_LANGUAGE;
+    out->home_language_save_failed = g_home_language_save_failed;
     out->network_ready = network_ready;
     out->dlna_running = protocols &&
                         protocols->services[PROTOCOL_SERVICE_DLNA] ==
@@ -1149,7 +1156,7 @@ static void render_home_view(const PlayerHomeViewState *state)
     printf(ANSI_ACCENT "  [ IPTV ]" ANSI_RESET "\n");
     printf("  X Browse channels     - Open media/M3U URL     Y Reload playlists\n");
     if (state->playback_active)
-        printf("  A Return to the active player\n");
+        printf("  B Return to the active player\n");
     printf("  Channels:%d  Sources:%d  %s\n\n",
            state->iptv_channel_count,
            state->iptv_source_count,
@@ -1320,6 +1327,18 @@ int main(int argc, char* argv[])
     set_power_policy(true, true);
 
     bool storageReady = dlna_resource_store_ensure_defaults();
+    bool system_chinese = false;
+    if (R_SUCCEEDED(setInitialize()))
+    {
+        u64 language_code = 0;
+        SetLanguage language = SetLanguage_ENUS;
+        if (R_SUCCEEDED(setGetSystemLanguage(&language_code)) &&
+            R_SUCCEEDED(setMakeLanguage(language_code, &language)))
+            system_chinese = language == SetLanguage_ZHCN || language == SetLanguage_ZHTW ||
+                             language == SetLanguage_ZHHANS || language == SetLanguage_ZHHANT;
+        setExit();
+    }
+    home_ui_init("sdmc:/switch/NX-Cast/ui-language.txt", system_chinese);
     if (storageReady)
         log_info("[storage] DLNA resources ready on SD.\n");
     else
@@ -1900,16 +1919,32 @@ int main(int argc, char* argv[])
             bool skip_iptv_panel_input = false;
             bool iptv_touch_consumed = false;
 
-            if (!iptv_panel_open &&
-                touch_tap &&
-                touch_tap_x >= 820 && touch_tap_x <= 1208 &&
-                touch_tap_y >= 278 && touch_tap_y <= 580)
+            u64 home_navigation = main_iptv_navigation_buttons(kHeld, &pad);
+            u64 home_navigation_down = home_navigation & ~g_home_navigation_previous;
+            g_home_navigation_previous = home_navigation;
+            bool open_home_channels = false;
+            if (!iptv_panel_open)
             {
-                iptv_panel_open = true;
-                iptv_sources_open = false;
-                main_input_trace("[input] action=touch-iptv-panel open=1 x=%d y=%d\n",
-                                 (int)touch_tap_x,
-                                 (int)touch_tap_y);
+                if (home_navigation_down & HidNpadButton_Up)
+                    g_home_focus = HOME_FOCUS_LANGUAGE;
+                if (home_navigation_down & HidNpadButton_Down)
+                    g_home_focus = HOME_FOCUS_TV;
+                bool language_tapped = touch_tap &&
+                    home_ui_hit(HOME_FOCUS_LANGUAGE, touch_tap_x, touch_tap_y);
+                bool tv_tapped = touch_tap &&
+                    home_ui_hit(HOME_FOCUS_TV, touch_tap_x, touch_tap_y);
+                if (language_tapped || ((kDown & HidNpadButton_A) && g_home_focus == HOME_FOCUS_LANGUAGE))
+                {
+                    g_home_focus = HOME_FOCUS_LANGUAGE;
+                    g_home_language_save_failed = !home_ui_toggle_language();
+                    if (g_home_language_save_failed)
+                        log_warn("[ui] language applied but SD preference could not be saved\n");
+                    touch_tap = false;
+                }
+                open_home_channels = tv_tapped ||
+                    ((kDown & HidNpadButton_A) && g_home_focus == HOME_FOCUS_TV);
+                if (tv_tapped)
+                    touch_tap = false;
             }
 
             if (iptv_panel_open && touch_swipe)
@@ -1932,7 +1967,7 @@ int main(int argc, char* argv[])
             if (iptv_touch_consumed)
                 touch_tap = false;
 
-            if (!iptv_panel_open && (kDown & HidNpadButton_A) && home_state.playback_active)
+            if (!iptv_panel_open && (kDown & HidNpadButton_B) && home_state.playback_active)
             {
                 bool ok = player_view_show_video();
                 main_input_trace("[input] action=return-to-player ok=%d state=%s\n",
@@ -1942,11 +1977,12 @@ int main(int argc, char* argv[])
 
             bool stick_open_panel = !iptv_panel_open &&
                                     (kDown & (HidNpadButton_StickL | HidNpadButton_StickR));
-            if ((kDown & HidNpadButton_X) || stick_open_panel)
+            if ((kDown & HidNpadButton_X) || stick_open_panel || open_home_channels)
             {
                 bool was_open = iptv_panel_open;
                 if (!iptv_panel_open)
                 {
+                    g_home_focus = HOME_FOCUS_TV;
                     iptv_panel_open = true;
                     iptv_sources_open = false;
                 }

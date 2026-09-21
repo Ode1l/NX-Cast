@@ -20,6 +20,7 @@ extern "C" {
 #include "iptv/iptv.h"
 #include "log/log.h"
 #include "player/ui/channel_list.h"
+#include "player/ui/home.h"
 #include "player/ui/layout.h"
 #include "player/ui/overlay.h"
 #include "player/ui/utf8.h"
@@ -1495,45 +1496,6 @@ void draw_iptv_channel_drawer(ImDrawList *draw, const PlayerHomeViewState &home,
     }
 }
 
-const char *home_ready_text(bool ready)
-{
-    return ready ? "OK" : "WAIT";
-}
-
-ImU32 home_status_color(bool ready)
-{
-    return ready ? IM_COL32(0, 170, 132, 255) : IM_COL32(234, 80, 70, 255);
-}
-
-void draw_home_grid(ImDrawList *draw, float width, float height)
-{
-    const ImU32 bg = IM_COL32(242, 238, 230, 255);
-    const ImU32 grid = IM_COL32(222, 218, 210, 84);
-    const float step = 42.0f;
-
-    draw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(width, height), bg);
-    for (float x = 0.0f; x < width; x += step)
-        draw->AddLine(ImVec2(x, 0.0f), ImVec2(x, height), grid, 1.0f);
-    for (float y = 0.0f; y < height; y += step)
-        draw->AddLine(ImVec2(0.0f, y), ImVec2(width, y), grid, 1.0f);
-
-    draw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(22.0f, height), IM_COL32(0, 185, 212, 255));
-    draw->AddRectFilled(ImVec2(width - 22.0f, 0.0f), ImVec2(width, height), IM_COL32(255, 91, 81, 255));
-}
-
-void draw_home_status_chip(ImDrawList *draw, float x, float y, const char *label, bool ready)
-{
-    const ImU32 panel = IM_COL32(255, 255, 255, 210);
-    const ImU32 border = IM_COL32(18, 18, 20, 42);
-    const ImU32 text = IM_COL32(18, 18, 20, 255);
-    const ImU32 muted = IM_COL32(95, 92, 86, 255);
-
-    draw->AddRectFilled(ImVec2(x, y), ImVec2(x + 176.0f, y + 42.0f), panel, 18.0f);
-    draw->AddRect(ImVec2(x, y), ImVec2(x + 176.0f, y + 42.0f), border, 18.0f, 0, 1.0f);
-    draw->AddCircleFilled(ImVec2(x + 22.0f, y + 21.0f), 7.0f, home_status_color(ready));
-    draw_home_text(draw, x + 38.0f, y + 8.0f, 18.0f, text, label);
-    draw_home_text(draw, x + 122.0f, y + 8.0f, 18.0f, muted, home_ready_text(ready));
-}
 
 void draw_home_cast_arcs(ImDrawList *draw, ImVec2 origin, float scale, ImU32 color)
 {
@@ -1653,172 +1615,119 @@ void draw_home_switch(ImDrawList *draw, ImVec2 min, ImVec2 size)
 
 void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float width, float height)
 {
-    const ImU32 black = IM_COL32(14, 14, 16, 255);
-    const ImU32 muted = IM_COL32(78, 76, 70, 255);
-    const ImU32 card = IM_COL32(255, 255, 255, 205);
-    const ImU32 border = IM_COL32(17, 17, 18, 50);
-    const ImU32 cyan = IM_COL32(0, 150, 177, 255);
-    const ImU32 white = IM_COL32(250, 252, 253, 255);
-    const ImU32 red = IM_COL32(255, 91, 81, 255);
-    const float x0 = 72.0f;
-    const float top = 56.0f;
-    const float cast_right = 796.0f;
-    const float iptv_left = 820.0f;
-    const float card_top = 278.0f;
-    const float card_bottom = 580.0f;
-    char error_preview[128];
+    const ImU32 ink = IM_COL32(29, 39, 44, 255);
+    const ImU32 muted = IM_COL32(96, 108, 113, 255);
+    const ImU32 teal = IM_COL32(0, 143, 158, 255);
+    const ImU32 border = IM_COL32(215, 220, 218, 255);
+    const ImU32 white = IM_COL32(255, 255, 255, 255);
+    const float left_center = 336.0f;
+    const float right_center = (HOME_TV_LEFT + HOME_TV_RIGHT) * 0.5f;
+    auto tr = [](const char *en, const char *zh) { return home_ui_text(en, zh); };
+    auto centered = [&](const char *text, float x, float y, float size, ImU32 color) {
+        draw_sized_centered_text(draw, text, ImVec2(x, y), size, color);
+    };
 
-    if (home.has_error && home.error_line[0])
-        player_utf8_copy_prefix(error_preview, sizeof(error_preview), home.error_line, 52u);
-    else
-        snprintf(error_preview, sizeof(error_preview), "No error recorded.");
+    draw->AddRectFilled(ImVec2(0, 0), ImVec2(width, height), IM_COL32(244, 243, 238, 255));
+    draw->AddRectFilledMultiColor(ImVec2(640, 0), ImVec2(width, 300),
+                                 IM_COL32(244, 243, 238, 0), IM_COL32(218, 239, 232, 105),
+                                 IM_COL32(244, 243, 238, 0), IM_COL32(244, 243, 238, 0));
+    draw_home_switch(draw, ImVec2(48, 38), ImVec2(80, 43));
+    draw_home_text(draw, 144, 42, 30, ink, "NX-Cast");
+    draw->AddCircleFilled(ImVec2(838, 60), 5,
+                         home.network_ready ? IM_COL32(0, 165, 110, 255) : IM_COL32(222, 152, 46, 255));
+    draw_home_text(draw, 853, 49, 21, muted,
+                   home.network_ready ? tr("Connected", "网络已连接") : tr("Offline", "网络未连接"));
+    draw->AddRectFilled(ImVec2(HOME_LANGUAGE_LEFT, HOME_LANGUAGE_TOP),
+                        ImVec2(HOME_LANGUAGE_RIGHT, HOME_LANGUAGE_BOTTOM), white, 12);
+    draw->AddRect(ImVec2(HOME_LANGUAGE_LEFT, HOME_LANGUAGE_TOP),
+                  ImVec2(HOME_LANGUAGE_RIGHT, HOME_LANGUAGE_BOTTOM),
+                  home.home_language_focused ? teal : border, 12, 0,
+                  home.home_language_focused ? 3.0f : 1.0f);
+    centered("中文 / EN", (HOME_LANGUAGE_LEFT + HOME_LANGUAGE_RIGHT) * 0.5f, 60, 23, ink);
 
-    draw_home_grid(draw, width, height);
-    draw_home_text(draw, x0, top, 24.0f, black, "NX-CAST / HOME");
-    draw_home_text(draw, width - 260.0f, top, 18.0f, muted, "DLNA + AIRPLAY");
-    draw_home_text(draw, x0, top + 70.0f, 54.0f, black, "CAST MEDIA TO YOUR SWITCH");
-    draw_home_text(draw, x0, top + 128.0f, 23.0f, muted, "Open a video app, choose NX-Cast, and let the Switch receive the stream.");
-
-    draw_home_status_chip(draw, x0, 220.0f, "Storage", home.storage_ready);
-    draw_home_status_chip(draw, x0 + 188.0f, 220.0f, "Network", home.network_ready);
-    draw_home_status_chip(draw, x0 + 376.0f, 220.0f, "DLNA", home.dlna_running);
-    draw_home_status_chip(draw, x0 + 564.0f, 220.0f, "AirPlay", home.airplay_running);
-
-    if (home.has_error && home.error_line[0])
-    {
-        draw->AddRectFilled(ImVec2(width - 396.0f, 216.0f),
-                            ImVec2(width - x0, 264.0f),
-                            IM_COL32(255, 230, 226, 238),
-                            18.0f);
-        draw_home_text(draw, width - 372.0f, 228.0f, 17.0f, red, "Diagnostics");
-        draw_home_text(draw, width - 264.0f, 228.0f, 17.0f, muted, "error captured");
-    }
-    else
-    {
-        if (home.playback_active)
-        {
-            char playback[96];
-            snprintf(playback, sizeof(playback), "%s  /  A RETURN TO PLAYER", state_text(home.playback_state));
-            draw_home_text(draw, width - 390.0f, 232.0f, 18.0f, black, playback);
-        }
-        else
-        {
-            draw_home_text(draw, width - 390.0f, 232.0f, 18.0f, muted, "Waiting for a stream.");
-        }
-    }
-
-    draw->AddRectFilled(ImVec2(x0, card_top), ImVec2(cast_right, card_bottom), card, 30.0f);
-    draw->AddRect(ImVec2(x0, card_top), ImVec2(cast_right, card_bottom), border, 30.0f, 0, 1.0f);
-    draw_home_text(draw, x0 + 30.0f, card_top + 24.0f, 16.0f, cyan, "CAST RECEIVER");
-    draw_home_text(draw, x0 + 30.0f, card_top + 50.0f, 34.0f, black, "READY FOR YOUR PHONE");
-    draw_home_text(draw, x0 + 30.0f, card_top + 92.0f, 17.0f, muted, "Select NX-Cast from a DLNA or AirPlay-compatible video app.");
-
-    draw_home_phone(draw, ImVec2(x0 + 44.0f, card_top + 136.0f), ImVec2(66.0f, 112.0f), black);
-    draw_home_monitor(draw, ImVec2(x0 + 146.0f, card_top + 149.0f), ImVec2(112.0f, 68.0f), black);
-    draw->AddTriangleFilled(ImVec2(x0 + 292.0f, card_top + 182.0f),
-                            ImVec2(x0 + 292.0f, card_top + 208.0f),
-                            ImVec2(x0 + 320.0f, card_top + 195.0f),
-                            red);
-    draw_home_cast_arcs(draw, ImVec2(x0 + 390.0f, card_top + 230.0f), 0.63f, black);
-    draw->AddTriangleFilled(ImVec2(x0 + 468.0f, card_top + 182.0f),
-                            ImVec2(x0 + 468.0f, card_top + 208.0f),
-                            ImVec2(x0 + 496.0f, card_top + 195.0f),
-                            red);
-    draw_home_switch(draw, ImVec2(x0 + 520.0f, card_top + 143.0f), ImVec2(158.0f, 106.0f));
-    draw_home_text(draw, x0 + 44.0f, card_top + 262.0f, 15.0f, muted, "PHONE / PC");
-    draw_home_text(draw, x0 + 338.0f, card_top + 262.0f, 15.0f, muted, "DLNA / AIRPLAY");
-    draw_home_text(draw, x0 + 565.0f, card_top + 262.0f, 15.0f, muted, "NX-CAST");
-
+    // The receiver is a passive status area, not a selectable card.
+    centered(tr("Cast", "手机投屏"), left_center, 177, 34, ink);
     if (home.airplay_pin_visible && home.airplay_pin[0])
     {
-        draw->AddRectFilled(ImVec2(x0 + 1.0f, card_top + 1.0f),
-                            ImVec2(cast_right - 1.0f, card_bottom - 1.0f),
-                            IM_COL32(247, 250, 252, 252),
-                            29.0f);
-        draw_home_text(draw, x0 + 34.0f, card_top + 28.0f, 16.0f, cyan, "AIRPLAY PAIRING");
-        draw_home_text(draw, x0 + 34.0f, card_top + 62.0f, 31.0f, black, "ENTER THIS PIN ON YOUR IPHONE");
-        draw->AddRectFilled(ImVec2(x0 + 34.0f, card_top + 118.0f),
-                            ImVec2(cast_right - 34.0f, card_top + 224.0f),
-                            IM_COL32(15, 21, 29, 255),
-                            24.0f);
-        draw_sized_centered_text(draw,
-                                 home.airplay_pin,
-                                 ImVec2((x0 + cast_right) * 0.5f, card_top + 170.0f),
-                                 54.0f,
-                                 white);
-        draw_home_text(draw, x0 + 34.0f, card_top + 252.0f, 16.0f, muted,
-                       "The PIN is never written to logs or saved on the SD card.");
-    }
-
-    draw->AddRectFilled(ImVec2(iptv_left, card_top), ImVec2(width - x0, card_bottom), cyan, 30.0f);
-    draw->AddRectFilled(ImVec2(iptv_left, card_top), ImVec2(iptv_left + 10.0f, card_bottom), red, 5.0f);
-    draw_home_text(draw, iptv_left + 32.0f, card_top + 26.0f, 16.0f, IM_COL32(226, 249, 252, 230), "WATCH CHANNELS");
-    draw_home_monitor(draw, ImVec2(iptv_left + 34.0f, card_top + 72.0f), ImVec2(96.0f, 60.0f), white);
-    draw->AddTriangleFilled(ImVec2(iptv_left + 72.0f, card_top + 88.0f),
-                            ImVec2(iptv_left + 72.0f, card_top + 116.0f),
-                            ImVec2(iptv_left + 96.0f, card_top + 102.0f),
-                            red);
-    draw_home_text(draw, iptv_left + 154.0f, card_top + 61.0f, 48.0f, white, "IPTV");
-    draw_home_text(draw, iptv_left + 154.0f, card_top + 113.0f, 18.0f, IM_COL32(226, 249, 252, 230), "CHANNEL LIBRARY");
-    {
-        char summary[160];
-        char status[128];
-
-        snprintf(summary,
-                 sizeof(summary),
-                 "%d channel%s from %d source%s",
-                 home.iptv_channel_count,
-                 home.iptv_channel_count == 1 ? "" : "s",
-                 home.iptv_source_count,
-                 home.iptv_source_count == 1 ? "" : "s");
-        player_utf8_copy_prefix(
-            status,
-            sizeof(status),
-            home.iptv_status[0] ? home.iptv_status : "IPTV is not initialized.",
-            52u);
-        draw_home_text(draw, iptv_left + 32.0f, card_top + 166.0f, 20.0f, white, summary);
-        draw_home_text(draw, iptv_left + 32.0f, card_top + 198.0f, 15.0f, IM_COL32(226, 249, 252, 220), status);
-    }
-    draw->AddRectFilled(ImVec2(iptv_left + 32.0f, card_top + 236.0f),
-                        ImVec2(width - x0 - 30.0f, card_top + 278.0f),
-                        IM_COL32(255, 255, 255, 232),
-                        18.0f);
-    draw->AddCircleFilled(ImVec2(iptv_left + 58.0f, card_top + 257.0f), 14.0f, black);
-    draw_sized_centered_text(draw, "X", ImVec2(iptv_left + 58.0f, card_top + 256.0f), 15.0f, white);
-    draw_home_text(draw, iptv_left + 82.0f, card_top + 246.0f, 18.0f, black, "OPEN CHANNEL LIBRARY");
-
-    draw->AddLine(ImVec2(x0, 620.0f), ImVec2(width - x0, 620.0f), IM_COL32(17, 17, 18, 42), 1.0f);
-    draw_home_text(draw, x0, 644.0f, 15.0f, home.has_error ? red : cyan, home.has_error ? "DIAGNOSTICS" : "SYSTEM READY");
-    draw_home_text(draw,
-                   x0,
-                   668.0f,
-                   15.0f,
-                   home.has_error ? red : muted,
-                   home.has_error ? error_preview : "Waiting for DLNA, AirPlay, or IPTV playback.");
-    if (home.playback_active)
-    {
-        const SwitchActionHint hints[] = {
-            {"A", "Player"}, {"X", "IPTV"}, {"-", "Open URL"}, {"Y", "Refresh"}, {"+", "Exit"},
-        };
-        draw_switch_action_hints(draw,
-                                 width - x0,
-                                 663.0f,
-                                 hints,
-                                 (int)(sizeof(hints) / sizeof(hints[0])),
-                                 false);
+        centered(tr("AirPlay pairing", "AirPlay 配对"), left_center, 265, 23, teal);
+        centered(home.airplay_pin, left_center, 354, 76, ink);
+        centered(tr("Enter this code on your iPhone", "在 iPhone 上输入验证码"),
+                 left_center, 432, 22, muted);
     }
     else
     {
-        const SwitchActionHint hints[] = {
-            {"X", "IPTV"}, {"-", "Open URL"}, {"Y", "Refresh"}, {"+", "Exit"},
-        };
-        draw_switch_action_hints(draw,
-                                 width - x0,
-                                 663.0f,
-                                 hints,
-                                 (int)(sizeof(hints) / sizeof(hints[0])),
-                                 false);
+        draw_home_phone(draw, ImVec2(218, 257), ImVec2(54, 94), ink);
+        draw_home_monitor(draw, ImVec2(346, 267), ImVec2(112, 66), ink);
+        draw_home_cast_arcs(draw, ImVec2(297, 328), 0.27f, teal);
+        const bool ready = home.network_ready && home.video_ready &&
+                           (home.dlna_running || home.airplay_running);
+        const char *status = ready ? tr("Ready for your phone", "已就绪，等待手机连接")
+                                  : tr("Preparing receiver", "正在准备接收服务");
+        if (!home.network_ready)
+            status = tr("Connect to a network", "请先连接网络");
+        if (home.playback_active)
+            status = tr("Playback in progress", "正在播放");
+        centered(status, left_center, 411, 25, ready ? teal : muted);
+        centered(tr("Select on your phone:", "在手机上选择："), left_center, 455, 20, muted);
+        centered("NX-Cast", left_center, 493, 30, ink);
+        const char *services = home.dlna_running && home.airplay_running ? "DLNA · AirPlay" :
+                               home.dlna_running ? "DLNA" :
+                               home.airplay_running ? "AirPlay" : tr("Starting services", "正在启动服务");
+        centered(services, left_center, 543, 19, muted);
     }
+
+    const bool tv_focused = !home.home_language_focused;
+    draw->AddRectFilled(ImVec2(HOME_TV_LEFT, HOME_TV_TOP),
+                        ImVec2(HOME_TV_RIGHT, HOME_TV_BOTTOM),
+                        tv_focused ? IM_COL32(234, 247, 244, 255) : white, 20);
+    draw->AddRect(ImVec2(HOME_TV_LEFT, HOME_TV_TOP),
+                  ImVec2(HOME_TV_RIGHT, HOME_TV_BOTTOM),
+                  tv_focused ? teal : border, 20, 0, tv_focused ? 3.0f : 1.0f);
+    centered(tr("Live TV", "电视直播"), right_center, 177, 34, ink);
+    draw_home_monitor(draw, ImVec2(right_center - 63, 242), ImVec2(126, 76), ink);
+    draw->AddTriangleFilled(ImVec2(right_center - 8, 262), ImVec2(right_center - 8, 295),
+                            ImVec2(right_center + 19, 278), ink);
+    char summary[128];
+    snprintf(summary, sizeof(summary), tr("%d channels · %d sources", "%d 个频道 · %d 个直播源"),
+             home.iptv_channel_count, home.iptv_source_count);
+    centered(summary, right_center, 387, 22, muted);
+    draw->AddLine(ImVec2(704, 418), ImVec2(1184, 418), border, 1);
+    draw_home_text(draw, 704, 438, 18, muted, tr("Recently watched", "最近观看"));
+    // Clip user-supplied names by pixels, preserving complete UTF-8 glyphs.
+    draw->PushClipRect(ImVec2(704, 466), ImVec2(1184, 507), true);
+    draw_home_text(draw, 704, 472, 24, ink,
+                   home.iptv_last_name[0] ? home.iptv_last_name : tr("Choose a channel to begin", "选择频道开始观看"));
+    draw->PopClipRect();
+    draw->AddRectFilled(ImVec2(688, 524), ImVec2(1200, 578), teal, 12);
+    draw->AddCircleFilled(ImVec2(722, 551), 15, white);
+    centered("X", 722, 551, 19, teal);
+    centered(tr("Open channels", "打开频道库"), right_center + 10, 551, 24, white);
+
+    if (home.home_language_save_failed || home.has_error)
+    {
+        draw->AddRectFilled(ImVec2(48, 610), ImVec2(width - 48, 650),
+                            IM_COL32(255, 230, 224, 255), 10);
+        draw->PushClipRect(ImVec2(62, 610), ImVec2(width - 62, 650), true);
+        draw_home_text(draw, 64, 620, 17, IM_COL32(157, 61, 48, 255),
+                       home.home_language_save_failed
+                           ? tr("Language changed; could not save to SD card", "语言已切换，但无法保存到 SD 卡")
+                           : home.error_line);
+        draw->PopClipRect();
+    }
+    draw->AddLine(ImVec2(48, 662), ImVec2(width - 48, 662), border, 1);
+    draw_home_text(draw, 48, 682, 16, muted, "NX-Cast " NXCAST_APP_VERSION);
+    const SwitchActionHint hints[] = {
+        {"A", home.home_language_focused ? tr("Language", "切换语言") : tr("Open", "打开")},
+        {"X", tr("Live TV", "电视直播")},
+        {"B", tr("Player", "返回播放")},
+        {"+", tr("Exit", "退出")},
+    };
+    SwitchActionHint visible_hints[4];
+    int count = 0;
+    for (int i = 0; i < 4; ++i)
+        if (i != 2 || home.playback_active)
+            visible_hints[count++] = hints[i];
+    draw_switch_action_hints(draw, width - 48, 689, visible_hints, count, false);
 }
 
 void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float width, float height)

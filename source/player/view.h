@@ -45,6 +45,8 @@ typedef struct
 typedef struct
 {
     bool storage_ready;
+    bool home_language_focused;
+    bool home_language_save_failed;
     bool network_ready;
     bool dlna_running;
     bool airplay_running;
