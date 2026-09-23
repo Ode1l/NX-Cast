@@ -19,4 +19,8 @@ void home_ui_init(const char *preference_path, bool system_chinese);
 bool home_ui_is_chinese(void);
 bool home_ui_toggle_language(void);
 const char *home_ui_text(const char *english, const char *chinese);
+/* Exact built-in UI labels only, never metadata/source/channel names.
+ * Unknown strings and NULL pass through unchanged; no allocation is performed.
+ * Translate at display time, after any English state/prefix comparisons. */
+const char *home_ui_translate(const char *english);
 bool home_ui_hit(HomeFocus target, int x, int y);

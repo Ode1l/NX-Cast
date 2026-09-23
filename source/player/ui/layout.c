@@ -19,14 +19,14 @@ bool player_ui_layout_compute(int display_width, int display_height, PlayerUiLay
     if (!out || display_width <= 0 || display_height <= 0)
         return false;
 
-    out->pad_x = clamp_int(display_width / 64, 20, 32);
-    out->bottom_height = clamp_int(display_height / 5, 128, 148);
+    out->pad_x = clamp_int(display_width / 32, 28, 56);
+    out->bottom_height = clamp_int(display_height / 5, 136, 164);
     out->bottom_y = display_height - out->bottom_height;
-    out->progress_height = clamp_int(display_height / 110, 6, 9);
+    out->progress_height = clamp_int(display_height / 180, 3, 6);
     out->progress_y = out->bottom_y + clamp_int(out->bottom_height / 6, 18, 24);
     out->progress_x = out->pad_x;
     out->progress_width = display_width - out->progress_x - out->pad_x;
-    out->title_y = out->progress_y - 34;
+    out->title_y = out->progress_y - 40;
     out->info_y = out->progress_y + out->progress_height + 18;
     out->hints_y = display_height - clamp_int(display_height / 18, 34, 44);
 

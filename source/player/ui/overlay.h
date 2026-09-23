@@ -30,7 +30,7 @@ typedef struct
 typedef struct
 {
     char title[64];
-    char subtitle[96];
+    char subtitle[1024];
     char left[48];
     char center[96];
     char right[48];

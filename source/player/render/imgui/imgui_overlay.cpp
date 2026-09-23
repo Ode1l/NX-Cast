@@ -35,7 +35,7 @@ namespace
 constexpr uint32_t kVtxBufferInitialSize = 1024U * 1024U;
 constexpr uint32_t kIdxBufferInitialSize = 512U * 1024U;
 constexpr uint32_t kImageCount = FRONTEND_DK3D_FRAMEBUFFER_COUNT;
-constexpr uint32_t kLogoTextureCount = PLAYER_IPTV_VISIBLE_ROWS;
+constexpr uint32_t kLogoTextureCount = 12; // Nine rows plus partially visible entries.
 constexpr uint32_t kDescriptorCount = 1 + kLogoTextureCount;
 constexpr uint32_t kLogoTextureSize = 64;
 
@@ -95,9 +95,8 @@ constexpr ImU32 kPlayerText = IM_COL32(246, 248, 252, 255);
 constexpr ImU32 kPlayerMuted = IM_COL32(178, 187, 201, 238);
 constexpr ImU32 kPlayerAccent = IM_COL32(0, 185, 212, 255);
 constexpr ImU32 kPlayerLive = IM_COL32(255, 91, 81, 255);
-constexpr float kPlayerPanelRadius = 24.0f;
 constexpr float kPlayerControlRadius = 14.0f;
-constexpr float kPlayerTitleSize = 22.0f;
+constexpr float kPlayerTitleSize = 24.0f;
 constexpr float kPlayerInfoSize = 18.0f;
 constexpr float kPlayerHintSize = 16.0f;
 
@@ -794,29 +793,6 @@ void push_fragment_texture_mode(DkCmdBuf cmdbuf, bool font)
     dkCmdBufPushConstants(cmdbuf, frag_addr, frag_size, 0, sizeof(frag), &frag);
 }
 
-const char *state_text(PlayerState state)
-{
-    switch (state)
-    {
-    case PLAYER_STATE_LOADING:
-        return "Loading";
-    case PLAYER_STATE_BUFFERING:
-        return "Buffering";
-    case PLAYER_STATE_SEEKING:
-        return "Seeking";
-    case PLAYER_STATE_PAUSED:
-        return "Paused";
-    case PLAYER_STATE_PLAYING:
-        return "Playing";
-    case PLAYER_STATE_ERROR:
-        return "Error";
-    case PLAYER_STATE_STOPPED:
-        return "Stopped";
-    case PLAYER_STATE_IDLE:
-    default:
-        return "Ready";
-    }
-}
 
 bool text_eq(const char *a, const char *b)
 {
@@ -844,11 +820,6 @@ PlayerState display_state_from_context(PlayerState context_state, PlayerState ov
     return is_runtime_state(context_state) ? context_state : overlay_state;
 }
 
-void draw_centered_text(ImDrawList *draw, const char *text, ImVec2 center, ImU32 color)
-{
-    ImVec2 size = ImGui::CalcTextSize(text ? text : "");
-    draw->AddText(ImVec2(center.x - size.x * 0.5f, center.y - size.y * 0.5f), color, text ? text : "");
-}
 
 void draw_pause_icon(ImDrawList *draw, ImVec2 center, float size, ImU32 color)
 {
@@ -899,51 +870,79 @@ void draw_seek_icon(ImDrawList *draw, ImVec2 center, int direction, ImU32 color)
 
 void draw_spinner(ImDrawList *draw, ImVec2 center, float radius, ImU32 color)
 {
-    const float t = (float)ImGui::GetTime() * 5.0f;
-    const int segments = 12;
-    for (int i = 0; i < segments; ++i)
-    {
-        float a = t + ((float)i / (float)segments) * kPi * 2.0f;
-        float alpha = (float)(i + 1) / (float)segments;
-        ImU32 c = IM_COL32(245, 248, 255, (int)(255.0f * alpha));
-        if (color != 0)
-            c = IM_COL32((color >> IM_COL32_R_SHIFT) & 0xFF,
-                         (color >> IM_COL32_G_SHIFT) & 0xFF,
-                         (color >> IM_COL32_B_SHIFT) & 0xFF,
-                         (int)(255.0f * alpha));
-        ImVec2 p(center.x + cosf(a) * radius, center.y + sinf(a) * radius);
-        draw->AddCircleFilled(p, 2.2f + alpha * 2.0f, c);
-    }
+    const float start = (float)ImGui::GetTime() * 3.5f;
+    draw->AddCircle(center, radius, IM_COL32(255, 255, 255, 35), 40, 2.5f);
+    draw->PathArcTo(center, radius, start, start + kPi * 1.35f, 32);
+    draw->PathStroke(color, 0, 2.5f);
 }
 
-void draw_video_action_hints(ImDrawList *draw, float width, float height, bool show_channels)
+float switch_key_width(const char *key)
+{
+    if (strcmp(key, "UP/DN") == 0) return 28;
+    if (strcmp(key, "L/R") == 0) return 58;
+    return std::max(28.0f, text_width(16, key) + 12);
+}
+
+void draw_switch_key(ImDrawList *draw, float x, float y, const char *key, bool dark)
+{
+    const ImU32 fill = dark ? IM_COL32(242, 245, 248, 245) : IM_COL32(28, 33, 38, 245);
+    const ImU32 ink = dark ? IM_COL32(28, 33, 38, 255) : IM_COL32(250, 251, 253, 255);
+    if (strcmp(key, "UP/DN") == 0)
+    {
+        // Direction buttons, not the literal text UP/DN in a capsule.
+        draw->AddCircleFilled(ImVec2(x + 14, y - 8), 7, fill, 20);
+        draw->AddCircleFilled(ImVec2(x + 14, y + 8), 7, fill, 20);
+        draw->AddTriangleFilled(ImVec2(x + 14, y - 11), ImVec2(x + 11, y - 6), ImVec2(x + 17, y - 6), ink);
+        draw->AddTriangleFilled(ImVec2(x + 14, y + 11), ImVec2(x + 11, y + 6), ImVec2(x + 17, y + 6), ink);
+        return;
+    }
+    if (strcmp(key, "L/R") == 0)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            float left = x + i * 32;
+            draw->AddRectFilled(ImVec2(left, y - 10), ImVec2(left + 26, y + 10), fill, 5);
+            draw_sized_centered_text(draw, i ? "R" : "L", ImVec2(left + 13, y), 14, ink);
+        }
+        return;
+    }
+    const float w = switch_key_width(key);
+    draw->AddRectFilled(ImVec2(x, y - 14), ImVec2(x + w, y + 14), fill, 14);
+    draw_sized_centered_text(draw, key, ImVec2(x + w / 2, y), 16, ink);
+}
+
+void draw_video_hint(ImDrawList *draw, float x, float y, float width,
+                     const char *key, const char *label)
+{
+    const float key_width = switch_key_width(key);
+    draw_switch_key(draw, x, y, key, true);
+    draw->PushClipRect(ImVec2(x + key_width + 7, y - 12), ImVec2(x + width, y + 12), true);
+    draw_home_text(draw, x + key_width + 7, y - 8, 16, IM_COL32(214, 223, 228, 220),
+                   home_ui_translate(label));
+    draw->PopClipRect();
+}
+
+void draw_video_action_hints(ImDrawList *draw, float width, float height, bool show_channels, bool seekable)
 {
     PlayerUiLayout layout = {};
-    const SwitchActionHint with_channels[] = {
-        {"A", "Play/Pause"},
-        {"L/R", "Seek"},
-        {"UP/DN", "Volume"},
-        {"B", "Home"},
-        {"X", "Channels"},
-    };
-    const SwitchActionHint without_channels[] = {
-        {"A", "Play/Pause"},
-        {"L/R", "Seek"},
-        {"UP/DN", "Volume"},
-        {"B", "Home"},
-    };
+    if (!player_ui_layout_compute((int)width, (int)height, &layout))
+        return;
+    const float y = (float)layout.hints_y;
+    /* Keep trailing slots aligned with the existing Home/Channels touch zones. */
+    const float home_x = width - (show_channels ? 240.0f : 140.0f);
+    draw_video_hint(draw, home_x, y, 90, "B", "Home");
+    if (show_channels)
+        draw_video_hint(draw, width - 140, y, 112, "X", "Channels");
+    draw_video_hint(draw, home_x - 180, y, 164, "UP/DN", "Volume");
+    if (seekable)
+        draw_video_hint(draw, home_x - 294, y, 100, "L/R", "Seek");
+    draw_video_hint(draw, home_x - (seekable ? 460 : 346), y, 150, "A", "Play/Pause");
+}
 
-    const float hints_y = player_ui_layout_compute((int)width, (int)height, &layout)
-                              ? (float)layout.hints_y
-                              : height - 40.0f;
-
-    draw_switch_action_hints(draw,
-                             width - 36.0f,
-                             hints_y,
-                             show_channels ? with_channels : without_channels,
-                             show_channels ? (int)(sizeof(with_channels) / sizeof(with_channels[0]))
-                                           : (int)(sizeof(without_channels) / sizeof(without_channels[0])),
-                             true);
+void draw_player_busy(ImDrawList *draw, ImVec2 center)
+{
+    draw->AddCircleFilled(center, 42, IM_COL32(6, 12, 18, 82), 48);
+    draw_spinner(draw, center, 18, IM_COL32(230, 249, 249, 238));
 }
 
 void draw_center_control(ImDrawList *draw,
@@ -952,169 +951,139 @@ void draw_center_control(ImDrawList *draw,
                          float width,
                          float height)
 {
-    ImVec2 center(width * 0.5f, height * 0.5f);
-    const ImU32 panel = kPlayerPanel;
-    const ImU32 ring = kPlayerBorder;
-    const ImU32 text = kPlayerText;
-    const ImU32 muted = kPlayerMuted;
-
+    const ImVec2 center(width * 0.5f, height * 0.5f);
+    const ImU32 glass = IM_COL32(6, 12, 18, 102);
+    const ImU32 text = IM_COL32(246, 250, 252, 245);
     if (bar.focus == PLAYER_UI_OVERLAY_FOCUS_SEEK)
     {
         char label[128];
-
-        draw->AddRectFilled(ImVec2(center.x - 154.0f, center.y - 58.0f),
-                            ImVec2(center.x + 154.0f, center.y + 58.0f),
-                            panel,
-                            kPlayerPanelRadius);
-        draw->AddRect(ImVec2(center.x - 153.0f, center.y - 57.0f),
-                      ImVec2(center.x + 153.0f, center.y + 57.0f),
-                      ring,
-                      kPlayerPanelRadius,
-                      0,
-                      2.0f);
-
+        draw->AddRectFilled(ImVec2(center.x - 178, center.y - 56),
+                            ImVec2(center.x + 178, center.y + 56), glass, 28);
         if (bar.seek_delta_ms != 0)
         {
             const int seconds = bar.seek_delta_ms / 1000;
             snprintf(label, sizeof(label), "%+d s", seconds);
-            draw_seek_icon(draw, ImVec2(center.x, center.y - 14.0f), seconds >= 0 ? 1 : -1, text);
-            draw_centered_text(draw, label, ImVec2(center.x, center.y + 34.0f), text);
+            draw_seek_icon(draw, ImVec2(center.x - 92, center.y), seconds >= 0 ? 1 : -1, kPlayerAccent);
+            draw_sized_centered_text(draw, label, ImVec2(center.x + 24, center.y), 32, text);
         }
         else
         {
-            snprintf(label, sizeof(label), "%s", bar.center[0] ? bar.center : "--:-- / --:--");
-            draw_centered_text(draw, label, ImVec2(center.x, center.y), text);
-            draw_centered_text(draw, "Release to seek", ImVec2(center.x, center.y + 32.0f), muted);
+            draw_sized_centered_text(draw, bar.center[0] ? bar.center : "--:-- / --:--",
+                                     ImVec2(center.x, center.y - 9), 30, text);
+            draw_sized_centered_text(draw, home_ui_text("Release to seek", "松手跳转"),
+                                     ImVec2(center.x, center.y + 28), 15, kPlayerMuted);
         }
         return;
     }
-
     if (bar.focus == PLAYER_UI_OVERLAY_FOCUS_VOLUME)
     {
-        char label[64];
-
-        snprintf(label, sizeof(label), "%s", bar.right[0] ? bar.right : "VOLUME");
-        draw->AddRectFilled(ImVec2(center.x - 124.0f, center.y - 48.0f),
-                            ImVec2(center.x + 124.0f, center.y + 48.0f),
-                            panel,
-                            kPlayerPanelRadius);
-        draw_centered_text(draw, label, center, text);
+        draw->AddRectFilled(ImVec2(center.x - 120, center.y - 42),
+                            ImVec2(center.x + 120, center.y + 42), glass, 28);
+        draw_sized_centered_text(draw, bar.right, ImVec2(center.x, center.y - 9), 24, text);
+        const float volume = bar.mute ? 0 : std::max(0.0f, std::min(1.0f, bar.volume / 100.0f));
+        draw->AddRectFilled(ImVec2(center.x - 78, center.y + 20), ImVec2(center.x + 78, center.y + 23),
+                            IM_COL32(255, 255, 255, 55), 2);
+        draw->AddRectFilled(ImVec2(center.x - 78, center.y + 20),
+                            ImVec2(center.x - 78 + 156 * volume, center.y + 23), kPlayerAccent, 2);
         return;
     }
-
     if (is_busy_state(display_state))
     {
-        draw->AddCircleFilled(center, 48.0f, panel);
-        draw->AddCircle(center, 48.0f, ring, 0, 1.5f);
-        draw_spinner(draw, center, 21.0f, text);
-        draw_sized_centered_text(draw,
-                                 state_text(display_state),
-                                 ImVec2(center.x, center.y + 64.0f),
-                                 kPlayerHintSize,
-                                 muted);
+        draw_player_busy(draw, center);
         return;
     }
-
     if (display_state != PLAYER_STATE_PAUSED &&
         bar.focus != PLAYER_UI_OVERLAY_FOCUS_PLAY &&
         bar.focus != PLAYER_UI_OVERLAY_FOCUS_PAUSE)
-    {
         return;
-    }
-
-    draw->AddCircleFilled(center, 52.0f, panel);
-    draw->AddCircle(center, 52.0f, ring, 0, 1.5f);
-    if (display_state == PLAYER_STATE_PAUSED || bar.focus == PLAYER_UI_OVERLAY_FOCUS_PLAY)
-        draw_play_icon(draw, center, 74.0f, text);
+    draw->AddCircleFilled(center, 42, IM_COL32(6, 12, 18, 82), 48);
+    if (display_state == PLAYER_STATE_PAUSED)
+        draw_play_icon(draw, ImVec2(center.x - 2, center.y), 48, text);
     else
-        draw_pause_icon(draw, center, 74.0f, text);
+        draw_pause_icon(draw, center, 48, text);
 }
 
-void draw_progress_bar(ImDrawList *draw, const PlayerUiOverlayBar &bar, PlayerState context_state, float width, float height)
+void draw_player_title(ImDrawList *draw, const char *title, float x, float y, float width)
+{
+    static char previous[sizeof(PlayerUiOverlayBar::subtitle)] = {};
+    static double started = 0;
+    static double last_draw = 0;
+    const double now = armTicksToNs(svcGetSystemTick()) / 1000000000.0;
+    if (strcmp(previous, title) != 0 || now - last_draw > 0.35)
+    {
+        player_utf8_copy_prefix(previous, sizeof(previous), title, strlen(title));
+        started = now;
+    }
+    last_draw = now;
+    char single_line[sizeof(previous)];
+    memcpy(single_line, previous, sizeof(single_line));
+    for (char *p = single_line; *p; ++p)
+        if (*p == '\n' || *p == '\r' || *p == '\t')
+            *p = ' ';
+    const float size = kPlayerTitleSize;
+    const float overflow = std::max(0.0f, text_width(size, single_line) - width);
+    float offset = 0;
+    if (overflow > 0)
+    {
+        const double hold = 1.0;
+        const double travel = overflow / 32.0;
+        const double phase = fmod(now - started, 2.0 * (hold + travel));
+        if (phase > hold && phase <= hold + travel)
+            offset = (float)((phase - hold) * 32.0);
+        else if (phase > hold + travel && phase <= 2.0 * hold + travel)
+            offset = overflow;
+        else if (phase > 2.0 * hold + travel)
+            offset = overflow - (float)((phase - 2.0 * hold - travel) * 32.0);
+    }
+    draw->PushClipRect(ImVec2(x, y), ImVec2(x + width, y + size + 4), true);
+    draw_home_text(draw, x - offset, y, size, kPlayerText, single_line);
+    draw->PopClipRect();
+}
+
+void draw_progress_bar(ImDrawList *draw, const PlayerUiOverlayBar &bar, PlayerState context_state, float width, float height, bool live_tv)
 {
     PlayerUiLayout layout;
-    const PlayerState display_state = display_state_from_context(context_state, bar.state);
     if (!player_ui_layout_compute((int)width, (int)height, &layout))
         return;
-
-    const float bottom_h = (float)layout.bottom_height;
-    const float progress_x = (float)layout.progress_x;
-    const float progress_w = (float)layout.progress_width;
-    const float progress_y = (float)layout.progress_y;
-    const float progress_h = (float)layout.progress_height;
+    const PlayerState display_state = display_state_from_context(context_state, bar.state);
+    const float x = (float)layout.progress_x;
+    const float w = (float)layout.progress_width;
+    const float y = (float)layout.progress_y;
+    const bool interactive = !live_tv && bar.seekable && bar.duration_ms > 0;
+    const bool preview = bar.focus == PLAYER_UI_OVERLAY_FOCUS_SEEK;
+    const float thickness = (float)layout.progress_height + (interactive && preview ? 2.0f : 0.0f);
     const float fill = std::max(0.0f, std::min(1.0f, bar.progress_permille / 1000.0f));
-    const ImU32 bg_bottom = IM_COL32(11, 13, 20, 238);
-    const ImU32 text = kPlayerText;
-    const ImU32 muted = kPlayerMuted;
-    const char *center_text = bar.center[0] ? bar.center : state_text(bar.state);
-    const char *right_text = bar.right;
-
     draw_center_control(draw, bar, display_state, width, height);
-
-    draw->AddRectFilledMultiColor(ImVec2(0.0f, height - bottom_h - 36.0f),
-                                  ImVec2(width, height),
-                                  IM_COL32(2, 4, 9, 0),
-                                  IM_COL32(2, 4, 9, 0),
-                                  bg_bottom,
-                                  bg_bottom);
-
-    draw->AddRectFilled(ImVec2(progress_x, progress_y),
-                        ImVec2(progress_x + progress_w, progress_y + progress_h),
-                        IM_COL32(68, 74, 88, 255),
-                        progress_h * 0.5f);
-    draw->AddRectFilled(ImVec2(progress_x, progress_y),
-                        ImVec2(progress_x + progress_w * fill, progress_y + progress_h),
-                        IM_COL32(245, 248, 255, 255),
-                        progress_h * 0.5f);
-    draw->AddCircleFilled(ImVec2(progress_x + progress_w * fill, progress_y + progress_h * 0.5f),
-                          10.0f,
-                          IM_COL32(255, 255, 255, 255));
-
+    draw->AddRectFilledMultiColor(ImVec2(0, height - layout.bottom_height - 64),
+                                  ImVec2(width, height), IM_COL32(3, 8, 12, 0), IM_COL32(3, 8, 12, 0),
+                                  IM_COL32(3, 8, 12, 192), IM_COL32(3, 8, 12, 192));
+    if (!live_tv && bar.duration_ms > 0)
+    {
+        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + thickness),
+                            IM_COL32(255, 255, 255, 65), thickness / 2);
+        if (fill > 0)
+            draw->AddRectFilled(ImVec2(x, y), ImVec2(x + w * fill, y + thickness),
+                                kPlayerText, thickness / 2);
+        if (interactive)
+            draw->AddCircleFilled(ImVec2(x + w * fill, y + thickness / 2),
+                                  preview ? 7.0f : 4.5f, kPlayerText, 20);
+    }
     if (bar.subtitle[0])
-    {
-        draw->PushClipRect(ImVec2(progress_x, (float)layout.title_y),
-                           ImVec2(progress_x + progress_w, (float)layout.title_y + kPlayerTitleSize + 2.0f),
-                           true);
-        draw_home_text(draw,
-                       progress_x,
-                       (float)layout.title_y,
-                       kPlayerTitleSize,
-                       text,
-                       bar.subtitle);
-        draw->PopClipRect();
-    }
-
-    draw_home_text(draw,
-                   progress_x,
-                   (float)layout.info_y,
-                   kPlayerInfoSize,
-                   text,
-                   center_text);
-    if (right_text[0])
-    {
-        const float right_width = text_width(kPlayerInfoSize, right_text);
-        draw_home_text(draw,
-                       progress_x + progress_w - right_width,
-                       (float)layout.info_y,
-                       kPlayerInfoSize,
-                       muted,
-                       right_text);
-    }
+        draw_player_title(draw, bar.subtitle, x, (float)layout.title_y, w);
+    /* Unknown duration is not necessarily live (e.g. screen mirroring). */
+    draw_home_text(draw, x, (float)layout.info_y, kPlayerInfoSize, kPlayerText,
+                   live_tv ? home_ui_text("Live", "直播") :
+                   bar.duration_ms > 0 ? bar.center : home_ui_text("Streaming", "实时播放"));
+    if (bar.right[0])
+        draw_home_text(draw, x + w - text_width(kPlayerInfoSize, bar.right), (float)layout.info_y,
+                       kPlayerInfoSize, kPlayerMuted, bar.right);
 }
 
 void draw_loading_message(ImDrawList *draw, const PlayerUiOverlayMessage &message, PlayerState context_state, float width, float height)
 {
-    ImVec2 center(width * 0.5f, height * 0.5f);
-    const char *label = message.line1[0] ? message.line1 : state_text(context_state);
-
-    draw->AddCircleFilled(center, 50.0f, kPlayerPanel);
-    draw->AddCircle(center, 50.0f, kPlayerBorder, 0, 1.5f);
-    draw_spinner(draw, center, 22.0f, kPlayerText);
-    draw_sized_centered_text(draw,
-                             label,
-                             ImVec2(center.x, center.y + 66.0f),
-                             kPlayerHintSize,
-                             kPlayerMuted);
+    (void)message;
+    (void)context_state;
+    draw_player_busy(draw, ImVec2(width * 0.5f, height * 0.5f));
 }
 
 void draw_message(ImDrawList *draw, const PlayerUiOverlayMessage &message, PlayerState context_state, float width, float height)
@@ -1141,11 +1110,11 @@ void draw_message(ImDrawList *draw, const PlayerUiOverlayMessage &message, Playe
                   2.0f);
     draw->AddText(ImVec2(min.x + 28.0f, min.y + 24.0f),
                   IM_COL32(244, 247, 255, 255),
-                  message.title);
+                  home_ui_translate(message.title));
     if (message.line1[0])
         draw->AddText(ImVec2(min.x + 28.0f, min.y + 58.0f),
                       IM_COL32(168, 176, 190, 255),
-                      message.line1);
+                      home_ui_translate(message.line1));
 }
 
 void draw_home_text(ImDrawList *draw, float x, float y, float size, ImU32 color, const char *text)
@@ -1173,29 +1142,20 @@ void draw_switch_action_hints(ImDrawList *draw,
                               int hint_count,
                               bool dark)
 {
-    const ImU32 button_bg = dark ? IM_COL32(248, 250, 255, 245) : IM_COL32(19, 20, 23, 245);
-    const ImU32 button_text = dark ? IM_COL32(18, 21, 28, 255) : IM_COL32(250, 251, 253, 255);
     const ImU32 label_text = dark ? IM_COL32(240, 244, 251, 255) : IM_COL32(38, 38, 40, 255);
     const float font_size = kPlayerHintSize;
     float cursor = right;
 
     for (int i = hint_count - 1; i >= 0; --i)
     {
-        const float label_w = text_width(font_size, hints[i].label);
-        const float button_w = std::max(28.0f, text_width(font_size, hints[i].button) + 14.0f);
+        const char *label = home_ui_translate(hints[i].label);
+        const float label_w = text_width(font_size, label);
+        const float button_w = switch_key_width(hints[i].button);
         const float total_w = button_w + 9.0f + label_w;
         const float left = cursor - total_w;
 
-        draw->AddRectFilled(ImVec2(left, center_y - 14.0f),
-                            ImVec2(left + button_w, center_y + 14.0f),
-                            button_bg,
-                            kPlayerControlRadius);
-        draw_sized_centered_text(draw,
-                                 hints[i].button,
-                                 ImVec2(left + button_w * 0.5f, center_y - 0.5f),
-                                 font_size,
-                                 button_text);
-        draw_home_text(draw, left + button_w + 9.0f, center_y - 9.0f, font_size, label_text, hints[i].label);
+        draw_switch_key(draw, left, center_y, hints[i].button, dark);
+        draw_home_text(draw, left + button_w + 9.0f, center_y - 9.0f, font_size, label_text, label);
         cursor = left - 24.0f;
     }
 }
@@ -1248,11 +1208,11 @@ void draw_channel_badge(ImDrawList *draw,
                         ImVec2 min,
                         ImVec2 max)
 {
-    char number[8];
+    char number[16];
     const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
     const ImTextureID logo = channel_logo_texture(channel);
 
-    snprintf(number, sizeof(number), "%02d", (item_index + 1) % 100);
+    snprintf(number, sizeof(number), "%d", item_index + 1);
     if (logo)
     {
         draw->AddRectFilled(min, max, IM_COL32(248, 250, 252, 255), 12.0f);
@@ -1267,279 +1227,42 @@ void draw_channel_badge(ImDrawList *draw,
     else
     {
         draw->AddRectFilled(min, max, channel_badge_color(channel.id), 12.0f);
-        draw_sized_centered_text(draw, number, center, 13.0f, IM_COL32(255, 255, 255, 255));
-    }
-}
-
-void draw_iptv_channel_drawer(ImDrawList *draw, const PlayerHomeViewState &home, float width, float height)
-{
-    const float drawer_left = 24.0f;
-    const float drawer_right = 786.0f;
-    const float drawer_top = 18.0f;
-    const float drawer_bottom = height - 18.0f;
-    const float list_x = (float)PLAYER_IPTV_LIST_X;
-    const float list_w = (float)PLAYER_IPTV_LIST_WIDTH;
-    const float rows_y = (float)PLAYER_IPTV_LIST_TOP;
-    const float row_h = (float)PLAYER_IPTV_ROW_HEIGHT;
-    const int selected_index = home.iptv_selected_index;
-    const int first_index = player_iptv_page_start(selected_index);
-    const int item_count = home.iptv_visible_count;
-    const int page_count = item_count > 0 ? (item_count + PLAYER_IPTV_VISIBLE_ROWS - 1) / PLAYER_IPTV_VISIBLE_ROWS : 0;
-    const int current_page = item_count > 0 ? first_index / PLAYER_IPTV_VISIBLE_ROWS + 1 : 0;
-    const time_t now = time(nullptr);
-    char page_text[32];
-    char filter_text[160];
-
-    ++g_logo_frame;
-    g_logo_load_attempted = false;
-
-    draw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(width, height), IM_COL32(0, 0, 0, 76));
-    draw->AddRectFilled(ImVec2(drawer_left + 12.0f, drawer_top + 10.0f),
-                        ImVec2(drawer_right + 12.0f, drawer_bottom + 10.0f),
-                        IM_COL32(0, 0, 0, 72),
-                        kPlayerPanelRadius);
-    draw->AddRectFilled(ImVec2(drawer_left, drawer_top),
-                        ImVec2(drawer_right, drawer_bottom),
-                        IM_COL32(12, 16, 23, 246),
-                        kPlayerPanelRadius);
-    draw->AddRect(ImVec2(drawer_left, drawer_top),
-                  ImVec2(drawer_right, drawer_bottom),
-                  kPlayerBorder,
-                  kPlayerPanelRadius,
-                  0,
-                  1.0f);
-
-    draw_home_text(draw, 72.0f, 48.0f, 28.0f, kPlayerText, "Channels");
-    draw_home_text(draw, 72.0f, 82.0f, 15.0f, kPlayerMuted, "Live TV and programme guide");
-
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_CHANNEL_TAB_LEFT, (float)PLAYER_IPTV_TAB_TOP),
-                        ImVec2((float)PLAYER_IPTV_CHANNEL_TAB_RIGHT, (float)PLAYER_IPTV_TAB_BOTTOM),
-                        kPlayerAccent,
-                        kPlayerControlRadius);
-    draw_sized_centered_text(draw,
-                             "Channels",
-                             ImVec2((PLAYER_IPTV_CHANNEL_TAB_LEFT + PLAYER_IPTV_CHANNEL_TAB_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_TAB_TOP + PLAYER_IPTV_TAB_BOTTOM) * 0.5f),
-                             14.0f,
-                             kPlayerText);
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_SOURCE_TAB_LEFT, (float)PLAYER_IPTV_TAB_TOP),
-                        ImVec2((float)PLAYER_IPTV_SOURCE_TAB_RIGHT, (float)PLAYER_IPTV_TAB_BOTTOM),
-                        kPlayerSurface,
-                        kPlayerControlRadius);
-    draw_sized_centered_text(draw,
-                             "Sources",
-                             ImVec2((PLAYER_IPTV_SOURCE_TAB_LEFT + PLAYER_IPTV_SOURCE_TAB_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_TAB_TOP + PLAYER_IPTV_TAB_BOTTOM) * 0.5f),
-                             14.0f,
-                             kPlayerMuted);
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_DRAWER_CLOSE_LEFT, (float)PLAYER_IPTV_DRAWER_CLOSE_TOP),
-                        ImVec2((float)PLAYER_IPTV_DRAWER_CLOSE_RIGHT, (float)PLAYER_IPTV_DRAWER_CLOSE_BOTTOM),
-                        kPlayerSurface,
-                        18.0f);
-    draw_sized_centered_text(draw,
-                             "B",
-                             ImVec2((PLAYER_IPTV_DRAWER_CLOSE_LEFT + PLAYER_IPTV_DRAWER_CLOSE_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_DRAWER_CLOSE_TOP + PLAYER_IPTV_DRAWER_CLOSE_BOTTOM) * 0.5f),
-                             16.0f,
-                             kPlayerText);
-
-    {
-        char filter_name[73];
-        char search[65];
-
-        player_utf8_copy_prefix(
-            filter_name, sizeof(filter_name),
-            home.iptv_active_filter[0] ? home.iptv_active_filter : "All channels",
-            72u);
-        player_utf8_copy_prefix(search, sizeof(search), home.iptv_search, 64u);
-        snprintf(filter_text,
-                 sizeof(filter_text),
-                 "%s%s%s",
-                 filter_name,
-                 search[0] ? "  /  Search: " : "",
-                 search);
-    }
-    draw_home_text(draw, list_x, 132.0f, 15.0f, kPlayerAccent, filter_text);
-    snprintf(page_text, sizeof(page_text), "%d / %d", current_page, page_count);
-    draw_home_text(draw, 566.0f, 132.0f, 14.0f, kPlayerMuted, page_text);
-
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_PAGE_PREV_LEFT, (float)PLAYER_IPTV_PAGE_BUTTON_TOP),
-                        ImVec2((float)PLAYER_IPTV_PAGE_PREV_RIGHT, (float)PLAYER_IPTV_PAGE_BUTTON_BOTTOM),
-                        current_page > 1 ? kPlayerSurface : IM_COL32(30, 35, 44, 150),
-                        12.0f);
-    draw_sized_centered_text(draw,
-                             "<",
-                             ImVec2((PLAYER_IPTV_PAGE_PREV_LEFT + PLAYER_IPTV_PAGE_PREV_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_PAGE_BUTTON_TOP + PLAYER_IPTV_PAGE_BUTTON_BOTTOM) * 0.5f),
-                             16.0f,
-                             current_page > 1 ? kPlayerText : kPlayerMuted);
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_PAGE_NEXT_LEFT, (float)PLAYER_IPTV_PAGE_BUTTON_TOP),
-                        ImVec2((float)PLAYER_IPTV_PAGE_NEXT_RIGHT, (float)PLAYER_IPTV_PAGE_BUTTON_BOTTOM),
-                        current_page < page_count ? kPlayerSurface : IM_COL32(30, 35, 44, 150),
-                        12.0f);
-    draw_sized_centered_text(draw,
-                             ">",
-                             ImVec2((PLAYER_IPTV_PAGE_NEXT_LEFT + PLAYER_IPTV_PAGE_NEXT_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_PAGE_BUTTON_TOP + PLAYER_IPTV_PAGE_BUTTON_BOTTOM) * 0.5f),
-                             16.0f,
-                             current_page < page_count ? kPlayerText : kPlayerMuted);
-
-    if (item_count <= 0)
-    {
-        draw_home_text(draw, list_x, rows_y + 38.0f, 24.0f, kPlayerText, "No matching channels");
-        draw_home_text(draw, list_x, rows_y + 78.0f, 16.0f, kPlayerMuted, "Change the filter or open Sources to add a playlist.");
-    }
-    else
-    {
-        for (int row_index = 0; row_index < PLAYER_IPTV_VISIBLE_ROWS; ++row_index)
-        {
-            const int item_index = first_index + row_index;
-            const float y = rows_y + row_h * row_index;
-            IptvChannel channel = {};
-            char name[80];
-            char programme[112];
-            char window[40];
-            const bool is_selected = item_index == selected_index;
-
-            if (item_index >= item_count || !iptv_get_channel(item_index, &channel))
-                break;
-
-            player_utf8_copy_prefix(name, sizeof(name), channel.name, 34u);
-            player_utf8_copy_prefix(
-                programme,
-                sizeof(programme),
-                channel.now_title[0] ? channel.now_title : "Programme guide unavailable",
-                48u);
-            format_program_window(channel.now_start, channel.now_stop, window, sizeof(window));
-
-            draw->AddRectFilled(ImVec2(list_x, y),
-                                ImVec2(list_x + list_w, y + row_h - 6.0f),
-                                is_selected ? IM_COL32(0, 185, 212, 42) : IM_COL32(255, 255, 255, 8),
-                                kPlayerControlRadius);
-            if (is_selected)
-            {
-                draw->AddRect(ImVec2(list_x, y),
-                              ImVec2(list_x + list_w, y + row_h - 6.0f),
-                              IM_COL32(0, 185, 212, 150),
-                              kPlayerControlRadius,
-                              0,
-                              1.5f);
-                draw->AddRectFilled(ImVec2(list_x, y + 12.0f),
-                                    ImVec2(list_x + 4.0f, y + row_h - 18.0f),
-                                    kPlayerAccent,
-                                    2.0f);
-            }
-
-            draw_channel_badge(draw,
-                               channel,
-                               item_index,
-                               ImVec2(list_x + 14.0f, y + 7.0f),
-                               ImVec2(list_x + 58.0f, y + 51.0f));
-            draw_home_text(draw, list_x + 72.0f, y + 5.0f, 19.0f, kPlayerText, name);
-            if (channel.favorite)
-                draw_home_text(draw, list_x + 454.0f, y + 6.0f, 15.0f, kPlayerAccent, "FAV");
-            if (window[0])
-            {
-                const float window_width = text_width(13.0f, window);
-                draw_home_text(draw,
-                               list_x + list_w - window_width - 16.0f,
-                               y + 8.0f,
-                               13.0f,
-                               kPlayerMuted,
-                               window);
-            }
-            draw_home_text(draw,
-                           list_x + 72.0f,
-                           y + 31.0f,
-                           14.0f,
-                           channel.now_title[0] ? kPlayerMuted : IM_COL32(135, 143, 156, 220),
-                           programme);
-
-            draw->AddRectFilled(ImVec2(list_x + 72.0f, y + 53.0f),
-                                ImVec2(list_x + list_w - 16.0f, y + 56.0f),
-                                IM_COL32(255, 255, 255, 30),
-                                1.5f);
-            const float progress = programme_progress(channel, now);
-            if (progress > 0.0f)
-                draw->AddRectFilled(ImVec2(list_x + 72.0f, y + 53.0f),
-                                    ImVec2(list_x + 72.0f + (list_w - 88.0f) * progress, y + 56.0f),
-                                    kPlayerLive,
-                                    1.5f);
-        }
-    }
-
-    {
-        char status[96];
-        player_utf8_copy_prefix(status, sizeof(status), home.iptv_status, 42u);
-        draw_home_text(draw, list_x, 630.0f, 13.0f, kPlayerMuted, status);
-    }
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_DRAWER_ACTION_LEFT, (float)PLAYER_IPTV_DRAWER_ACTION_TOP),
-                        ImVec2((float)PLAYER_IPTV_DRAWER_ACTION_RIGHT, (float)PLAYER_IPTV_DRAWER_ACTION_BOTTOM),
-                        item_count > 0 ? kPlayerAccent : kPlayerSurface,
-                        kPlayerControlRadius);
-    draw_sized_centered_text(draw,
-                             "A  Play channel",
-                             ImVec2((PLAYER_IPTV_DRAWER_ACTION_LEFT + PLAYER_IPTV_DRAWER_ACTION_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_DRAWER_ACTION_TOP + PLAYER_IPTV_DRAWER_ACTION_BOTTOM) * 0.5f),
-                             14.0f,
-                             item_count > 0 ? kPlayerText : kPlayerMuted);
-    {
-        const SwitchActionHint hints[] = {
-            {"Y", "Fav"}, {"L/R", "Page"}, {"ZL/ZR", "Filter"}, {"X", "Sources"}, {"B", "Close"},
-        };
-        draw_switch_action_hints(draw,
-                                 drawer_right - 24.0f,
-                                 682.0f,
-                                 hints,
-                                 (int)(sizeof(hints) / sizeof(hints[0])),
-                                 true);
+        draw_sized_centered_text(draw, number, center,
+                                 std::min(13.0f, 13.0f * (max.x - min.x - 4) / std::max(1.0f, text_width(13, number))),
+                                 IM_COL32(255, 255, 255, 255));
     }
 }
 
 
-void draw_home_cast_arcs(ImDrawList *draw, ImVec2 origin, float scale, ImU32 color)
+
+void draw_home_cast_icon(ImDrawList *draw, ImVec2 center, ImU32 ink, ImU32 accent)
 {
-    const float thickness = 12.0f * scale;
+    // Match the downloaded Remix Icon cast-fill silhouette with square,
+    // disconnected screen bars and an open lower-left corner for cast waves.
+    const float x = center.x - 62, y = center.y - 39;
+    draw->AddRectFilled(ImVec2(x + 20, y), ImVec2(x + 124, y + 7), ink);
+    draw->AddRectFilled(ImVec2(x + 117, y + 4), ImVec2(x + 124, y + 76), ink);
+    draw->AddRectFilled(ImVec2(x + 66, y + 69), ImVec2(x + 124, y + 76), ink);
+    draw->AddRectFilled(ImVec2(x + 20, y + 4), ImVec2(x + 27, y + 40), ink);
+    const ImVec2 origin(x + 20, y + 76);
     for (int i = 0; i < 3; ++i)
     {
-        float radius = (28.0f + (float)i * 34.0f) * scale;
-        draw->PathArcTo(origin, radius, -kPi * 0.5f, 0.0f, 28);
-        draw->PathStroke(color, false, thickness);
+        draw->PathArcTo(origin, 12.0f + i * 13.0f, -kPi * 0.5f, 0, 20);
+        draw->PathStroke(accent, false, 4.5f);
     }
-    draw->AddRectFilled(ImVec2(origin.x - thickness * 0.5f, origin.y - thickness * 0.5f),
-                        ImVec2(origin.x + thickness * 0.5f, origin.y + thickness * 0.5f),
-                        color,
-                        thickness * 0.2f);
+    draw->AddCircleFilled(origin, 3.5f, accent, 20);
 }
 
-void draw_home_phone(ImDrawList *draw, ImVec2 min, ImVec2 size, ImU32 color)
+void draw_home_tv_icon(ImDrawList *draw, ImVec2 center, ImU32 ink, ImU32 accent)
 {
-    draw->AddRect(ImVec2(min.x, min.y),
-                  ImVec2(min.x + size.x, min.y + size.y),
-                  color,
-                  24.0f,
-                  0,
-                  8.0f);
-    draw->AddLine(ImVec2(min.x + size.x * 0.36f, min.y + size.y - 36.0f),
-                  ImVec2(min.x + size.x * 0.64f, min.y + size.y - 36.0f),
-                  color,
-                  7.0f);
-}
-
-void draw_home_monitor(ImDrawList *draw, ImVec2 min, ImVec2 size, ImU32 color)
-{
-    draw->AddRect(ImVec2(min.x, min.y),
-                  ImVec2(min.x + size.x, min.y + size.y),
-                  color,
-                  18.0f,
-                  0,
-                  8.0f);
-    draw->AddRectFilled(ImVec2(min.x + size.x * 0.44f, min.y + size.y),
-                        ImVec2(min.x + size.x * 0.56f, min.y + size.y + 30.0f),
-                        color);
-    draw->AddRectFilled(ImVec2(min.x + size.x * 0.28f, min.y + size.y + 30.0f),
-                        ImVec2(min.x + size.x * 0.72f, min.y + size.y + 40.0f),
-                        color);
+    draw->AddRect(ImVec2(center.x - 64, center.y - 40),
+                  ImVec2(center.x + 64, center.y + 40), ink, 8, 0, 4);
+    for (int side : {-1, 1})
+        draw->AddLine(ImVec2(center.x + side * 38, center.y + 41),
+                      ImVec2(center.x + side * 46, center.y + 52), ink, 4);
+    draw->AddTriangleFilled(ImVec2(center.x - 9, center.y - 15),
+                            ImVec2(center.x - 9, center.y + 15),
+                            ImVec2(center.x + 17, center.y), accent);
 }
 
 void draw_home_switch(ImDrawList *draw, ImVec2 min, ImVec2 size)
@@ -1656,9 +1379,7 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
     }
     else
     {
-        draw_home_phone(draw, ImVec2(218, 257), ImVec2(54, 94), ink);
-        draw_home_monitor(draw, ImVec2(346, 267), ImVec2(112, 66), ink);
-        draw_home_cast_arcs(draw, ImVec2(297, 328), 0.27f, teal);
+        draw_home_cast_icon(draw, ImVec2(left_center, 300), ink, teal);
         const bool ready = home.network_ready && home.video_ready &&
                            (home.dlna_running || home.airplay_running);
         const char *status = ready ? tr("Ready for your phone", "已就绪，等待手机连接")
@@ -1684,9 +1405,7 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
                   ImVec2(HOME_TV_RIGHT, HOME_TV_BOTTOM),
                   tv_focused ? teal : border, 20, 0, tv_focused ? 3.0f : 1.0f);
     centered(tr("Live TV", "电视直播"), right_center, 177, 34, ink);
-    draw_home_monitor(draw, ImVec2(right_center - 63, 242), ImVec2(126, 76), ink);
-    draw->AddTriangleFilled(ImVec2(right_center - 8, 262), ImVec2(right_center - 8, 295),
-                            ImVec2(right_center + 19, 278), ink);
+    draw_home_tv_icon(draw, ImVec2(right_center, 300), ink, teal);
     char summary[128];
     snprintf(summary, sizeof(summary), tr("%d channels · %d sources", "%d 个频道 · %d 个直播源"),
              home.iptv_channel_count, home.iptv_source_count);
@@ -1730,477 +1449,328 @@ void draw_home_screen(ImDrawList *draw, const PlayerHomeViewState &home, float w
     draw_switch_action_hints(draw, width - 48, 689, visible_hints, count, false);
 }
 
-void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float width, float height)
+struct BrowserPalette
 {
-    const ImU32 black = kPlayerText;
-    const ImU32 muted = kPlayerMuted;
-    const ImU32 panel = kPlayerPanel;
-    const ImU32 row = kPlayerSurface;
-    const ImU32 selected = IM_COL32(0, 185, 212, 42);
-    const ImU32 border = kPlayerBorder;
-    const ImU32 cyan = kPlayerAccent;
-    const ImU32 red = kPlayerLive;
-    const float margin = 46.0f;
-    const float list_x = (float)PLAYER_IPTV_LIST_X;
-    const float list_w = (float)PLAYER_IPTV_LIST_WIDTH;
-    const float details_x = 786.0f;
-    const float details_w = width - details_x - 72.0f;
-    const float rows_y = (float)PLAYER_IPTV_LIST_TOP;
-    const float row_h = (float)PLAYER_IPTV_ROW_HEIGHT;
-    const int visible_rows = PLAYER_IPTV_VISIBLE_ROWS;
-    int selected_index = home.iptv_sources_open ? home.iptv_source_selected_index : home.iptv_selected_index;
-    int first_index = player_iptv_page_start(selected_index);
-    const int item_count = home.iptv_sources_open ? home.iptv_source_count : home.iptv_visible_count;
-    const int page_count = item_count > 0 ? (item_count + visible_rows - 1) / visible_rows : 0;
-    const int current_page = item_count > 0 ? first_index / visible_rows + 1 : 0;
-    IptvChannel selected_channel = {};
-    IptvSource selected_source = {};
-    bool have_selected_channel = !home.iptv_sources_open && iptv_get_channel(selected_index, &selected_channel);
-    bool have_selected_source = home.iptv_sources_open && iptv_get_source(selected_index, &selected_source);
+    ImU32 background, surface, text, muted, line, selected, accent, on_accent;
+};
 
-    if (!home.iptv_sources_open)
+BrowserPalette browser_palette(bool dark)
+{
+    if (dark)
+        return {IM_COL32(12, 20, 27, 225), IM_COL32(30, 40, 48, 220),
+                IM_COL32(244, 248, 249, 255), IM_COL32(173, 187, 193, 255),
+                IM_COL32(255, 255, 255, 24), IM_COL32(19, 74, 77, 245),
+                IM_COL32(81, 217, 204, 255), IM_COL32(12, 35, 37, 255)};
+    return {IM_COL32(245, 244, 240, 255), IM_COL32(255, 255, 253, 255),
+            IM_COL32(24, 42, 44, 255), IM_COL32(101, 117, 119, 255),
+            IM_COL32(28, 61, 64, 24), IM_COL32(218, 241, 234, 255),
+            IM_COL32(0, 117, 112, 255), IM_COL32(255, 255, 255, 255)};
+}
+
+ImVec2 browser_min(PlayerBrowserRect r) { return ImVec2(r.x, r.y); }
+ImVec2 browser_max(PlayerBrowserRect r) { return ImVec2(r.x + r.w, r.y + r.h); }
+
+void browser_text(ImDrawList *draw, PlayerBrowserRect r, const char *text, float size, ImU32 color)
+{
+    if (!text || !text[0] || r.w <= 0) return;
+    draw->PushClipRect(browser_min(r), browser_max(r), true);
+    draw_home_text(draw, r.x, r.y + (r.h - size) * 0.5f, size, color, text);
+    draw->PopClipRect();
+}
+
+void browser_toolbar_icon(ImDrawList *draw, ImVec2 c, int icon, ImU32 color)
+{
+    if (icon == PLAYER_BROWSER_FAVORITES)
     {
-        draw_iptv_channel_drawer(draw, home, width, height);
-        return;
-    }
-
-    draw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(width, height), IM_COL32(0, 0, 0, 76));
-    draw->AddRectFilled(ImVec2(margin, 38.0f), ImVec2(width - margin, height - 30.0f), panel, kPlayerPanelRadius);
-    draw->AddRect(ImVec2(margin, 38.0f), ImVec2(width - margin, height - 30.0f), border, kPlayerPanelRadius, 0, 1.0f);
-
-    draw_home_text(draw, 72.0f, 64.0f, 27.0f, black, "IPTV");
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_CHANNEL_TAB_LEFT, (float)PLAYER_IPTV_TAB_TOP),
-                        ImVec2((float)PLAYER_IPTV_CHANNEL_TAB_RIGHT, (float)PLAYER_IPTV_TAB_BOTTOM),
-                        home.iptv_sources_open ? kPlayerSurface : cyan,
-                        kPlayerControlRadius);
-    draw_sized_centered_text(draw,
-                             "Channels",
-                             ImVec2((PLAYER_IPTV_CHANNEL_TAB_LEFT + PLAYER_IPTV_CHANNEL_TAB_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_TAB_TOP + PLAYER_IPTV_TAB_BOTTOM) * 0.5f),
-                             13.0f,
-                             home.iptv_sources_open ? muted : IM_COL32(255, 255, 255, 255));
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_SOURCE_TAB_LEFT, (float)PLAYER_IPTV_TAB_TOP),
-                        ImVec2((float)PLAYER_IPTV_SOURCE_TAB_RIGHT, (float)PLAYER_IPTV_TAB_BOTTOM),
-                        home.iptv_sources_open ? cyan : kPlayerSurface,
-                        kPlayerControlRadius);
-    draw_sized_centered_text(draw,
-                             "Sources",
-                             ImVec2((PLAYER_IPTV_SOURCE_TAB_LEFT + PLAYER_IPTV_SOURCE_TAB_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_TAB_TOP + PLAYER_IPTV_TAB_BOTTOM) * 0.5f),
-                             13.0f,
-                             home.iptv_sources_open ? IM_COL32(255, 255, 255, 255) : muted);
-    draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_CLOSE_LEFT, (float)PLAYER_IPTV_CLOSE_TOP),
-                        ImVec2((float)PLAYER_IPTV_CLOSE_RIGHT, (float)PLAYER_IPTV_CLOSE_BOTTOM),
-                        kPlayerSurface,
-                        18.0f);
-    draw_sized_centered_text(draw,
-                             "X",
-                             ImVec2((PLAYER_IPTV_CLOSE_LEFT + PLAYER_IPTV_CLOSE_RIGHT) * 0.5f,
-                                    (PLAYER_IPTV_CLOSE_TOP + PLAYER_IPTV_CLOSE_BOTTOM) * 0.5f),
-                             17.0f,
-                             muted);
-    draw_home_text(draw,
-                   72.0f,
-                   104.0f,
-                   18.0f,
-                   muted,
-                   home.iptv_sources_open ? "Choose a playlist, then connect its guide.xml when no guide was found automatically" : "Browse, filter, favorite, and play your channel library");
-    {
-        char count[128];
-        if (home.iptv_sources_open)
-            snprintf(count, sizeof(count), "%d sources%s", home.iptv_source_count, home.iptv_refreshing ? "  /  Refreshing" : "");
-        else
-            snprintf(count,
-                     sizeof(count),
-                     "%d shown  /  %d total  /  %d fav",
-                     home.iptv_visible_count,
-                     home.iptv_channel_count,
-                     home.iptv_favorite_count);
-        draw_home_text(draw, width - 570.0f, 72.0f, 18.0f, cyan, count);
-    }
-
-    if (!home.iptv_sources_open)
-    {
-        char filter[192];
-        char filter_name[64];
-        char search[64];
-
-        player_utf8_copy_prefix(
-            filter_name, sizeof(filter_name),
-            home.iptv_active_filter[0] ? home.iptv_active_filter : "All channels",
-            28u);
-        player_utf8_copy_prefix(search, sizeof(search), home.iptv_search, 22u);
-        snprintf(filter,
-                 sizeof(filter),
-                 "FILTER  %s%s%s",
-                 filter_name,
-                 search[0] ? "     SEARCH  " : "",
-                 search);
-        draw_home_text(draw, 72.0f, 136.0f, 15.0f, cyan, filter);
-    }
-
-    {
-        char page_text[32];
-        snprintf(page_text, sizeof(page_text), "%d / %d", current_page, page_count);
-        draw_home_text(draw, 560.0f, 136.0f, 14.0f, muted, page_text);
-        draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_PAGE_PREV_LEFT, (float)PLAYER_IPTV_PAGE_BUTTON_TOP),
-                            ImVec2((float)PLAYER_IPTV_PAGE_PREV_RIGHT, (float)PLAYER_IPTV_PAGE_BUTTON_BOTTOM),
-                            current_page > 1 ? cyan : IM_COL32(30, 35, 44, 150),
-                            12.0f);
-        draw_sized_centered_text(draw,
-                                 "<",
-                                 ImVec2((PLAYER_IPTV_PAGE_PREV_LEFT + PLAYER_IPTV_PAGE_PREV_RIGHT) * 0.5f,
-                                        (PLAYER_IPTV_PAGE_BUTTON_TOP + PLAYER_IPTV_PAGE_BUTTON_BOTTOM) * 0.5f),
-                                 16.0f,
-                                 current_page > 1 ? IM_COL32(255, 255, 255, 255) : muted);
-        draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_PAGE_NEXT_LEFT, (float)PLAYER_IPTV_PAGE_BUTTON_TOP),
-                            ImVec2((float)PLAYER_IPTV_PAGE_NEXT_RIGHT, (float)PLAYER_IPTV_PAGE_BUTTON_BOTTOM),
-                            current_page < page_count ? cyan : IM_COL32(30, 35, 44, 150),
-                            12.0f);
-        draw_sized_centered_text(draw,
-                                 ">",
-                                 ImVec2((PLAYER_IPTV_PAGE_NEXT_LEFT + PLAYER_IPTV_PAGE_NEXT_RIGHT) * 0.5f,
-                                        (PLAYER_IPTV_PAGE_BUTTON_TOP + PLAYER_IPTV_PAGE_BUTTON_BOTTOM) * 0.5f),
-                                 16.0f,
-                                 current_page < page_count ? IM_COL32(255, 255, 255, 255) : muted);
-    }
-
-    draw->AddRectFilled(ImVec2(list_x, rows_y - 12.0f),
-                        ImVec2(list_x + list_w, rows_y + row_h * visible_rows + 12.0f),
-                        IM_COL32(18, 23, 32, 232),
-                        kPlayerControlRadius);
-
-    if (item_count <= 0)
-    {
-        draw_home_text(draw,
-                       list_x + 28.0f,
-                       rows_y + 36.0f,
-                       24.0f,
-                       black,
-                       home.iptv_sources_open ? "No IPTV sources" : "No matching channels");
-        if (home.iptv_sources_open)
+        for (int i = 0; i < 10; ++i)
         {
-            draw_home_text(draw, list_x + 28.0f, rows_y + 78.0f, 18.0f, muted, "Press Y to import an M3U playlist address.");
-            draw_home_text(draw, list_x + 28.0f, rows_y + 112.0f, 18.0f, muted, "Long URLs can be preloaded from:");
-            draw_home_text(draw, list_x + 28.0f, rows_y + 144.0f, 18.0f, cyan, IPTV_PREINSTALLED_SOURCES_FILE);
+            float angle = -kPi / 2 + i * kPi / 5;
+            float radius = i % 2 ? 3.8f : 8.0f;
+            draw->PathLineTo(ImVec2(c.x + cosf(angle) * radius, c.y + sinf(angle) * radius));
         }
-        else
+        draw->PathStroke(color, ImDrawFlags_Closed, 1.6f);
+    }
+    else if (icon == PLAYER_BROWSER_RECENT)
+    {
+        draw->AddCircle(c, 7, color, 24, 1.6f);
+        draw->AddLine(c, ImVec2(c.x, c.y - 4), color, 1.6f);
+        draw->AddLine(c, ImVec2(c.x + 3, c.y + 2), color, 1.6f);
+    }
+    else if (icon == PLAYER_BROWSER_SEARCH)
+    {
+        draw->AddCircle(ImVec2(c.x - 2, c.y - 2), 5, color, 24, 1.6f);
+        draw->AddLine(ImVec2(c.x + 2, c.y + 2), ImVec2(c.x + 7, c.y + 7), color, 1.8f);
+    }
+    else if (icon == PLAYER_BROWSER_SOURCE_FILTER)
+    {
+        for (int i = -1; i <= 1; ++i)
         {
-            draw_home_text(draw, list_x + 28.0f, rows_y + 78.0f, 18.0f, muted, "Change the group filter or clear search with R3.");
-            draw_home_text(draw, list_x + 28.0f, rows_y + 112.0f, 18.0f, muted, "Press X to manage playlist sources.");
+            draw->AddCircleFilled(ImVec2(c.x - 6, c.y + i * 5), 1.3f, color, 8);
+            draw->AddLine(ImVec2(c.x - 2, c.y + i * 5), ImVec2(c.x + 7, c.y + i * 5), color, 1.6f);
         }
     }
-    else
+}
+
+void browser_button(ImDrawList *draw, PlayerBrowserRect r, const char *label,
+                    const BrowserPalette &p, bool focused, bool active = false,
+                    int icon = -1, const char *key = nullptr)
+{
+    const bool primary = key && active;
+    const ImU32 color = primary ? p.on_accent : active ? p.accent : p.text;
+    draw->AddRectFilled(browser_min(r), browser_max(r), primary ? p.accent : active ? p.selected : p.surface, 12);
+    draw->AddRect(browser_min(r), browser_max(r), focused ? p.accent : p.line, 12, 0, focused ? 2.5f : 1.0f);
+    if (focused && primary)
+        draw->AddRect(ImVec2(r.x + 4, r.y + 4), ImVec2(r.x + r.w - 4, r.y + r.h - 4), color, 8, 0, 1);
+    const bool dropdown = icon == PLAYER_BROWSER_CATEGORIES || icon == PLAYER_BROWSER_SOURCE_FILTER;
+    const bool leading = icon >= 0 && icon != PLAYER_BROWSER_CATEGORIES;
+    float size = key ? 19.0f : 17.0f;
+    const float key_width = key ? std::max(28.0f, text_width(14, key) + 14) : 0;
+    const float prefix = key ? key_width + (label[0] ? 10 : 0) : leading ? 22 : 0;
+    const float suffix = dropdown ? 18 : 0;
+    while (size > 14 && text_width(size, label) + prefix + suffix > r.w - 12)
+        size -= 0.5f;
+    const float total = text_width(size, label) + prefix + suffix;
+    float x = r.x + (r.w - total) / 2;
+    const float cy = r.y + r.h / 2;
+    draw->PushClipRect(browser_min(r), browser_max(r), true);
+    if (key)
     {
-        for (int row_index = 0; row_index < visible_rows; ++row_index)
+        draw->AddRect(ImVec2(x, cy - 14), ImVec2(x + key_width, cy + 14), color, 14, 0, 1.5f);
+        draw_sized_centered_text(draw, key, ImVec2(x + key_width / 2, cy), 14, color);
+    }
+    else if (leading)
+        browser_toolbar_icon(draw, ImVec2(x + 8, cy), icon, color);
+    x += prefix;
+    draw_sized_centered_text(draw, label, ImVec2(x + text_width(size, label) / 2, cy), size, color);
+    if (dropdown)
+    {
+        const float cx = x + text_width(size, label) + 12;
+        draw->PathLineTo(ImVec2(cx - 4, cy - 2));
+        draw->PathLineTo(ImVec2(cx, cy + 2));
+        draw->PathLineTo(ImVec2(cx + 4, cy - 2));
+        draw->PathStroke(color, false, 1.8f);
+    }
+    draw->PopClipRect();
+}
+
+void draw_browser_modal(ImDrawList *draw, const PlayerBrowserView &v, const BrowserPalette &p)
+{
+    const PlayerBrowserRect modal = player_browser_modal_rect(&v);
+    draw->AddRectFilled(ImVec2(0, 0), ImVec2(1280, 720), IM_COL32(0, 0, 0, 145));
+    draw->AddRectFilled(browser_min(modal), browser_max(modal), p.background, 24);
+    const char *title = v.modal == PLAYER_BROWSER_MODAL_CATEGORIES ? home_ui_text("Categories", "分类") :
+                        v.modal == PLAYER_BROWSER_MODAL_SOURCES ? home_ui_text("Playlist sources", "直播源") :
+                        home_ui_text("Delete this source?", "删除此直播源？");
+    draw_home_text(draw, modal.x + 32, modal.y + 24, 28, p.text, title);
+    draw->PushClipRect(ImVec2(192, 180), ImVec2(1088, 516), true);
+    const int columns = v.modal == PLAYER_BROWSER_MODAL_CATEGORIES ? 3 : 1;
+    const int end = std::min(v.modal_count, v.modal_first_index + columns * 5);
+    for (int i = v.modal_first_index; i < end; ++i)
+    {
+        char name[IPTV_NAME_MAX] = {};
+        char detail[80] = {};
+        int count = 0;
+        bool active = false;
+        if (v.modal == PLAYER_BROWSER_MODAL_CATEGORIES)
         {
-            int item_index = first_index + row_index;
-            float y = rows_y + row_h * row_index;
-            char index_text[16];
-            char name_text[80];
-            char secondary_text[112];
-            char group_text[64];
-            bool favorite = false;
-            bool has_program = false;
-            bool source_has_guide = false;
-            bool source_local = false;
-            uint32_t badge_id = (uint32_t)item_index;
-
-            secondary_text[0] = '\0';
-            group_text[0] = '\0';
-
-            if (home.iptv_sources_open)
+            if (!iptv_get_filter(i, name, sizeof(name), &count)) continue;
+            active = i == iptv_get_filter_index();
+            snprintf(detail, sizeof(detail), home_ui_text("%d channels", "%d 个频道"), count);
+        }
+        else if (v.modal == PLAYER_BROWSER_MODAL_SOURCES)
+        {
+            if (i == 0)
+            {
+                snprintf(name, sizeof(name), "%s", home_ui_text("All sources", "全部直播源"));
+                active = iptv_get_source_filter() == 0;
+            }
+            else if (i == 1)
+                snprintf(name, sizeof(name), "%s", home_ui_text("Manage sources", "管理直播源"));
+            else
             {
                 IptvSource source = {};
-                if (!iptv_get_source(item_index, &source))
-                    break;
-                player_utf8_copy_prefix(name_text, sizeof(name_text), source.name, 34u);
-                snprintf(secondary_text,
-                         sizeof(secondary_text),
-                         "%s  /  %d channels%s",
-                         source.local ? "Local" : (source.cache_ready ? "Cached" : "Remote"),
-                         source.channel_count,
-                         source.refreshing ? "  /  Syncing" : "");
-                source_has_guide = source.epg_url[0] != '\0';
-                source_local = source.local;
-                badge_id = source.id;
-            }
-            else
-            {
-                IptvChannel channel = {};
-                if (!iptv_get_channel(item_index, &channel))
-                    break;
-                player_utf8_copy_prefix(name_text, sizeof(name_text), channel.name, 28u);
-                player_utf8_copy_prefix(
-                    group_text,
-                    sizeof(group_text),
-                    channel.group[0] ? channel.group : "Ungrouped",
-                    18u);
-                player_utf8_copy_prefix(
-                    secondary_text,
-                    sizeof(secondary_text),
-                    channel.now_title[0] ? channel.now_title : "Programme guide unavailable",
-                    48u);
-                favorite = channel.favorite;
-                has_program = channel.now_title[0] != '\0';
-                badge_id = channel.id;
-            }
-
-            draw->AddRectFilled(ImVec2(list_x + 8.0f, y),
-                                ImVec2(list_x + list_w - 8.0f, y + row_h - 6.0f),
-                                item_index == selected_index ? selected : row,
-                                14.0f);
-            if (item_index == selected_index)
-                draw->AddRectFilled(ImVec2(list_x + 8.0f, y + 9.0f), ImVec2(list_x + 13.0f, y + row_h - 15.0f), cyan, 3.0f);
-
-            snprintf(index_text, sizeof(index_text), "%02d", (item_index + 1) % 100);
-            draw->AddCircleFilled(ImVec2(list_x + 40.0f, y + 28.0f), 20.0f, channel_badge_color(badge_id));
-            draw_sized_centered_text(draw, index_text, ImVec2(list_x + 40.0f, y + 27.0f), 14.0f, IM_COL32(255, 255, 255, 255));
-            if (favorite)
-                draw_home_text(draw, list_x + 482.0f, y + 7.0f, 19.0f, cyan, "*");
-            draw_home_text(draw, list_x + 72.0f, y + 5.0f, 20.0f, black, name_text);
-            if (home.iptv_sources_open)
-            {
-                draw_home_text(draw, list_x + 72.0f, y + 34.0f, 14.0f, muted, secondary_text);
-                const char *guide_label = source_has_guide ? "Guide linked" : (source_local ? "M3U header" : "No guide");
-                const float guide_w = source_has_guide ? 102.0f : 88.0f;
-                draw->AddRectFilled(ImVec2(list_x + list_w - guide_w - 24.0f, y + 32.0f),
-                                    ImVec2(list_x + list_w - 24.0f, y + 54.0f),
-                                    source_has_guide ? IM_COL32(43, 137, 109, 238) : IM_COL32(218, 142, 42, 225),
-                                    11.0f);
-                draw_sized_centered_text(draw,
-                                         guide_label,
-                                         ImVec2(list_x + list_w - guide_w * 0.5f - 24.0f, y + 42.0f),
-                                         11.0f,
-                                         IM_COL32(255, 255, 255, 255));
-            }
-            else
-            {
-                const float badge_w = has_program ? 42.0f : 72.0f;
-                draw->AddRectFilled(ImVec2(list_x + 72.0f, y + 34.0f),
-                                    ImVec2(list_x + 72.0f + badge_w, y + 54.0f),
-                                    has_program ? IM_COL32(236, 82, 73, 255) : IM_COL32(116, 115, 111, 210),
-                                    10.0f);
-                draw_sized_centered_text(draw,
-                                         has_program ? "LIVE" : "NO EPG",
-                                         ImVec2(list_x + 72.0f + badge_w * 0.5f, y + 43.0f),
-                                         11.0f,
-                                         IM_COL32(255, 255, 255, 255));
-                draw_home_text(draw,
-                               list_x + 72.0f + badge_w + 10.0f,
-                               y + 34.0f,
-                               14.0f,
-                               has_program ? black : muted,
-                               secondary_text);
-                draw_home_text(draw, list_x + 526.0f, y + 8.0f, 13.0f, muted, group_text);
+                if (!iptv_get_source(i - 2, &source)) continue;
+                snprintf(name, sizeof(name), "%s", source.name);
+                snprintf(detail, sizeof(detail), home_ui_text("%d channels", "%d 个频道"), source.channel_count);
+                active = source.id == iptv_get_source_filter();
             }
         }
-    }
-
-    draw->AddRectFilled(ImVec2(details_x, rows_y - 12.0f),
-                        ImVec2(details_x + details_w, rows_y + row_h * visible_rows + 12.0f),
-                        row,
-                        kPlayerControlRadius);
-    draw_home_text(draw, details_x + 26.0f, rows_y + 12.0f, 17.0f, cyan, home.iptv_sources_open ? "Source details" : "Channel details");
-    if (have_selected_channel)
-    {
-        char selected_name[96];
-        char selected_source[96];
-        char selected_url[160];
-        char metadata[128];
-        char now_window[40];
-        char next_window[40];
-        float programme_progress = 0.0f;
-        const time_t now = time(nullptr);
-
-        char selected_group[24];
-        char selected_source_name[26];
-        char tvg_id[80];
-
-        player_utf8_copy_prefix(selected_name, sizeof(selected_name), selected_channel.name, 26u);
-        player_utf8_copy_prefix(
-            selected_group,
-            sizeof(selected_group),
-            selected_channel.group[0] ? selected_channel.group : "Ungrouped",
-            22u);
-        player_utf8_copy_prefix(selected_source_name, sizeof(selected_source_name), selected_channel.source, 24u);
-        snprintf(selected_source,
-                 sizeof(selected_source),
-                 "%s  /  %s",
-                 selected_group,
-                 selected_source_name);
-        snprintf(selected_url, sizeof(selected_url), "%.44s", selected_channel.url);
-        player_utf8_copy_prefix(tvg_id, sizeof(tvg_id), selected_channel.tvg_id, 72u);
-        snprintf(metadata,
-                 sizeof(metadata),
-                 "%s%s%s",
-                 tvg_id[0] ? "tvg-id  " : "",
-                 tvg_id,
-                 selected_channel.logo_cached ? "  /  Logo cached" : (selected_channel.logo_url[0] ? "  /  Logo queued" : ""));
-        format_program_window(selected_channel.now_start, selected_channel.now_stop, now_window, sizeof(now_window));
-        format_program_window(selected_channel.next_start, selected_channel.next_stop, next_window, sizeof(next_window));
-        if (selected_channel.now_start > 0 && selected_channel.now_stop > selected_channel.now_start)
-        {
-            const double elapsed = difftime(now, selected_channel.now_start);
-            const double duration = difftime(selected_channel.now_stop, selected_channel.now_start);
-            programme_progress = (float)std::max(0.0, std::min(1.0, elapsed / duration));
-        }
-        draw_home_text(draw, details_x + 26.0f, rows_y + 52.0f, 26.0f, black, selected_name);
-        draw_home_text(draw, details_x + 26.0f, rows_y + 92.0f, 16.0f, muted, selected_source);
-        draw_home_text(draw, details_x + 26.0f, rows_y + 122.0f, 14.0f, muted, selected_url);
-        draw_home_text(draw, details_x + 26.0f, rows_y + 148.0f, 13.0f, muted, metadata);
-        draw_home_text(draw, details_x + 26.0f, rows_y + 184.0f, 15.0f, cyan, "Now playing");
-        if (now_window[0])
-            draw_home_text(draw, details_x + 244.0f, rows_y + 184.0f, 14.0f, muted, now_window);
-        draw_home_text(draw,
-                       details_x + 26.0f,
-                       rows_y + 210.0f,
-                       18.0f,
-                       black,
-                       selected_channel.now_title[0] ? selected_channel.now_title : "No current EPG data");
-        draw->AddRectFilled(ImVec2(details_x + 26.0f, rows_y + 246.0f),
-                            ImVec2(details_x + details_w - 26.0f, rows_y + 252.0f),
-                            IM_COL32(255, 255, 255, 30),
-                            3.0f);
-        if (programme_progress > 0.0f)
-            draw->AddRectFilled(ImVec2(details_x + 26.0f, rows_y + 246.0f),
-                                ImVec2(details_x + 26.0f + (details_w - 52.0f) * programme_progress, rows_y + 252.0f),
-                                red,
-                                3.0f);
-        draw_home_text(draw, details_x + 26.0f, rows_y + 280.0f, 15.0f, cyan, "Up next");
-        if (next_window[0])
-            draw_home_text(draw, details_x + 244.0f, rows_y + 280.0f, 14.0f, muted, next_window);
-        draw_home_text(draw,
-                       details_x + 26.0f,
-                       rows_y + 306.0f,
-                       17.0f,
-                       muted,
-                       selected_channel.next_title[0] ? selected_channel.next_title : "No next programme data");
-    }
-    else if (have_selected_source)
-    {
-        char source_name[96];
-        char source_url[160];
-        char source_state[128];
-        char guide_url[160];
-        const bool guide_connected = selected_source.epg_url[0] != '\0';
-        const ImU32 guide_bg = guide_connected ? IM_COL32(16, 53, 48, 235) : IM_COL32(62, 45, 20, 235);
-        const ImU32 guide_accent = guide_connected ? IM_COL32(74, 190, 151, 255) : IM_COL32(235, 160, 66, 255);
-        const char *guide_action;
-
-        player_utf8_copy_prefix(source_name, sizeof(source_name), selected_source.name, 28u);
-        snprintf(source_url, sizeof(source_url), "%.46s", selected_source.url);
-        snprintf(source_state,
-                 sizeof(source_state),
-                 "%s  /  %d channel%s%s",
-                 selected_source.local ? "Local file" : (selected_source.cache_ready ? "Cache ready" : "Not cached"),
-                 selected_source.channel_count,
-                 selected_source.channel_count == 1 ? "" : "s",
-                 selected_source.refreshing ? "  /  Refreshing" : "");
-        snprintf(guide_url,
-                 sizeof(guide_url),
-                 "%.46s",
-                 guide_connected ? selected_source.epg_url : "No guide.xml address connected");
-        if (selected_source.local)
-            guide_action = guide_connected ? "Auto-detected from M3U" : "Add url-tvg to the M3U header";
         else
-            guide_action = guide_connected ? "ZR  Change guide URL" : "ZR  Connect guide.xml";
-
-        draw_home_text(draw, details_x + 26.0f, rows_y + 52.0f, 26.0f, black, source_name);
-        draw_home_text(draw, details_x + 26.0f, rows_y + 92.0f, 15.0f, cyan, source_state);
-        draw_home_text(draw, details_x + 26.0f, rows_y + 126.0f, 13.0f, muted, "Playlist address");
-        draw_home_text(draw, details_x + 26.0f, rows_y + 148.0f, 14.0f, black, source_url);
-
-        draw->AddRectFilled(ImVec2(details_x + 20.0f, rows_y + 180.0f),
-                            ImVec2(details_x + details_w - 20.0f, rows_y + 320.0f),
-                            guide_bg,
-                            18.0f);
-        draw->AddRectFilled(ImVec2(details_x + 20.0f, rows_y + 180.0f),
-                            ImVec2(details_x + 26.0f, rows_y + 320.0f),
-                            guide_accent,
-                            3.0f);
-        draw_home_text(draw, details_x + 40.0f, rows_y + 194.0f, 13.0f, muted, "Programme guide (EPG)");
-        draw_home_text(draw,
-                       details_x + 40.0f,
-                       rows_y + 218.0f,
-                       20.0f,
-                       guide_accent,
-                       guide_connected ? "Guide connected" : "Guide not connected");
-        draw_home_text(draw,
-                       details_x + 40.0f,
-                       rows_y + 250.0f,
-                       13.0f,
-                       muted,
-                       selected_source.local
-                           ? (guide_connected ? "The guide address was read from the M3U header." : "Add url-tvg=\"guide.xml URL\" to the first M3U line.")
-                           : (guide_connected ? "Now and next programmes are matched by tvg-id." : "Connect the guide.xml supplied with this playlist."));
-        draw_home_text(draw, details_x + 40.0f, rows_y + 273.0f, 12.0f, muted, guide_url);
-        draw->AddRectFilled(ImVec2(details_x + 40.0f, rows_y + 292.0f),
-                            ImVec2(details_x + details_w - 40.0f, rows_y + 316.0f),
-                            kPlayerSurface,
-                            kPlayerControlRadius);
-        draw_sized_centered_text(draw,
-                                 guide_action,
-                                 ImVec2(details_x + details_w * 0.5f, rows_y + 303.0f),
-                                 12.0f,
-                                 kPlayerText);
-
-        draw_home_text(draw, details_x + 26.0f, rows_y + 342.0f, 13.0f, muted, "Source status");
-        draw_home_text(draw, details_x + 26.0f, rows_y + 366.0f, 14.0f, black, selected_source.status);
+        {
+            snprintf(name, sizeof(name), "%s", i == 0 ? home_ui_text("Cancel", "取消") :
+                                                                       home_ui_text("Delete source", "删除直播源"));
+            if (i == 1) snprintf(detail, sizeof(detail), "%s", home_ui_text("This cannot be undone", "此操作不可撤销"));
+        }
+        PlayerBrowserRect r = player_browser_modal_item_rect(&v, i);
+        draw->AddRectFilled(browser_min(r), browser_max(r), active ? p.selected : p.surface, 12);
+        draw->AddRect(browser_min(r), browser_max(r), i == v.modal_cursor ? p.accent : p.line,
+                      12, 0, i == v.modal_cursor ? 2.5f : 1.0f);
+        browser_text(draw, {r.x + 16, r.y + 6, r.w - 32, 32}, name, 20, p.text);
+        browser_text(draw, {r.x + 16, r.y + 40, r.w - 32, 26}, detail, 16, p.muted);
     }
+    draw->PopClipRect();
+    const PlayerBrowserRect track = player_browser_scrollbar_rect(&v, false);
+    const PlayerBrowserRect thumb = player_browser_scrollbar_rect(&v, true);
+    draw->AddRectFilled(browser_min(track), browser_max(track), p.line, 6);
+    draw->AddRectFilled(browser_min(thumb), browser_max(thumb), p.accent, 6);
+    browser_text(draw, {192, 548, 896, 40},
+                 home_ui_text("A / SR  Select     B / SL  Back     Touch outside to close",
+                              "A / SR  选择     B / SL  返回     点击面板外关闭"), 17, p.muted);
+}
+
+void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float width, float height)
+{
+    const PlayerBrowserView &v = home.iptv_browser;
+    if (v.page == PLAYER_BROWSER_CLOSED) return;
+    const bool drawer = v.page == PLAYER_BROWSER_DRAWER;
+    const bool sources = v.page == PLAYER_BROWSER_SOURCES;
+    const BrowserPalette p = browser_palette(drawer);
+    const PlayerBrowserRect panel = player_browser_panel_rect(&v);
+    if (drawer)
+        draw->AddRectFilledMultiColor(ImVec2(panel.w, 0), ImVec2(panel.w + 100, height),
+                                     IM_COL32(0, 0, 0, 65), 0, 0, IM_COL32(0, 0, 0, 65));
     else
-    {
-        draw_home_text(draw, details_x + 26.0f, rows_y + 54.0f, 21.0f, muted, "Nothing selected.");
-    }
+        draw->AddRectFilled(ImVec2(0, 0), ImVec2(width, height), p.background);
+    draw->AddRectFilled(browser_min(panel), browser_max(panel), p.background);
+    draw_home_text(draw, 24, 32, 30, p.text,
+                   sources ? home_ui_text("Playlist sources", "直播源管理") : home_ui_text("Live TV", "电视直播"));
 
-    if (have_selected_channel || have_selected_source)
-    {
-        draw->AddRectFilled(ImVec2((float)PLAYER_IPTV_ACTION_LEFT, (float)PLAYER_IPTV_ACTION_TOP),
-                            ImVec2((float)PLAYER_IPTV_ACTION_RIGHT, (float)PLAYER_IPTV_ACTION_BOTTOM),
-                            cyan,
-                            kPlayerControlRadius);
-        draw_sized_centered_text(draw,
-                                 have_selected_source ? "Refresh source" : "Play channel",
-                                 ImVec2((PLAYER_IPTV_ACTION_LEFT + PLAYER_IPTV_ACTION_RIGHT) * 0.5f,
-                                        (PLAYER_IPTV_ACTION_TOP + PLAYER_IPTV_ACTION_BOTTOM) * 0.5f),
-                                 15.0f,
-                                 IM_COL32(255, 255, 255, 255));
-    }
-
-    draw->AddRectFilled(ImVec2(72.0f, height - 88.0f),
-                        ImVec2(width - 72.0f, height - 44.0f),
-                        kPlayerSurface,
-                        kPlayerControlRadius);
-    {
-        char status[72];
-        player_utf8_copy_prefix(status, sizeof(status), home.iptv_status, 48u);
-        draw_home_text(draw, 92.0f, height - 76.0f, 14.0f, home.iptv_ready ? muted : red, status);
-    }
-    if (home.iptv_sources_open)
-    {
-        const char *guide_label = have_selected_source && selected_source.local ? "Guide Help" : "Set Guide";
-        const SwitchActionHint hints[] = {
-            {"A", "Refresh"}, {"Y", "Add M3U"}, {"ZR", guide_label}, {"-", "Remove"}, {"X", "Channels"}, {"B", "Close"},
-        };
-        draw_switch_action_hints(draw,
-                                 width - 92.0f,
-                                 height - 66.0f,
-                                 hints,
-                                 (int)(sizeof(hints) / sizeof(hints[0])),
-                                 true);
-    }
+    char subtitle[320] = {};
+    if (sources)
+        snprintf(subtitle, sizeof(subtitle), home_ui_text("%d sources  /  Local M3U and M3U8 are scanned at startup",
+                                                        "%d 个直播源  /  启动时自动扫描本地 M3U、M3U8"), home.iptv_source_count);
     else
+        snprintf(subtitle, sizeof(subtitle), "%d / %d   %s%s%s", home.iptv_visible_count,
+                 home.iptv_channel_count, home.iptv_active_filter,
+                 home.iptv_search[0] ? "  /  " : "", home.iptv_search);
+    browser_text(draw, {24, 76, panel.w - 48, 26}, subtitle, 16, p.muted);
+    browser_button(draw, player_browser_close_rect(&v), "", p, false, false, -1, "B");
+    if (drawer)
+        browser_button(draw, player_browser_expand_rect(&v), home_ui_text("X  Full list", "X  全屏列表"), p, false);
+
+    const char *toolbar[] = {
+        home_ui_text("Categories", "全部分类"), home_ui_text("Favorites", "收藏"),
+        home_ui_text("Recent", "最近观看"), home_ui_text("Search", "搜索"), home_ui_text("Sources", "直播源")};
+    const int filter = iptv_get_filter_index();
+    for (int i = 0; i < PLAYER_BROWSER_TOOLBAR_COUNT; ++i)
     {
-        const SwitchActionHint hints[] = {
-            {"A", "Play"}, {"Y", "Favorite"}, {"ZL/ZR", "Filter"}, {"L/R", "Page"}, {"X", "Sources"}, {"B", "Close"},
-        };
-        draw_switch_action_hints(draw,
-                                 width - 92.0f,
-                                 height - 66.0f,
-                                 hints,
-                                 (int)(sizeof(hints) / sizeof(hints[0])),
-                                 true);
+        const bool active = (i == PLAYER_BROWSER_CATEGORIES && filter >= 3) ||
+                            (i == PLAYER_BROWSER_FAVORITES && filter == 1) ||
+                            (i == PLAYER_BROWSER_RECENT && filter == 2) ||
+                            (i == PLAYER_BROWSER_SEARCH && home.iptv_search[0]) ||
+                            (i == PLAYER_BROWSER_SOURCE_FILTER && iptv_get_source_filter());
+        browser_button(draw, player_browser_toolbar_rect(&v, i), toolbar[i], p,
+                       v.focus == PLAYER_BROWSER_FOCUS_TOOLBAR && v.toolbar_focus == i, active, i);
     }
+
+    const PlayerBrowserRect list = player_browser_list_rect(&v);
+    draw->PushClipRect(browser_min(list), browser_max(list), true);
+    const uint32_t playing_id = home.iptv_playback_active ? iptv_get_playing_channel_id() : 0;
+    const time_t now = time(nullptr);
+    for (int i = v.first_index; i < v.first_index + v.row_count; ++i)
+    {
+        PlayerBrowserRect row = player_browser_row_rect(&v, i);
+        const bool selected = i == v.selected_index;
+        if (selected)
+        {
+            draw->AddRectFilled(ImVec2(row.x + 2, row.y + 2), ImVec2(row.x + row.w - 2, row.y + row.h - 2),
+                                p.selected, 12);
+            if (v.focus == PLAYER_BROWSER_FOCUS_ROWS)
+                draw->AddRect(ImVec2(row.x + 2, row.y + 2), ImVec2(row.x + row.w - 2, row.y + row.h - 2),
+                              p.accent, 12, 0, 2);
+        }
+        else
+            draw->AddLine(ImVec2(row.x + 10, row.y + row.h - 1),
+                          ImVec2(row.x + row.w - 10, row.y + row.h - 1), p.line);
+        if (sources)
+        {
+            IptvSource source = {};
+            if (!iptv_get_source(i, &source)) continue;
+            browser_text(draw, {row.x + 14, row.y + 2, 300, 27}, source.name, 20, p.text);
+            browser_text(draw, {row.x + 14, row.y + 29, row.w * 0.60f, 22}, source.url, 14, p.muted);
+            browser_text(draw, {row.x + row.w * 0.62f, row.y, row.w * 0.38f - 16, row.h},
+                         source.status, 16, p.muted);
+        }
+        else
+        {
+            IptvChannel channel = {};
+            if (!iptv_get_channel(i, &channel)) continue;
+            draw_channel_badge(draw, channel, i, ImVec2(row.x + 10, row.y + 8),
+                                ImVec2(row.x + 44, row.y + 42));
+            const float name_w = drawer ? row.w - 106 : row.w * 0.34f - 60;
+            browser_text(draw, {row.x + 56, row.y + 3, name_w, 26}, channel.name, 20, p.text);
+            char program_window[48] = {};
+            format_program_window(channel.now_start, channel.now_stop, program_window, sizeof(program_window));
+            const float subtitle_w = drawer && program_window[0] ? name_w - 108 : name_w;
+            browser_text(draw, {row.x + 56, row.y + 29, subtitle_w, 20},
+                         drawer ? (channel.now_title[0] ? channel.now_title : channel.group) :
+                                  (channel.group[0] ? channel.group : channel.source), 14, p.muted);
+            if (drawer && program_window[0])
+            {
+                browser_text(draw, {row.x + 56 + subtitle_w + 8, row.y + 29, 100, 20},
+                             program_window, 12, p.muted);
+                const float x = row.x + 56, w = name_w;
+                draw->AddRectFilled(ImVec2(x, row.y + 47), ImVec2(x + w, row.y + 49), p.line, 1);
+                draw->AddRectFilled(ImVec2(x, row.y + 47),
+                                    ImVec2(x + w * programme_progress(channel, now), row.y + 49), p.accent, 1);
+            }
+            if (!drawer)
+            {
+                const float program_x = row.x + row.w * 0.35f;
+                browser_text(draw, {program_x, row.y + 2, row.w * 0.41f, 28},
+                             channel.now_title[0] ? channel.now_title :
+                                 home_ui_text("No programme information", "暂无节目单"), 18, p.text);
+                browser_text(draw, {program_x, row.y + 30, row.w * 0.41f, 20},
+                             channel.next_title, 14, p.muted);
+                char window[48] = {};
+                format_program_window(channel.now_start, channel.now_stop, window, sizeof(window));
+                browser_text(draw, {row.x + row.w * 0.78f, row.y + 3, row.w * 0.18f, 26}, window, 16, p.muted);
+                const float progress = programme_progress(channel, now);
+                if (window[0])
+                {
+                    const float x = row.x + row.w * 0.78f, w = row.w * 0.16f;
+                    draw->AddRectFilled(ImVec2(x, row.y + 38), ImVec2(x + w, row.y + 41), p.line, 2);
+                    draw->AddRectFilled(ImVec2(x, row.y + 38), ImVec2(x + w * progress, row.y + 41), p.accent, 2);
+                }
+            }
+            if (channel.favorite)
+                browser_text(draw, {row.x + row.w - 38, row.y + 3, 24, 22}, "*", 20, p.accent);
+            if (playing_id && channel.id == playing_id)
+            {
+                const float x = row.x + row.w - 30;
+                for (int bar = 0; bar < 3; ++bar)
+                    draw->AddRectFilled(ImVec2(x + bar * 5, row.y + 39 - (bar == 1 ? 13 : 8)),
+                                        ImVec2(x + bar * 5 + 3, row.y + 39), p.accent, 1);
+            }
+        }
+    }
+    if (v.item_count == 0)
+    {
+        browser_text(draw, {list.x + 20, list.y + 130, list.w - 40, 40},
+                     home_ui_text("No matching channels", "没有符合条件的频道"), 26, p.text);
+        browser_text(draw, {list.x + 20, list.y + 178, list.w - 40, 36},
+                     home_ui_text("Change filters, or open Sources to add a playlist.",
+                                  "更换筛选条件，或打开直播源添加列表。"), drawer ? 16 : 20, p.muted);
+    }
+    draw->PopClipRect();
+    PlayerBrowserRect track = player_browser_scrollbar_rect(&v, false);
+    PlayerBrowserRect thumb = player_browser_scrollbar_rect(&v, true);
+    draw->AddRectFilled(browser_min(track), browser_max(track), p.line, 6);
+    draw->AddRectFilled(browser_min(thumb), browser_max(thumb), p.accent, 6);
+    browser_text(draw, {24, 617, panel.w - 48, 20}, home.iptv_status, 14, p.muted);
+
+    const char *source_actions[] = {
+        home_ui_text("Add URL", "添加网址"), home_ui_text("Scan SD", "扫描 SD 卡"),
+        home_ui_text("Refresh", "刷新"), home_ui_text("Programme guide", "设置节目单"),
+        home_ui_text("Delete", "删除")};
+    const char *channel_actions[] = {
+        home_ui_text("Play", "播放"), home_ui_text("Favorite", "收藏")};
+    for (int i = 0; i < player_browser_action_count(&v); ++i)
+        browser_button(draw, player_browser_action_rect(&v, i), sources ? source_actions[i] : channel_actions[i], p,
+                       v.focus == PLAYER_BROWSER_FOCUS_ACTIONS && v.action_focus == i, !sources && i == 0,
+                       -1, sources ? nullptr : i == 0 ? "A / SR" : "Y");
+    if (v.modal != PLAYER_BROWSER_MODAL_NONE)
+        draw_browser_modal(draw, v, browser_palette(true));
 }
 
 bool render_draw_data(ViewContext *ctx, int slot)
@@ -2427,7 +1997,12 @@ extern "C" bool frontend_imgui_overlay_render(ViewContext *ctx, int slot)
                       ctx->home_state.iptv_playback_active &&
                       ctx->home_state.iptv_panel_open;
     if (!has_player_overlay && !show_iptv_panel)
-        return false;
+    {
+        /* Video has already redrawn this target. Empty UI is handled, not a
+         * renderer failure: legacy fallback would clear part of this frame. */
+        ctx->dk3d_overlay_dirty = false;
+        return true;
+    }
 
     io = &ImGui::GetIO();
     io->DisplaySize = ImVec2((float)ctx->status.display_width, (float)ctx->status.display_height);
@@ -2446,14 +2021,16 @@ extern "C" bool frontend_imgui_overlay_render(ViewContext *ctx, int slot)
         if (overlay.kind == PLAYER_UI_OVERLAY_MESSAGE)
             draw_message(draw, overlay.message, ctx->status.player_state, io->DisplaySize.x, io->DisplaySize.y);
         else
-            draw_progress_bar(draw, overlay.bar, ctx->status.player_state, io->DisplaySize.x, io->DisplaySize.y);
+            draw_progress_bar(draw, overlay.bar, ctx->status.player_state, io->DisplaySize.x, io->DisplaySize.y,
+                              ctx->home_state_valid && ctx->home_state.iptv_playback_active);
         draw_video_action_hints(draw,
                                 io->DisplaySize.x,
                                 io->DisplaySize.y,
                                 ctx->home_state_valid &&
                                     player_iptv_video_menu_available(
                                         ctx->home_state.iptv_playback_active,
-                                        ctx->home_state.iptv_channel_count));
+                                        ctx->home_state.iptv_channel_count),
+                                !ctx->home_state.iptv_playback_active && overlay.kind == PLAYER_UI_OVERLAY_BAR && overlay.bar.seekable && overlay.bar.duration_ms > 0);
     }
     ImGui::Render();
 
@@ -2511,7 +2088,7 @@ extern "C" bool frontend_imgui_loading_render(ViewContext *ctx, int slot)
                                 ctx->home_state_valid &&
                                     player_iptv_video_menu_available(
                                         ctx->home_state.iptv_playback_active,
-                                        ctx->home_state.iptv_channel_count));
+                                        ctx->home_state.iptv_channel_count), false);
     }
     ImGui::Render();
 

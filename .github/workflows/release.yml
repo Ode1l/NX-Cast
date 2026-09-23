@@ -57,5 +57,4 @@ jobs:
           overwrite_files: true
           fail_on_unmatched_files: true
           files: |
-            dist/NX-Cast.nro
             dist/NX-Cast-sdmc.zip

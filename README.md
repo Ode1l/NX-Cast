@@ -88,20 +88,27 @@ For full install and troubleshooting details, see [docs/install.md](docs/install
 
 ## Controls
 
-When idle, the app shows a home screen with basic casting instructions, runtime status, and only the latest error. Full log history is kept for debugging but is not shown as the release foreground UI.
+The home screen separates passive casting status from the actionable Live TV card. Casting starts from the phone; the left card is not a button. Chinese/English UI language follows the system initially and can be changed on Home. The preference is saved on the SD card. Only the latest error appears on Home, not the full debug log.
 
 On the home screen:
 
-- `X` or either stick click: open IPTV; inside IPTV, `X` switches between Channels and Sources
-- `A`: return to the active player from Home, or play the selected IPTV channel
-- `Up` / `Down` or either stick vertically: select a channel
-- `Left` / `Right`, either stick horizontally, or `L` / `R`: move one page
-- `Y`: favorite a channel, add a remote source, or refresh all sources from Home
-- `ZL` / `ZR`: cycle channel filters; `ZR` configures XMLTV on Sources
-- `L3` / `R3`: search channels / clear search
+- `A`: activate the focused Home control; Live TV is focused initially
+- `X` or either stick click: open the full-screen channel library
+- `Up` / `Down`: focus the language control / Live TV card
+- `B`: return to an active player from Home
+- `Y`: refresh sources in the background
 - `-`: open a media or M3U URL; playlist URLs are imported into Channels instead of played as one stream
-- `B`: close the IPTV browser
-- touch: tap a row to select it, tap it again or tap `PLAY CHANNEL` to play; swipe the list or use the on-screen arrows to change page
+
+Inside the channel library or playback drawer:
+
+- Directional buttons or either stick browse continuously; holding accelerates scrolling
+- Left/right (or `L`/`R`) moves between the filter toolbar, channel list, and bottom actions, not playback seek
+- `A` / `SR`: activate the focused action or play the selected channel; `Y` toggles Favorite
+- `B` / `SL`: close a selector, return from Sources, collapse the full list to the playback drawer, or close the browser
+- `X` expands the playback drawer to the full list without stopping playback
+- Categories, Favorites, Recent, Search and Sources are accessible through the toolbar
+- Sources includes source filtering and management: Add URL, Scan SD, Refresh, Programme guide and Delete
+- Touch: drag with inertia or drag the scrollbar, tap a row to select it, then tap Play. Scrolling never automatically plays a channel
 
 NX-Cast accepts input from every connected standard controller. A single horizontal Joy-Con can browse with its stick, click the stick to open IPTV, use `SR` to confirm, and use `SL` to return. A paired Joy-Con set, handheld controls, Pro Controller, and touch screen can each complete channel selection independently.
 
@@ -109,7 +116,7 @@ During video playback:
 
 - `A`: play / pause
 - `B`: return to Home without stopping playback
-- `X` or either stick click: open the IPTV channel menu over the current video; `A` switches channel and `B` closes the menu
+- `X` or either stick click: open the IPTV channel drawer over the current video; `A` switches channel and `B` closes the menu. DLNA/AirPlay do not show this IPTV-only action
 - `+`: exit the app
 - `-`: show controls
 - `L` or `Left`: seek backward 10 seconds
@@ -172,7 +179,6 @@ This is the easiest path. It uses the same media packages as GitHub Actions and 
 Outputs:
 
 ```text
-dist/NX-Cast.nro
 dist/NX-Cast-sdmc.zip
 ```
 
@@ -262,17 +268,17 @@ Development build:
 git push
 ```
 
-Any branch push builds the project and updates the rolling prerelease:
+A push to `main` builds the project and updates the rolling prerelease. Pull requests targeting `main` build without publishing:
 
 - Release name: `NX-Cast Continuous`
 - Tag: `continuous`
-- Assets: `NX-Cast.nro`, `NX-Cast-sdmc.zip`
+- Asset: `NX-Cast-sdmc.zip` (complete installation folder, including the NRO)
 
 Formal release:
 
 ```bash
-git tag -a v0.3.0 -m "NX-Cast v0.3.0"
-git push origin v0.3.0
+git tag -a v0.3.1 -m "NX-Cast v0.3.1"
+git push origin v0.3.1
 ```
 
 The release workflow runs AirPlay host tests, requires `libmpv/deko3d` plus Ed25519, rejects obviously invalid small `NRO` outputs, and rejects packages containing runtime AirPlay secrets or diagnostic captures.

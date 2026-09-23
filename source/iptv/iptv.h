@@ -7,9 +7,6 @@
 
 #define IPTV_ROOT_DIR "sdmc:/switch/NX-Cast/iptv"
 #define IPTV_PREINSTALLED_SOURCES_FILE IPTV_ROOT_DIR "/sources.txt"
-#define IPTV_MAX_CHANNELS 4096
-#define IPTV_MAX_SOURCES 32
-#define IPTV_MAX_GROUPS 64
 #define IPTV_MAX_RECENT 32
 #define IPTV_NAME_MAX 128
 #define IPTV_GROUP_MAX 96
@@ -85,6 +82,8 @@ typedef struct
     int epg_channel_count;
     int selected_index;
     int source_selected_index;
+    int filter_index;
+    uint32_t source_filter_id;
     char active_filter[IPTV_GROUP_MAX];
     char search[IPTV_SEARCH_MAX];
     char status[IPTV_STATUS_MAX];
@@ -120,6 +119,17 @@ bool iptv_refresh_selected_source_async(void);
 bool iptv_refresh_all_async(void);
 
 void iptv_cycle_filter(int delta);
+/* 0 all, 1 favorites, 2 recent, >=3 groups. Invalid selections reset to all.
+ * Counts include source/search constraints, not the active group filter.
+ * Getters copy cached values and do not scan the catalog. */
+void iptv_set_filter(int index);
+int iptv_get_filter_index(void);
+int iptv_get_filter_count(void);
+bool iptv_get_filter(int index, char *name, size_t size, int *count);
+void iptv_set_source_filter(uint32_t source_id);
+uint32_t iptv_get_source_filter(void);
+/* Last successfully submitted channel, or zero for direct URL/no IPTV owner. */
+uint32_t iptv_get_playing_channel_id(void);
 bool iptv_prompt_search(void);
 void iptv_clear_search(void);
 bool iptv_toggle_selected_favorite(void);

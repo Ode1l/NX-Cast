@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "types.h"
+#include "ui/browser.h"
 
 #define PLAYER_HOME_ERROR_MAX 512
 #define PLAYER_HOME_IPTV_STATUS_MAX 192
@@ -59,6 +60,7 @@ typedef struct
     char airplay_pin[PLAYER_HOME_AIRPLAY_PIN_SIZE];
     char airplay_status[PLAYER_HOME_AIRPLAY_STATUS_MAX];
     bool iptv_ready;
+    PlayerBrowserView iptv_browser;
     bool iptv_playback_active;
     bool iptv_panel_open;
     bool iptv_sources_open;

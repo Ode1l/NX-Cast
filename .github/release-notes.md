@@ -1,8 +1,10 @@
-# NX-Cast v0.3.0 Release Notes
+# NX-Cast v0.3.1 Release Notes
+
+This release refreshes the bilingual Home and IPTV browsing/playback UI, improves touch and controller navigation, and expands the IPTV catalog beyond fixed channel limits. The visible application version is 0.3.1.
 
 ## Release Highlights
 
-NX-Cast v0.3.0 combines its DLNA media receiver and IPTV player with experimental AirPlay video playback for Nintendo Switch homebrew.
+NX-Cast combines its DLNA media receiver and IPTV player with experimental AirPlay video playback for Nintendo Switch homebrew.
 
 This release includes experimental AirPlay URL/HLS playback and iPhone screen mirroring with PIN pairing. These paths now have automated host/Switch build coverage and real-device testing, but remain experimental and are not a complete AirPlay 2 implementation.
 
@@ -12,10 +14,10 @@ This release includes experimental AirPlay URL/HLS playback and iPhone screen mi
 - Add, remove, and refresh remote sources with persistent SD-card caching.
 - Browse channels by playlist group, search by channel metadata, and keep Favorites and Recent lists.
 - Read plain or gzip XMLTV programme guides and show current/next programme information.
-- Cache `tvg-logo` metadata and image files for future UI use.
+- Cache and display channel logos alongside current programme information.
 - Open the channel browser during playback and switch channels without returning to Home.
-- Use controller or left-stick navigation throughout the channel and source screens.
-- Load up to 4,096 channels (586 seven-row pages) and render full CJK channel/programme names.
+- Use either stick, controller or touch navigation throughout the channel and source screens.
+- Browse dynamically sized channel libraries with continuous scrolling, category/source filters, Chinese/English controls and CJK channel/programme names. Capacity is bounded by memory budgets rather than a fixed channel count.
 
 ### Playback And UI
 
@@ -38,5 +40,7 @@ This release includes experimental AirPlay URL/HLS playback and iPhone screen mi
 ### Install
 
 Download `NX-Cast-sdmc.zip` and extract it directly to the root of the Switch SD card. The package includes the NRO, DLNA runtime files, fonts, IPTV configuration examples, the AirPlay storage skeleton, and dependency notices.
+
+The install package is distributed as one ZIP, not a separate NRO download. Keep the complete `switch/NX-Cast/` folder together. AirPlay device identities and pairing records are generated on each user's Switch and are not bundled.
 
 NX-Cast does not provide subscription channels, credentials, DRM bypass, or regional access. Use playlists and streams that you are authorized to access.

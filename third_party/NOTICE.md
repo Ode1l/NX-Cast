@@ -8,6 +8,14 @@ Source: https://github.com/ocornut/imgui
 Version: v1.91.9b
 License: MIT, see `third_party/imgui/LICENSE.txt`.
 
+Remix Icon Cast mark
+--------------------
+
+Source: https://github.com/Remix-Design/RemixIcon/blob/master/icons/Device/cast-fill.svg
+The home-screen cast mark is drawn to match this filled icon. The source SVG is
+archived at `assets/icon/remix-cast-fill.svg`.
+License: MIT, see `assets/licenses/LICENSE.RemixIcon.MIT.txt`.
+
 Switch font asset
 -----------------
 

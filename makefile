@@ -39,7 +39,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET		:=	NX-Cast
 APP_TITLE	:=	NX-Cast
 APP_AUTHOR	:=	Ode1l
-APP_VERSION	:=	0.3.0
+APP_VERSION	:=	0.3.1
 ICON		:=	assets/icon/switch-screencast-logo.jpg
 BUILD		:=	build
 SOURCES		:=	source \
@@ -615,6 +615,15 @@ release-build:
 		'airplay-playfair=1' \
 		'airplay-matroska-muxer=1' > $(RELEASE_ATTESTATION)
 	@echo "release build attested at $(RELEASE_ATTESTATION)"
+
+.PHONY: test-ui test-iptv-data
+test-ui:
+	@HOST_CC="$(HOST_CC)" sh scripts/test_ui.sh
+
+test-iptv-data:
+	@mkdir -p "$(CURDIR)/$(BUILD)/tests"
+	$(HOST_CC) $(HOST_CFLAGS) -D_POSIX_C_SOURCE=200809L -pthread -Iscripts/iptv_test_stubs scripts/test_iptv_data.c source/iptv/url.c source/iptv/xmltv.c source/player/ui/home.c -lz -o "$(CURDIR)/$(BUILD)/tests/test_iptv_data"
+	@"$(CURDIR)/$(BUILD)/tests/test_iptv_data"
 
 test-protocol-coordinator:
 	@mkdir -p $(dir $(PROTOCOL_COORDINATOR_TEST_BIN))

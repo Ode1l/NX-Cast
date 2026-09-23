@@ -4,7 +4,9 @@
 #include <string.h>
 
 #include "player/ui/overlay.h"
+#include "player/ui/home.h"
 #include "player/ui/timeline.h"
+#include "player/ui/utf8.h"
 
 #define PLAYER_UI_OSD_LONG_MS 600000
 
@@ -43,19 +45,13 @@ static int clamp_int(int value, int min_value, int max_value)
 
 static void copy_title_text(char *out, size_t out_size, const char *begin, const char *end)
 {
-    size_t length;
-
     if (!out || out_size == 0)
         return;
     out[0] = '\0';
     if (!begin || !end || end <= begin)
         return;
 
-    length = (size_t)(end - begin);
-    if (length >= out_size)
-        length = out_size - 1;
-    memcpy(out, begin, length);
-    out[length] = '\0';
+    player_utf8_copy_prefix(out, out_size, begin, (size_t)(end - begin));
 }
 
 static void media_title_from_metadata(const char *metadata, char *out, size_t out_size)
@@ -71,7 +67,7 @@ static void media_title_from_metadata(const char *metadata, char *out, size_t ou
 
     if (metadata[0] != '<')
     {
-        snprintf(out, out_size, "%s", metadata);
+        copy_title_text(out, out_size, metadata, metadata + strlen(metadata));
         return;
     }
 
@@ -198,13 +194,17 @@ void player_ui_bar_build(const PlayerSnapshot *snapshot, const char *headline, P
 
     if (!headline)
         snprintf(out->title, sizeof(out->title), "%s", label);
+    /* Titles remain English identifiers for renderer state/seek parsing. */
     out->focus = focus_from_headline(out->title, snapshot->state);
     out->seek_delta_ms = parse_seek_delta_ms(out->title);
     media_title_from_metadata(snapshot->media.metadata, out->subtitle, sizeof(out->subtitle));
-    snprintf(out->left, sizeof(out->left), out->focus == PLAYER_UI_OVERLAY_FOCUS_PLAY ? "A PLAY" : "A PAUSE");
+    snprintf(out->left, sizeof(out->left), "%s", home_ui_translate(out->focus == PLAYER_UI_OVERLAY_FOCUS_PLAY ? "A PLAY" : "A PAUSE"));
     snprintf(out->center, sizeof(out->center), "%s / %s", position_text, duration_text);
-    snprintf(out->right, sizeof(out->right), snapshot->mute ? "Muted" : "Volume %d%%", out->volume);
-    snprintf(out->hint, sizeof(out->hint), "A PLAY  L/R SEEK  UP/DN VOL  B HOME  X TV");
+    snprintf(out->right, sizeof(out->right), home_ui_translate(snapshot->mute ? "Muted" : "Volume %d%%"), out->volume);
+    snprintf(out->hint, sizeof(out->hint), "%s", home_ui_translate(
+        out->focus == PLAYER_UI_OVERLAY_FOCUS_PLAY
+            ? "A PLAY  L/R SEEK  UP/DN VOL  B HOME  X TV"
+            : "A PAUSE  L/R SEEK  UP/DN VOL  B HOME  X TV"));
 }
 
 int player_ui_bar_show(const PlayerSnapshot *snapshot, const char *headline, int duration_ms)

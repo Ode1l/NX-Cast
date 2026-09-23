@@ -33,47 +33,48 @@ Remote refresh and logo downloads run on one background worker. Rendering and co
 - HLS media/master playlist detection through `#EXT-X-*` tags
 - Direct `http`, `https`, `rtsp`, `rtmp`, `udp`, `rtp`, `mms`, `file`, and `sdmc` playback URLs
 
-`tvg-logo` files are downloaded asynchronously when a channel is selected. The current panel reports cache state; decoding the cached image into a deko3d texture is a later UI task.
+`tvg-logo` files are cached asynchronously and displayed through a small deko3d texture cache. Channel names and programme metadata remain in the source's original language.
 
 ## Controls
 
-Home:
+The full-screen library shows eight rows; the playback drawer shows nine.
+There are no page buttons. Hold a direction to scroll faster, or use Search,
+Categories, Favorites, Recent and the independent source filter to narrow a list.
 
-- `A`: return to the active player when playback is running in the background
-- `X` or either stick click: open the IPTV channel browser
-- `Y`: refresh all local and remote sources in the background
-- `-`: open a media or M3U URL. Recognized playlist URLs are saved as remote sources, refreshed in the background, and opened in Channels.
+- Home: A opens the focused Live TV card; X or a stick click also opens the library.
+- Home: up/down focuses language/Live TV; A or touch switches Chinese/English.
+- Library: up/down or either stick moves selection. Left/right or L/R moves
+  between the toolbar, list and action bar. A/SR activates the focused item.
+- Touch: drag the list or scrollbar, tap a row to select, then tap Play.
+  A scrolling gesture never triggers playback.
+- Y or the Favorite action toggles the selected channel's favorite status.
+- Search accepts an empty query to clear the search.
+- Sources opens a selector with All sources and Manage sources.
+- Manage sources: select a source, then choose Add URL, Scan SD, Refresh,
+  Programme guide, or Delete. Delete requires confirmation.
+- B/SL dismisses selectors, returns from source management, or closes the browser.
+- During IPTV playback X or a stick click opens a dark left drawer. X or the
+  Full list button expands it without stopping playback. B collapses the full
+  list to the drawer, then closes the drawer. Switching channels preserves
+  the browser so another channel can be selected.
+- Menu input is isolated from underlying playback pause, seek and volume actions.
 
-Channels:
-
-- `A`: play the selected channel
-- `Up` / `Down` or either stick vertically: move selection
-- `Left` / `Right`, either stick horizontally, or `L` / `R`: move seven channels
-- `Y`: add or remove favorite
-- `ZL` / `ZR`: cycle All, Favorites, Recent, and playlist groups
-- `L3`: enter search text
-- `R3`: clear search
-- `X`: switch to Sources
-- `B`: close the browser
-- touch a row to select it; tap it again or tap `PLAY CHANNEL` to play
-- swipe vertically or horizontally over the list, or tap the page arrows, to change page
-
-Sources:
-
-- `A`: refresh selected source
-- `Up` / `Down` or either stick vertically: move selection
-- `Left` / `Right`, either stick horizontally, or `L` / `R`: move seven sources
-- `Y`: add a remote M3U URL
-- `ZR`: connect or replace the selected remote source's `guide.xml` / XMLTV URL
-- `-`: remove the selected remote source
-
-During playback, press `X` or either stick to open the same Channels/Sources panel over the video. Playback continues behind the panel; `A` switches to the selected channel and closes it, while `B` closes it without changing playback.
-- `X`: switch to Channels
-- `B`: close the browser
-
-All connected standard controllers are merged into the same single-player input. A horizontal single Joy-Con uses its stick for browsing, stick click to open IPTV, `SR` as confirm, and `SL` as back. Handheld mode, paired Joy-Cons, Pro Controllers, separate player controllers, and touch can each operate the channel browser independently.
-
+Handheld controls, either stick, paired Joy-Cons, Pro Controller, a single
+Joy-Con (SR confirm / SL back), and touch can navigate independently.
 Local sources are removed by deleting their M3U file from the SD card.
+
+## Capacity
+
+Channels, sources, groups and favorites now grow on demand instead of using
+fixed 4,096-channel, 32-source and 64-group arrays. The channel storage budget
+is 128 MiB per catalog; metadata arrays each have an 8 MiB budget. A rebuild
+temporarily holds both the old and new catalog. Allocation or budget failures
+are reported and leave the existing catalog usable; this is not infinite storage.
+
+Recent history retains the last 32 channels. Download-size safety limits and
+Switch memory still apply. Large libraries should use source/category filters
+and search rather than traversing the entire list. Rendering reads only the
+visible rows; filter counts are cached when the view is rebuilt.
 
 ## SD Card Data
 
@@ -105,21 +106,12 @@ Nxlink uploads only `NX-Cast.nro`; it does not synchronize the local `assets/` o
 
 The standard release includes the public presets from `assets/iptv/sources.txt`. Release packaging fails if that file is missing, empty, or is not copied intact into `NX-Cast-sdmc.zip`. Personal URLs containing credentials or tokens should remain only on the physical SD card and must not be committed as distributor presets.
 
-## NXMP Target Gap
+## Remaining Scope
 
-The percentages below are engineering estimates, not release guarantees.
+NXMP remains broader: network file systems, Enigma2, full-day EPG grids,
+playlist editing, recording and timeshift are not implemented here.
+The current guide displays the current/next programme when matching XMLTV
+data is available; it cannot infer a channel's programme from video alone.
 
-```text
-Playback reuse and hardware decode     [#########-] 90%
-Local and remote M3U/HLS handling      [########--] 80%
-Source management and persistence      [#######---] 70%
-Search, groups, favorites, and recent  [########--] 80%
-Logo metadata and asynchronous cache   [######----] 60%
-XMLTV current/next EPG                  [######----] 60%
-Full logo texture/image UI              [#---------] 10%
-NXMP-style IPTV/media-center target     [#####-----] 50%
-```
-
-NXMP remains broader: network file systems, Enigma2, richer EPG grids, playlist editing, settings, and multiple media browsers are not implemented here.
-
-NX-Cast does not provide channels, credentials, DRM bypass, or regional access. Users must supply authorized playlists and streams.
+NX-Cast does not provide subscription credentials, DRM bypass or regional
+access. Users must supply authorized playlists and streams.

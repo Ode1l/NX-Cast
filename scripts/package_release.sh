@@ -75,7 +75,7 @@ fi
 if [ -d "${ROOT_DIR}/assets/iptv" ]; then
     cp "${ROOT_DIR}/assets/iptv/"* "${SDMC_DIR}/switch/NX-Cast/iptv/"
 fi
-cp "${ROOT_DIR}/assets/airplay/"* "${SDMC_DIR}/switch/NX-Cast/airplay/"
+cp "${AIRPLAY_README}" "${PACKAGED_AIRPLAY_README}"
 if [ -d "${ROOT_DIR}/assets/licenses" ]; then
     cp "${ROOT_DIR}/assets/licenses/"* "${SDMC_DIR}/switch/NX-Cast/licenses/"
 fi
@@ -146,7 +146,6 @@ only the NRO.
 EOF
 
 mkdir -p "${DIST_DIR}"
-cp "${ROOT_DIR}/NX-Cast.nro" "${DIST_DIR}/NX-Cast.nro"
 
 (
     cd "${SDMC_DIR}"

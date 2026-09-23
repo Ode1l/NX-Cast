@@ -1,6 +1,7 @@
 #include "player/ui/ui.h"
 #include "player/ui/bar.h"
 #include "player/ui/controls.h"
+#include "player/ui/home.h"
 #include "player/ui/overlay.h"
 
 #include <string.h>
@@ -28,12 +29,13 @@ static int show_video_state_osd(const PlayerSnapshot *snapshot, bool first_video
 
     switch (snapshot->state)
     {
+    /* Keep titles canonical: renderers use them to recognize busy states. */
     case PLAYER_STATE_LOADING:
-        return player_ui_overlay_show_message("LOADING", "PREPARING STREAM", PLAYER_UI_OSD_LONG_MS);
+        return player_ui_overlay_show_message("LOADING", home_ui_translate("PREPARING STREAM"), PLAYER_UI_OSD_LONG_MS);
     case PLAYER_STATE_BUFFERING:
-        return player_ui_overlay_show_message("BUFFERING", "WAITING FOR DATA", PLAYER_UI_OSD_LONG_MS);
+        return player_ui_overlay_show_message("BUFFERING", home_ui_translate("WAITING FOR DATA"), PLAYER_UI_OSD_LONG_MS);
     case PLAYER_STATE_SEEKING:
-        return player_ui_overlay_show_message("SEEKING", "MOVING PLAYHEAD", PLAYER_UI_OSD_LONG_MS);
+        return player_ui_overlay_show_message("SEEKING", home_ui_translate("MOVING PLAYHEAD"), PLAYER_UI_OSD_LONG_MS);
     case PLAYER_STATE_PAUSED:
         return player_ui_bar_show_help(snapshot, true);
     case PLAYER_STATE_PLAYING:
@@ -41,7 +43,7 @@ static int show_video_state_osd(const PlayerSnapshot *snapshot, bool first_video
             return player_ui_bar_show_help(snapshot, false);
         return player_ui_overlay_show_message("", NULL, 0);
     case PLAYER_STATE_ERROR:
-        return player_ui_overlay_show_message("PLAYBACK ERROR", "CHECK STREAM", 3000);
+        return player_ui_overlay_show_message("PLAYBACK ERROR", home_ui_translate("CHECK STREAM"), 3000);
     case PLAYER_STATE_STOPPED:
     case PLAYER_STATE_IDLE:
     default:

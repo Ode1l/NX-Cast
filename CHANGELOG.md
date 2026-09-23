@@ -2,7 +2,23 @@
 
 All notable user-facing changes to NX-Cast are documented here.
 
-## [Unreleased]
+## [0.3.1] - 2026-09-23
+
+### Added
+
+- Bilingual Home with persistent language selection, passive casting status and a prominent Live TV entry.
+- Full-screen channel library and transparent playback drawer with shared C input state, accelerated continuous scrolling, touch inertia and draggable scrollbars.
+- Category and source selectors alongside Favorites, Recent and Search; touch-accessible source management with delete confirmation.
+- Dynamically sized channels, sources, groups and favorites, with explicit memory budgets and atomic catalog replacement instead of fixed entry-count truncation.
+
+### Changed
+
+- IPTV live controls omit the playback timeline and local seeking; tap outside the playback channel drawer to dismiss it. Home feature icons now use matching thin-line graphics.
+- Language preferences use SD-compatible replacement with recovery on interrupted writes and detailed storage failure logging.
+- Lighter player overlay with a white timeline, smaller outlined key hints, translucent center controls, compact loading animation and single-line scrolling titles. Unknown-duration streams no longer show a fake timeline; non-seekable media has no seek thumb/hint.
+- Distribution attachments contain the complete SD-card ZIP rather than a standalone NRO; AirPlay runtime identity files are never copied from development assets.
+- Local M3U/M3U8 files beside `iptv/sources.txt` are discovered at startup and can be rescanned from Sources.
+- Channel selection and playback are separate actions; menu input cannot seek or pause the underlying video.
 
 ## [0.3.0] - 2026-09-19
 

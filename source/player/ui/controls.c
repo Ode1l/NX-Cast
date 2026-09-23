@@ -5,6 +5,7 @@
 #include <switch.h>
 
 #include "player/ui/bar.h"
+#include "player/ui/home.h"
 #include "player/ui/overlay.h"
 
 #define PLAYER_UI_OSD_SHORT_MS 1500
@@ -84,7 +85,7 @@ bool player_ui_controls_toggle_pause(PlayerUiState *state, const PlayerSnapshot 
     }
 
     if (!ok)
-        duration = player_ui_overlay_show_message("Play/Pause failed", NULL, PLAYER_UI_OSD_SHORT_MS);
+        duration = player_ui_overlay_show_message(home_ui_translate("Play/Pause failed"), NULL, PLAYER_UI_OSD_SHORT_MS);
 
     update_overlay_timing(state, now_ms, duration, true);
     return ok;
@@ -102,7 +103,7 @@ bool player_ui_controls_seek(PlayerUiState *state, const PlayerSnapshot *snapsho
 
     if (!snapshot || !snapshot->has_media || !snapshot->seekable)
     {
-        duration = player_ui_overlay_show_message("Seek unavailable", NULL, PLAYER_UI_OSD_SHORT_MS);
+        duration = player_ui_overlay_show_message(home_ui_translate("Seek unavailable"), NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
             state->seek_preview_active = false;
         update_overlay_timing(state, now_ms, duration, true);
@@ -122,7 +123,7 @@ bool player_ui_controls_seek(PlayerUiState *state, const PlayerSnapshot *snapsho
 
     if (!submit_ui_command(PLAYER_COMMAND_SEEK_MS, target_ms, false))
     {
-        duration = player_ui_overlay_show_message("Seek failed", NULL, PLAYER_UI_OSD_SHORT_MS);
+        duration = player_ui_overlay_show_message(home_ui_translate("Seek failed"), NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
             state->seek_preview_active = false;
         update_overlay_timing(state, now_ms, duration, true);
@@ -156,7 +157,7 @@ static bool player_ui_controls_show_seek_to(PlayerUiState *state,
 
     if (!snapshot || !snapshot->has_media || !snapshot->seekable || snapshot->duration_ms <= 0)
     {
-        duration = player_ui_overlay_show_message("Seek unavailable", NULL, PLAYER_UI_OSD_SHORT_MS);
+        duration = player_ui_overlay_show_message(home_ui_translate("Seek unavailable"), NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
             state->seek_preview_active = false;
         update_overlay_timing(state, now_ms, duration, interaction);
@@ -195,7 +196,7 @@ bool player_ui_controls_seek_to(PlayerUiState *state, const PlayerSnapshot *snap
 
     if (!snapshot || !snapshot->has_media || !snapshot->seekable || snapshot->duration_ms <= 0)
     {
-        duration = player_ui_overlay_show_message("Seek unavailable", NULL, PLAYER_UI_OSD_SHORT_MS);
+        duration = player_ui_overlay_show_message(home_ui_translate("Seek unavailable"), NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
             state->seek_preview_active = false;
         update_overlay_timing(state, now_ms, duration, true);
@@ -205,7 +206,7 @@ bool player_ui_controls_seek_to(PlayerUiState *state, const PlayerSnapshot *snap
     target_ms = clamp_int(target_ms, 0, snapshot->duration_ms);
     if (!submit_ui_command(PLAYER_COMMAND_SEEK_MS, target_ms, false))
     {
-        duration = player_ui_overlay_show_message("Seek failed", NULL, PLAYER_UI_OSD_SHORT_MS);
+        duration = player_ui_overlay_show_message(home_ui_translate("Seek failed"), NULL, PLAYER_UI_OSD_SHORT_MS);
         if (state)
             state->seek_preview_active = false;
         update_overlay_timing(state, now_ms, duration, true);
@@ -242,7 +243,7 @@ bool player_ui_controls_change_volume(PlayerUiState *state, const PlayerSnapshot
 
     if (!submit_ui_command(PLAYER_COMMAND_SET_VOLUME, target_volume, false))
     {
-        duration = player_ui_overlay_show_message("Volume failed", NULL, PLAYER_UI_OSD_SHORT_MS);
+        duration = player_ui_overlay_show_message(home_ui_translate("Volume failed"), NULL, PLAYER_UI_OSD_SHORT_MS);
         update_overlay_timing(state, now_ms, duration, true);
         return false;
     }

@@ -3,15 +3,16 @@ NX-Cast IPTV
 
 Local playlists:
 - Copy .m3u or .m3u8 files into this directory.
+- They are scanned on every startup. Sources > Manage sources > Scan SD rescans them.
 - Extended M3U lists are expanded into the channel browser.
 - HLS media/master playlists are shown as one directly playable stream.
 - Relative local entries are resolved from the playlist directory.
 
 Remote playlists:
-- Open IPTV with X, switch to Sources with X, then press Y.
+- Open IPTV with X, select Sources > Manage sources > Add URL.
 - Enter an HTTP/HTTPS M3U URL. NX-Cast downloads it to cache/playlists/.
-- Select a source and press A to refresh it.
-- Press ZR to configure a plain or gzip XMLTV URL.
+- Select a source and choose Refresh to refresh it.
+- Choose Programme guide to configure a plain or gzip XMLTV URL.
 
 Preinstalled remote playlists:
 - Copy sources.example.txt to sources.txt and edit it on a computer.
@@ -29,12 +30,14 @@ Packaging note:
 - A personal sources.txt should normally be stored directly on the Switch SD card.
 
 Channels:
-- ZL/ZR cycles All, Favorites, Recent, and playlist groups.
-- Y toggles a favorite. L3 searches and R3 clears search.
+- The toolbar offers Categories, Favorites, Recent, Search and Sources.
+- Y toggles a favorite. Enter an empty Search query to clear it.
 - Up/Down or either stick vertically selects a channel.
-- Left/Right, either stick horizontally, or L/R changes page.
-- Touch a row to select it, then tap it again or PLAY CHANNEL to play.
-- Swipe the list or tap the on-screen arrows to change page.
+- Left/Right, either stick horizontally, or L/R moves between toolbar/list/actions.
+- Touch a row to select it, then tap Play. A/SR plays the focused channel.
+- Drag the list or scrollbar to scroll continuously. Holding a direction accelerates.
+- During IPTV playback X opens the drawer; X again expands to the full list.
+- B/SL returns or closes a menu. Menu controls never seek the underlying video.
 - tvg-logo images are cached asynchronously under cache/logos/.
 - Current and next XMLTV programmes are matched using tvg-id.
 

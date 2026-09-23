@@ -524,6 +524,9 @@ static HomeFocus g_home_focus = HOME_FOCUS_TV;
 static bool g_home_language_save_failed;
 static u64 g_home_navigation_previous;
 
+static PlayerBrowser g_iptv_browser;
+static void main_browser_sync(void);
+
 static void build_home_view_state(PlayerHomeViewState *out,
                                   bool storage_ready,
                                   bool network_ready,
@@ -574,6 +577,12 @@ static void build_home_view_state(PlayerHomeViewState *out,
         protocols->active_media.owner == PLAYER_MEDIA_OWNER_IPTV;
     out->iptv_panel_open = iptv_panel_open;
     out->iptv_sources_open = iptv_sources_open;
+    if (iptv_panel_open && g_iptv_browser.view.page == PLAYER_BROWSER_CLOSED)
+        player_browser_open(&g_iptv_browser, out->iptv_playback_active && player_view_get_mode() == PLAYER_VIEW_VIDEO);
+    if (!iptv_panel_open)
+        g_iptv_browser.view.page = PLAYER_BROWSER_CLOSED;
+    main_browser_sync();
+    out->iptv_browser = g_iptv_browser.view;
     if (iptv_get_state(&iptv_state))
     {
         out->iptv_ready = protocols &&
@@ -891,236 +900,104 @@ static u64 main_iptv_navigation_buttons(u64 held_buttons, const PadState *pad)
     return navigation;
 }
 
-static void main_iptv_select_page(bool sources_open, int page_delta)
+static void main_browser_sync(void)
 {
-    const int delta = page_delta * PLAYER_IPTV_VISIBLE_ROWS;
-    if (sources_open)
-        iptv_select_source_delta(delta);
-    else
-        iptv_select_delta(delta);
+    bool sources = g_iptv_browser.view.page == PLAYER_BROWSER_SOURCES;
+    player_browser_sync(&g_iptv_browser,
+                        sources ? iptv_get_source_count() : iptv_get_channel_count(),
+                        sources ? iptv_get_source_selected_index() : iptv_get_selected_index(),
+                        iptv_get_filter_count(), iptv_get_source_count());
 }
 
-static bool main_iptv_play_selected_channel(bool player_ready, bool *panel_open)
+static void main_browser_flags(bool *panel_open, bool *sources_open)
 {
-    bool ok = false;
-    int selected_index = iptv_get_selected_index();
-
-    if (!player_ready)
-        iptv_set_status("Player is not ready. Check the media toolchain and restart NX-Cast.");
-    else
-        ok = iptv_play_channel(selected_index);
-    main_input_trace("[input] action=iptv-play ok=%d index=%d\n", ok ? 1 : 0, selected_index);
-    if (ok)
-    {
-        if (panel_open)
-            *panel_open = false;
-        (void)player_view_show_video();
-    }
-    return ok;
+    *panel_open = g_iptv_browser.view.page != PLAYER_BROWSER_CLOSED;
+    *sources_open = g_iptv_browser.view.page == PLAYER_BROWSER_SOURCES;
 }
 
-static bool main_iptv_handle_panel_touch_tap(int x,
-                                              int y,
-                                              bool player_ready,
-                                              bool *panel_open,
-                                              bool *sources_open)
+static void main_browser_apply(PlayerBrowserAction action, PlayerBrowserPage previous_page,
+                               bool player_ready, bool *panel_open, bool *sources_open)
 {
-    int selected_index;
-    int item_count;
-    int touched_index;
-
-    if (!panel_open || !sources_open || !*panel_open)
-        return false;
-
-    if (player_iptv_close_hit(x, y, *sources_open))
+    if (previous_page == g_iptv_browser.view.page)
     {
-        *panel_open = false;
-        main_input_trace("[input] action=touch-iptv-close x=%d y=%d\n", x, y);
-        return true;
-    }
-    if (player_iptv_point_in_rect(x,
-                                  y,
-                                  PLAYER_IPTV_CHANNEL_TAB_LEFT,
-                                  PLAYER_IPTV_TAB_TOP,
-                                  PLAYER_IPTV_CHANNEL_TAB_RIGHT,
-                                  PLAYER_IPTV_TAB_BOTTOM))
-    {
-        *sources_open = false;
-        main_input_trace("[input] action=touch-iptv-tab page=channels x=%d y=%d\n", x, y);
-        return true;
-    }
-    if (player_iptv_point_in_rect(x,
-                                  y,
-                                  PLAYER_IPTV_SOURCE_TAB_LEFT,
-                                  PLAYER_IPTV_TAB_TOP,
-                                  PLAYER_IPTV_SOURCE_TAB_RIGHT,
-                                  PLAYER_IPTV_TAB_BOTTOM))
-    {
-        *sources_open = true;
-        main_input_trace("[input] action=touch-iptv-tab page=sources x=%d y=%d\n", x, y);
-        return true;
-    }
-    if (player_iptv_point_in_rect(x,
-                                  y,
-                                  PLAYER_IPTV_PAGE_PREV_LEFT,
-                                  PLAYER_IPTV_PAGE_BUTTON_TOP,
-                                  PLAYER_IPTV_PAGE_PREV_RIGHT,
-                                  PLAYER_IPTV_PAGE_BUTTON_BOTTOM))
-    {
-        main_iptv_select_page(*sources_open, -1);
-        main_input_trace("[input] action=touch-iptv-page delta=-1 page=%s\n",
-                         *sources_open ? "sources" : "channels");
-        return true;
-    }
-    if (player_iptv_point_in_rect(x,
-                                  y,
-                                  PLAYER_IPTV_PAGE_NEXT_LEFT,
-                                  PLAYER_IPTV_PAGE_BUTTON_TOP,
-                                  PLAYER_IPTV_PAGE_NEXT_RIGHT,
-                                  PLAYER_IPTV_PAGE_BUTTON_BOTTOM))
-    {
-        main_iptv_select_page(*sources_open, 1);
-        main_input_trace("[input] action=touch-iptv-page delta=1 page=%s\n",
-                         *sources_open ? "sources" : "channels");
-        return true;
-    }
-
-    selected_index = *sources_open ? iptv_get_source_selected_index() : iptv_get_selected_index();
-    item_count = *sources_open ? iptv_get_source_count() : iptv_get_channel_count();
-    touched_index = player_iptv_touch_row_index(x, y, selected_index, item_count);
-    if (touched_index >= 0)
-    {
-        if (*sources_open)
-        {
-            if (touched_index == selected_index)
-                (void)iptv_refresh_selected_source_async();
-            else
-                iptv_set_source_selected_index(touched_index);
-        }
-        else if (touched_index == selected_index)
-        {
-            (void)main_iptv_play_selected_channel(player_ready, panel_open);
-        }
+        if (previous_page == PLAYER_BROWSER_SOURCES)
+            iptv_set_source_selected_index(g_iptv_browser.view.selected_index);
         else
-        {
-            iptv_set_selected_index(touched_index);
-        }
-        main_input_trace("[input] action=touch-iptv-row page=%s index=%d activate=%d\n",
-                         *sources_open ? "sources" : "channels",
-                         touched_index,
-                         touched_index == selected_index ? 1 : 0);
-        return true;
+            iptv_set_selected_index(g_iptv_browser.view.selected_index);
     }
-
-    if (player_iptv_action_hit(x, y, *sources_open))
+    switch (action.kind)
     {
-        if (*sources_open)
-            (void)iptv_refresh_selected_source_async();
-        else
-            (void)main_iptv_play_selected_channel(player_ready, panel_open);
-        main_input_trace("[input] action=touch-iptv-primary page=%s\n",
-                         *sources_open ? "sources" : "channels");
-        return true;
+    case PLAYER_BROWSER_ACTION_PLAY:
+        if (!player_ready)
+            iptv_set_status("Player is not ready. Check the media toolchain and restart NX-Cast.");
+        else if (iptv_play_channel(action.index))
+        {
+            /* Selection is complete; X can reopen the browser while playing. */
+            player_browser_init(&g_iptv_browser);
+            g_iptv_browser.view.playback_active = true;
+            (void)player_view_show_video();
+        }
+        break;
+    case PLAYER_BROWSER_ACTION_FILTER:
+        if (g_iptv_browser.view.page == PLAYER_BROWSER_SOURCES)
+            g_iptv_browser.view.page = g_iptv_browser.return_page;
+        iptv_set_filter(action.index);
+        g_iptv_browser.view.scroll_offset = 0;
+        g_iptv_browser.view.focus = PLAYER_BROWSER_FOCUS_ROWS;
+        break;
+    case PLAYER_BROWSER_ACTION_SOURCE_FILTER:
+    {
+        if (g_iptv_browser.view.page == PLAYER_BROWSER_SOURCES)
+            g_iptv_browser.view.page = g_iptv_browser.return_page;
+        IptvSource source;
+        if (action.index < 0)
+            iptv_set_source_filter(0);
+        else if (iptv_get_source(action.index, &source))
+            iptv_set_source_filter(source.id);
+        g_iptv_browser.view.scroll_offset = 0;
+        g_iptv_browser.view.focus = PLAYER_BROWSER_FOCUS_ROWS;
+        break;
     }
-    return false;
+    case PLAYER_BROWSER_ACTION_SEARCH:
+        if (g_iptv_browser.view.page == PLAYER_BROWSER_SOURCES)
+            g_iptv_browser.view.page = g_iptv_browser.return_page;
+        (void)iptv_prompt_search();
+        g_iptv_browser.view.scroll_offset = 0;
+        break;
+    case PLAYER_BROWSER_ACTION_FAVORITE: (void)iptv_toggle_selected_favorite(); break;
+    case PLAYER_BROWSER_ACTION_ADD_URL: (void)iptv_prompt_add_source(); break;
+    case PLAYER_BROWSER_ACTION_SCAN_SD: (void)iptv_reload(); break;
+    case PLAYER_BROWSER_ACTION_REFRESH: (void)iptv_refresh_selected_source_async(); break;
+    case PLAYER_BROWSER_ACTION_EPG: (void)iptv_prompt_set_source_epg(); break;
+    case PLAYER_BROWSER_ACTION_DELETE: (void)iptv_remove_selected_source(); break;
+    default: break;
+    }
+    main_browser_sync();
+    main_browser_flags(panel_open, sources_open);
 }
 
-static bool main_iptv_handle_panel_touch_swipe(int start_x,
-                                                int start_y,
-                                                int end_x,
-                                                int end_y,
-                                                bool sources_open)
+static void main_iptv_handle_panel_input(u64 k_down, u64 k_held, const PadState *pad,
+                                        PadRepeater *repeater, bool player_ready,
+                                        bool *panel_open, bool *sources_open)
 {
-    int page_delta = player_iptv_swipe_page_delta(start_x, start_y, end_x, end_y);
-    if (page_delta == 0)
-        return false;
-    main_iptv_select_page(sources_open, page_delta);
-    main_input_trace("[input] action=touch-iptv-swipe delta=%d page=%s start=%d,%d end=%d,%d\n",
-                     page_delta,
-                     sources_open ? "sources" : "channels",
-                     start_x,
-                     start_y,
-                     end_x,
-                     end_y);
-    return true;
-}
-
-static void main_iptv_handle_panel_input(u64 k_down,
-                                         u64 k_held,
-                                         const PadState *pad,
-                                         PadRepeater *repeater,
-                                         bool player_ready,
-                                         bool *panel_open,
-                                         bool *sources_open)
-{
-    if (!repeater || !panel_open || !sources_open || !*panel_open)
+    (void)repeater;
+    if (!*panel_open)
         return;
-
-    padRepeaterUpdate(repeater, main_iptv_navigation_buttons(k_held, pad));
-    u64 iptv_nav = k_down | padRepeaterGetButtons(repeater);
-
-    if (*sources_open)
-    {
-        if (iptv_nav & HidNpadButton_Up)
-            iptv_select_source_delta(-1);
-        if (iptv_nav & HidNpadButton_Down)
-            iptv_select_source_delta(1);
-        if (iptv_nav & HidNpadButton_L)
-            main_iptv_select_page(true, -1);
-        if (iptv_nav & HidNpadButton_R)
-            main_iptv_select_page(true, 1);
-        if (k_down & HidNpadButton_A)
-            iptv_refresh_selected_source_async();
-        if (k_down & HidNpadButton_Y)
-            iptv_prompt_add_source();
-        if (k_down & HidNpadButton_ZR)
-            iptv_prompt_set_source_epg();
-        if (k_down & HidNpadButton_Minus)
-            iptv_remove_selected_source();
-    }
-    else
-    {
-        if (iptv_nav & HidNpadButton_Up)
-            iptv_select_delta(-1);
-        if (iptv_nav & HidNpadButton_Down)
-            iptv_select_delta(1);
-        if (iptv_nav & HidNpadButton_L)
-            main_iptv_select_page(false, -1);
-        if (iptv_nav & HidNpadButton_R)
-            main_iptv_select_page(false, 1);
-        if (k_down & HidNpadButton_ZL)
-            iptv_cycle_filter(-1);
-        if (k_down & HidNpadButton_ZR)
-            iptv_cycle_filter(1);
-        if (k_down & HidNpadButton_StickL)
-            iptv_prompt_search();
-        if (k_down & HidNpadButton_StickR)
-            iptv_clear_search();
-        if (k_down & HidNpadButton_Y)
-            iptv_toggle_selected_favorite();
-        if (k_down & HidNpadButton_Minus)
-        {
-            MainIptvUrlResult result = main_iptv_prompt_and_open(player_ready);
-            if (result == MAIN_IPTV_URL_PLAYING)
-            {
-                *panel_open = false;
-                (void)player_view_show_video();
-            }
-            else if (result == MAIN_IPTV_URL_SOURCE_QUEUED)
-            {
-                *panel_open = true;
-                *sources_open = false;
-            }
-        }
-        if (k_down & HidNpadButton_A)
-            (void)main_iptv_play_selected_channel(player_ready, panel_open);
-    }
-
-    if (k_down & HidNpadButton_B)
-    {
-        *panel_open = false;
-        main_input_trace("[input] action=iptv-panel open=0 reason=back\n");
-    }
+    main_browser_sync();
+    u64 nav = main_iptv_navigation_buttons(k_held, pad);
+    unsigned held = 0, pressed = 0;
+    if (nav & HidNpadButton_Up) held |= PLAYER_BROWSER_UP;
+    if (nav & HidNpadButton_Down) held |= PLAYER_BROWSER_DOWN;
+    if (nav & HidNpadButton_L) held |= PLAYER_BROWSER_LEFT;
+    if (nav & HidNpadButton_R) held |= PLAYER_BROWSER_RIGHT;
+    if (k_down & HidNpadButton_A) pressed |= PLAYER_BROWSER_ACCEPT;
+    if (k_down & HidNpadButton_B) pressed |= PLAYER_BROWSER_BACK;
+    if (k_down & HidNpadButton_X) pressed |= PLAYER_BROWSER_EXPAND;
+    if (k_down & HidNpadButton_Y) pressed |= PLAYER_BROWSER_FAVORITE_KEY;
+    PlayerBrowserPage previous = g_iptv_browser.view.page;
+    PlayerBrowserAction action = player_browser_input(&g_iptv_browser, pressed, held,
+                                                      armTicksToNs(svcGetSystemTick()) / 1000000ULL);
+    main_browser_apply(action, previous, player_ready, panel_open, sources_open);
 }
 
 static void render_home_view(const PlayerHomeViewState *state)
@@ -1460,6 +1337,7 @@ int main(int argc, char* argv[])
     bool have_logged_view = false;
     bool iptv_panel_open = false;
     bool iptv_sources_open = false;
+    bool browser_release_guard = false;
     bool return_home_pending = false;
     bool airplay_pin_was_visible = false;
     uint64_t return_home_ready_ms = 0;
@@ -1750,6 +1628,13 @@ int main(int argc, char* argv[])
         }
 #endif
 
+        /* IPTV currently has no timeshift UI. HLS window duration must not
+         * enable invisible touch/shoulder seeking. Only filter this UI copy. */
+        if (home_state.iptv_playback_active)
+        {
+            snapshot.seekable = false;
+            snapshot.duration_ms = 0;
+        }
         u64 kDown = main_normalize_controller_buttons(padGetButtonsDown(&pad));
         u64 kHeld = main_normalize_controller_buttons(padGetButtons(&pad));
         HidTouchScreenState touch_state = {0};
@@ -1760,11 +1645,31 @@ int main(int argc, char* argv[])
         s32 touch_y = 0;
         s32 touch_tap_x = 0;
         s32 touch_tap_y = 0;
-        bool touch_swipe = false;
-        s32 touch_swipe_start_x = 0;
-        s32 touch_swipe_start_y = 0;
-        s32 touch_swipe_end_x = 0;
-        s32 touch_swipe_end_y = 0;
+        /* Latch capture before touch release can close the browser. */
+        bool browser_captured = iptv_panel_open;
+        if (browser_captured)
+            browser_release_guard = true;
+        else if (kHeld == 0 && !touch_present)
+            browser_release_guard = false;
+        if (active_view == PLAYER_VIEW_VIDEO && !home_state.iptv_playback_active)
+        {
+            iptv_panel_open = false;
+            iptv_sources_open = false;
+            g_iptv_browser.view.page = PLAYER_BROWSER_CLOSED;
+            g_iptv_browser.touching = false;
+        }
+        if (iptv_panel_open)
+        {
+            main_browser_sync();
+            player_browser_tick(&g_iptv_browser, input_now_ms);
+            PlayerBrowserPage previous = g_iptv_browser.view.page;
+            PlayerBrowserAction action = player_browser_touch(&g_iptv_browser, touch_present,
+                touch_present ? touch_state.touches[0].x : 0,
+                touch_present ? touch_state.touches[0].y : 0, input_now_ms);
+            main_browser_apply(action, previous, rendererPrestarted && videoRenderReady,
+                               &iptv_panel_open, &iptv_sources_open);
+            touch_seek.active = false;
+        }
         if (!have_logged_view || active_view != last_logged_view)
         {
             main_input_trace("[input] active_view=%s state=%s media=%d snapshot=%d\n",
@@ -1872,22 +1777,6 @@ int main(int argc, char* argv[])
             }
             else if (!touch_seek_released)
             {
-                if (tap_view &&
-                    (abs(touch_dx) >= PLAYER_IPTV_SWIPE_MIN_PX ||
-                     abs(touch_dy) >= PLAYER_IPTV_SWIPE_MIN_PX))
-                {
-                    touch_swipe = true;
-                    touch_swipe_start_x = touch_trace.start_x;
-                    touch_swipe_start_y = touch_trace.start_y;
-                    touch_swipe_end_x = touch_trace.last_x;
-                    touch_swipe_end_y = touch_trace.last_y;
-                    main_input_trace("[input] touch swipe accepted start=%d,%d end=%d,%d duration_ms=%llu\n",
-                                     (int)touch_swipe_start_x,
-                                     (int)touch_swipe_start_y,
-                                     (int)touch_swipe_end_x,
-                                     (int)touch_swipe_end_y,
-                                     (unsigned long long)touch_duration_ms);
-                }
                 main_input_trace("[input] touch tap skipped shape=%d view=%d debounce=%d\n",
                                  tap_shape ? 1 : 0,
                                  tap_view ? 1 : 0,
@@ -1895,6 +1784,9 @@ int main(int argc, char* argv[])
             }
             touch_trace.active = false;
         }
+
+        if (browser_captured)
+            touch_tap = false;
 
         if (kDown)
         {
@@ -1917,13 +1809,12 @@ int main(int argc, char* argv[])
         {
             bool player_ready = rendererPrestarted && videoRenderReady;
             bool skip_iptv_panel_input = false;
-            bool iptv_touch_consumed = false;
 
             u64 home_navigation = main_iptv_navigation_buttons(kHeld, &pad);
             u64 home_navigation_down = home_navigation & ~g_home_navigation_previous;
             g_home_navigation_previous = home_navigation;
             bool open_home_channels = false;
-            if (!iptv_panel_open)
+            if (!iptv_panel_open && !browser_captured)
             {
                 if (home_navigation_down & HidNpadButton_Up)
                     g_home_focus = HOME_FOCUS_LANGUAGE;
@@ -1938,7 +1829,7 @@ int main(int argc, char* argv[])
                     g_home_focus = HOME_FOCUS_LANGUAGE;
                     g_home_language_save_failed = !home_ui_toggle_language();
                     if (g_home_language_save_failed)
-                        log_warn("[ui] language applied but SD preference could not be saved\n");
+                        log_warn("[ui] language applied but SD preference could not be saved: %s (errno=%d)\n", strerror(errno), errno);
                     touch_tap = false;
                 }
                 open_home_channels = tv_tapped ||
@@ -1947,27 +1838,7 @@ int main(int argc, char* argv[])
                     touch_tap = false;
             }
 
-            if (iptv_panel_open && touch_swipe)
-            {
-                iptv_touch_consumed = main_iptv_handle_panel_touch_swipe((int)touch_swipe_start_x,
-                                                                         (int)touch_swipe_start_y,
-                                                                         (int)touch_swipe_end_x,
-                                                                         (int)touch_swipe_end_y,
-                                                                         iptv_sources_open);
-            }
-            if (iptv_panel_open && touch_tap)
-            {
-                iptv_touch_consumed = main_iptv_handle_panel_touch_tap((int)touch_tap_x,
-                                                                       (int)touch_tap_y,
-                                                                       player_ready,
-                                                                       &iptv_panel_open,
-                                                                       &iptv_sources_open) ||
-                                      iptv_touch_consumed;
-            }
-            if (iptv_touch_consumed)
-                touch_tap = false;
-
-            if (!iptv_panel_open && (kDown & HidNpadButton_B) && home_state.playback_active)
+            if (!iptv_panel_open && !browser_captured && (kDown & HidNpadButton_B) && home_state.playback_active)
             {
                 bool ok = player_view_show_video();
                 main_input_trace("[input] action=return-to-player ok=%d state=%s\n",
@@ -1977,7 +1848,7 @@ int main(int argc, char* argv[])
 
             bool stick_open_panel = !iptv_panel_open &&
                                     (kDown & (HidNpadButton_StickL | HidNpadButton_StickR));
-            if ((kDown & HidNpadButton_X) || stick_open_panel || open_home_channels)
+            if (!iptv_panel_open && !browser_captured && ((kDown & HidNpadButton_X) || stick_open_panel || open_home_channels))
             {
                 bool was_open = iptv_panel_open;
                 if (!iptv_panel_open)
@@ -1985,10 +1856,8 @@ int main(int argc, char* argv[])
                     g_home_focus = HOME_FOCUS_TV;
                     iptv_panel_open = true;
                     iptv_sources_open = false;
-                }
-                else
-                {
-                    iptv_sources_open = !iptv_sources_open;
+                    player_browser_open(&g_iptv_browser, false);
+                    main_browser_sync();
                 }
                 main_input_trace("[input] action=iptv-panel open=%d page=%s\n",
                                  iptv_panel_open ? 1 : 0,
@@ -1997,13 +1866,13 @@ int main(int argc, char* argv[])
                     skip_iptv_panel_input = true;
             }
 
-            if (!iptv_panel_open && (kDown & HidNpadButton_Y))
+            if (!iptv_panel_open && !browser_captured && (kDown & HidNpadButton_Y))
             {
                 bool ok = iptv_refresh_all_async();
                 main_input_trace("[input] action=iptv-refresh-all queued=%d\n", ok ? 1 : 0);
             }
 
-            if (!iptv_panel_open && (kDown & HidNpadButton_Minus))
+            if (!iptv_panel_open && !browser_captured && (kDown & HidNpadButton_Minus))
             {
                 MainIptvUrlResult result = main_iptv_prompt_and_open(player_ready);
                 skip_iptv_panel_input = true;
@@ -2050,7 +1919,7 @@ int main(int argc, char* argv[])
         else
         {
             bool player_ready = rendererPrestarted && videoRenderReady;
-            bool iptv_menu_input = false;
+            bool iptv_menu_input = browser_captured || browser_release_guard;
             bool skip_iptv_menu_buttons = false;
 
             if (have_snapshot)
@@ -2076,7 +1945,7 @@ int main(int argc, char* argv[])
                 bool stick_open_panel = iptv_video_controls_enabled &&
                                         !iptv_panel_open &&
                                         (kDown & (HidNpadButton_StickL | HidNpadButton_StickR));
-                if (iptv_video_controls_enabled &&
+                if (iptv_video_controls_enabled && !iptv_panel_open && !browser_captured &&
                     ((kDown & HidNpadButton_X) || stick_open_panel))
                 {
                     bool was_open = iptv_panel_open;
@@ -2084,10 +1953,8 @@ int main(int argc, char* argv[])
                     {
                         iptv_panel_open = true;
                         iptv_sources_open = false;
-                    }
-                    else
-                    {
-                        iptv_sources_open = !iptv_sources_open;
+                        player_browser_open(&g_iptv_browser, true);
+                        main_browser_sync();
                     }
                     iptv_menu_input = true;
                     player_ui_hide_overlay(&video_ui);
@@ -2101,24 +1968,6 @@ int main(int argc, char* argv[])
                 else if (iptv_panel_open)
                 {
                     iptv_menu_input = true;
-                }
-
-                if (iptv_panel_open && touch_swipe)
-                {
-                    (void)main_iptv_handle_panel_touch_swipe((int)touch_swipe_start_x,
-                                                              (int)touch_swipe_start_y,
-                                                              (int)touch_swipe_end_x,
-                                                              (int)touch_swipe_end_y,
-                                                              iptv_sources_open);
-                }
-                if (iptv_panel_open && touch_tap)
-                {
-                    (void)main_iptv_handle_panel_touch_tap((int)touch_tap_x,
-                                                           (int)touch_tap_y,
-                                                           player_ready,
-                                                           &iptv_panel_open,
-                                                           &iptv_sources_open);
-                    touch_tap = false;
                 }
 
                 if (iptv_menu_input && !skip_iptv_menu_buttons)
@@ -2170,8 +2019,12 @@ int main(int argc, char* argv[])
                         }
                         else if (channels_button_hit)
                         {
+                            iptv_menu_input = true;
+                            browser_release_guard = true;
                             iptv_panel_open = true;
                             iptv_sources_open = false;
+                            player_browser_open(&g_iptv_browser, true);
+                            main_browser_sync();
                             player_ui_hide_overlay(&video_ui);
                             touch_seek.active = false;
                             main_input_trace("[input] action=touch-iptv-menu open=1 x=%d y=%d\n",
