@@ -1,6 +1,6 @@
 # Plan: NX-Cast 0.3.1 Release
 
-> Status: ACTIVE
+> Status: COMPLETED
 > Created: 2026-09-23
 > Last Updated: 2026-09-23
 
@@ -34,7 +34,7 @@ None — version and packaging metadata only.
 ## Steps Overview
 | Step | File | Status | Goal |
 |------|------|--------|------|
-| Step 1 | `steps/step-1.md` | IN_PROGRESS | Version, document, build, package, and publish v0.3.1 |
+| Step 1 | `steps/step-1.md` | COMPLETED | Version, document, build, package, and publish v0.3.1 |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
@@ -67,7 +67,9 @@ None — version and packaging metadata only.
 - Remote tag `v0.3.1` does not exist — verified by `git ls-remote --tags origin refs/tags/v0.3.1` on 2026-09-23.
 - GitHub CLI is authenticated as `Ode1l` with repository and workflow scopes — verified by `gh auth status` on 2026-09-23.
 - UI obtains its displayed version from `NXCAST_APP_VERSION`, compiled from `APP_VERSION` — verified by source inspection on 2026-09-23.
+- Release `v0.3.1` completed successfully; GitHub Actions run `35826917927` uploaded `NX-Cast-sdmc.zip` — verified with `gh run watch` and `gh release view` on 2026-09-23.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
+| 2026-09-23 | 1 | Updated version and release docs, passed host tests/release build/package checks, pushed commit `18c8a7e` and tag `v0.3.1`; GitHub Actions published the full SD ZIP. |
