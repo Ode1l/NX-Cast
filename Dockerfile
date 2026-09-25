@@ -13,19 +13,16 @@ ARG WILIWILI_RELEASE=v0.1.0
 ARG LIBUAM_PKG=libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst
 ARG SWITCH_FFMPEG_PKG=switch-ffmpeg-7.1-1-any.pkg.tar.zst
 ARG SWITCH_LIBMPV_PKG=switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst
-ARG NXCAST_FFMPEG_JOBS=4
 
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       build-essential \
-      fakeroot \
       ffmpeg \
       libavcodec-dev \
       libavformat-dev \
       libavutil-dev \
       libmbedtls-dev \
       libsodium-dev \
-      patch \
       pkg-config \
       python3 \
       zstd && \
@@ -47,20 +44,12 @@ RUN if [ "${NXCAST_MPV_VARIANT}" = "deko3d" ]; then \
     test -f /opt/devkitpro/portlibs/switch/lib/libmpv.a
 
 COPY --chmod=0755 \
-    scripts/build_switch_ffmpeg_airplay.sh \
+    scripts/fetch_switch_ffmpeg_airplay.sh \
     scripts/verify_switch_ffmpeg_airplay.sh \
     /usr/local/bin/
 
-RUN useradd --create-home nxcast-builder && \
-    mkdir -p /tmp/nxcast-ffmpeg && \
-    chown -R nxcast-builder:nxcast-builder /tmp/nxcast-ffmpeg
-
-USER nxcast-builder
-RUN NXCAST_FFMPEG_JOBS="${NXCAST_FFMPEG_JOBS}" \
-    /usr/local/bin/build_switch_ffmpeg_airplay.sh /tmp/nxcast-ffmpeg
-
-USER root
-RUN dkp-pacman -U --noconfirm /tmp/nxcast-ffmpeg/switch-ffmpeg-7.1-2-any.pkg.tar.zst && \
+RUN /usr/local/bin/fetch_switch_ffmpeg_airplay.sh /tmp/nxcast-ffmpeg && \
+    dkp-pacman -U --noconfirm /tmp/nxcast-ffmpeg/switch-ffmpeg-7.1-3-any.pkg.tar.zst && \
     /usr/local/bin/verify_switch_ffmpeg_airplay.sh /opt/devkitpro/portlibs/switch && \
     rm -rf /tmp/nxcast-ffmpeg
 

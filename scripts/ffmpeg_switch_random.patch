@@ -1,0 +1,28 @@
+diff --git a/libavutil/random_seed.c b/libavutil/random_seed.c
+--- a/libavutil/random_seed.c
++++ b/libavutil/random_seed.c
+@@ -34,5 +34,8 @@
+ #include <openssl/rand.h>
+ #endif
++#ifdef __SWITCH__
++#include <switch/kernel/random.h>
++#endif
+ #include <fcntl.h>
+ #include <math.h>
+ #include <time.h>
+@@ -118,4 +121,8 @@ int av_random_bytes(uint8_t* buf, size_t len)
+ {
++#ifdef __SWITCH__
++    randomGet(buf, len);
++    return 0;
++#else
+     int err;
+ 
+ #if HAVE_BCRYPT
+@@ -151,5 +158,6 @@ int av_random_bytes(uint8_t* buf, size_t len)
+     return err;
+ #endif
++#endif
+ }
+ 
+ uint32_t av_get_random_seed(void)

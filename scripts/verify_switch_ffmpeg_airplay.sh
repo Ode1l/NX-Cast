@@ -6,6 +6,7 @@ PREFIX=${1:-${PORTLIBS_PREFIX:-${DEFAULT_PREFIX}}}
 NM=${SWITCH_NM:-aarch64-none-elf-nm}
 LIBAVCODEC="${PREFIX}/lib/libavcodec.a"
 LIBAVFORMAT="${PREFIX}/lib/libavformat.a"
+LIBAVUTIL="${PREFIX}/lib/libavutil.a"
 
 if ! command -v "${NM}" >/dev/null 2>&1; then
     DEVKIT_NM="${DEVKITPRO:-/opt/devkitpro}/devkitA64/bin/aarch64-none-elf-nm"
@@ -17,7 +18,7 @@ if ! command -v "${NM}" >/dev/null 2>&1; then
     fi
 fi
 
-for archive in "${LIBAVCODEC}" "${LIBAVFORMAT}"; do
+for archive in "${LIBAVCODEC}" "${LIBAVFORMAT}" "${LIBAVUTIL}"; do
     if [[ ! -f ${archive} ]]; then
         echo "Required Switch FFmpeg archive not found: ${archive}" >&2
         exit 1
@@ -32,6 +33,7 @@ trap cleanup EXIT
 
 "${NM}" -g --defined-only "${LIBAVCODEC}" > "${WORK_DIR}/libavcodec.symbols"
 "${NM}" -g --defined-only "${LIBAVFORMAT}" > "${WORK_DIR}/libavformat.symbols"
+"${NM}" -A -g --undefined-only "${LIBAVUTIL}" > "${WORK_DIR}/libavutil.undefined"
 
 for symbol in ff_alac_decoder ff_h264_parser; do
     if ! grep -Eq "[[:space:]]${symbol}$" "${WORK_DIR}/libavcodec.symbols"; then
@@ -45,4 +47,9 @@ if ! grep -Eq '[[:space:]]ff_matroska_muxer$' "${WORK_DIR}/libavformat.symbols";
     exit 1
 fi
 
-echo "Switch FFmpeg verified at ${PREFIX}: ALAC decoder, H.264 parser, Matroska muxer"
+if ! grep -Eq 'random_seed\.o:.*[[:space:]]U[[:space:]]randomGet$' "${WORK_DIR}/libavutil.undefined"; then
+    echo "Switch FFmpeg random_seed.o does not use libnx randomGet" >&2
+    exit 1
+fi
+
+echo "Switch FFmpeg verified at ${PREFIX}: ALAC decoder, H.264 parser, Matroska muxer, libnx random"

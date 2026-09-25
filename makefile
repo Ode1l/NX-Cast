@@ -328,6 +328,7 @@ FFMPEG_NVTEGRA_HEADER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/libav
 FFMPEG_ALAC_DECODER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/lib/libavcodec.a" && $(SWITCH_NM) -g --defined-only "$(PORTLIBS_PREFIX)/lib/libavcodec.a" 2>/dev/null | grep -q '[[:space:]]ff_alac_decoder$$' && echo 1)
 FFMPEG_H264_PARSER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/lib/libavcodec.a" && $(SWITCH_NM) -g --defined-only "$(PORTLIBS_PREFIX)/lib/libavcodec.a" 2>/dev/null | grep -q '[[:space:]]ff_h264_parser$$' && echo 1)
 FFMPEG_MATROSKA_MUXER_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/lib/libavformat.a" && $(SWITCH_NM) -g --defined-only "$(PORTLIBS_PREFIX)/lib/libavformat.a" 2>/dev/null | grep -q '[[:space:]]ff_matroska_muxer$$' && echo 1)
+FFMPEG_SWITCH_RANDOM_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/lib/libavutil.a" && $(SWITCH_NM) -A -g --undefined-only "$(PORTLIBS_PREFIX)/lib/libavutil.a" 2>/dev/null | grep -Eq 'random_seed\.o:.*[[:space:]]U[[:space:]]randomGet$$' && echo 1)
 SWITCH_EGL_GLES_FOUND := $(shell test -f "$(PORTLIBS_PREFIX)/include/EGL/egl.h" && test -f "$(PORTLIBS_PREFIX)/include/GLES2/gl2.h" && echo 1)
 MPV_EXPLICIT_NVTEGRA_HWDEC_FOUND := $(shell strings "$(PORTLIBS_PREFIX)/lib/libmpv.a" 2>/dev/null | grep -q nvtegra && echo 1)
 MPV_USES_UAM := $(shell printf '%s\n' "$(MPV_STATIC_LIBS)" | grep -q -- ' -luam' && echo 1)
@@ -353,8 +354,8 @@ endif
 endif
 
 ifeq ($(NXCAST_REQUIRE_AIRPLAY_MUXER),1)
-ifneq ($(FFMPEG_ALAC_DECODER_FOUND)$(FFMPEG_H264_PARSER_FOUND)$(FFMPEG_MATROSKA_MUXER_FOUND),111)
-$(error NXCAST_REQUIRE_AIRPLAY_MUXER=1 but Switch FFmpeg lacks ALAC, the H.264 parser, or the Matroska muxer. Run 'make install-airplay-ffmpeg')
+ifneq ($(FFMPEG_ALAC_DECODER_FOUND)$(FFMPEG_H264_PARSER_FOUND)$(FFMPEG_MATROSKA_MUXER_FOUND)$(FFMPEG_SWITCH_RANDOM_FOUND),1111)
+$(error NXCAST_REQUIRE_AIRPLAY_MUXER=1 but Switch FFmpeg lacks ALAC, the H.264 parser, the Matroska muxer, or libnx-backed random bytes. Run 'make install-airplay-ffmpeg')
 endif
 endif
 

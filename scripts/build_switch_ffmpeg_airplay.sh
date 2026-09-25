@@ -11,7 +11,8 @@ WILIWILI_ARCHIVE_SHA256=d141ba1a8e36ace4bd5ebdc1bd716549625af6e4baae4013d5b18078
 FFMPEG_ARCHIVE_SHA256=6d62556767127bbf49c3b7d7c6fa55f1223be6139c0de66707305368eaad05db
 FFMPEG_PATCH_SHA256=1792380b992e3554a4abcddf0d7b395bfd8c118ac7c6e38c8f2fb0d39753a390
 NETWORK_PATCH_SHA256=150c56eff36b1179f5409bf2e30fbf6996ce603ba6c365b6bf94928f116c97fa
-PACKAGE_NAME=switch-ffmpeg-7.1-2-any.pkg.tar.zst
+RANDOM_PATCH_SHA256=14a3d4107827cb42ee8ae91afb873afb11c3877f2b1dac5cf946030c8d446280
+PACKAGE_NAME=switch-ffmpeg-7.1-3-any.pkg.tar.zst
 
 if [[ ${EUID} -eq 0 ]]; then
     echo "Do not run this script as root; dkp-makepkg refuses root builds." >&2
@@ -95,17 +96,33 @@ cp -R \
 
 verify_sha256 "${FFMPEG_PATCH_SHA256}" "${RECIPE_DIR}/ffmpeg.patch"
 verify_sha256 "${NETWORK_PATCH_SHA256}" "${RECIPE_DIR}/network.patch"
+verify_sha256 "${RANDOM_PATCH_SHA256}" "${SCRIPT_DIR}/ffmpeg_switch_random.patch"
+cp "${SCRIPT_DIR}/ffmpeg_switch_random.patch" "${RECIPE_DIR}/ffmpeg_switch_random.patch"
 
 awk \
     -v ffmpeg_sha="${FFMPEG_ARCHIVE_SHA256}" \
     -v ffmpeg_patch_sha="${FFMPEG_PATCH_SHA256}" \
-    -v network_patch_sha="${NETWORK_PATCH_SHA256}" '
+    -v network_patch_sha="${NETWORK_PATCH_SHA256}" \
+    -v random_patch_sha="${RANDOM_PATCH_SHA256}" '
 BEGIN {
     checksum_index = 0
     in_checksums = 0
 }
 /^pkgrel=/ {
-    print "pkgrel=2"
+    print "pkgrel=3"
+    next
+}
+/^source=\(/ {
+    line = $0
+    if (sub(/"network.patch"\)/, "\"network.patch\" \"ffmpeg_switch_random.patch\")", line) != 1) exit 2
+    print line
+    source_count++
+    next
+}
+/^[[:space:]]*patch -Np1 -i "\$srcdir\/network.patch"/ {
+    print
+    print "  patch -Np1 -i \"$srcdir/ffmpeg_switch_random.patch\""
+    prepare_count++
     next
 }
 /^sha256sums=\(/ {
@@ -122,6 +139,7 @@ in_checksums && /'"'"'SKIP'"'"'/ {
 }
 in_checksums && /^\)/ {
     in_checksums = 0
+    print "            \"" random_patch_sha "\""
     print
     next
 }
@@ -132,7 +150,7 @@ in_checksums && /^\)/ {
     print line
 }
 END {
-    if (checksum_index != 3) exit 2
+    if (checksum_index != 3 || source_count != 1 || prepare_count != 1) exit 2
 }
 ' "${RECIPE_DIR}/PKGBUILD" > "${RECIPE_DIR}/PKGBUILD.nxcast"
 mv "${RECIPE_DIR}/PKGBUILD.nxcast" "${RECIPE_DIR}/PKGBUILD"

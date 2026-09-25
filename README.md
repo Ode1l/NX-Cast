@@ -188,8 +188,9 @@ The Docker build installs the current recommended `wiliwili` media packages:
 - `switch-ffmpeg`
 - `switch-libmpv_deko3d`
 
-It then rebuilds the pinned wiliwili FFmpeg recipe with only the Matroska muxer
-enabled for the AirPlay bridge. The build also installs official devkitPro
+It then downloads NX-Cast's pinned, SHA-256-verified FFmpeg package with the
+Matroska muxer and Switch-native random source for the AirPlay bridge. The
+build also installs official devkitPro
 `switch-libsodium` and runs the AirPlay host suite before the strict Switch
 build.
 
@@ -221,19 +222,19 @@ sudo dkp-pacman -U \
   "$base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst"
 ```
 
-Build and globally install NX-Cast's pinned FFmpeg package for AirPlay
+Download and globally install NX-Cast's pinned FFmpeg package for AirPlay
 H.264/AAC/ALAC bridging:
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-make NXCAST_FFMPEG_JOBS=4 install-airplay-ffmpeg
+make install-airplay-ffmpeg
 make verify-airplay-ffmpeg
 ```
 
-The install target builds as the current user, requests `sudo` only for the
-local `dkp-pacman -U` step, and installs the complete target package under
-`/opt/devkitpro/portlibs/switch`. Matroska is a compile-time FFmpeg muxer, not
-an SD-card asset or a runtime plugin.
+The install target fetches a fixed GitHub Release asset, verifies its SHA-256,
+then requests `sudo` only for `dkp-pacman -U`. To change or rebuild FFmpeg,
+run `make build-airplay-ffmpeg` separately. Matroska is a compile-time FFmpeg
+muxer, not an SD-card asset or a runtime plugin.
 
 Build:
 

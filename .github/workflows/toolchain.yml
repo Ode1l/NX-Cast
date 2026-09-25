@@ -33,7 +33,7 @@ jobs:
       - name: Resolve toolchain version
         id: resolve
         env:
-          TOOLCHAIN_HASH: ${{ hashFiles('Dockerfile', '.dockerignore', 'scripts/build_switch_ffmpeg_airplay.sh', 'scripts/verify_switch_ffmpeg_airplay.sh', '.github/workflows/toolchain.yml') }}
+          TOOLCHAIN_HASH: ${{ hashFiles('Dockerfile', '.dockerignore', 'scripts/fetch_switch_ffmpeg_airplay.sh', 'scripts/build_switch_ffmpeg_airplay.sh', 'scripts/ffmpeg_switch_random.patch', 'scripts/verify_switch_ffmpeg_airplay.sh', '.github/workflows/toolchain.yml') }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}-toolchain:${TOOLCHAIN_HASH}"
           echo "image=${image}" >> "$GITHUB_OUTPUT"

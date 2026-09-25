@@ -16,9 +16,9 @@ The toolchain must provide:
 
 ## Recommended Route
 
-Use the prebuilt `wiliwili` media packages as the baseline. NX-Cast then rebuilds
-the same pinned FFmpeg recipe with one additional Matroska muxer for the
-experimental AirPlay bridge.
+Use the prebuilt `wiliwili` media packages as the baseline. NX-Cast publishes
+its own prebuilt FFmpeg package with the Matroska muxer and libnx-backed random
+bytes for the experimental AirPlay bridge.
 
 Only rebuild FFmpeg/mpv locally if:
 
@@ -83,23 +83,22 @@ sudo dkp-pacman -U \
 
 Do not install `switch-libmpv` and `switch-libmpv_deko3d` at the same time. Use `switch-libmpv_deko3d` for the release path.
 
-The prebuilt `switch-ffmpeg-7.1-1` package disables all muxers. It is sufficient
+The Wiliwili `switch-ffmpeg-7.1-1` package disables all muxers. It is sufficient
 for DLNA and IPTV playback, but it cannot create the H.264/AAC/ALAC Matroska
-stream used by the AirPlay bridge. Build and install the NX-Cast package after
-the baseline packages:
+stream used by the AirPlay bridge. Install NX-Cast's pinned package after the
+baseline packages:
 
 ```bash
 source /opt/devkitpro/switchvars.sh
-make NXCAST_FFMPEG_JOBS=4 install-airplay-ffmpeg
+make install-airplay-ffmpeg
 make verify-airplay-ffmpeg
 ```
 
-The install target pins the wiliwili recipe and FFmpeg source revisions,
-verifies their SHA-256 checksums, enables only `matroska`, checks the generated
-static archives, and installs the complete package globally under
-`/opt/devkitpro/portlibs/switch`. It builds as the current user and requests
-`sudo` only for the local `dkp-pacman -U` operation. Do not run the package
-build script itself with `sudo`.
+The install target downloads `switch-ffmpeg-7.1-3-any.pkg.tar.zst` from the
+`toolchain-ffmpeg-7.1-3` NX-Cast GitHub Release, verifies its pinned SHA-256,
+and installs it under `/opt/devkitpro/portlibs/switch`. It requests `sudo` only
+for the local `dkp-pacman -U` operation. The source recipe remains available
+through `make build-airplay-ffmpeg` when maintaining the media toolchain.
 
 Matroska is compiled into target `libavformat.a`; it is not a separate runtime
 plugin and nothing needs to be copied to the Switch SD card. End users receive
@@ -159,9 +158,9 @@ contain exactly `switch/NX-Cast/NX-Cast.nro`.
 
 ## Docker And GitHub Actions
 
-The repository `Dockerfile` installs the same prebuilt package set, rebuilds
-the pinned FFmpeg package as a non-root user, globally installs it into the
-image with a local `dkp-pacman -U`, and verifies the installed target prefix.
+The repository `Dockerfile` installs the same prebuilt Wiliwili baseline, then
+downloads the pinned NX-Cast FFmpeg Release asset, installs it with
+`dkp-pacman -U`, and verifies the installed target prefix.
 It does not use `dkp-pacman -S` to access devkitPro repositories during CI.
 GitHub Actions uses that Dockerfile and repeats the verifier before compiling
 both continuous builds and tagged releases.
@@ -188,8 +187,11 @@ If local and CI behavior differs, first check:
 
 ## Rebuilding Packages Locally
 
-Use `make build-airplay-ffmpeg` to produce the supported NX-Cast package without
-installing it, or `make install-airplay-ffmpeg` for the normal global install.
+Use `make build-airplay-ffmpeg` to produce the supported NX-Cast package from
+source without installing it, or `make install-airplay-ffmpeg` to download and
+install the published prebuilt package. To install your own freshly built
+package, run `sudo dkp-pacman -U build/toolchain/ffmpeg/switch-ffmpeg-7.1-3-any.pkg.tar.zst`
+from the repository root and then `make verify-airplay-ffmpeg`.
 Only edit or invoke the upstream package recipes directly when developing the
 media toolchain itself.
 

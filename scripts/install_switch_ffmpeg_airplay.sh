@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUTPUT_DIR=${NXCAST_FFMPEG_OUTPUT_DIR:-"${ROOT_DIR}/build/toolchain/ffmpeg"}
-PACKAGE_NAME=switch-ffmpeg-7.1-2-any.pkg.tar.zst
+PACKAGE_NAME=switch-ffmpeg-7.1-3-any.pkg.tar.zst
 PACKAGE_PATH="${OUTPUT_DIR}/${PACKAGE_NAME}"
 PREFIX=${PORTLIBS_PREFIX:-"${DEVKITPRO:-/opt/devkitpro}/portlibs/switch"}
 
@@ -18,7 +18,7 @@ if [[ -z ${PACMAN} ]]; then
     exit 1
 fi
 
-"${ROOT_DIR}/scripts/build_switch_ffmpeg_airplay.sh" "${OUTPUT_DIR}"
+"${ROOT_DIR}/scripts/fetch_switch_ffmpeg_airplay.sh" "${OUTPUT_DIR}"
 
 echo "Installing ${PACKAGE_NAME} into the global devkitPro Switch prefix"
 sudo "${PACMAN}" -U --noconfirm "${PACKAGE_PATH}"
