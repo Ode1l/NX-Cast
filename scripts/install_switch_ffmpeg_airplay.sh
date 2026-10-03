@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-OUTPUT_DIR=${NXCAST_FFMPEG_OUTPUT_DIR:-"${ROOT_DIR}/build/toolchain/ffmpeg"}
-PACKAGE_NAME=switch-ffmpeg-7.1-3-any.pkg.tar.zst
+OUTPUT_DIR=${NXCAST_FFMPEG_OUTPUT_DIR:-"${ROOT_DIR}/artifacts/toolchain/ffmpeg"}
+PACKAGE_NAME=switch-ffmpeg-7.1-4-any.pkg.tar.zst
 PACKAGE_PATH="${OUTPUT_DIR}/${PACKAGE_NAME}"
 PREFIX=${PORTLIBS_PREFIX:-"${DEVKITPRO:-/opt/devkitpro}/portlibs/switch"}
 

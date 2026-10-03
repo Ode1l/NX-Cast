@@ -183,7 +183,8 @@ void player_ui_bar_build(const PlayerSnapshot *snapshot, const char *headline, P
     out->duration_ms = snapshot->duration_ms;
     out->volume = clamp_int(snapshot->volume, 0, 100);
     out->mute = snapshot->mute;
-    out->seekable = snapshot->seekable;
+    out->screen_mirroring = player_uri_is_screen_mirror(snapshot->media.uri);
+    out->seekable = snapshot->seekable && !out->screen_mirroring;
     out->progress_permille = player_ui_timeline_progress_permille(snapshot);
 
     player_ui_timeline_format_time(snapshot->position_ms, position_text, sizeof(position_text));
@@ -205,6 +206,11 @@ void player_ui_bar_build(const PlayerSnapshot *snapshot, const char *headline, P
         out->focus == PLAYER_UI_OVERLAY_FOCUS_PLAY
             ? "A PLAY  L/R SEEK  UP/DN VOL  B HOME  X TV"
             : "A PAUSE  L/R SEEK  UP/DN VOL  B HOME  X TV"));
+    if (out->screen_mirroring)
+    {
+        out->center[0] = '\0';
+        snprintf(out->hint, sizeof(out->hint), "%s", "UP/DN VOL  B HOME");
+    }
 }
 
 int player_ui_bar_show(const PlayerSnapshot *snapshot, const char *headline, int duration_ms)

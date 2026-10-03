@@ -20,6 +20,8 @@ typedef struct
 {
     bool (*bind_stream)(AirPlayStreamBridge *bridge, uint32_t generation,
                         void *user_data);
+    bool (*bind_audio)(AirPlayStreamBridge *bridge, uint32_t generation,
+                       void *user_data);
     bool (*set_uri)(const char *uri, const char *metadata,
                     uint32_t generation, void *user_data);
     bool (*play)(uint32_t generation, void *user_data);
@@ -63,6 +65,8 @@ bool airplay_mirror_runtime_record_audio(uint64_t session_id,
                                          void *user_data);
 void airplay_mirror_runtime_record(uint64_t session_id, void *user_data);
 void airplay_mirror_runtime_stop(uint64_t session_id, void *user_data);
+bool airplay_mirror_runtime_stop_streams(uint64_t session_id, bool video,
+                                        bool audio, void *user_data);
 
 AirPlayMirrorRuntimeStatus airplay_mirror_runtime_status(
     AirPlayMirrorRuntime *runtime, uint32_t *generation_out);

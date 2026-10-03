@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-OUTPUT_DIR=${1:-"${ROOT_DIR}/build/toolchain/ffmpeg"}
+OUTPUT_DIR=${1:-"${ROOT_DIR}/artifacts/toolchain/ffmpeg"}
 VERIFY_SCRIPT=${NXCAST_FFMPEG_VERIFY_SCRIPT:-"${SCRIPT_DIR}/verify_switch_ffmpeg_airplay.sh"}
 
 WILIWILI_COMMIT=88e5876bea9502d06f46a8656e3530684d3aaf7d
@@ -12,7 +12,8 @@ FFMPEG_ARCHIVE_SHA256=6d62556767127bbf49c3b7d7c6fa55f1223be6139c0de66707305368ea
 FFMPEG_PATCH_SHA256=1792380b992e3554a4abcddf0d7b395bfd8c118ac7c6e38c8f2fb0d39753a390
 NETWORK_PATCH_SHA256=150c56eff36b1179f5409bf2e30fbf6996ce603ba6c365b6bf94928f116c97fa
 RANDOM_PATCH_SHA256=14a3d4107827cb42ee8ae91afb873afb11c3877f2b1dac5cf946030c8d446280
-PACKAGE_NAME=switch-ffmpeg-7.1-3-any.pkg.tar.zst
+LONG_REF_PATCH_SHA256=d238dc52bd59b97c8fb3f4d742cb58b4a7cfd41ef83ca35b4798f77901eebb5d
+PACKAGE_NAME=switch-ffmpeg-7.1-4-any.pkg.tar.zst
 
 if [[ ${EUID} -eq 0 ]]; then
     echo "Do not run this script as root; dkp-makepkg refuses root builds." >&2
@@ -98,23 +99,26 @@ verify_sha256 "${FFMPEG_PATCH_SHA256}" "${RECIPE_DIR}/ffmpeg.patch"
 verify_sha256 "${NETWORK_PATCH_SHA256}" "${RECIPE_DIR}/network.patch"
 verify_sha256 "${RANDOM_PATCH_SHA256}" "${SCRIPT_DIR}/ffmpeg_switch_random.patch"
 cp "${SCRIPT_DIR}/ffmpeg_switch_random.patch" "${RECIPE_DIR}/ffmpeg_switch_random.patch"
+verify_sha256 "${LONG_REF_PATCH_SHA256}" "${SCRIPT_DIR}/ffmpeg_nvtegra_long_ref.patch"
+cp "${SCRIPT_DIR}/ffmpeg_nvtegra_long_ref.patch" "${RECIPE_DIR}/ffmpeg_nvtegra_long_ref.patch"
 
 awk \
     -v ffmpeg_sha="${FFMPEG_ARCHIVE_SHA256}" \
     -v ffmpeg_patch_sha="${FFMPEG_PATCH_SHA256}" \
     -v network_patch_sha="${NETWORK_PATCH_SHA256}" \
-    -v random_patch_sha="${RANDOM_PATCH_SHA256}" '
+    -v random_patch_sha="${RANDOM_PATCH_SHA256}" \
+    -v long_ref_patch_sha="${LONG_REF_PATCH_SHA256}" '
 BEGIN {
     checksum_index = 0
     in_checksums = 0
 }
 /^pkgrel=/ {
-    print "pkgrel=3"
+    print "pkgrel=4"
     next
 }
 /^source=\(/ {
     line = $0
-    if (sub(/"network.patch"\)/, "\"network.patch\" \"ffmpeg_switch_random.patch\")", line) != 1) exit 2
+    if (sub(/"network.patch"\)/, "\"network.patch\" \"ffmpeg_switch_random.patch\" \"ffmpeg_nvtegra_long_ref.patch\")", line) != 1) exit 2
     print line
     source_count++
     next
@@ -122,6 +126,7 @@ BEGIN {
 /^[[:space:]]*patch -Np1 -i "\$srcdir\/network.patch"/ {
     print
     print "  patch -Np1 -i \"$srcdir/ffmpeg_switch_random.patch\""
+    print "  patch -Np1 -i \"$srcdir/ffmpeg_nvtegra_long_ref.patch\""
     prepare_count++
     next
 }
@@ -140,6 +145,7 @@ in_checksums && /'"'"'SKIP'"'"'/ {
 in_checksums && /^\)/ {
     in_checksums = 0
     print "            \"" random_patch_sha "\""
+    print "            \"" long_ref_patch_sha "\""
     print
     next
 }

@@ -1057,7 +1057,7 @@ void draw_progress_bar(ImDrawList *draw, const PlayerUiOverlayBar &bar, PlayerSt
     draw->AddRectFilledMultiColor(ImVec2(0, height - layout.bottom_height - 64),
                                   ImVec2(width, height), IM_COL32(3, 8, 12, 0), IM_COL32(3, 8, 12, 0),
                                   IM_COL32(3, 8, 12, 192), IM_COL32(3, 8, 12, 192));
-    if (!live_tv && bar.duration_ms > 0)
+    if (!live_tv && !bar.screen_mirroring && bar.duration_ms > 0)
     {
         draw->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + thickness),
                             IM_COL32(255, 255, 255, 65), thickness / 2);
@@ -1070,10 +1070,10 @@ void draw_progress_bar(ImDrawList *draw, const PlayerUiOverlayBar &bar, PlayerSt
     }
     if (bar.subtitle[0])
         draw_player_title(draw, bar.subtitle, x, (float)layout.title_y, w);
-    /* Unknown duration is not necessarily live (e.g. screen mirroring). */
-    draw_home_text(draw, x, (float)layout.info_y, kPlayerInfoSize, kPlayerText,
-                   live_tv ? home_ui_text("Live", "直播") :
-                   bar.duration_ms > 0 ? bar.center : home_ui_text("Streaming", "实时播放"));
+    if (!bar.screen_mirroring)
+        draw_home_text(draw, x, (float)layout.info_y, kPlayerInfoSize, kPlayerText,
+                       live_tv ? home_ui_text("Live", "直播") :
+                       bar.duration_ms > 0 ? bar.center : home_ui_text("Streaming", "实时播放"));
     if (bar.right[0])
         draw_home_text(draw, x + w - text_width(kPlayerInfoSize, bar.right), (float)layout.info_y,
                        kPlayerInfoSize, kPlayerMuted, bar.right);
@@ -1773,7 +1773,7 @@ void draw_iptv_panel(ImDrawList *draw, const PlayerHomeViewState &home, float wi
         draw_browser_modal(draw, v, browser_palette(true));
 }
 
-bool render_draw_data(ViewContext *ctx, int slot)
+bool render_draw_data(ViewContext *ctx, int slot, bool clear_background)
 {
     ImDrawData *draw_data = ImGui::GetDrawData();
     uint32_t width;
@@ -1807,10 +1807,21 @@ bool render_draw_data(ViewContext *ctx, int slot)
         return false;
     }
 
-    cmdbuf = ctx->dk3d_overlay_cmdbuf;
+    cmdbuf = ctx->dk3d_overlay_cmdbuf[slot];
     dkCmdBufClear(cmdbuf);
     dkImageViewDefaults(&target_view, &ctx->dk3d_framebuffers[slot]);
     dkCmdBufBindRenderTarget(cmdbuf, &target_view, nullptr);
+    if (clear_background)
+    {
+        const DkScissor full_scissor = {0, 0, width, height};
+        const bool home = ctx->status.active_view == PLAYER_VIEW_HOME;
+        dkCmdBufSetScissors(cmdbuf, 0, &full_scissor, 1);
+        dkCmdBufClearColorFloat(cmdbuf, 0, DkColorMask_RGBA,
+                                home ? 244.0f / 255.0f : 4.0f / 255.0f,
+                                home ? 243.0f / 255.0f : 6.0f / 255.0f,
+                                home ? 238.0f / 255.0f : 10.0f / 255.0f,
+                                1.0f);
+    }
 
     descriptor_addr = dkMemBlockGetGpuAddr(g_descriptor_mem);
     dkCmdBufBindSamplerDescriptorSet(cmdbuf, descriptor_addr, kDescriptorCount);
@@ -1896,12 +1907,12 @@ extern "C" bool frontend_imgui_overlay_init(ViewContext *ctx)
         return true;
     if (g_failed)
         return false;
-    if (!ctx || !ctx->dk3d_device || !ctx->dk3d_queue || !ctx->dk3d_overlay_cmdbuf)
+    if (!ctx || !ctx->dk3d_device || !ctx->dk3d_queue || !ctx->dk3d_overlay_cmdbuf[0])
         return false;
 
     g_device = ctx->dk3d_device;
     g_queue = ctx->dk3d_queue;
-    g_upload_cmdbuf = ctx->dk3d_overlay_cmdbuf;
+    g_upload_cmdbuf = ctx->dk3d_overlay_cmdbuf[0];
     if (!create_imgui_context())
         goto fail;
     if (!load_embedded_shaders(ctx->dk3d_device))
@@ -1914,7 +1925,7 @@ extern "C" bool frontend_imgui_overlay_init(ViewContext *ctx)
                               DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
     if (!g_ubo_mem)
         goto fail;
-    if (!create_font_texture(ctx->dk3d_device, ctx->dk3d_queue, ctx->dk3d_overlay_cmdbuf))
+    if (!create_font_texture(ctx->dk3d_device, ctx->dk3d_queue, g_upload_cmdbuf))
         goto fail;
 
     g_initialized = true;
@@ -1973,7 +1984,7 @@ extern "C" bool frontend_imgui_home_render(ViewContext *ctx, int slot)
         draw_iptv_panel(draw, *home, io->DisplaySize.x, io->DisplaySize.y);
     ImGui::Render();
 
-    if (!render_draw_data(ctx, slot))
+    if (!render_draw_data(ctx, slot, true))
         return false;
 
     ctx->dk3d_overlay_dirty = true;
@@ -2034,7 +2045,7 @@ extern "C" bool frontend_imgui_overlay_render(ViewContext *ctx, int slot)
     }
     ImGui::Render();
 
-    if (!render_draw_data(ctx, slot))
+    if (!render_draw_data(ctx, slot, false))
         return false;
 
     ctx->dk3d_overlay_dirty = true;
@@ -2092,7 +2103,7 @@ extern "C" bool frontend_imgui_loading_render(ViewContext *ctx, int slot)
     }
     ImGui::Render();
 
-    if (!render_draw_data(ctx, slot))
+    if (!render_draw_data(ctx, slot, true))
         return false;
     ctx->dk3d_overlay_dirty = true;
     return true;

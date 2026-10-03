@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #define PLAYER_DEFAULT_VOLUME 100
+#define PLAYER_SCREEN_MIRROR_URI "airplay://mirror"
 
 typedef struct
 {
@@ -61,6 +62,7 @@ typedef struct
 } PlayerSnapshot;
 
 /* Destinations must be zero-initialized or already owned by these APIs. */
+bool player_uri_is_screen_mirror(const char *uri);
 void player_media_clear(PlayerMedia *media);
 /* Copy/set replace only after allocation succeeds; NULL media clears out. */
 bool player_media_copy(PlayerMedia *out, const PlayerMedia *media);

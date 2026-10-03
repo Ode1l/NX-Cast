@@ -30,6 +30,17 @@ int main(void)
     player_ui_bar_build(&snapshot, NULL, &bar);
     assert(strlen(bar.subtitle) == 1023);
     assert(strlen(bar.subtitle) % 3 == 0);
+    snapshot.media.uri = PLAYER_SCREEN_MIRROR_URI;
+    snapshot.seekable = true;
+    snapshot.duration_ms = 60000;
+    player_ui_bar_build(&snapshot, NULL, &bar);
+    assert(bar.screen_mirroring && !bar.seekable && !bar.center[0]);
+    assert(strstr(bar.hint, "SEEK") == NULL);
+    snapshot.media.uri = "https://example.test/video.m3u8";
+    player_ui_bar_build(&snapshot, NULL, &bar);
+    assert(!bar.screen_mirroring && bar.seekable && bar.center[0]);
+    assert(!player_uri_is_screen_mirror(NULL));
+    assert(!player_uri_is_screen_mirror("airplay://mirror-other"));
     puts("Long player title preservation and UTF-8 boundary tests passed");
     return 0;
 }

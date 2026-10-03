@@ -326,6 +326,7 @@ AirPlayMirrorClockResult airplay_mirror_clock_map_audio(
           clock->audio_adjust_ticks +
           (int64_t)rtp_delta * AIRPLAY_MIRROR_CLOCK_TIME_BASE /
               clock->sample_rate;
+    clock->stats.candidate_audio_pts = pts;
     if (pts < 0 ||
         (clock->video_ready &&
          absolute_i64(pts - clock->last_video_pts) >
@@ -351,5 +352,38 @@ bool airplay_mirror_clock_get_stats(const AirPlayMirrorClock *clock,
     if (!clock || !stats_out)
         return false;
     *stats_out = clock->stats;
+    stats_out->last_video_pts = clock->last_video_pts;
+    stats_out->video_anchor_ntp = clock->video_anchor_ntp;
+    stats_out->audio_sync_ntp = clock->audio_sync_ntp;
+    stats_out->audio_sync_rtp = clock->audio_sync_rtp;
+    stats_out->video_ready = clock->video_ready;
+    stats_out->audio_sync_ready = clock->audio_sync_ready;
     return true;
+}
+
+bool airplay_mirror_clock_get_video_timeline(
+    const AirPlayMirrorClock *clock, AirPlayMirrorVideoTimeline *timeline)
+{
+    if (!clock || !timeline || !clock->video_ready)
+        return false;
+    *timeline = (AirPlayMirrorVideoTimeline){clock->video_anchor_ntp,
+        clock->video_anchor_pts, clock->last_video_ntp, clock->last_video_pts};
+    return true;
+}
+
+void airplay_mirror_clock_set_video_timeline(
+    AirPlayMirrorClock *clock, const AirPlayMirrorVideoTimeline *timeline)
+{
+    if (!clock || !timeline)
+        return;
+    if (clock->video_ready &&
+        (clock->video_anchor_ntp != timeline->anchor_ntp ||
+         clock->video_anchor_pts != timeline->anchor_pts))
+        reset_audio_mapping(clock);
+    clock->audio_only = false;
+    clock->video_ready = true;
+    clock->video_anchor_ntp = timeline->anchor_ntp;
+    clock->video_anchor_pts = timeline->anchor_pts;
+    clock->last_video_ntp = timeline->last_ntp;
+    clock->last_video_pts = timeline->last_pts;
 }

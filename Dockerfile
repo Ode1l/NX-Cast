@@ -11,7 +11,6 @@ ENV PATH=/opt/devkitpro/devkitA64/bin:/opt/devkitpro/tools/bin:${PATH}
 ARG NXCAST_MPV_VARIANT=deko3d
 ARG WILIWILI_RELEASE=v0.1.0
 ARG LIBUAM_PKG=libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst
-ARG SWITCH_FFMPEG_PKG=switch-ffmpeg-7.1-1-any.pkg.tar.zst
 ARG SWITCH_LIBMPV_PKG=switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst
 
 RUN apt-get update && \
@@ -32,16 +31,12 @@ RUN if [ "${NXCAST_MPV_VARIANT}" = "deko3d" ]; then \
       if dkp-pacman -Q switch-libmpv >/dev/null 2>&1; then dkp-pacman -Rdd --noconfirm switch-libmpv >/dev/null; fi; \
       if dkp-pacman -Q switch-ffmpeg >/dev/null 2>&1; then dkp-pacman -Rdd --noconfirm switch-ffmpeg >/dev/null; fi; \
       base_url="https://github.com/xfangfang/wiliwili/releases/download/${WILIWILI_RELEASE}"; \
-      for pkg in "${LIBUAM_PKG}" "${SWITCH_FFMPEG_PKG}" "${SWITCH_LIBMPV_PKG}"; do \
-        curl -fsSL -o "/tmp/${pkg}" "${base_url}/${pkg}"; \
-        dkp-pacman -U --noconfirm "/tmp/${pkg}"; \
-      done; \
-      rm -f /tmp/*.pkg.tar.*; \
+      curl -fsSL -o "/tmp/${LIBUAM_PKG}" "${base_url}/${LIBUAM_PKG}"; \
+      dkp-pacman -U --noconfirm "/tmp/${LIBUAM_PKG}"; \
+      rm -f "/tmp/${LIBUAM_PKG}"; \
     fi && \
     dkp-pacman -Q switch-pkg-config switch-libjpeg-turbo switch-zlib switch-bzip2 switch-libass switch-libfribidi switch-freetype switch-harfbuzz switch-mbedtls switch-libsodium switch-liblua51 deko3d >/dev/null && \
-    PKG_CONFIG_PATH=/opt/devkitpro/portlibs/switch/lib/pkgconfig pkg-config --exists libsodium && \
-    test -f /opt/devkitpro/portlibs/switch/include/mpv/client.h && \
-    test -f /opt/devkitpro/portlibs/switch/lib/libmpv.a
+    PKG_CONFIG_PATH=/opt/devkitpro/portlibs/switch/lib/pkgconfig pkg-config --exists libsodium
 
 COPY --chmod=0755 \
     scripts/fetch_switch_ffmpeg_airplay.sh \
@@ -49,8 +44,16 @@ COPY --chmod=0755 \
     /usr/local/bin/
 
 RUN /usr/local/bin/fetch_switch_ffmpeg_airplay.sh /tmp/nxcast-ffmpeg && \
-    dkp-pacman -U --noconfirm /tmp/nxcast-ffmpeg/switch-ffmpeg-7.1-3-any.pkg.tar.zst && \
+    dkp-pacman -U --noconfirm /tmp/nxcast-ffmpeg/switch-ffmpeg-7.1-4-any.pkg.tar.zst && \
+    if [ "${NXCAST_MPV_VARIANT}" = "deko3d" ]; then \
+      base_url="https://github.com/xfangfang/wiliwili/releases/download/${WILIWILI_RELEASE}"; \
+      curl -fsSL -o "/tmp/${SWITCH_LIBMPV_PKG}" "${base_url}/${SWITCH_LIBMPV_PKG}"; \
+      dkp-pacman -U --noconfirm "/tmp/${SWITCH_LIBMPV_PKG}"; \
+      rm -f "/tmp/${SWITCH_LIBMPV_PKG}"; \
+    fi && \
     /usr/local/bin/verify_switch_ffmpeg_airplay.sh /opt/devkitpro/portlibs/switch && \
+    test -f /opt/devkitpro/portlibs/switch/include/mpv/client.h && \
+    test -f /opt/devkitpro/portlibs/switch/lib/libmpv.a && \
     rm -rf /tmp/nxcast-ffmpeg
 
 CMD ["bash", "-lc", "make clean && make -j$(nproc)"]

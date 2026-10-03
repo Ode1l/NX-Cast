@@ -1,0 +1,12 @@
+diff --git a/libavcodec/nvtegra_h264.c b/libavcodec/nvtegra_h264.c
+--- a/libavcodec/nvtegra_h264.c
++++ b/libavcodec/nvtegra_h264.c
+@@ -265,7 +265,7 @@
+     max = FFMIN(16, FF_ARRAY_ELEMS(refs) - num_refs);
+     for (i = 0; i < max; ++i)
+         if (h->long_ref[i])
+-            refs[num_refs++] = h->short_ref[i];
++            refs[num_refs++] = h->long_ref[i];
+ 
+     /* Add all frames with an already allocated DPB index to our ref list */
+     for (i = 0; i < num_refs; ++i) {

@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 #ifndef NXCAST_APP_VERSION
-#define NXCAST_APP_VERSION "0.3.1"
+#define NXCAST_APP_VERSION "0.3.2"
 #endif
 
 const char *dlna_server_info_get(void)

@@ -3,6 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+bool player_uri_is_screen_mirror(const char *uri)
+{
+    return uri && strcmp(uri, PLAYER_SCREEN_MIRROR_URI) == 0;
+}
+
 static char *player_strdup_or_null(const char *value)
 {
     char *copy;

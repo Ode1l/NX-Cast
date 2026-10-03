@@ -419,6 +419,24 @@ static bool integration_mirror_set_uri(const char *uri, const char *metadata,
                                      metadata, 0);
 }
 
+static bool integration_mirror_bind_audio(AirPlayStreamBridge *bridge,
+                                          uint32_t runtime_generation,
+                                          void *user_data)
+{
+    PlayerOwnershipLease lease;
+    PlayerCommandStatus status;
+
+    (void)user_data;
+    if (!integration_mirror_lease_for_generation(runtime_generation, &lease))
+        return false;
+    status = player_submit_airplay_audio_bridge(bridge, &lease);
+    if (!player_command_status_succeeded(status))
+        log_warn("[airplay] audio bind rejected token=%llu generation=%u status=%s\n",
+                 (unsigned long long)lease.token, lease.generation,
+                 player_command_status_name(status));
+    return player_command_status_succeeded(status);
+}
+
 static bool integration_mirror_play(uint32_t runtime_generation,
                                     void *user_data)
 {
@@ -664,6 +682,7 @@ static bool integration_start_sync(void)
                        (unsigned long long)AIRPLAY_TRACE_NOW_MS(), failure_stage);
     mirror_config.stream_capacity = AIRPLAY_STREAM_CAPACITY;
     mirror_config.player.bind_stream = integration_mirror_bind;
+    mirror_config.player.bind_audio = integration_mirror_bind_audio;
     mirror_config.player.set_uri = integration_mirror_set_uri;
     mirror_config.player.play = integration_mirror_play;
     mirror_config.player.stop = integration_mirror_stop_player;
@@ -724,6 +743,7 @@ static bool integration_start_sync(void)
     receiver_config.audio_record_callback = integration_audio_record;
     receiver_config.media_record_callback = integration_mirror_record;
     receiver_config.mirror_stop_callback = airplay_mirror_runtime_stop;
+    receiver_config.stream_stop_callback = airplay_mirror_runtime_stop_streams;
     receiver_config.remote_video = g_airplay.remote_video;
     receiver_config.media_user_data = g_airplay.mirror_runtime;
     if (!airplay_receiver_start(&receiver_config))

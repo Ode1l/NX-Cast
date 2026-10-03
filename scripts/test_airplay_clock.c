@@ -107,10 +107,36 @@ static void test_ntp_wrap(void)
     airplay_mirror_clock_destroy(clock);
 }
 
+static void test_external_audio_timeline(void)
+{
+    AirPlayMirrorClock *video = NULL, *audio = NULL;
+    AirPlayMirrorVideoTimeline timeline;
+    int64_t pts = -1;
+
+    CHECK(airplay_mirror_clock_create(&video));
+    CHECK(airplay_mirror_clock_create(&audio));
+    CHECK(!airplay_mirror_clock_get_video_timeline(video, &timeline));
+    CHECK(airplay_mirror_clock_map_video(video, ntp_from_us(100u, 0u),
+                                        1u, &pts) == AIRPLAY_MIRROR_CLOCK_OK);
+    CHECK(airplay_mirror_clock_map_video(video, ntp_from_us(104u, 0u),
+                                        4000001u, &pts) == AIRPLAY_MIRROR_CLOCK_OK);
+    CHECK(airplay_mirror_clock_get_video_timeline(video, &timeline));
+    airplay_mirror_clock_set_audio_rate(audio, 44100u);
+    airplay_mirror_clock_set_video_timeline(audio, &timeline);
+    CHECK(airplay_mirror_clock_update_audio_sync(audio, 44100u,
+        ntp_from_us(104u, 0u), 4000001u) == AIRPLAY_MIRROR_CLOCK_OK);
+    CHECK(airplay_mirror_clock_map_audio(audio, 44100u, 4000001u, &pts) ==
+          AIRPLAY_MIRROR_CLOCK_OK);
+    CHECK(pts == 360000);
+    airplay_mirror_clock_destroy(video);
+    airplay_mirror_clock_destroy(audio);
+}
+
 int main(void)
 {
     test_timeline();
     test_ntp_wrap();
+    test_external_audio_timeline();
     if (g_failures)
     {
         fprintf(stderr, "%d AirPlay clock checks failed\n", g_failures);

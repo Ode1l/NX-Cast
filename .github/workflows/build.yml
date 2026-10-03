@@ -74,7 +74,7 @@ jobs:
           git push -f origin "refs/tags/${CONTINUOUS_TAG}"
 
           notes_file="${RUNNER_TEMP}/nxcast-continuous-notes.md"
-          cat .github/release-notes.md > "${notes_file}"
+          cat .github/continuous-release-notes.md > "${notes_file}"
           printf '\n\n## Continuous Build\n\nAutomatic development build from `%s` at `%s`.\n' \
             "${GITHUB_REF_NAME}" "${GITHUB_SHA}" >> "${notes_file}"
 
@@ -84,9 +84,10 @@ jobs:
         with:
           tag_name: continuous
           target_commitish: ${{ github.sha }}
-          name: NX-Cast Continuous
+          name: "DO NOT DOWNLOAD - NX-Cast Continuous (Development Build)"
           body_path: ${{ runner.temp }}/nxcast-continuous-notes.md
           prerelease: true
+          make_latest: false
           overwrite_files: true
           fail_on_unmatched_files: true
           files: |

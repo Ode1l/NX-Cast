@@ -39,7 +39,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET		:=	NX-Cast
 APP_TITLE	:=	NX-Cast
 APP_AUTHOR	:=	Ode1l
-APP_VERSION	:=	0.3.1
+APP_VERSION	:=	0.3.2
 ICON		:=	assets/icon/switch-screencast-logo.jpg
 BUILD		:=	build
 SOURCES		:=	source \
@@ -99,7 +99,7 @@ RELEASE_JOBS ?= 4
 SWITCH_NM ?= aarch64-none-elf-nm
 NXCAST_FULL_TRACE_PROFILE ?= full-owner-exclusive-observe-bsd12
 NXCAST_FFMPEG_JOBS ?= 4
-AIRPLAY_FFMPEG_OUTPUT_DIR ?= $(TOPDIR)/build/toolchain/ffmpeg
+AIRPLAY_FFMPEG_OUTPUT_DIR ?= $(TOPDIR)/artifacts/toolchain/ffmpeg
 NXCAST_APP_BUILD_FLAGS := NXCAST_USE_IMGUI_UI=1 \
 	NXCAST_REQUIRE_LIBMPV=1 \
 	NXCAST_REQUIRE_DEKO3D=1 \
@@ -605,7 +605,8 @@ verify-airplay-ffmpeg:
 
 release-build:
 	@$(MAKE) clean
-	@$(MAKE) NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 NXCAST_REQUIRE_AIRPLAY_MUXER=1 -j$(RELEASE_JOBS)
+	@$(MAKE) NXCAST_DIAG_PROFILE=normal TRACE_MEDIA=0 TRACE_INPUT=0 TRACE_AIRPLAY=0 \
+		NXCAST_USE_IMGUI_UI=1 NXCAST_REQUIRE_LIBMPV=1 NXCAST_REQUIRE_DEKO3D=1 NXCAST_REQUIRE_AIRPLAY_ED25519=1 NXCAST_REQUIRE_AIRPLAY_MUXER=1 -j$(RELEASE_JOBS)
 	@strings $(TOPDIR)/$(TARGET).nro | grep -Fxq 'libnx-kernel-chacha' || (printf '%s\n' 'Release NRO does not contain the libnx-backed libsodium random source.' >&2; exit 1)
 	@printf '%s\n' \
 		'nxcast-release-v1' \

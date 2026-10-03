@@ -56,6 +56,8 @@ typedef bool (*AirPlayAudioRecordCallback)(uint64_t session_id,
                                            void *user_data);
 typedef void (*AirPlayMediaRecordCallback)(uint64_t session_id, void *user_data);
 typedef void (*AirPlayMirrorStopCallback)(uint64_t session_id, void *user_data);
+typedef bool (*AirPlayStreamStopCallback)(uint64_t session_id, bool video,
+                                          bool audio, void *user_data);
 typedef struct AirPlayRemoteVideo AirPlayRemoteVideo;
 
 typedef struct
@@ -75,6 +77,7 @@ typedef struct
     AirPlayAudioRecordCallback audio_record_callback;
     AirPlayMediaRecordCallback media_record_callback;
     AirPlayMirrorStopCallback mirror_stop_callback;
+    AirPlayStreamStopCallback stream_stop_callback;
     AirPlayRemoteVideo *remote_video;
     void *callback_user_data;
 } AirPlayHandlersConfig;

@@ -41,6 +41,7 @@ typedef struct
     int volume;
     bool mute;
     bool seekable;
+    bool screen_mirroring;
     PlayerUiOverlayFocus focus;
     int seek_delta_ms;
     PlayerState state;

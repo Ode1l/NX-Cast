@@ -453,6 +453,8 @@ static bool player_execute_actor_command(void *context,
                                              command->text,
                                              command->value);
     case MEDIA_ACTOR_COMMAND_BIND_STREAM:
+        if (command->flag)
+            return player_libmpv_set_airplay_audio_bridge(command->opaque);
         return player_libmpv_set_airplay_stream_bridge(command->opaque);
     case MEDIA_ACTOR_COMMAND_RELEASE_LEASE:
     {
@@ -810,12 +812,13 @@ static void player_airplay_bridge_release(void *opaque)
     airplay_stream_bridge_release(opaque);
 }
 
-PlayerCommandStatus player_submit_airplay_stream_bridge(
-    AirPlayStreamBridge *bridge, const PlayerOwnershipLease *lease)
+static PlayerCommandStatus player_submit_airplay_bridge(
+    AirPlayStreamBridge *bridge, const PlayerOwnershipLease *lease, bool audio)
 {
     MediaActorCommand command = {
         .kind = MEDIA_ACTOR_COMMAND_BIND_STREAM,
         .producer = MEDIA_ACTOR_PRODUCER_AIRPLAY_MIRROR,
+        .flag = audio,
         .opaque = bridge,
         .opaque_retain = player_airplay_bridge_retain,
         .opaque_release = player_airplay_bridge_release,
@@ -832,6 +835,18 @@ PlayerCommandStatus player_submit_airplay_stream_bridge(
     command.generation = lease->generation;
     return player_command_status_from_actor(
         media_actor_submit_async(g_media_actor, &command));
+}
+
+PlayerCommandStatus player_submit_airplay_stream_bridge(
+    AirPlayStreamBridge *bridge, const PlayerOwnershipLease *lease)
+{
+    return player_submit_airplay_bridge(bridge, lease, false);
+}
+
+PlayerCommandStatus player_submit_airplay_audio_bridge(
+    AirPlayStreamBridge *bridge, const PlayerOwnershipLease *lease)
+{
+    return player_submit_airplay_bridge(bridge, lease, true);
 }
 
 bool player_init(void)

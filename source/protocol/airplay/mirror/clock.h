@@ -29,9 +29,24 @@ typedef struct
     int64_t av_skew_ticks;
     int64_t max_abs_av_skew_ticks;
     int64_t drift_ppm;
+    int64_t candidate_audio_pts;
+    int64_t last_video_pts;
+    uint64_t video_anchor_ntp;
+    uint64_t audio_sync_ntp;
+    uint32_t audio_sync_rtp;
+    bool video_ready;
+    bool audio_sync_ready;
 } AirPlayMirrorClockStats;
 
 typedef struct AirPlayMirrorClock AirPlayMirrorClock;
+
+typedef struct
+{
+    uint64_t anchor_ntp;
+    int64_t anchor_pts;
+    uint64_t last_ntp;
+    int64_t last_pts;
+} AirPlayMirrorVideoTimeline;
 
 bool airplay_mirror_clock_create(AirPlayMirrorClock **clock_out);
 void airplay_mirror_clock_destroy(AirPlayMirrorClock *clock);
@@ -52,5 +67,9 @@ AirPlayMirrorClockResult airplay_mirror_clock_map_audio(
 bool airplay_mirror_clock_get_stats(const AirPlayMirrorClock *clock,
                                     AirPlayMirrorClockStats *stats_out);
 int64_t airplay_mirror_clock_ntp_to_90k(uint64_t ntp_timestamp);
+bool airplay_mirror_clock_get_video_timeline(
+    const AirPlayMirrorClock *clock, AirPlayMirrorVideoTimeline *timeline);
+void airplay_mirror_clock_set_video_timeline(
+    AirPlayMirrorClock *clock, const AirPlayMirrorVideoTimeline *timeline);
 
 #endif

@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-OUTPUT_DIR=${1:-"${ROOT_DIR}/build/toolchain/ffmpeg"}
-PACKAGE_NAME=switch-ffmpeg-7.1-3-any.pkg.tar.zst
-PACKAGE_SHA256=fc47e883da3693847e7a845e9de3b235c3449bd9103a046bdb200faf61f48b70
-PACKAGE_URL=${NXCAST_FFMPEG_PACKAGE_URL:-"https://github.com/Ode1l/NX-Cast/releases/download/toolchain-ffmpeg-7.1-3/${PACKAGE_NAME}"}
+OUTPUT_DIR=${1:-"${ROOT_DIR}/artifacts/toolchain/ffmpeg"}
+PACKAGE_NAME=switch-ffmpeg-7.1-4-any.pkg.tar.zst
+PACKAGE_SHA256=bc6068b8dfee02356aa571fcc126143bb718d9b900d61f4813190039c82a81d6
+PACKAGE_URL=${NXCAST_FFMPEG_PACKAGE_URL:-"https://github.com/Ode1l/NX-Cast/releases/download/toolchain-ffmpeg-7.1-4/${PACKAGE_NAME}"}
 PACKAGE_PATH="${OUTPUT_DIR}/${PACKAGE_NAME}"
 
 for command in curl mktemp mkdir mv; do

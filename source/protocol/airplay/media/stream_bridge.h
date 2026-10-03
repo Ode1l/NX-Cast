@@ -47,6 +47,10 @@ bool airplay_stream_bridge_create_profile(
     AirPlayStreamBridge **bridge_out);
 AirPlayStreamBridgeProfile airplay_stream_bridge_profile(
     const AirPlayStreamBridge *bridge);
+bool airplay_stream_bridge_has_audio(const AirPlayStreamBridge *bridge);
+/* Snapshot video timing without holding both container mutexes at once. */
+bool airplay_stream_bridge_sync_video_timeline(AirPlayStreamBridge *audio,
+                                               AirPlayStreamBridge *video);
 void airplay_stream_bridge_retain(AirPlayStreamBridge *bridge);
 void airplay_stream_bridge_release(AirPlayStreamBridge *bridge);
 bool airplay_stream_bridge_claim_reader(AirPlayStreamBridge *bridge);

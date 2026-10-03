@@ -195,30 +195,34 @@ static bool frontend_dk3d_init_overlay(ViewContext *ctx)
 {
     DkMemBlockMaker mem_block_maker;
     DkCmdBufMaker cmdbuf_maker;
+    unsigned i;
 
-    if (!ctx || ctx->dk3d_overlay_cmd_mem || ctx->dk3d_overlay_cmdbuf)
-        return true;
-
-    dkMemBlockMakerDefaults(&mem_block_maker, ctx->dk3d_device, DK3D_OVERLAY_CMDMEM_SIZE);
-    mem_block_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-    ctx->dk3d_overlay_cmd_mem = dkMemBlockCreate(&mem_block_maker);
-    if (!ctx->dk3d_overlay_cmd_mem)
-    {
-        log_error("[player-view] dkMemBlockCreate failed for dk3d overlay commands\n");
+    if (!ctx)
         return false;
+
+    for (i = 0; i < FRONTEND_DK3D_FRAMEBUFFER_COUNT; ++i)
+    {
+        dkMemBlockMakerDefaults(&mem_block_maker, ctx->dk3d_device, DK3D_OVERLAY_CMDMEM_SIZE);
+        mem_block_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
+        ctx->dk3d_overlay_cmd_mem[i] = dkMemBlockCreate(&mem_block_maker);
+        if (!ctx->dk3d_overlay_cmd_mem[i])
+        {
+            log_error("[player-view] dkMemBlockCreate failed for dk3d overlay slot=%u\n", i);
+            return false;
+        }
+
+        dkCmdBufMakerDefaults(&cmdbuf_maker, ctx->dk3d_device);
+        ctx->dk3d_overlay_cmdbuf[i] = dkCmdBufCreate(&cmdbuf_maker);
+        if (!ctx->dk3d_overlay_cmdbuf[i])
+        {
+            log_error("[player-view] dkCmdBufCreate failed for dk3d overlay slot=%u\n", i);
+            return false;
+        }
+
+        dkCmdBufAddMemory(ctx->dk3d_overlay_cmdbuf[i],
+                          ctx->dk3d_overlay_cmd_mem[i], 0, DK3D_OVERLAY_CMDMEM_SIZE);
     }
 
-    dkCmdBufMakerDefaults(&cmdbuf_maker, ctx->dk3d_device);
-    ctx->dk3d_overlay_cmdbuf = dkCmdBufCreate(&cmdbuf_maker);
-    if (!ctx->dk3d_overlay_cmdbuf)
-    {
-        log_error("[player-view] dkCmdBufCreate failed for dk3d overlay\n");
-        dkMemBlockDestroy(ctx->dk3d_overlay_cmd_mem);
-        ctx->dk3d_overlay_cmd_mem = NULL;
-        return false;
-    }
-
-    dkCmdBufAddMemory(ctx->dk3d_overlay_cmdbuf, ctx->dk3d_overlay_cmd_mem, 0, DK3D_OVERLAY_CMDMEM_SIZE);
     return true;
 }
 
@@ -231,21 +235,24 @@ static void frontend_dk3d_reset(ViewContext *ctx)
     ctx->dk3d_swapchain_ready = false;
     ctx->dk3d_device = NULL;
     ctx->dk3d_queue = NULL;
-    ctx->dk3d_overlay_cmd_mem = NULL;
-    ctx->dk3d_overlay_cmdbuf = NULL;
+    memset(ctx->dk3d_overlay_cmd_mem, 0, sizeof(ctx->dk3d_overlay_cmd_mem));
+    memset(ctx->dk3d_overlay_cmdbuf, 0, sizeof(ctx->dk3d_overlay_cmdbuf));
+    memset(ctx->dk3d_overlay_fence, 0, sizeof(ctx->dk3d_overlay_fence));
+    memset(ctx->dk3d_overlay_fence_pending, 0, sizeof(ctx->dk3d_overlay_fence_pending));
     ctx->dk3d_framebuffer_mem = NULL;
     memset(ctx->dk3d_framebuffers, 0, sizeof(ctx->dk3d_framebuffers));
     ctx->dk3d_swapchain = NULL;
     ctx->dk3d_fence_timeout_count = 0;
+    ctx->dk3d_queue_error_logged = false;
     ctx->dk3d_overlay_dirty = false;
 }
 
 static void frontend_dk3d_destroy_swapchain(ViewContext *ctx)
 {
-    if (!ctx || !ctx->dk3d_swapchain_ready)
+    if (!ctx || (!ctx->dk3d_swapchain && !ctx->dk3d_framebuffer_mem))
         return;
 
-    if (ctx->dk3d_queue)
+    if (ctx->dk3d_queue && !dkQueueIsInErrorState(ctx->dk3d_queue))
         dkQueueWaitIdle(ctx->dk3d_queue);
     if (ctx->dk3d_swapchain)
         dkSwapchainDestroy(ctx->dk3d_swapchain);
@@ -257,25 +264,34 @@ static void frontend_dk3d_destroy_swapchain(ViewContext *ctx)
     memset(ctx->dk3d_framebuffers, 0, sizeof(ctx->dk3d_framebuffers));
     ctx->dk3d_swapchain_ready = false;
     ctx->dk3d_overlay_dirty = false;
+    memset(ctx->dk3d_overlay_fence, 0, sizeof(ctx->dk3d_overlay_fence));
+    memset(ctx->dk3d_overlay_fence_pending, 0, sizeof(ctx->dk3d_overlay_fence_pending));
 }
 
 static void frontend_dk3d_shutdown(ViewContext *ctx)
 {
-    if (!ctx || !ctx->dk3d_device_ready)
+    unsigned i;
+
+    if (!ctx || !ctx->dk3d_device)
         return;
 
+    if (ctx->dk3d_queue && !dkQueueIsInErrorState(ctx->dk3d_queue))
+        dkQueueWaitIdle(ctx->dk3d_queue);
 #if defined(NXCAST_USE_IMGUI_UI)
     frontend_imgui_overlay_shutdown();
 #endif
     frontend_dk3d_destroy_swapchain(ctx);
-    player_video_detach();
+    if (ctx->dk3d_device_ready)
+        player_video_detach();
     if (ctx->dk3d_queue)
     {
-        dkQueueWaitIdle(ctx->dk3d_queue);
-        if (ctx->dk3d_overlay_cmdbuf)
-            dkCmdBufDestroy(ctx->dk3d_overlay_cmdbuf);
-        if (ctx->dk3d_overlay_cmd_mem)
-            dkMemBlockDestroy(ctx->dk3d_overlay_cmd_mem);
+        for (i = 0; i < FRONTEND_DK3D_FRAMEBUFFER_COUNT; ++i)
+        {
+            if (ctx->dk3d_overlay_cmdbuf[i])
+                dkCmdBufDestroy(ctx->dk3d_overlay_cmdbuf[i]);
+            if (ctx->dk3d_overlay_cmd_mem[i])
+                dkMemBlockDestroy(ctx->dk3d_overlay_cmd_mem[i]);
+        }
         dkQueueDestroy(ctx->dk3d_queue);
     }
     if (ctx->dk3d_device)
@@ -389,6 +405,60 @@ static bool frontend_dk3d_create_swapchain(ViewContext *ctx, u32 width, u32 heig
     dkSwapchainSetSwapInterval(ctx->dk3d_swapchain, 1);
     ctx->dk3d_swapchain_ready = true;
     return true;
+}
+
+static bool frontend_dk3d_wait_overlay_slot(ViewContext *ctx, int slot)
+{
+    DkResult result;
+
+    if (!ctx->dk3d_overlay_fence_pending[slot])
+        return true;
+
+    result = dkFenceWait(&ctx->dk3d_overlay_fence[slot], DK3D_FENCE_WAIT_TIMEOUT_NS);
+    if (result != DkResult_Success)
+    {
+        log_error("[player-view] overlay fence wait failed slot=%d result=%d frame=%llu\n",
+                  slot, (int)result, (unsigned long long)ctx->status.frame_counter);
+        return false;
+    }
+
+    ctx->dk3d_overlay_fence_pending[slot] = false;
+    return true;
+}
+
+static void frontend_dk3d_signal_overlay_slot(ViewContext *ctx, int slot)
+{
+    dkQueueSignalFence(ctx->dk3d_queue, &ctx->dk3d_overlay_fence[slot], false);
+    ctx->dk3d_overlay_fence_pending[slot] = true;
+}
+
+#if defined(NXCAST_USE_IMGUI_UI)
+static void frontend_dk3d_clear_slot(ViewContext *ctx, int slot, float red, float green, float blue)
+{
+    DkCmdBuf cmdbuf = ctx->dk3d_overlay_cmdbuf[slot];
+    DkImageView target_view;
+    DkScissor scissor = {0, 0, ctx->status.display_width, ctx->status.display_height};
+
+    dkCmdBufClear(cmdbuf);
+    dkImageViewDefaults(&target_view, &ctx->dk3d_framebuffers[slot]);
+    dkCmdBufBindRenderTarget(cmdbuf, &target_view, NULL);
+    dkCmdBufSetScissors(cmdbuf, 0, &scissor, 1);
+    dkCmdBufClearColorFloat(cmdbuf, 0, DkColorMask_RGBA, red, green, blue, 1.0f);
+    dkQueueSubmitCommands(ctx->dk3d_queue, dkCmdBufFinishList(cmdbuf));
+}
+#endif
+
+static void frontend_dk3d_release_failed_slot(ViewContext *ctx, int slot)
+{
+    if (!dkQueueIsInErrorState(ctx->dk3d_queue))
+        dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
+}
+
+static void frontend_dk3d_present_overlay_slot(ViewContext *ctx, int slot)
+{
+    frontend_dk3d_signal_overlay_slot(ctx, slot);
+    dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
+    ++ctx->status.frames_presented;
 }
 
 static bool frontend_open_dk3d(ViewContext *ctx)
@@ -642,6 +712,16 @@ bool frontend_render(ViewContext *ctx)
 
         if (!ctx->dk3d_swapchain_ready)
             return false;
+        if (dkQueueIsInErrorState(ctx->dk3d_queue))
+        {
+            if (!ctx->dk3d_queue_error_logged)
+            {
+                log_error("[player-view] deko3d queue entered error state frame=%llu\n",
+                          (unsigned long long)ctx->status.frame_counter);
+                ctx->dk3d_queue_error_logged = true;
+            }
+            return false;
+        }
 
         if (ctx->status.active_view == PLAYER_VIEW_HOME)
         {
@@ -649,10 +729,14 @@ bool frontend_render(ViewContext *ctx)
             slot = dkQueueAcquireImage(ctx->dk3d_queue, ctx->dk3d_swapchain);
             if (slot < 0 || slot >= FRONTEND_DK3D_FRAMEBUFFER_COUNT)
                 return false;
-            if (!frontend_imgui_home_render(ctx, slot))
+            if (!frontend_dk3d_wait_overlay_slot(ctx, slot))
+            {
+                frontend_dk3d_release_failed_slot(ctx, slot);
                 return false;
-            dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
-            ++ctx->status.frames_presented;
+            }
+            if (!frontend_imgui_home_render(ctx, slot))
+                frontend_dk3d_clear_slot(ctx, slot, 244.0f / 255.0f, 243.0f / 255.0f, 238.0f / 255.0f);
+            frontend_dk3d_present_overlay_slot(ctx, slot);
             return true;
 #else
             return false;
@@ -669,10 +753,14 @@ bool frontend_render(ViewContext *ctx)
             slot = dkQueueAcquireImage(ctx->dk3d_queue, ctx->dk3d_swapchain);
             if (slot < 0 || slot >= FRONTEND_DK3D_FRAMEBUFFER_COUNT)
                 return false;
-            if (!frontend_imgui_loading_render(ctx, slot))
+            if (!frontend_dk3d_wait_overlay_slot(ctx, slot))
+            {
+                frontend_dk3d_release_failed_slot(ctx, slot);
                 return false;
-            dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
-            ++ctx->status.frames_presented;
+            }
+            if (!frontend_imgui_loading_render(ctx, slot))
+                frontend_dk3d_clear_slot(ctx, slot, 4.0f / 255.0f, 6.0f / 255.0f, 10.0f / 255.0f);
+            frontend_dk3d_present_overlay_slot(ctx, slot);
             return true;
 #endif
         }
@@ -706,14 +794,19 @@ bool frontend_render(ViewContext *ctx)
         }
         ctx->dk3d_fence_timeout_count = 0;
 
+        if (!frontend_dk3d_wait_overlay_slot(ctx, slot))
+        {
+            frontend_dk3d_release_failed_slot(ctx, slot);
+            return false;
+        }
+
 #if defined(NXCAST_USE_IMGUI_UI)
         if (!frontend_imgui_overlay_render(ctx, slot))
             frontend_overlay_render_dk3d(ctx, slot);
 #else
         frontend_overlay_render_dk3d(ctx, slot);
 #endif
-        dkQueuePresentImage(ctx->dk3d_queue, ctx->dk3d_swapchain, slot);
-        ++ctx->status.frames_presented;
+        frontend_dk3d_present_overlay_slot(ctx, slot);
         frontend_trace_first_video_frame(ctx);
         return true;
     }

@@ -24,6 +24,7 @@ typedef struct
     AirPlayAudioRecordCallback audio_record_callback;
     AirPlayMediaRecordCallback media_record_callback;
     AirPlayMirrorStopCallback mirror_stop_callback;
+    AirPlayStreamStopCallback stream_stop_callback;
     AirPlayRemoteVideo *remote_video;
     void *media_user_data;
 } AirPlayReceiverConfig;

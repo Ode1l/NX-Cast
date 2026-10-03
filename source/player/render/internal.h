@@ -47,12 +47,15 @@ typedef struct
     bool dk3d_swapchain_ready;
     DkDevice dk3d_device;
     DkQueue dk3d_queue;
-    DkMemBlock dk3d_overlay_cmd_mem;
-    DkCmdBuf dk3d_overlay_cmdbuf;
+    DkMemBlock dk3d_overlay_cmd_mem[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
+    DkCmdBuf dk3d_overlay_cmdbuf[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
+    DkFence dk3d_overlay_fence[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
+    bool dk3d_overlay_fence_pending[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
     DkMemBlock dk3d_framebuffer_mem;
     DkImage dk3d_framebuffers[FRONTEND_DK3D_FRAMEBUFFER_COUNT];
     DkSwapchain dk3d_swapchain;
     uint32_t dk3d_fence_timeout_count;
+    bool dk3d_queue_error_logged;
     bool dk3d_overlay_dirty;
 #endif
 } ViewContext;

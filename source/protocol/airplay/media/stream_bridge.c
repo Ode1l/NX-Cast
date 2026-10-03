@@ -61,6 +61,7 @@ struct AirPlayStreamBridge
     bool header_written;
     bool first_write_observed;
     bool first_read_observed;
+    bool first_video_attempt_observed;
     AVFormatContext *format;
     AVIOContext *avio;
     AVCodecParserContext *video_parser;
@@ -68,7 +69,7 @@ struct AirPlayStreamBridge
     AirPlayMirrorClock *clock;
     AirPlayStreamBridgeProfile profile;
     int stream_index;
-    int audio_stream_index;
+    atomic_int audio_stream_index;
     int64_t audio_frame_duration;
     int64_t last_pts;
 };
@@ -209,7 +210,8 @@ static bool bridge_ensure_header(AirPlayStreamBridge *bridge)
 }
 
 static bool bridge_configure_video_stream(
-    AirPlayStreamBridge *bridge, const AirPlayMirrorAccessUnit *access_unit)
+    AirPlayStreamBridge *bridge, const AirPlayMirrorAccessUnit *access_unit,
+    bool trace_first)
 {
     if (!bridge || bridge->stream_index < 0 || !bridge->video_parser ||
         !bridge->video_codec)
@@ -226,9 +228,17 @@ static bool bridge_configure_video_stream(
     if (!input)
         return false;
     memcpy(input, access_unit->data, access_unit->size);
+    if (trace_first)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=bridge event=parser-begin bytes=%zu codec=%d\n",
+            access_unit->size, bridge->video_codec->codec_id);
     consumed = av_parser_parse2(
         bridge->video_parser, bridge->video_codec, &parsed, &parsed_size,
         input, (int)access_unit->size, AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+    if (trace_first)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=bridge event=parser-end consumed=%d width=%d height=%d\n",
+            consumed, bridge->video_parser->width, bridge->video_parser->height);
     av_free(input);
     if (consumed < 0 || bridge->video_parser->width <= 0 ||
         bridge->video_parser->height <= 0)
@@ -315,7 +325,7 @@ bool airplay_stream_bridge_create_profile(
     bridge->profile = profile;
     bridge->last_pts = -1;
     bridge->stream_index = -1;
-    bridge->audio_stream_index = -1;
+    atomic_init(&bridge->audio_stream_index, -1);
     ring_mutex_ready = bridge_mutex_init(&bridge->ring_mutex);
     mux_mutex_ready = ring_mutex_ready && bridge_mutex_init(&bridge->mux_mutex);
     readable_ready = mux_mutex_ready && bridge_cond_init(&bridge->readable);
@@ -325,6 +335,11 @@ bool airplay_stream_bridge_create_profile(
     {
         bridge->video_parser = av_parser_init(AV_CODEC_ID_H264);
         bridge->video_codec = avcodec_alloc_context3(NULL);
+        if (bridge->video_codec)
+        {
+            bridge->video_codec->codec_type = AVMEDIA_TYPE_VIDEO;
+            bridge->video_codec->codec_id = AV_CODEC_ID_H264;
+        }
         if (bridge->video_parser)
             bridge->video_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
     }
@@ -442,6 +457,7 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
     AirPlayMirrorClockResult clock_result;
     int64_t pts;
     bool ok = false;
+    bool trace_first;
 
     if (!bridge)
         return false;
@@ -461,9 +477,22 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
         (access_unit->config_generation > bridge->video_config_generation &&
          !access_unit->keyframe))
         goto cleanup;
-    if (!bridge_configure_video_stream(bridge, access_unit) ||
-        !bridge_ensure_header(bridge))
+    trace_first = !bridge->first_video_attempt_observed;
+    bridge->first_video_attempt_observed = true;
+    if (trace_first)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=bridge event=video-push-begin bytes=%zu generation=%u\n",
+            access_unit->size, access_unit->config_generation);
+    if (!bridge_configure_video_stream(bridge, access_unit, trace_first))
         goto cleanup;
+    if (trace_first)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=bridge event=header-begin\n");
+    if (!bridge_ensure_header(bridge))
+        goto cleanup;
+    if (trace_first)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=bridge event=header-end\n");
     packet = av_packet_alloc();
     if (!packet || av_new_packet(packet, (int)access_unit->size) < 0)
     {
@@ -494,7 +523,15 @@ bool airplay_stream_bridge_push_video(AirPlayStreamBridge *bridge,
     packet->stream_index = bridge->stream_index;
     if (access_unit->keyframe)
         packet->flags |= AV_PKT_FLAG_KEY;
+    if (trace_first)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=bridge event=packet-write-begin pts=%lld\n",
+            (long long)pts);
     ok = av_interleaved_write_frame(bridge->format, packet) >= 0;
+    if (trace_first)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=bridge event=packet-write-end ok=%d\n",
+            (int)ok);
     av_packet_free(&packet);
     if (ok)
     {
@@ -512,7 +549,7 @@ cleanup:
     return ok;
 }
 
-bool airplay_stream_bridge_configure_audio(
+static bool bridge_configure_audio_locked(
     AirPlayStreamBridge *bridge, const AirPlayMirrorAudioFormat *format)
 {
     AVStream *stream;
@@ -526,7 +563,6 @@ bool airplay_stream_bridge_configure_audio(
         format->codec_config_size == 0u ||
         format->codec_config_size > sizeof(format->codec_config))
         return false;
-    bridge_mutex_lock(&bridge->mux_mutex);
     if (bridge->header_written || bridge->mux_finished ||
         atomic_load(&bridge->cancelled) || bridge->audio_stream_index >= 0)
         goto cleanup;
@@ -561,8 +597,40 @@ bool airplay_stream_bridge_configure_audio(
 
 cleanup:
     av_free(extradata);
+    return ok;
+}
+
+bool airplay_stream_bridge_configure_audio(
+    AirPlayStreamBridge *bridge, const AirPlayMirrorAudioFormat *format)
+{
+    if (!bridge)
+        return false;
+    bridge_mutex_lock(&bridge->mux_mutex);
+    bool ok = bridge_configure_audio_locked(bridge, format);
     bridge_mutex_unlock(&bridge->mux_mutex);
     return ok;
+}
+
+bool airplay_stream_bridge_has_audio(const AirPlayStreamBridge *bridge)
+{
+    return bridge && atomic_load(&bridge->audio_stream_index) >= 0;
+}
+
+bool airplay_stream_bridge_sync_video_timeline(AirPlayStreamBridge *audio,
+                                               AirPlayStreamBridge *video)
+{
+    AirPlayMirrorVideoTimeline timeline;
+    if (!audio || !video || audio == video)
+        return false;
+    bridge_mutex_lock(&video->mux_mutex);
+    bool ready = airplay_mirror_clock_get_video_timeline(video->clock, &timeline);
+    bridge_mutex_unlock(&video->mux_mutex);
+    bridge_mutex_lock(&audio->mux_mutex);
+    airplay_mirror_clock_set_audio_only(audio->clock, false);
+    if (ready)
+        airplay_mirror_clock_set_video_timeline(audio->clock, &timeline);
+    bridge_mutex_unlock(&audio->mux_mutex);
+    return ready;
 }
 
 bool airplay_stream_bridge_push_audio(AirPlayStreamBridge *bridge,

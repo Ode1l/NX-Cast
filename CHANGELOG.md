@@ -2,6 +2,23 @@
 
 All notable user-facing changes to NX-Cast are documented here.
 
+## [0.3.2] - 2026-10-04
+
+### Fixed
+
+- Fixed iPhone screen-mirroring crashes caused by Switch-incompatible FFmpeg random-seed generation and incorrect nvtegra H.264 long-term reference indexing.
+- Fixed silent mirrored video when audio arrives after the first video frame: attach an independent audio track without reloading video or waiting for another keyframe, and normalize negotiated NTP audio timestamps into the mirror video clock domain.
+- Handle per-stream AirPlay teardown and subsequent stream setup without stopping an ongoing mirror session for an audio-only transition.
+- Hide timeline seeking and IPTV channel controls during screen mirroring; keep channel controls limited to IPTV playback.
+- Initialize and retire deko3d frame resources safely when transitioning between Home and playback.
+
+### Changed
+
+- Publish the pinned Switch FFmpeg 7.1-4 build dependency as a GitHub Release asset; local installation and cached CI toolchain images download and verify the same package instead of rebuilding FFmpeg for each app build.
+- Force normal diagnostics with tracing disabled for formal builds; retain Full Trace tasks and bounded mirror audio/video diagnostics for troubleshooting.
+- Mark Continuous prominently as a development build that ordinary users should not download, and link to the latest stable release.
+- Distribute one complete SD installation ZIP, including IPTV sources.txt, fonts, DLNA runtime files and license notices; runtime identities and pairing files remain excluded.
+
 ## [0.3.1] - 2026-09-23
 
 ### Added

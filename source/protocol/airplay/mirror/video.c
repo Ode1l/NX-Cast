@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "protocol/airplay/trace.h"
+
 struct AirPlayMirrorVideo
 {
     AirPlayMirrorVideoCallback callback;
@@ -100,8 +102,7 @@ static bool parse_parameter_sets(const uint8_t *avcc, size_t avcc_size,
             return false;
         input_offset += nal_size;
     }
-    if (input_offset != avcc_size)
-        return false;
+    // Mirror codec packets may append metadata after the validated SPS/PPS.
     *output_size = output_offset;
     return true;
 }
@@ -259,7 +260,8 @@ AirPlayMirrorVideoResult airplay_mirror_video_process_access_unit(
         atomic_fetch_add(&video->access_units_dropped, 1u);
         return AIRPLAY_MIRROR_VIDEO_DROPPED;
     }
-    prefix_size = atomic_load(&video->waiting_for_keyframe)
+    /* Each IDR must be independently decodable after a media bridge change. */
+    prefix_size = keyframe
                       ? video->config_size
                       : 0u;
     if (annexb_size > AIRPLAY_MIRROR_VIDEO_MAX_ACCESS_UNIT - prefix_size)
@@ -282,7 +284,14 @@ AirPlayMirrorVideoResult airplay_mirror_video_process_access_unit(
     access_unit.config_generation =
         (uint32_t)atomic_load(&video->config_generation);
     access_unit.keyframe = keyframe;
+    if (prefix_size)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=mirror event=first-keyframe-callback-begin bytes=%zu generation=%u\n",
+            access_unit.size, access_unit.config_generation);
     video->callback(&access_unit, video->user_data);
+    if (prefix_size)
+        AIRPLAY_TRACE_SYNC(
+            "[airplay-video-pipeline] stage=mirror event=first-keyframe-callback-end\n");
     free(output);
     atomic_store(&video->waiting_for_keyframe, false);
     video->has_last_timestamp = true;

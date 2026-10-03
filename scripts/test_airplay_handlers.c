@@ -28,6 +28,9 @@ typedef struct
     unsigned audio_record_count;
     unsigned record_count;
     unsigned stop_count;
+    unsigned stream_stop_count;
+    bool stopped_video;
+    bool stopped_audio;
     uint8_t prepared_key[16];
     uint8_t prepared_iv[16];
     uint8_t opened_key[16];
@@ -188,6 +191,17 @@ static void fake_stop(uint64_t session_id, void *user_data)
     recorder->stop_count++;
 }
 
+static bool fake_stream_stop(uint64_t session_id, bool video, bool audio,
+                             void *user_data)
+{
+    Recorder *recorder = user_data;
+    CHECK(session_id == 42u);
+    recorder->stream_stop_count++;
+    recorder->stopped_video = video;
+    recorder->stopped_audio = audio;
+    return true;
+}
+
 static bool dispatch_protocol(AirPlayHandlers *handlers,
                               AirPlayRtspSession *session,
                               const char *protocol, const char *method,
@@ -299,6 +313,7 @@ static AirPlayHandlers *create_handlers(Recorder *recorder,
         .audio_record_callback = fake_audio_record,
         .media_record_callback = fake_record,
         .mirror_stop_callback = fake_stop,
+        .stream_stop_callback = fake_stream_stop,
         .remote_video = remote_video,
         .callback_user_data = recorder};
     AirPlayHandlers *handlers = NULL;
@@ -483,8 +498,10 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     AirPlayRtspResponse response = {0};
     uint8_t wrapped[72];
     uint8_t iv[16];
-    uint8_t expected_input[48];
-    uint8_t expected_hash[32];
+    /* SHA-512(00..0f || 20..3f), truncated to the 16-byte media key. */
+    static const uint8_t expected_hash[16] = {
+        0x84, 0x5e, 0x82, 0xdf, 0x15, 0xaa, 0x7c, 0x75,
+        0xfa, 0x19, 0x64, 0xc1, 0x55, 0x7f, 0x80, 0xa8};
     uint8_t *body = NULL;
     size_t body_size = 0u;
     AirPlayPlistValue *root;
@@ -526,11 +543,6 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     CHECK(value == 7010u);
     airplay_plist_free(root);
     airplay_rtsp_response_clear(&response);
-    for (size_t index = 0u; index < 16u; ++index)
-        expected_input[index] = (uint8_t)index;
-    for (size_t index = 0u; index < 32u; ++index)
-        expected_input[16u + index] = (uint8_t)(0x20u + index);
-    CHECK(airplay_crypto_sha256(expected_input, sizeof(expected_input), expected_hash));
     CHECK(memcmp(recorder->prepared_key, expected_hash, 16u) == 0);
     CHECK(memcmp(recorder->prepared_iv, iv, sizeof(iv)) == 0);
     CHECK(recorder->peer_ipv4_address == UINT32_C(0x11223344));
@@ -633,6 +645,59 @@ static void test_control_transcript(AirPlayHandlers *handlers, Recorder *recorde
     CHECK(dispatch(handlers, &session, "GET_PARAMETER", "/stream", volume_query,
                    sizeof(volume_query) - 1u, "text/parameters", &response));
     CHECK(response.status_code == 200 && response.body_length != 0u);
+    airplay_rtsp_response_clear(&response);
+    for (unsigned repeat = 0u; repeat < 2u; ++repeat)
+    {
+        root = airplay_plist_new_dict();
+        streams = airplay_plist_new_array();
+        stream = airplay_plist_new_dict();
+        CHECK(dict_set(stream, "type", airplay_plist_new_uint(96u)));
+        CHECK(airplay_plist_array_append(streams, stream));
+        CHECK(dict_set(root, "streams", streams) && encode(root, &body, &body_size));
+        CHECK(dispatch(handlers, &session, "TEARDOWN", "/stream", body,
+                       body_size, "application/x-apple-binary-plist", &response));
+        airplay_plist_buffer_free(body);
+        CHECK(response.status_code == 200 && !response.close_connection);
+        CHECK(recorder->stop_count == 0u && recorder->stream_stop_count == 1u);
+        CHECK(!recorder->stopped_video && recorder->stopped_audio);
+        CHECK(airplay_handlers_session_phase(&session) == AIRPLAY_HANDLER_PHASE_RECORDING);
+        airplay_rtsp_response_clear(&response);
+    }
+    CHECK(dispatch(handlers, &session, "TEARDOWN", "/stream",
+                   (const uint8_t *)"invalid", 7u,
+                   "application/x-apple-binary-plist", &response));
+    CHECK(response.status_code == 400 && !response.close_connection && recorder->stop_count == 0u);
+    airplay_rtsp_response_clear(&response);
+
+    root = airplay_plist_new_dict();
+    streams = airplay_plist_new_array();
+    stream = airplay_plist_new_dict();
+    CHECK(dict_set(stream, "type", airplay_plist_new_uint(96u)) &&
+          dict_set(stream, "ct", airplay_plist_new_uint(8u)) &&
+          dict_set(stream, "spf", airplay_plist_new_uint(480u)) &&
+          dict_set(stream, "sr", airplay_plist_new_uint(44100u)));
+    CHECK(airplay_plist_array_append(streams, stream));
+    CHECK(dict_set(root, "streams", streams) && encode(root, &body, &body_size));
+    CHECK(dispatch(handlers, &session, "SETUP", "/stream", body, body_size,
+                   "application/x-apple-binary-plist", &response));
+    airplay_plist_buffer_free(body);
+    CHECK(response.status_code == 200 && recorder->prepare_count == 1u &&
+          recorder->audio_open_count == 2u && recorder->audio_record_count == 2u);
+    airplay_rtsp_response_clear(&response);
+
+    root = airplay_plist_new_dict();
+    streams = airplay_plist_new_array();
+    stream = airplay_plist_new_dict();
+    CHECK(dict_set(stream, "type", airplay_plist_new_uint(110u)));
+    CHECK(airplay_plist_array_append(streams, stream));
+    CHECK(dict_set(root, "streams", streams) && encode(root, &body, &body_size));
+    CHECK(dispatch(handlers, &session, "TEARDOWN", "/stream", body, body_size,
+                   "application/x-apple-binary-plist", &response));
+    airplay_plist_buffer_free(body);
+    CHECK(response.status_code == 200 && !response.close_connection &&
+          recorder->stream_stop_count == 2u && recorder->stopped_video &&
+          !recorder->stopped_audio && recorder->stop_count == 0u);
+    CHECK(airplay_handlers_session_phase(&session) == AIRPLAY_HANDLER_PHASE_RECORDING);
     airplay_rtsp_response_clear(&response);
     CHECK(dispatch(handlers, &session, "TEARDOWN", "/stream", NULL, 0u, NULL, &response));
     CHECK(response.status_code == 200 && response.close_connection && recorder->stop_count == 1u);

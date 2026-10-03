@@ -94,11 +94,17 @@ make install-airplay-ffmpeg
 make verify-airplay-ffmpeg
 ```
 
-The install target downloads `switch-ffmpeg-7.1-3-any.pkg.tar.zst` from the
-`toolchain-ffmpeg-7.1-3` NX-Cast GitHub Release, verifies its pinned SHA-256,
+The install target downloads `switch-ffmpeg-7.1-4-any.pkg.tar.zst` from the
+`toolchain-ffmpeg-7.1-4` NX-Cast GitHub Release, verifies its pinned SHA-256,
 and installs it under `/opt/devkitpro/portlibs/switch`. It requests `sudo` only
 for the local `dkp-pacman -U` operation. The source recipe remains available
 through `make build-airplay-ffmpeg` when maintaining the media toolchain.
+
+Revision 4 fixes a long-term H.264 reference indexing error in nvtegra that
+can crash screen mirroring. It keeps hardware decoding enabled and includes
+the earlier Matroska and libnx random fixes. Updating source alone does not
+update the installed static library: install the new package, then rebuild
+NX-Cast before testing.
 
 Matroska is compiled into target `libavformat.a`; it is not a separate runtime
 plugin and nothing needs to be copied to the Switch SD card. End users receive
@@ -190,8 +196,10 @@ If local and CI behavior differs, first check:
 Use `make build-airplay-ffmpeg` to produce the supported NX-Cast package from
 source without installing it, or `make install-airplay-ffmpeg` to download and
 install the published prebuilt package. To install your own freshly built
-package, run `sudo dkp-pacman -U build/toolchain/ffmpeg/switch-ffmpeg-7.1-3-any.pkg.tar.zst`
+package, run `sudo dkp-pacman -U artifacts/toolchain/ffmpeg/switch-ffmpeg-7.1-4-any.pkg.tar.zst`
 from the repository root and then `make verify-airplay-ffmpeg`.
+Toolchain packages are cached under `artifacts/toolchain/ffmpeg`, outside the
+application's `build` directory, so rebuilding NX-Cast does not delete them.
 Only edit or invoke the upstream package recipes directly when developing the
 media toolchain itself.
 

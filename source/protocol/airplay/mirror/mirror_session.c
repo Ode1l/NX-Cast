@@ -240,6 +240,69 @@ static void mirror_log_first_media_boundaries(AirPlayMirrorSession *session)
 #endif
 }
 
+static void mirror_log_rejected_codec(const AirPlayMirrorSession *session,
+                                      const AirPlayMirrorPacketHeader *header,
+                                      const uint8_t *payload)
+{
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    static const char hex[] = "0123456789abcdef";
+    char prefix[33];
+    size_t count = header->payload_size < 16u ? header->payload_size : 16u;
+
+    for (size_t index = 0u; index < count; ++index)
+    {
+        prefix[index * 2u] = hex[payload[index] >> 4u];
+        prefix[index * 2u + 1u] = hex[payload[index] & 0x0fu];
+    }
+    prefix[count * 2u] = '\0';
+    AIRPLAY_OBSERVE(
+        "[airplay-mirror] codec-config-rejected session=%llu bytes=%u "
+        "flags=%u options=%u prefix=%s\n",
+        (unsigned long long)session->session_id, header->payload_size,
+        header->flags, header->options, prefix);
+#else
+    (void)session;
+    (void)header;
+    (void)payload;
+#endif
+}
+
+static void mirror_log_invalid_access_unit(const AirPlayMirrorSession *session,
+                                           const AirPlayMirrorPacketHeader *header,
+                                           const uint8_t *decrypted)
+{
+#if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
+    uint32_t first_nal_size = 0u;
+    unsigned first_nal_type = 0u;
+    unsigned forbidden_bit = 0u;
+
+    if (header->payload_size >= 4u)
+        first_nal_size = ((uint32_t)decrypted[0] << 24) |
+                         ((uint32_t)decrypted[1] << 16) |
+                         ((uint32_t)decrypted[2] << 8) | decrypted[3];
+    if (header->payload_size >= 5u)
+    {
+        first_nal_type = decrypted[4] & 0x1fu;
+        forbidden_bit = decrypted[4] >> 7;
+    }
+    AIRPLAY_OBSERVE(
+        "[airplay-mirror] invalid-access-unit session=%llu bytes=%u "
+        "flags=%u options=%u first_nal_size=%u first_nal_type=%u "
+        "forbidden_bit=%u first_nal_fits=%u\n",
+        (unsigned long long)session->session_id, header->payload_size,
+        header->flags, header->options, first_nal_size, first_nal_type,
+        forbidden_bit,
+        header->payload_size >= 5u && first_nal_size != 0u &&
+                first_nal_size <= header->payload_size - 4u
+            ? 1u
+            : 0u);
+#else
+    (void)session;
+    (void)header;
+    (void)decrypted;
+#endif
+}
+
 static bool socket_wait_readable(int socket_fd, const atomic_bool *running)
 {
     while (atomic_load(running))
@@ -330,8 +393,12 @@ static bool process_client(AirPlayMirrorSession *session, int client_fd)
             !receive_exact(client_fd, payload, header.payload_size, &session->running))
             break;
         if (header.type == AIRPLAY_MIRROR_PACKET_CODEC)
+        {
             result = airplay_mirror_video_process_config(
                 session->video, payload, header.payload_size, header.timestamp);
+            if (result == AIRPLAY_MIRROR_VIDEO_INVALID)
+                mirror_log_rejected_codec(session, &header, payload);
+        }
         else if (header.type == AIRPLAY_MIRROR_PACKET_VIDEO)
         {
             atomic_fetch_add(&session->encrypted_packets, 1u);
@@ -347,6 +414,8 @@ static bool process_client(AirPlayMirrorSession *session, int client_fd)
                 atomic_fetch_add(&session->decrypt_ok, 1u);
                 result = airplay_mirror_video_process_access_unit(
                     session->video, decrypted, header.payload_size, header.timestamp);
+                if (result == AIRPLAY_MIRROR_VIDEO_INVALID)
+                    mirror_log_invalid_access_unit(session, &header, decrypted);
             }
             else
                 atomic_fetch_add(&session->decrypt_ok, 1u);

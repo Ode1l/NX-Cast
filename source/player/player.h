@@ -133,6 +133,8 @@ bool player_wait_idle(uint32_t timeout_ms);
 typedef struct AirPlayStreamBridge AirPlayStreamBridge;
 PlayerCommandStatus player_submit_airplay_stream_bridge(
     AirPlayStreamBridge *bridge, const PlayerOwnershipLease *lease);
+PlayerCommandStatus player_submit_airplay_audio_bridge(
+    AirPlayStreamBridge *bridge, const PlayerOwnershipLease *lease);
 
 bool player_set_media(const PlayerMedia *media);
 bool player_set_uri(const char *uri, const char *metadata);

@@ -144,7 +144,8 @@ static bool receiver_route(AirPlayRtspSession *session,
     handled = airplay_handlers_route(session, request, response,
                                      receiver->handlers);
     if (handled && response->status_code >= 200 &&
-        response->status_code < 300 && strcmp(request->method, "TEARDOWN") == 0)
+        response->status_code < 300 && strcmp(request->method, "TEARDOWN") == 0 &&
+        session->state == AIRPLAY_RTSP_SESSION_CLOSED)
     {
         uint64_t terminal_media_session_id = 0U;
 
@@ -325,6 +326,7 @@ bool airplay_receiver_start(const AirPlayReceiverConfig *config)
     handlers_config.audio_record_callback = config->audio_record_callback;
     handlers_config.media_record_callback = config->media_record_callback;
     handlers_config.mirror_stop_callback = config->mirror_stop_callback;
+    handlers_config.stream_stop_callback = config->stream_stop_callback;
     handlers_config.remote_video = config->remote_video;
     handlers_config.callback_user_data = config->media_user_data;
     failure_stage = "handlers";

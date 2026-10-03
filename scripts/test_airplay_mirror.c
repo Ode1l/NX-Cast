@@ -152,6 +152,7 @@ static void test_video_parser(void)
     uint8_t *config;
     uint8_t *idr;
     uint8_t *truncated;
+    uint8_t *extended;
     size_t config_size;
     size_t idr_size;
     size_t truncated_size;
@@ -162,11 +163,18 @@ static void test_video_parser(void)
     truncated = read_hex("scripts/fixtures/airplay/mirror/h264-truncated-au.hex",
                          &truncated_size);
     CHECK(config && idr && truncated);
+    extended = malloc(config_size + 4u);
+    CHECK(extended != NULL);
+    memcpy(extended, config, config_size);
+    memcpy(extended + config_size, "\xfd\xf8\xf8\x00", 4u);
     CHECK(airplay_mirror_video_create(record_video, &recorder, &video));
     CHECK(airplay_mirror_video_process_access_unit(video, idr, idr_size, 100u) ==
           AIRPLAY_MIRROR_VIDEO_DROPPED);
     CHECK(airplay_mirror_video_process_config(video, config, config_size, 200u) ==
           AIRPLAY_MIRROR_VIDEO_OK);
+    CHECK(airplay_mirror_video_process_config(video, extended, config_size + 4u,
+                                              200u) == AIRPLAY_MIRROR_VIDEO_OK);
+    CHECK(airplay_mirror_video_config_generation(video) == 1u);
     CHECK(airplay_mirror_video_waiting_for_keyframe(video));
     CHECK(airplay_mirror_video_process_access_unit(video, p_frame, sizeof(p_frame), 200u) ==
           AIRPLAY_MIRROR_VIDEO_DROPPED);
@@ -199,12 +207,13 @@ static void test_video_parser(void)
     CHECK(airplay_mirror_video_process_config(video, config, config_size - 1u, 204u) ==
           AIRPLAY_MIRROR_VIDEO_INVALID);
     CHECK(airplay_mirror_video_get_stats(video, &stats));
-    CHECK(stats.config_ok == 2u && stats.config_failures == 1u);
+    CHECK(stats.config_ok == 3u && stats.config_failures == 1u);
     CHECK(stats.access_units_ok == 2u && stats.access_units_dropped == 3u &&
           stats.access_units_invalid == 1u && stats.keyframes == 1u);
     CHECK(stats.config_generation == 2u);
     airplay_mirror_video_destroy(video);
     free(config);
+    free(extended);
     free(idr);
     free(truncated);
 }

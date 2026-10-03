@@ -64,6 +64,11 @@ struct AirPlayMirrorAudio
     uint16_t control_port;
     bool thread_started;
     uint32_t diagnostic_thread_generation;
+    uint64_t data_received;
+    uint64_t data_rejected;
+    uint64_t control_received;
+    uint64_t control_rejected;
+    uint64_t frames_emitted;
 };
 
 static uint16_t read_be16(const uint8_t *data)
@@ -171,7 +176,14 @@ static void audio_emit_ready(AirPlayMirrorAudio *audio)
         frame.discontinuity = audio->discontinuity;
         audio->discontinuity = false;
         if (audio->callback && atomic_load(&audio->recording))
+        {
+            if (audio->frames_emitted++ == 0u)
+                AIRPLAY_OBSERVE(
+                    "[airplay-audio] session=%llu stage=first-frame ct=%u sequence=%u bytes=%zu\n",
+                    (unsigned long long)audio->session_id,
+                    audio->format.compression_type, frame.sequence, frame.size);
             audio->callback(&frame, audio->callback_user_data);
+        }
         free(slot->data);
         memset(slot, 0, sizeof(*slot));
         audio->buffered--;
@@ -379,7 +391,13 @@ static AIRPLAY_AUDIO_THREAD_RETURN audio_thread(void *argument)
             FD_SET(control_fd, &read_set);
         result = select(maximum + 1, &read_set, NULL, NULL, &timeout);
         if (result < 0 && errno != EINTR)
+        {
+            if (atomic_load(&audio->running))
+                AIRPLAY_OBSERVE(
+                    "[airplay-audio] session=%llu stage=select-failed errno=%d\n",
+                    (unsigned long long)audio->session_id, errno);
             break;
+        }
         if (result <= 0)
             continue;
         if (data_fd >= 0 && FD_ISSET(data_fd, &read_set))
@@ -388,8 +406,21 @@ static AIRPLAY_AUDIO_THREAD_RETURN audio_thread(void *argument)
                                         AIRPLAY_MIRROR_AUDIO_MAX_PACKET,
                                         0, NULL, NULL);
             if (received > 0)
-                (void)airplay_mirror_audio_process_packet(audio, packet,
-                                                          (size_t)received);
+            {
+                if (audio->data_received++ == 0u)
+                    AIRPLAY_OBSERVE(
+                        "[airplay-audio] session=%llu stage=first-data bytes=%zd type=%u recording=%u\n",
+                        (unsigned long long)audio->session_id, received,
+                        received >= 2 ? packet[1] & 0x7fu : 0u,
+                        atomic_load(&audio->recording) ? 1u : 0u);
+                if (!airplay_mirror_audio_process_packet(audio, packet,
+                                                         (size_t)received) &&
+                    audio->data_rejected++ == 0u)
+                    AIRPLAY_OBSERVE(
+                        "[airplay-audio] session=%llu stage=data-rejected bytes=%zd type=%u\n",
+                        (unsigned long long)audio->session_id, received,
+                        received >= 2 ? packet[1] & 0x7fu : 0u);
+            }
         }
         if (control_fd >= 0 && FD_ISSET(control_fd, &read_set))
         {
@@ -397,8 +428,20 @@ static AIRPLAY_AUDIO_THREAD_RETURN audio_thread(void *argument)
                                         AIRPLAY_MIRROR_AUDIO_MAX_PACKET,
                                         0, NULL, NULL);
             if (received > 0)
-                (void)airplay_mirror_audio_process_control_packet(
-                    audio, packet, (size_t)received);
+            {
+                if (audio->control_received++ == 0u)
+                    AIRPLAY_OBSERVE(
+                        "[airplay-audio] session=%llu stage=first-control bytes=%zd type=%u\n",
+                        (unsigned long long)audio->session_id, received,
+                        received >= 2 ? packet[1] & 0x7fu : 0u);
+                if (!airplay_mirror_audio_process_control_packet(
+                        audio, packet, (size_t)received) &&
+                    audio->control_rejected++ == 0u)
+                    AIRPLAY_OBSERVE(
+                        "[airplay-audio] session=%llu stage=control-rejected bytes=%zd type=%u\n",
+                        (unsigned long long)audio->session_id, received,
+                        received >= 2 ? packet[1] & 0x7fu : 0u);
+            }
         }
     }
     free(packet);
@@ -521,6 +564,14 @@ void airplay_mirror_audio_destroy(AirPlayMirrorAudio *audio)
             RUNTIME_DIAGNOSTIC_THREAD_AIRPLAY_AUDIO,
             audio->diagnostic_thread_generation);
     }
+    AIRPLAY_OBSERVE(
+        "[airplay-audio-summary] session=%llu data=%llu rejected=%llu control=%llu rejected=%llu delivered=%llu\n",
+        (unsigned long long)audio->session_id,
+        (unsigned long long)audio->data_received,
+        (unsigned long long)audio->data_rejected,
+        (unsigned long long)audio->control_received,
+        (unsigned long long)audio->control_rejected,
+        (unsigned long long)audio->frames_emitted);
     audio_slots_clear(audio);
     airplay_crypto_secure_zero(audio->key, sizeof(audio->key));
     airplay_crypto_secure_zero(audio->iv, sizeof(audio->iv));

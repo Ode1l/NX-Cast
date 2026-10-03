@@ -17,5 +17,5 @@ cd "$ROOT"
 "$TMP/layout"
 "${HOST_CC:-cc}" -std=c11 -Wall -Wextra -Werror -pedantic -Isource \
     -Iscripts/iptv_test_stubs source/player/ui/bar.c source/player/ui/timeline.c source/player/ui/home.c \
-    source/player/ui/utf8.c scripts/test_player_title.c -o "$TMP/title"
+    source/player/ui/utf8.c source/player/types.c scripts/test_player_title.c -o "$TMP/title"
 "$TMP/title"

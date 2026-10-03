@@ -749,7 +749,7 @@ static bool derive_session_key(AirPlayHandlers *handlers,
     uint8_t unwrapped[16];
     uint8_t shared[32];
     uint8_t input[48];
-    uint8_t hash[32];
+    uint8_t hash[64];
     bool ok;
 
     if (handlers->config.unwrap_key_callback)
@@ -770,12 +770,20 @@ static bool derive_session_key(AirPlayHandlers *handlers,
         }
         memcpy(input, unwrapped, sizeof(unwrapped));
         memcpy(input + sizeof(unwrapped), shared, sizeof(shared));
-        ok = airplay_crypto_sha256(input, sizeof(input), hash);
+        /* Paired media uses SHA-512(key || ECDH secret), truncated to 16 bytes. */
+        ok = airplay_crypto_sha512(input, sizeof(input), hash);
         if (ok)
             memcpy(output, hash, 16u);
     }
     else
         memcpy(output, unwrapped, 16u);
+
+    if (ok)
+        AIRPLAY_TRACE(
+            "[airplay-crypto] session=%llu media-key kdf=%s\n",
+            (unsigned long long)session->id,
+            handlers->config.shared_secret_callback ? "sha512-truncate16"
+                                                     : "unwrapped");
 
 cleanup:
     airplay_crypto_secure_zero(unwrapped, sizeof(unwrapped));
@@ -1323,15 +1331,81 @@ static bool handle_reverse(const AirPlayRtspRequest *request,
 static bool handle_teardown(AirPlayHandlers *handlers,
                             AirPlayHandlerSession *context,
                             AirPlayRtspSession *session,
+                            const AirPlayRtspRequest *request,
                             AirPlayRtspResponse *response)
 {
     AirPlayHandlerPhase phase_before = airplay_handlers_session_phase(session);
+    bool video = false;
+    bool audio = false;
+    bool scoped = false;
+
+    if (request->body_length != 0u)
+    {
+        AirPlayPlistValue *root = decode_dict(request);
+        const AirPlayPlistValue *streams = airplay_plist_dict_get(root, "streams");
+        bool valid = root && (!streams ||
+            airplay_plist_type(streams) == AIRPLAY_PLIST_TYPE_ARRAY);
+        size_t count = airplay_plist_array_size(streams);
+
+        scoped = count != 0u;
+        for (size_t index = 0u; valid && index < count; ++index)
+        {
+            uint64_t type = 0u;
+            valid = airplay_plist_get_uint(airplay_plist_dict_get(
+                airplay_plist_array_get(streams, index), "type"), &type);
+            if (!valid)
+                break;
+            video |= type == 110u;
+            audio |= type == 96u;
+            AIRPLAY_OBSERVE(
+                "[airplay-teardown] session=%llu selector=%llu\n",
+                (unsigned long long)session->id, (unsigned long long)type);
+        }
+        airplay_plist_free(root);
+        if (!valid)
+            return airplay_rtsp_response_set_status(response, 400);
+    }
 
     context->diagnostic_teardown_seen = true;
     if (session->state == AIRPLAY_RTSP_SESSION_CLOSED)
     {
         context->diagnostic_last_status = 455;
         return airplay_rtsp_response_set_status(response, 455);
+    }
+    AIRPLAY_OBSERVE(
+        "[airplay-teardown] session=%llu scope=%s video=%u audio=%u active_video=%u active_audio=%u\n",
+        (unsigned long long)session->id, scoped ? "streams" : "session",
+        video ? 1u : 0u, audio ? 1u : 0u,
+        context->mirror_setup ? 1u : 0u, context->audio_setup ? 1u : 0u);
+    if (scoped)
+    {
+        bool stop_video = video && context->mirror_setup;
+        bool stop_audio = audio && context->audio_setup;
+        if ((stop_video || stop_audio) &&
+            (!handlers->config.stream_stop_callback ||
+             !handlers->config.stream_stop_callback(
+                 session->logical_session_id, stop_video, stop_audio,
+                 handlers->config.callback_user_data)))
+            return airplay_rtsp_response_set_status(response, 500);
+        if (video)
+        {
+            context->mirror_setup = false;
+            context->recording_started = false;
+            context->stream_connection_id = 0u;
+        }
+        if (audio)
+        {
+            context->audio_setup = false;
+            context->audio_recording_started = false;
+        }
+        /* Stream removal is not a transport/pairing close. RECORD survives. */
+        context->diagnostic_last_status = 200;
+        trace_phase_transition(session, phase_before, "stream-teardown", true);
+        AIRPLAY_OBSERVE(
+            "[airplay-teardown] session=%llu result=streams-removed remaining_video=%u remaining_audio=%u transport=retained\n",
+            (unsigned long long)session->id, context->mirror_setup ? 1u : 0u,
+            context->audio_setup ? 1u : 0u);
+        return true;
     }
     if (context->initial_setup && handlers->config.mirror_stop_callback)
         handlers->config.mirror_stop_callback(session->logical_session_id,
@@ -1456,7 +1530,7 @@ bool airplay_handlers_route(AirPlayRtspSession *session,
                    ? true
                    : airplay_rtsp_response_set_status(response, 455);
     if (strcmp(request->method, "TEARDOWN") == 0)
-        return handle_teardown(handlers, context, session, response);
+        return handle_teardown(handlers, context, session, request, response);
     return airplay_rtsp_response_set_status(response, 501);
 }
 

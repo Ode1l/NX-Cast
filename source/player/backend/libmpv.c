@@ -39,7 +39,8 @@ typedef enum
     LIBMPV_OBS_DURATION,
     LIBMPV_OBS_SEEKABLE,
     LIBMPV_OBS_PAUSED_FOR_CACHE,
-    LIBMPV_OBS_SEEKING
+    LIBMPV_OBS_SEEKING,
+    LIBMPV_OBS_AUDIO_RATE
 } LibmpvObservedProperty;
 
 typedef enum
@@ -74,6 +75,8 @@ typedef enum
 #define LIBMPV_INITIAL_SEEK_WINDOW_MS 350ULL
 #define LIBMPV_INITIAL_SEEK_TIMEOUT_MS 3000ULL
 #define LIBMPV_STARTUP_GATE_TIMEOUT_MS 15000ULL
+#define LIBMPV_REPLY_AUDIO_ADD_BASE (UINT64_C(1) << 32)
+#define LIBMPV_REPLY_AUDIO_SELECT_BASE (UINT64_C(2) << 32)
 
 static void (*g_event_sink)(const PlayerEvent *event) = NULL;
 static Mutex g_mutex;
@@ -82,6 +85,10 @@ static bool g_sync_ready = false;
 static mpv_handle *g_mpv = NULL;
 static mpv_render_context *g_render_ctx = NULL;
 static AirPlayStreamBridge *g_airplay_stream_bridge = NULL;
+static AirPlayStreamBridge *g_airplay_audio_bridge = NULL;
+static uint32_t g_airplay_audio_serial = 0u;
+static char g_airplay_audio_uri[64];
+static bool g_airplay_audio_pending = false;
 static bool g_airplay_stream_registered = false;
 static bool g_render_update_pending = false;
 
@@ -156,6 +163,41 @@ static void libmpv_log_resource_boundary(const char *event)
 #endif
 }
 
+static const mpv_node *libmpv_observe_map_value(const mpv_node *node,
+                                              const char *key)
+{
+    mpv_node_list *map;
+
+    if (!node || node->format != MPV_FORMAT_NODE_MAP || !node->u.list ||
+        !key)
+        return NULL;
+    map = node->u.list;
+    for (int index = 0; index < map->num; ++index)
+    {
+        if (map->keys && map->keys[index] &&
+            strcmp(map->keys[index], key) == 0)
+            return &map->values[index];
+    }
+    return NULL;
+}
+
+static bool libmpv_observe_node_int64(const mpv_node *node, int64_t *out)
+{
+    if (!node || !out)
+        return false;
+    if (node->format == MPV_FORMAT_INT64)
+    {
+        *out = node->u.int64;
+        return true;
+    }
+    if (node->format == MPV_FORMAT_FLAG)
+    {
+        *out = node->u.flag;
+        return true;
+    }
+    return false;
+}
+
 #if defined(NXCAST_RUNTIME_OBSERVABILITY) && NXCAST_RUNTIME_OBSERVABILITY
 
 typedef struct
@@ -198,41 +240,6 @@ static const char *libmpv_observe_state_name(PlayerState state)
     default:
         return "idle";
     }
-}
-
-static const mpv_node *libmpv_observe_map_value(const mpv_node *node,
-                                                 const char *key)
-{
-    mpv_node_list *map;
-
-    if (!node || node->format != MPV_FORMAT_NODE_MAP || !node->u.list ||
-        !key)
-        return NULL;
-    map = node->u.list;
-    for (int index = 0; index < map->num; ++index)
-    {
-        if (map->keys && map->keys[index] &&
-            strcmp(map->keys[index], key) == 0)
-            return &map->values[index];
-    }
-    return NULL;
-}
-
-static bool libmpv_observe_node_int64(const mpv_node *node, int64_t *out)
-{
-    if (!node || !out)
-        return false;
-    if (node->format == MPV_FORMAT_INT64)
-    {
-        *out = node->u.int64;
-        return true;
-    }
-    if (node->format == MPV_FORMAT_FLAG)
-    {
-        *out = node->u.flag;
-        return true;
-    }
-    return false;
 }
 
 static bool libmpv_observe_node_double(const mpv_node *node, double *out)
@@ -531,11 +538,14 @@ static int libmpv_airplay_stream_open(void *user_data, char *uri,
     AirPlayStreamBridge *bridge = NULL;
 
     (void)user_data;
-    if (!uri || !info || strcmp(uri, PLAYER_LIBMPV_AIRPLAY_URI) != 0)
+    if (!uri || !info)
         return MPV_ERROR_LOADING_FAILED;
 
     mutexLock(&g_mutex);
-    bridge = g_airplay_stream_bridge;
+    if (strcmp(uri, PLAYER_LIBMPV_AIRPLAY_URI) == 0)
+        bridge = g_airplay_stream_bridge;
+    else if (g_airplay_audio_uri[0] && strcmp(uri, g_airplay_audio_uri) == 0)
+        bridge = g_airplay_audio_bridge;
     if (bridge)
         airplay_stream_bridge_retain(bridge);
     mutexUnlock(&g_mutex);
@@ -553,6 +563,141 @@ static int libmpv_airplay_stream_open(void *user_data, char *uri,
     return 0;
 }
 
+static int64_t libmpv_airplay_audio_track_locked(const char *uri)
+{
+    mpv_node tracks = {0};
+    int64_t id = -1;
+
+    if (!g_mpv || !uri || !uri[0] ||
+        mpv_get_property(g_mpv, "track-list", MPV_FORMAT_NODE, &tracks) < 0)
+        return -1;
+    if (tracks.format == MPV_FORMAT_NODE_ARRAY && tracks.u.list)
+    {
+        for (int i = 0; i < tracks.u.list->num; i++)
+        {
+            const mpv_node *track = &tracks.u.list->values[i];
+            const mpv_node *filename = libmpv_observe_map_value(track, "external-filename");
+
+            if (filename && filename->format == MPV_FORMAT_STRING &&
+                filename->u.string && strcmp(filename->u.string, uri) == 0)
+            {
+                (void)libmpv_observe_node_int64(
+                    libmpv_observe_map_value(track, "id"), &id);
+                break;
+            }
+        }
+    }
+    mpv_free_node_contents(&tracks);
+    return id;
+}
+
+static void libmpv_airplay_remove_audio_locked(const char *uri)
+{
+    int64_t id = libmpv_airplay_audio_track_locked(uri);
+    char track_id[32];
+
+    if (id < 0)
+        return;
+    snprintf(track_id, sizeof(track_id), "%lld", (long long)id);
+    const char *args[] = {"audio-remove", track_id, NULL};
+    int rc = mpv_command_async(g_mpv, 0u, args);
+    if (rc < 0)
+        log_warn("[airplay-audio] stage=remove-track track=%lld error=%s\n",
+                 (long long)id, mpv_error_string(rc));
+}
+
+static bool libmpv_airplay_attach_audio_locked(void)
+{
+    if (!g_airplay_audio_pending || !g_airplay_audio_bridge || !g_file_loaded)
+        return true;
+    g_airplay_audio_pending = false;
+    // Auto prevents an obsolete asynchronous open from selecting its track.
+    const char *args[] = {"audio-add", g_airplay_audio_uri, "auto", "AirPlay audio", NULL};
+    int rc = mpv_command_async(g_mpv,
+        LIBMPV_REPLY_AUDIO_ADD_BASE | g_airplay_audio_serial, args);
+    log_info("[airplay-audio] stage=audio-add serial=%u result=%s\n",
+             g_airplay_audio_serial, rc >= 0 ? "queued" : mpv_error_string(rc));
+    if (rc < 0)
+        airplay_stream_bridge_cancel(g_airplay_audio_bridge);
+    return rc >= 0;
+}
+
+bool player_libmpv_set_airplay_audio_bridge(AirPlayStreamBridge *bridge)
+{
+    AirPlayStreamBridge *previous;
+    char previous_uri[sizeof(g_airplay_audio_uri)];
+    bool ok;
+
+    libmpv_ensure_sync();
+    mutexLock(&g_mutex);
+    if (bridge && (!g_mpv || !g_airplay_stream_registered || !g_airplay_stream_bridge))
+    {
+        mutexUnlock(&g_mutex);
+        return false;
+    }
+    previous = g_airplay_audio_bridge;
+    snprintf(previous_uri, sizeof(previous_uri), "%s", g_airplay_audio_uri);
+    if (previous && g_mpv)
+        mpv_abort_async_command(g_mpv, LIBMPV_REPLY_AUDIO_ADD_BASE | g_airplay_audio_serial);
+    if (bridge)
+        airplay_stream_bridge_retain(bridge);
+    g_airplay_audio_bridge = bridge;
+    g_airplay_audio_serial++;
+    if (!g_airplay_audio_serial)
+        g_airplay_audio_serial = 1u;
+    g_airplay_audio_uri[0] = '\0';
+    if (bridge)
+        snprintf(g_airplay_audio_uri, sizeof(g_airplay_audio_uri),
+                 "airplay://audio/%u", g_airplay_audio_serial);
+    g_airplay_audio_pending = bridge != NULL;
+    mutexUnlock(&g_mutex);
+
+    // Wake old readers before asking mpv to remove/join the demuxer.
+    airplay_stream_bridge_cancel(previous);
+    airplay_stream_bridge_release(previous);
+    mutexLock(&g_mutex);
+    libmpv_airplay_remove_audio_locked(previous_uri);
+    ok = libmpv_airplay_attach_audio_locked();
+    mutexUnlock(&g_mutex);
+    return ok;
+}
+
+static void libmpv_airplay_audio_reply(const mpv_event *event)
+{
+    uint32_t serial = (uint32_t)event->reply_userdata;
+    char uri[64];
+
+    snprintf(uri, sizeof(uri), "airplay://audio/%u", serial);
+    mutexLock(&g_mutex);
+    bool current = g_airplay_audio_bridge && serial == g_airplay_audio_serial;
+    if ((event->reply_userdata >> 32) == 1u)
+    {
+        if (!current)
+            libmpv_airplay_remove_audio_locked(uri);
+        else if (event->error >= 0)
+        {
+            int64_t track_id = libmpv_airplay_audio_track_locked(uri);
+            int rc = track_id >= 0 ? mpv_set_property_async(g_mpv,
+                LIBMPV_REPLY_AUDIO_SELECT_BASE | serial, "aid", MPV_FORMAT_INT64, &track_id)
+                : MPV_ERROR_PROPERTY_UNAVAILABLE;
+            log_info("[airplay-audio] stage=select-track serial=%u track=%lld result=%s\n",
+                     serial, (long long)track_id, rc >= 0 ? "queued" : mpv_error_string(rc));
+            if (rc < 0)
+                airplay_stream_bridge_cancel(g_airplay_audio_bridge);
+        }
+    }
+    if (current && event->error < 0)
+    {
+        airplay_stream_bridge_cancel(g_airplay_audio_bridge);
+        log_warn("[airplay-audio] stage=%s serial=%u error=%s\n",
+                 (event->reply_userdata >> 32) == 1u ? "audio-add-reply" : "select-reply",
+                 serial, mpv_error_string(event->error));
+    }
+    else if (current && (event->reply_userdata >> 32) == 2u)
+        log_info("[airplay-audio] stage=selected serial=%u\n", serial);
+    mutexUnlock(&g_mutex);
+}
+
 bool player_libmpv_set_airplay_stream_bridge(AirPlayStreamBridge *bridge)
 {
     AirPlayStreamBridge *previous = NULL;
@@ -561,6 +706,7 @@ bool player_libmpv_set_airplay_stream_bridge(AirPlayStreamBridge *bridge)
     bool player_available = false;
     bool ok = true;
 
+    (void)player_libmpv_set_airplay_audio_bridge(NULL);
     libmpv_ensure_sync();
     mutexLock(&g_mutex);
     player_available = g_mpv != NULL;
@@ -1066,7 +1212,8 @@ static void libmpv_set_mute_locked(bool value, LibmpvPendingEvents *pending)
 
 static void libmpv_set_seekable_locked(bool value)
 {
-    g_seekable = value;
+    /* Cache seeking does not control the live sender's mirror timeline. */
+    g_seekable = value && !player_uri_is_screen_mirror(g_uri);
 }
 
 static void libmpv_clear_pending_seek_locked(void)
@@ -1243,6 +1390,19 @@ static bool libmpv_async_load_current(bool paused)
                   player_cache_policy_name(cache_policy.kind));
         mutexUnlock(&g_mutex);
         return false;
+    }
+
+    if (player_uri_is_screen_mirror(g_uri))
+    {
+        size_t length = strlen(options);
+        const char *timestamp_option = ",rebase-start-time=no";
+
+        if (length + strlen(timestamp_option) >= sizeof(options))
+        {
+            mutexUnlock(&g_mutex);
+            return false;
+        }
+        memcpy(options + length, timestamp_option, strlen(timestamp_option) + 1u);
     }
 
     args[0] = "loadfile";
@@ -1479,6 +1639,12 @@ static void libmpv_handle_property_change(const mpv_event_property *prop, uint64
             g_seeking = (*(int *)prop->data) != 0;
         libmpv_refresh_state_locked(&pending);
         break;
+    case LIBMPV_OBS_AUDIO_RATE:
+        if (prop->format == MPV_FORMAT_INT64 && prop->data &&
+            *(int64_t *)prop->data > 0 && g_airplay_audio_bridge)
+            log_info("[airplay-audio] stage=decoder-ready serial=%u sample_rate=%lld\n",
+                     g_airplay_audio_serial, (long long)*(int64_t *)prop->data);
+        break;
     default:
         break;
     }
@@ -1527,6 +1693,7 @@ static void libmpv_handle_event(mpv_event *event)
         g_last_error = 0;
         g_stopped = false;
         g_file_loaded = true;
+        (void)libmpv_airplay_attach_audio_locked();
         libmpv_maybe_issue_pending_seek_locked(&pending);
         if (g_play_requested && g_play_unpause_pending)
         {
@@ -1670,6 +1837,12 @@ static void libmpv_handle_event(mpv_event *event)
         break;
     case MPV_EVENT_COMMAND_REPLY:
     case MPV_EVENT_SET_PROPERTY_REPLY:
+        if ((event->reply_userdata >> 32) == 1u ||
+            (event->reply_userdata >> 32) == 2u)
+        {
+            libmpv_airplay_audio_reply(event);
+            break;
+        }
         if (event->error < 0)
         {
             mutexLock(&g_mutex);
@@ -1811,6 +1984,7 @@ static bool libmpv_init(void)
     mpv_observe_property(g_mpv, LIBMPV_OBS_SEEKABLE, "seekable", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_PAUSED_FOR_CACHE, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(g_mpv, LIBMPV_OBS_SEEKING, "seeking", MPV_FORMAT_FLAG);
+    mpv_observe_property(g_mpv, LIBMPV_OBS_AUDIO_RATE, "audio-params/samplerate", MPV_FORMAT_INT64);
 
     if (process_volume)
         log_info("[player-libmpv] init volume_backend=aud:a-process\n");
@@ -1823,6 +1997,7 @@ static void libmpv_deinit(void)
     mpv_render_context *render_ctx = NULL;
     mpv_handle *mpv = NULL;
     AirPlayStreamBridge *airplay_bridge = NULL;
+    AirPlayStreamBridge *audio_bridge = NULL;
 
     log_info("[player-libmpv] deinit begin\n");
     libmpv_flush_log_noise_summary();
@@ -1834,12 +2009,17 @@ static void libmpv_deinit(void)
     g_mpv = NULL;
     airplay_bridge = g_airplay_stream_bridge;
     g_airplay_stream_bridge = NULL;
+    audio_bridge = g_airplay_audio_bridge;
+    g_airplay_audio_bridge = NULL;
+    g_airplay_audio_uri[0] = '\0';
+    g_airplay_audio_pending = false;
     g_airplay_stream_registered = false;
     libmpv_reset_locked();
     mutexUnlock(&g_mutex);
 
     if (airplay_bridge)
         airplay_stream_bridge_cancel(airplay_bridge);
+    airplay_stream_bridge_cancel(audio_bridge);
 
     if (render_ctx)
     {
@@ -1856,6 +2036,7 @@ static void libmpv_deinit(void)
     }
 
     airplay_stream_bridge_release(airplay_bridge);
+    airplay_stream_bridge_release(audio_bridge);
 
     libmpv_process_volume_shutdown();
 
@@ -1895,6 +2076,9 @@ static bool libmpv_set_media(const PlayerMedia *media)
     g_has_media = true;
     g_last_error = 0;
     mutexUnlock(&g_mutex);
+
+    if (!player_uri_is_screen_mirror(media->uri))
+        (void)player_libmpv_set_airplay_audio_bridge(NULL);
 
     if (libmpv_async_load_current(true))
     {
@@ -2003,6 +2187,7 @@ static bool libmpv_stop(void)
     int rc;
     LibmpvPendingEvents pending = {0};
 
+    (void)player_libmpv_set_airplay_audio_bridge(NULL);
     libmpv_log_trace("Stop", "mutex-wait", "-", NULL);
     mutexLock(&g_mutex);
     libmpv_log_trace("Stop", "mutex-acquired", "-", g_uri);
@@ -2047,7 +2232,9 @@ static bool libmpv_seek_target(const char *target)
     bool merge_initial_seek;
 
     mutexLock(&g_mutex);
-    if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0' || g_state == PLAYER_STATE_STOPPED || !target || target[0] == '\0')
+    if (!g_mpv || !g_has_media || !g_uri || g_uri[0] == '\0' ||
+        player_uri_is_screen_mirror(g_uri) ||
+        g_state == PLAYER_STATE_STOPPED || !target || target[0] == '\0')
     {
         mutexUnlock(&g_mutex);
         return false;
@@ -2626,6 +2813,12 @@ static bool libmpv_unavailable(void)
 }
 
 bool player_libmpv_set_airplay_stream_bridge(AirPlayStreamBridge *bridge)
+{
+    (void)bridge;
+    return false;
+}
+
+bool player_libmpv_set_airplay_audio_bridge(AirPlayStreamBridge *bridge)
 {
     (void)bridge;
     return false;

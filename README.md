@@ -4,9 +4,9 @@
   <img src="assets/icon/switch-screencast-logo.svg" alt="NX-Cast logo" width="180">
 </p>
 
-`NX-Cast` is a Nintendo Switch homebrew DLNA receiver, IPTV player, and experimental AirPlay video receiver for Atmosphere.
+`NX-Cast` is an open-source media center for Nintendo Switch.
 
-It accepts media URLs from phones, desktop players, and TV apps as a generic `DLNA DMR`, and it can independently browse and play local or remote M3U IPTV sources. Both paths use the same hardware-accelerated `libmpv` playback session.
+Cast media from compatible phones and apps over DLNA, or browse and play your own local or remote M3U/M3U8 IPTV playlists. Experimental AirPlay video support is also included. Playback uses the same hardware-accelerated `libmpv` session across these modes.
 
 ## Current Status
 
@@ -20,7 +20,7 @@ The current baseline includes:
 - `libmpv` backend with `ao=hos`
 - `deko3d/libmpv render API` as the preferred video path
 - runtime `hwdec=nvtegra` preference when the installed media toolchain supports it
-- static home screen with cast instructions and last-error display
+- bilingual Home screen with cast status, Live TV entry, and last-error display
 - local/remote M3U source management, SD cache, and direct IPTV URL input
 - channel groups, search, favorites, recent history, logo cache, and XMLTV now/next EPG
 - Simplified Chinese channel/programme metadata and text subtitles through the packaged Source Han font
@@ -271,15 +271,17 @@ git push
 
 A push to `main` builds the project and updates the rolling prerelease. Pull requests targeting `main` build without publishing:
 
-- Release name: `NX-Cast Continuous`
+- Release name: `DO NOT DOWNLOAD - NX-Cast Continuous (Development Build)`
 - Tag: `continuous`
 - Asset: `NX-Cast-sdmc.zip` (complete installation folder, including the NRO)
+
+Continuous is for maintainer-requested testing only. For normal use, download the [latest stable release](https://github.com/Ode1l/NX-Cast/releases/latest). The app version alone does not distinguish a Continuous build from a stable release.
 
 Formal release:
 
 ```bash
-git tag -a v0.3.1 -m "NX-Cast v0.3.1"
-git push origin v0.3.1
+git tag -a v0.3.2 -m "NX-Cast v0.3.2"
+git push origin v0.3.2
 ```
 
 The release workflow runs AirPlay host tests, requires `libmpv/deko3d` plus Ed25519, rejects obviously invalid small `NRO` outputs, and rejects packages containing runtime AirPlay secrets or diagnostic captures.
