@@ -4,7 +4,7 @@
 
 ## Recommended Install
 
-1. Download `NX-Cast-sdmc.zip` from the GitHub Release.
+1. Download `NX-Cast-sdmc.zip` from the [latest stable GitHub Release](https://github.com/Ode1l/NX-Cast/releases/latest), not the Continuous development build.
 2. Power off the Switch or safely remove the SD card.
 3. Extract the zip to the root of the SD card.
 4. Confirm the SD card contains this path:
@@ -18,6 +18,8 @@ sdmc:/switch/NX-Cast/NX-Cast.nro
 7. Launch `NX-Cast`.
 
 The zip already contains the expected `switch/NX-Cast/` directory layout. Do not extract it into an extra nested folder such as `sdmc:/NX-Cast-sdmc/switch/...`.
+
+Back up customized settings and `iptv/sources.txt` before extracting an update: files at matching paths may be overwritten. FFmpeg is statically linked into the application; users do not install the separate developer toolchain package on their SD card.
 
 ## Package Contents
 
@@ -60,13 +62,15 @@ see the NX-Cast application entry rather than an empty data folder.
 
 ## NRO-Only Install
 
-The release also provides `NX-Cast.nro` as a standalone file. This is useful for quick updates, but the SD package is safer for normal users.
+Current releases provide one complete `NX-Cast-sdmc.zip`, not a separate NRO asset. NRO-only installation is a developer workflow for a locally compiled binary or a binary extracted from that ZIP; it is not recommended for a first install.
 
 If installing manually:
 
 1. Create `sdmc:/switch/NX-Cast/`.
 2. Copy `NX-Cast.nro` to `sdmc:/switch/NX-Cast/NX-Cast.nro`.
-3. Copy the release `dlna/`, `fonts/`, `iptv/`, `airplay/`, and `licenses/` folders if you are not using `NX-Cast-sdmc.zip`.
+3. Copy the matching package's `dlna/`, `fonts/`, `iptv/`, `airplay/`, and `licenses/` folders. Do not mix an older asset layout with a newer NRO.
+
+Nxlink uploads only the binary, not these SD resources. Existing AirPlay identity/pairing files are private device data and should be preserved during updates, never copied from another user's device.
 
 ## Why There Is No Installer
 
