@@ -1,6 +1,6 @@
 # Plan: Release NX-Cast 0.3.2
 
-> Status: ACTIVE
+> Status: COMPLETED
 > Created: 2026-10-04
 > Last Updated: 2026-10-04
 
@@ -17,9 +17,9 @@ None.
 ## Spec-Lite
 ### Acceptance Criteria
 - [x] Makefile, NACP, Home and release notes identify 0.3.2; formal build uses normal log policy and no trace switches.
-- [ ] FFmpeg 7.1-4 package on GitHub matches the tested local package and pinned download SHA-256; local downloader and CI consume it.
+- [x] FFmpeg 7.1-4 package on GitHub matches the tested local package and pinned download SHA-256; local downloader and CI consume it.
 - [x] Complete ZIP includes sources.txt/fonts/DLNA assets/licenses and excludes generated identities/captures.
-- [ ] Version tag and release are published, CI succeeds, and 0.3.2 is the latest stable release; Continuous retains its warning.
+- [x] Version tag and release are published, CI succeeds, and 0.3.2 is the latest stable release; Continuous retains its warning.
 ### Non-goals
 - New playback fixes or cache tuning, redesigning CI, modifying old release assets, claiming complete AirPlay 2 support.
 ### Edge Cases
@@ -32,7 +32,7 @@ None - user corrected the requested version to 0.3.2 and specified the existing 
 | Step | File | Status | Goal |
 |------|------|--------|------|
 | Step 1 | steps/step-1.md | COMPLETED | Version/docs updates, host checks, release build and package validation |
-| Step 2 | steps/step-2.md | IN_PROGRESS | Commit/push, publish FFmpeg, tag and verify GitHub build/release |
+| Step 2 | steps/step-2.md | COMPLETED | Commit/push, publish FFmpeg, tag and verify GitHub build/release |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
@@ -51,8 +51,8 @@ None - user corrected the requested version to 0.3.2 and specified the existing 
 - Reuse checksum-pinned prebuilt releases and content-hashed GHCR image; never recompile FFmpeg in ordinary app CI.
 - Force normal diagnostics in release-build so inherited trace arguments cannot leak into formal builds.
 ### Gotchas & Warnings
-- Global portlibs remains revision 3; build locally with the staged revision-4 prefix first.
-- Many user-tested changes are uncommitted; preserve and review rather than reset the worktree.
+- Global portlibs remains revision 3; the release was built with the staged revision-4 prefix first. Run make install-airplay-ffmpeg before future default-prefix local rebuilds.
+- Accumulated user-tested changes were reviewed and committed without resetting the worktree.
 ### Working Set
 | Path | Role in this task | Evidence |
 |------|-------------------|----------|
@@ -65,11 +65,14 @@ None - user corrected the requested version to 0.3.2 and specified the existing 
 | scripts/package_release.sh | Full SD ZIP | sources.txt integrity and generated-secret exclusion |
 ### Verified Facts
 - Local package .PKGINFO says switch-ffmpeg 7.1-4; SHA-256 bc6068b8dfee02356aa571fcc126143bb718d9b900d61f4813190039c82a81d6 matches fetch script.
-- No v0.3.3 or toolchain-ffmpeg-7.1-4 remote tag existed at initial inspection; current main is 598fe45. Recheck v0.3.2 before publication.
-- GitHub currently only hosts toolchain-ffmpeg-7.1-3; revision 4 must be uploaded before tagged CI.
+- Initial main was 598fe45. Release commit bafe7d4fb1578353627d1b1a7b6ac6857a3115ca and annotated v0.3.2/toolchain-ffmpeg-7.1-4 tags were pushed without force or old-tag changes.
+- FFmpeg revision 4 was published and freshly downloaded/checksummed before pushing the app tag. GitHub toolchain logs confirm revision-4 download, installation and capability verification.
 - Existing source-build recipe pins upstream archives/patches and includes the nvtegra long-reference patch, Matroska muxer and libnx random fix.
+- Main Actions run 37152486070 and release run 37152486312 completed successfully. GitHub latest release is v0.3.2; Continuous remains a prerelease titled DO NOT DOWNLOAD - NX-Cast Continuous (Development Build).
+- Downloaded public NX-Cast-sdmc.zip SHA-256 is 6d9f29431963f161f8710eaf9d40acf2d78ea2540dbd2057a5487a60f8606b3a, matching GitHub's digest. Embedded NACP/Home version is 0.3.2; presets match assets/iptv/sources.txt. Exactly one NRO is included, with no generated identities/captures/private keys.
 
 ## Implementation Log
 | Date | Step | Summary |
 |------|------|---------|
 | 2026-10-04 | Step 1 | Host/UI tests passed; fixed shared mpv helper visibility discovered by normal build; clean revision-4 release build and complete ZIP passed. NACP/Home 0.3.2 and all trace switches 0 verified. |
+| 2026-10-04 | Step 2 | Published checksum-pinned FFmpeg 7.1-4, pushed main and v0.3.2, verified successful Actions and re-downloaded the public stable ZIP. Recorded final evidence without changing the release tag. |
