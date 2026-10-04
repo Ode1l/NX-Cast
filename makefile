@@ -1,10 +1,37 @@
 #---------------------------------------------------------------------------------
 .SUFFIXES:
 #---------------------------------------------------------------------------------
+.DEFAULT_GOAL := all
 
 ifeq ($(strip $(DEVKITPRO)),)
 $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/devkitpro")
 endif
+
+# Prepare the pinned library before parsing pkg-config/capability checks below.
+# A recipe (not $(shell)) keeps clean, tests and dry runs free of package writes.
+NXCAST_AUTO_INSTALL_FFMPEG ?= 1
+NXCAST_BUILD_ENTRIES := all dev-build dev-rebuild release-build \
+	playback-baseline-trace-build playback-baseline-trace-rebuild \
+	full-trace-build full-trace-rebuild
+ifeq ($(NXCAST_AUTO_INSTALL_FFMPEG),1)
+ifeq ($(NXCAST_FFMPEG_PREPARED)$(NXCAST_IN_BUILD),)
+ifneq ($(filter $(NXCAST_BUILD_ENTRIES),$(or $(MAKECMDGOALS),all)),)
+NXCAST_BOOTSTRAP := 1
+endif
+endif
+endif
+
+ifeq ($(NXCAST_BOOTSTRAP),1)
+.PHONY: nxcast-prepare-and-build $(or $(MAKECMDGOALS),all)
+$(or $(MAKECMDGOALS),all): nxcast-prepare-and-build
+
+nxcast-prepare-and-build:
+	@DEVKITPRO="$(DEVKITPRO)" PORTLIBS_PREFIX="$(PORTLIBS_PREFIX)" \
+		NXCAST_FFMPEG_OUTPUT_DIR="$(or $(AIRPLAY_FFMPEG_OUTPUT_DIR),$(NXCAST_FFMPEG_OUTPUT_DIR))" \
+		./scripts/install_switch_ffmpeg_airplay.sh
+	+@$(MAKE) NXCAST_FFMPEG_PREPARED=1 $(or $(MAKECMDGOALS),all)
+
+else
 
 TOPDIR ?= $(CURDIR)
 THIS_MAKEFILE ?= $(TOPDIR)/makefile
@@ -100,11 +127,13 @@ SWITCH_NM ?= aarch64-none-elf-nm
 NXCAST_FULL_TRACE_PROFILE ?= full-owner-exclusive-observe-bsd12
 NXCAST_FFMPEG_JOBS ?= 4
 AIRPLAY_FFMPEG_OUTPUT_DIR ?= $(TOPDIR)/artifacts/toolchain/ffmpeg
+NXCAST_FFMPEG_PACKAGE := $(shell "$(TOPDIR)/scripts/fetch_switch_ffmpeg_airplay.sh" --package-name)
 NXCAST_APP_BUILD_FLAGS := NXCAST_USE_IMGUI_UI=1 \
 	NXCAST_REQUIRE_LIBMPV=1 \
 	NXCAST_REQUIRE_DEKO3D=1 \
 	NXCAST_REQUIRE_AIRPLAY_ED25519=1
 NXCAST_BUILD_CONFIG_KEY = profile=$(NXCAST_DIAG_PROFILE);trace-media=$(TRACE_MEDIA);trace-input=$(TRACE_INPUT);trace-airplay=$(TRACE_AIRPLAY);airplay-runtime=$(NXCAST_AIRPLAY_RUNTIME);imgui=$(NXCAST_USE_IMGUI_UI);libmpv=$(NXCAST_REQUIRE_LIBMPV);deko3d=$(NXCAST_REQUIRE_DEKO3D);ed25519=$(NXCAST_REQUIRE_AIRPLAY_ED25519);airplay-muxer=$(NXCAST_REQUIRE_AIRPLAY_MUXER);cache-forward=$(NXCAST_MEDIA_CACHE_FORWARD_MIB);cache-backward=$(NXCAST_MEDIA_CACHE_BACKWARD_MIB);cache-readahead=$(NXCAST_MEDIA_CACHE_READAHEAD_SECS);bsd-sessions=$(NXCAST_PRODUCTION_BSD_SESSIONS);sb-efficiency=$(NXCAST_PRODUCTION_SB_EFFICIENCY);keep-receivers=$(NXCAST_KEEP_RECEIVERS_DURING_MEDIA)
+NXCAST_BUILD_CONFIG_KEY := $(NXCAST_BUILD_CONFIG_KEY);ffmpeg=$(NXCAST_FFMPEG_PACKAGE)
 NXCAST_BUILD_CONFIG_STAMP := $(TOPDIR)/$(BUILD)/.nxcast-build-config
 RELEASE_ATTESTATION := $(CURDIR)/$(BUILD)/release-features.txt
 HOST_CC ?= cc
@@ -835,3 +864,5 @@ $(OFILES_SRC)	: $(HFILES_BIN)
 #---------------------------------------------------------------------------------------
 endif
 #---------------------------------------------------------------------------------------
+
+endif # NXCAST_BOOTSTRAP

@@ -8,6 +8,11 @@ PACKAGE_SHA256=bc6068b8dfee02356aa571fcc126143bb718d9b900d61f4813190039c82a81d6
 PACKAGE_URL=${NXCAST_FFMPEG_PACKAGE_URL:-"https://github.com/Ode1l/NX-Cast/releases/download/toolchain-ffmpeg-7.1-4/${PACKAGE_NAME}"}
 PACKAGE_PATH="${OUTPUT_DIR}/${PACKAGE_NAME}"
 
+if [[ ${1:-} == --package-name ]]; then
+    printf '%s\n' "${PACKAGE_NAME}"
+    exit 0
+fi
+
 for command in curl mktemp mkdir mv; do
     if ! command -v "${command}" >/dev/null 2>&1; then
         echo "Required command not found: ${command}" >&2

@@ -96,15 +96,29 @@ make verify-airplay-ffmpeg
 
 The install target downloads `switch-ffmpeg-7.1-4-any.pkg.tar.zst` from the
 `toolchain-ffmpeg-7.1-4` NX-Cast GitHub Release, verifies its pinned SHA-256,
-and installs it under `/opt/devkitpro/portlibs/switch`. It requests `sudo` only
-for the local `dkp-pacman -U` operation. The source recipe remains available
+and installs it under `/opt/devkitpro/portlibs/switch`. If that package version
+and its required files are already installed, it returns without downloading,
+requesting sudo, or reinstalling. It requests `sudo` only for the local
+`dkp-pacman -U` operation; root container builds use pacman directly.
+The source recipe remains available
 through `make build-airplay-ffmpeg` when maintaining the media toolchain.
+
+Plain `make`, `dev-build`/`dev-rebuild`, both trace build/rebuild variants, and
+`release-build` now run this preparation automatically before Make's media
+dependency checks. VS Code tasks and nxlink builds inherit the same behavior.
+Download/installation failures stop compilation. Clean, host tests and dry runs
+do not automatically install anything. The package name is part of the existing
+build configuration signature so a pinned revision change rebuilds old objects.
+
+For a separately managed staging prefix, pass `NXCAST_AUTO_INSTALL_FFMPEG=0`
+and provision that prefix yourself. Automatic installation only manages the
+global devkitPro Switch package prefix.
 
 Revision 4 fixes a long-term H.264 reference indexing error in nvtegra that
 can crash screen mirroring. It keeps hardware decoding enabled and includes
-the earlier Matroska and libnx random fixes. Updating source alone does not
-update the installed static library: install the new package, then rebuild
-NX-Cast before testing.
+the earlier Matroska and libnx random fixes. After updating the repository,
+the next build automatically installs the pinned package if necessary before
+rebuilding NX-Cast.
 
 Matroska is compiled into target `libavformat.a`; it is not a separate runtime
 plugin and nothing needs to be copied to the Switch SD card. End users receive

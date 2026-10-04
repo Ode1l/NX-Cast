@@ -160,7 +160,11 @@ make RELEASE_JOBS=4 release-build
 NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
-`make install-airplay-ffmpeg` downloads the checksum-pinned package from the [NX-Cast toolchain release](https://github.com/Ode1l/NX-Cast/releases/tag/toolchain-ffmpeg-7.1-4); it does not rebuild FFmpeg. It requests `sudo` only for package installation. Do not substitute Wiliwili's older FFmpeg or a desktop upstream build: the release requires the Matroska muxer, Switch-native random bytes and nvtegra reference fix. Reproducing the dependency from its pinned sources is available separately through `make build-airplay-ffmpeg`.
+The commands above set up a fresh toolchain. After that, **build/rebuild automatically prepares FFmpeg**: plain `make`, development, trace and release targets check the pinned package before compiling. The correct installed version skips downloading and installation entirely. A missing or outdated version is fetched from the [NX-Cast toolchain release](https://github.com/Ode1l/NX-Cast/releases/tag/toolchain-ffmpeg-7.1-4), SHA-256 checked and installed; only installation requests `sudo` on a normal user account. Existing VS Code Build/Rebuild tasks use this same path.
+
+`make install-airplay-ffmpeg` remains available for initial setup or explicit dependency preparation. Downloaded packages are cached, and FFmpeg is not rebuilt. Do not substitute Wiliwili's older FFmpeg or a desktop upstream build: the release requires the Matroska muxer, Switch-native random bytes and nvtegra reference fix. Reproducing the dependency from its pinned sources is available separately through `make build-airplay-ffmpeg`.
+
+For an intentionally separate, manually managed toolchain prefix, use `NXCAST_AUTO_INSTALL_FFMPEG=0`. Clean, host-test and dry-run commands do not automatically install packages.
 
 For local development or diagnostic builds:
 

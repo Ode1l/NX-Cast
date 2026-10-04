@@ -160,7 +160,11 @@ make RELEASE_JOBS=4 release-build
 NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
 ```
 
-`make install-airplay-ffmpeg` 从 [NX-Cast 工具链 Release](https://github.com/Ode1l/NX-Cast/releases/tag/toolchain-ffmpeg-7.1-4)下载固定校验值的预编译包，不会重新编译 FFmpeg，仅安装时请求 `sudo`。不要改用 Wiliwili 的旧版 FFmpeg 或桌面上游版本：正式版需要 Matroska muxer、Switch 原生随机数和 nvtegra 参考帧修复。需要复现依赖源码构建时，另行运行 `make build-airplay-ffmpeg`。
+上面的命令用于首次配置工具链。配置后，**Build/Rebuild 会自动准备 FFmpeg**：普通 `make`、开发、Trace 和正式构建都会在编译前检查固定版本。已经正确安装时，直接跳过下载和安装；缺失或版本过旧时，从 [NX-Cast 工具链 Release](https://github.com/Ode1l/NX-Cast/releases/tag/toolchain-ffmpeg-7.1-4)下载、校验 SHA-256 后安装，普通用户账号仅在安装阶段需要 `sudo`。现有 VS Code Build/Rebuild 任务也走同一流程。
+
+`make install-airplay-ffmpeg` 保留用于首次配置或单独准备依赖，无需每次编译前手动执行。下载的包会缓存，也不会重新编译 FFmpeg。不要改用 Wiliwili 的旧版 FFmpeg 或桌面上游版本：正式版需要 Matroska muxer、Switch 原生随机数和 nvtegra 参考帧修复。需要复现依赖源码构建时，另行运行 `make build-airplay-ffmpeg`。
+
+如果使用自行管理的独立工具链目录，可通过 `NXCAST_AUTO_INSTALL_FFMPEG=0` 关闭自动安装。清理、主机测试和 dry-run 命令不会触发自动安装。
 
 日常开发和诊断：
 
