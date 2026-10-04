@@ -69,6 +69,7 @@ None - implement the fixed-version automatic-install flow already proposed in co
 - Ten isolated installer/Make tests pass, including missing/outdated package installation, offline current-version skip, damaged cache, failed/incomplete installation, custom prefix, all nine build entries, non-build goals and dry run. Tests never write to the real SDK or access the network.
 - Real make install-airplay-ffmpeg skipped installation for local revision 4. make dev-build BUILD_JOBS=4 succeeded with no compiler warnings/errors. A second invocation skipped installation and reported Nothing to be done for all.
 - Shell syntax, git diff --check and 22 local documentation links passed. No new test gate was added to CI.
+- Published implementation commit 6dd7127 to main. GitHub run 37169395387 completed successfully, including root-container dependency preparation, existing tests, strict release-build, packaging and Continuous publication: https://github.com/Ode1l/NX-Cast/actions/runs/37169395387 .
 
 ## Implementation Log
 | Date | Step | Summary |

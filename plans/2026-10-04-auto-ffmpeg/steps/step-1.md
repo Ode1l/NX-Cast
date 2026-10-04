@@ -38,6 +38,8 @@ The Makefile dispatches actual build entries through one dependency-preparation 
 
 Ten isolated tests pass. The first test run exposed a cache-directory environment override being discarded by the Make entry; forwarding the existing environment fallback fixed it. The real local package check skipped installation. A complete dev-build passed without compiler warnings/errors; the next build was an incremental no-op with no download or installation. Logs: /tmp/nxcast-auto-ffmpeg-build.log and /tmp/nxcast-auto-ffmpeg-repeat.log. Syntax, whitespace and 22 documentation links passed. Tests are available locally and were not added as a new CI gate.
 
+Commit 6dd7127 was pushed to main. GitHub Actions run 37169395387 completed successfully: toolchain image, existing host/UI tests, strict release-build, complete ZIP packaging and Continuous update. The root container used the current-version installer fast path successfully. The stable v0.3.2 tag and published stable ZIP were not changed.
+
 ## Files Changed
 - makefile
 - scripts/fetch_switch_ffmpeg_airplay.sh
