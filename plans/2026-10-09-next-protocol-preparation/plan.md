@@ -1,6 +1,6 @@
 # Plan: Next Protocol Documentation And Push
 
-> Status: ACTIVE
+> Status: COMPLETED
 > Created: 2026-10-09
 > Last Updated: 2026-10-09
 
@@ -20,7 +20,7 @@ N/A - covered by Goal, Deliverables, and Validation.
 ### Acceptance Criteria
 - [x] New protocols clearly marked not implemented with feasibility gates and staged acceptance criteria.
 - [x] Existing actor/ownership/threading boundaries reused, no runtime protocol changes.
-- [ ] Reviewed approved changes committed and pushed without force or new tags.
+- [x] Reviewed approved changes committed and pushed without force or new tags.
 
 ### Non-goals
 - Implement protocols, expand CI checks, fix the deferred coordinator race or publish a stable version.
@@ -38,7 +38,7 @@ N/A - covered by Goal, Deliverables, and Validation.
 | Step | File | Status | Goal |
 |------|------|--------|------|
 | Step 1 | `steps/step-1.md` | COMPLETED | Write protocol development preparation and update navigation/roadmap. |
-| Step 2 | `steps/step-2.md` | IN_PROGRESS | Validate accumulated approved changes and commit/push main. |
+| Step 2 | `steps/step-2.md` | COMPLETED | Validate accumulated approved changes and commit/push main. |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
@@ -70,3 +70,4 @@ N/A - covered by Goal, Deliverables, and Validation.
 | Date | Step | Summary |
 |------|------|---------|
 | 2026-10-09 | 1 | Added feasibility gates, staged media work, resource/lifecycle constraints and device matrix; local links and diff passed. |
+| 2026-10-09 | 2 | 20 script tests and ASan/UBSan IPTV regression passed. Pushed 84b46fd, d74d217 and 091119d to origin/main without tags. CI completion not asserted. |

@@ -1,6 +1,6 @@
 # Step 2: Validate And Push Approved Work
 
-> Status: IN_PROGRESS
+> Status: COMPLETED
 > Created: 2026-10-09
 
 ## Goal
@@ -15,8 +15,8 @@ Push reviewed approved changes to origin/main without changing release tags.
 
 ## Plan
 - [x] Review and validate existing changes, excluding generated/private files.
-- [ ] Commit coherent change groups and push main without force.
-- [ ] Confirm remote commit and report CI separately from push status.
+- [x] Commit coherent change groups and push main without force.
+- [x] Confirm remote commit and report CI separately from push status.
 
 ## Quality Checklist
 - [x] Evidence-before-edit: staged diff reviewed.
@@ -27,14 +27,14 @@ Push reviewed approved changes to origin/main without changing release tags.
 
 ## Validation Checklist
 - [x] Whitespace and relevant local regressions pass.
-- [ ] Remote main resolves to pushed commit.
+- [x] Remote main updated from 32b8da1 to 091119d, confirmed by successful push.
 
 ## Test Checklist
 - [x] Workflow and installer script tests pass: 9 + 11 tests.
 - [x] IPTV data regression passes with ASan/UBSan: save failures and 10041-channel fixture.
 
 ## Implementation Notes
-Validated script regressions and IPTV host tests; no new runtime/protocol changes this turn. Native Windows testing remains pending. Created commits 84b46fd (IPTV persistence) and d74d217 (developer workflow/build). Documentation commit and remote push follow; CI completion is separate.
+Validated script regressions and IPTV host tests; no new runtime/protocol changes this turn. Native Windows testing remains pending. Pushed 84b46fd (IPTV persistence), d74d217 (developer workflow/build) and 091119d (documentation) to origin/main. No force push, version bump or release tag. Completion bookkeeping follows as a documentation-only skip-CI commit; application CI is tracked against 091119d.
 
 ## Files Changed
 - Commit/index/ref operations for approved existing changes and step 1 documents; no additional runtime edits planned.
