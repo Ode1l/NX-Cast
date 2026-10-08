@@ -587,6 +587,62 @@ static bool iptv_load_favorites(uint32_t **ids, int *count)
     return !failed;
 }
 
+static bool iptv_replace_saved_file(const char *temporary, const char *path)
+{
+    char backup[IPTV_PATH_MAX + 5];
+    struct stat st;
+    bool existed;
+    int error;
+
+    if (snprintf(backup, sizeof(backup), "%s.bak", path) >= (int)sizeof(backup))
+    {
+        errno = ENAMETOOLONG;
+        goto failed;
+    }
+    existed = stat(path, &st) == 0;
+    if (existed && !S_ISREG(st.st_mode))
+    {
+        errno = EISDIR;
+        goto failed;
+    }
+    if (!existed && errno != ENOENT)
+        goto failed;
+    if (stat(backup, &st) == 0)
+    {
+        /* Never discard the only remaining copy after a failed rollback. */
+        if (!existed || !S_ISREG(st.st_mode))
+        {
+            errno = EEXIST;
+            goto failed;
+        }
+        if (remove(backup) != 0)
+            goto failed;
+    }
+    else if (errno != ENOENT)
+        goto failed;
+
+    /* SD rename may not replace an existing destination. */
+    if (existed && rename(path, backup) != 0)
+        goto failed;
+    if (rename(temporary, path) != 0)
+    {
+        error = errno;
+        if (existed && rename(backup, path) != 0)
+            log_warn("[iptv] save rollback failed; original retained at %s\n", backup);
+        errno = error;
+        goto failed;
+    }
+    if (existed && remove(backup) != 0)
+        log_warn("[iptv] saved %s but could not remove backup %s\n", path, backup);
+    return true;
+
+failed:
+    error = errno;
+    remove(temporary);
+    errno = error;
+    return false;
+}
+
 static bool iptv_write_id_file(const char *path, const uint32_t *ids, int count)
 {
     char temporary[IPTV_PATH_MAX];
@@ -598,18 +654,15 @@ static bool iptv_write_id_file(const char *path, const uint32_t *ids, int count)
         return false;
     for (int i = 0; i < count; ++i)
         fprintf(file, "%08x\n", ids[i]);
+    bool ok = !ferror(file);
     if (fclose(file) != 0)
+        ok = false;
+    if (!ok)
     {
         remove(temporary);
         return false;
     }
-    remove(path);
-    if (rename(temporary, path) != 0)
-    {
-        remove(temporary);
-        return false;
-    }
-    return true;
+    return iptv_replace_saved_file(temporary, path);
 }
 
 static bool iptv_save_remote_sources(const IptvSource *sources, int source_count)
@@ -634,18 +687,15 @@ static bool iptv_save_remote_sources(const IptvSource *sources, int source_count
                 source->url,
                 source->epg_url);
     }
+    bool ok = !ferror(file);
     if (fclose(file) != 0)
+        ok = false;
+    if (!ok)
     {
         remove(temporary);
         return false;
     }
-    remove(IPTV_SOURCES_FILE);
-    if (rename(temporary, IPTV_SOURCES_FILE) != 0)
-    {
-        remove(temporary);
-        return false;
-    }
-    return true;
+    return iptv_replace_saved_file(temporary, IPTV_SOURCES_FILE);
 }
 
 static bool iptv_remove_preinstalled_source(const char *target_url)
@@ -724,13 +774,7 @@ static bool iptv_remove_preinstalled_source(const char *target_url)
         remove(temporary);
         return true;
     }
-    remove(IPTV_PREINSTALLED_SOURCES_FILE);
-    if (rename(temporary, IPTV_PREINSTALLED_SOURCES_FILE) != 0)
-    {
-        remove(temporary);
-        return false;
-    }
-    return true;
+    return iptv_replace_saved_file(temporary, IPTV_PREINSTALLED_SOURCES_FILE);
 }
 
 static int iptv_merge_preinstalled_sources(IptvCatalog *catalog, int count, bool *changed)

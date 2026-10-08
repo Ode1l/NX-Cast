@@ -8,6 +8,43 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+
+static bool fail_install;
+static bool fail_backup;
+static bool fail_rollback;
+static bool fail_close;
+static int test_rename(const char *from, const char *to)
+{
+    size_t size = strlen(from);
+    bool temporary = size >= 4 && strcmp(from + size - 4, ".tmp") == 0;
+    bool backup = size >= 4 && strcmp(from + size - 4, ".bak") == 0;
+    if ((temporary && fail_install) || (backup && fail_rollback) ||
+        (!temporary && !backup && fail_backup))
+    {
+        errno = EIO;
+        return -1;
+    }
+    /* Model the SD filesystem's inability to overwrite with rename. */
+    if (access(to, F_OK) == 0)
+    {
+        errno = EEXIST;
+        return -1;
+    }
+    return rename(from, to);
+}
+static int test_fclose(FILE *file)
+{
+    int result = fclose(file);
+    if (fail_close)
+    {
+        errno = EIO;
+        return EOF;
+    }
+    return result;
+}
 
 static bool fail_growth;
 static bool fail_allocation;
@@ -21,7 +58,11 @@ static void *test_realloc(void *data, size_t size)
 }
 #define realloc test_realloc
 #define malloc test_malloc
+#define rename test_rename
+#define fclose test_fclose
 #include "../source/iptv/iptv.c"
+#undef fclose
+#undef rename
 #undef realloc
 #undef malloc
 
@@ -61,6 +102,77 @@ static void write_playlist(const char *path, int count)
     assert(fclose(file) == 0);
 }
 
+static void assert_file_text(const char *path, const char *expected)
+{
+    char contents[1024];
+    FILE *file = fopen(path, "rb");
+    assert(file);
+    size_t count = fread(contents, 1, sizeof(contents) - 1, file);
+    assert(!ferror(file));
+    contents[count] = '\0';
+    assert(fclose(file) == 0);
+    assert(strcmp(contents, expected) == 0);
+}
+
+static void test_configuration_save_failures(void)
+{
+    const char *path = IPTV_RECENT_FILE;
+    const char *backup = IPTV_RECENT_FILE ".bak";
+    uint32_t old_id = 1u, new_id = 2u;
+    assert(iptv_write_id_file(path, &old_id, 1));
+    fail_install = true;
+    assert(!iptv_write_id_file(path, &new_id, 1));
+    assert_file_text(path, "00000001\n");
+    assert(access(backup, F_OK) != 0);
+    fail_install = false;
+    fail_backup = true;
+    assert(!iptv_write_id_file(path, &new_id, 1));
+    assert_file_text(path, "00000001\n");
+    fail_backup = false;
+    fail_close = true;
+    assert(!iptv_write_id_file(path, &new_id, 1));
+    assert_file_text(path, "00000001\n");
+    fail_close = false;
+    fail_install = fail_rollback = true;
+    assert(!iptv_write_id_file(path, &new_id, 1));
+    assert_file_text(backup, "00000001\n");
+    assert(access(path, F_OK) != 0);
+    fail_install = fail_rollback = false;
+    assert(!iptv_write_id_file(path, &new_id, 1));
+    assert_file_text(backup, "00000001\n");
+    assert(rename(backup, path) == 0);
+    assert(iptv_write_id_file(path, &new_id, 1));
+    assert_file_text(path, "00000002\n");
+    assert(access(backup, F_OK) != 0);
+    assert(remove(path) == 0);
+
+    IptvSource source = {.id = 1u, .enabled = true};
+    iptv_copy(source.name, sizeof(source.name), "Original");
+    iptv_copy(source.url, sizeof(source.url), "https://example.com/list.m3u");
+    assert(iptv_save_remote_sources(&source, 1));
+    fail_install = true;
+    assert(!iptv_save_remote_sources(NULL, 0));
+    assert_file_text(IPTV_SOURCES_FILE,
+        "# id\tenabled\tname\tplaylist-url\txmltv-url\n"
+        "00000001\t1\tOriginal\thttps://example.com/list.m3u\t\n");
+    fail_install = false;
+    assert(remove(IPTV_SOURCES_FILE) == 0);
+
+    FILE *file = fopen(IPTV_PREINSTALLED_SOURCES_FILE, "wb");
+    assert(file);
+    const char *presets = "One|https://example.com/one.m3u\nTwo|https://example.com/two.m3u\n";
+    assert(fputs(presets, file) >= 0);
+    assert(fclose(file) == 0);
+    fail_install = true;
+    assert(!iptv_remove_preinstalled_source("https://example.com/one.m3u"));
+    assert_file_text(IPTV_PREINSTALLED_SOURCES_FILE, presets);
+    fail_install = false;
+    assert(iptv_remove_preinstalled_source("https://example.com/one.m3u"));
+    assert_file_text(IPTV_PREINSTALLED_SOURCES_FILE, "Two|https://example.com/two.m3u\n");
+    assert(remove(IPTV_PREINSTALLED_SOURCES_FILE) == 0);
+    puts("IPTV save tests passed: first save, SD rename, close/backup/install/rollback failures.");
+}
+
 int main(void)
 {
     char early_name[64];
@@ -88,6 +200,7 @@ int main(void)
     assert(iptv_get_channel_count() == 0);
     assert(iptv_reload()); /* Empty catalogs have no allocated channel buffer. */
     iptv_deinit();
+    test_configuration_save_failures();
 
     const char *large = IPTV_ROOT_DIR "/large.m3u8";
     write_playlist(large, 10001);
