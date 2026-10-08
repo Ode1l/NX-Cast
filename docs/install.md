@@ -85,3 +85,32 @@ The release zip is therefore the installer: it is already laid out exactly as th
 - If the UI font looks wrong, reinstall with `NX-Cast-sdmc.zip` so `sdmc:/switch/NX-Cast/fonts/` is present.
 - If playback fails, use the latest release package rather than copying an older `NRO` over a mismatched SD layout.
 - If experimental AirPlay startup fails, reinstall the full current build and preserve write access to `sdmc:/switch/NX-Cast/airplay/`. Deleting `identity.bin` and `pairings.bin` resets the AirPlay identity and trusted devices.
+
+## Reporting A Problem
+
+Report reproducible problems in [GitHub Issues](https://github.com/Ode1l/NX-Cast/issues).
+Include the following rather than only saying that playback failed:
+
+- The version shown in NX-Cast, the download page and whether it is a stable release, Continuous or your own build. For a local build, include the commit and build/Trace options.
+- Switch system and Atmosphere versions, hbmenu launch mode, and whether custom clocks or other system modifications are enabled.
+- The playback path: IPTV, DLNA, AirPlay from inside an app, or Control Center screen mirroring/audio. Include the sender device, OS and app version where relevant.
+- Steps from starting NX-Cast to the failure, expected versus actual behavior, approximate failure time, and whether it affects one source or all sources. Distinguish buffering, loss of phone control, return to Home and an application crash.
+- Any on-screen error and a relevant log or crash report if available. A screenshot or short recording can help with rendering problems; logs are not a prerequisite for opening a report.
+
+Developers can capture one focused reproduction with
+`NX-Cast: Full Trace & Upload + Logs`; see the
+[developer workflow](developer-workflow.md). The upload script saves logs under
+`logs/run_nxlink-*.log`. Keep the startup and surrounding failure context, not
+just individual ERROR lines. Note when you deliberately closed NX-Cast:
+`Connection reset by peer` at shutdown alone is not evidence of the playback cause.
+
+For a crash, retain the matching crash report and, for a local build, the exact
+`NX-Cast.elf` before rebuilding. A different build's ELF cannot reliably locate
+the crashed instructions. Keep original evidence privately for follow-up.
+
+Before posting publicly, inspect and redact signed media URLs, tokens, cookies,
+playlist credentials, device identifiers, private network addresses and personal
+file paths. Never upload AirPlay `identity.bin`, `pairings.bin`, private keys or
+an entire SD-card data directory. Crash reports and memory dumps can also contain
+sensitive data; do not publish raw dumps without review. Replace sensitive fields
+consistently so event order and connection relationships remain understandable.

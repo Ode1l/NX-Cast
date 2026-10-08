@@ -134,46 +134,31 @@ Docker 与 GitHub Actions 使用同一套媒体依赖配方：
 
 输出：`dist/NX-Cast-sdmc.zip`。
 
-镜像安装 Wiliwili 提供的 libuam 和 deko3d libmpv 包，以及 NX-Cast 固定的 **Switch FFmpeg 7.1-4** 和官方 devkitPro 依赖。FFmpeg 下载后会校验 SHA-256，再进行安装。
+镜像使用[固定的媒体工具链](docs/ffmpeg-mpv-toolchain.md)，FFmpeg 下载后会校验 SHA-256，再进行安装。
 
 ### 本地 devkitPro
 
-先准备 devkitPro/devkitA64、libnx 以及媒体工具链要求的 Switch portlibs。[工具链教程](docs/ffmpeg-mpv-toolchain.md)包含环境和依赖说明。
+先按[工具链安装教程](docs/ffmpeg-mpv-toolchain.md#install-prebuilt-packages)准备依赖。
+依赖版本和安装步骤统一在该文档维护，分别说明 **macOS** 和 **Windows MSYS2** 环境。
+macOS 安装包使用 `sudo dkp-pacman`；Windows MSYS2 使用 `pacman`，不使用 `sudo`。
 
-在仓库根目录运行，以下以默认 `/opt/devkitpro` 安装路径为例：
-
-```bash
-source /opt/devkitpro/switchvars.sh
-sudo dkp-pacman -S --needed switch-libsodium
-
-base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
-sudo dkp-pacman -U \
-  "$base_url/libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst"
-
-make install-airplay-ffmpeg
-make verify-airplay-ffmpeg
-
-sudo dkp-pacman -U \
-  "$base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst"
-
-make RELEASE_JOBS=4 release-build
-NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
-```
-
-上面的命令用于首次配置工具链。配置后，**Build/Rebuild 会自动准备 FFmpeg**：普通 `make`、开发、Trace 和正式构建都会在编译前检查固定版本。已经正确安装时，直接跳过下载和安装；缺失或版本过旧时，从 [NX-Cast 工具链 Release](https://github.com/Ode1l/NX-Cast/releases/tag/toolchain-ffmpeg-7.1-4)下载、校验 SHA-256 后安装，普通用户账号仅在安装阶段需要 `sudo`。现有 VS Code Build/Rebuild 任务也走同一流程。
-
-`make install-airplay-ffmpeg` 保留用于首次配置或单独准备依赖，无需每次编译前手动执行。下载的包会缓存，也不会重新编译 FFmpeg。不要改用 Wiliwili 的旧版 FFmpeg 或桌面上游版本：正式版需要 Matroska muxer、Switch 原生随机数和 nvtegra 参考帧修复。需要复现依赖源码构建时，另行运行 `make build-airplay-ffmpeg`。
-
-如果使用自行管理的独立工具链目录，可通过 `NXCAST_AUTO_INSTALL_FFMPEG=0` 关闭自动安装。清理、主机测试和 dry-run 命令不会触发自动安装。
-
-日常开发和诊断：
+配置完成后，在仓库根目录运行。以下适用于 macOS 或已配置好的 MSYS2 Bash：
 
 ```bash
-make dev-build BUILD_JOBS=4
-make full-trace-rebuild BUILD_JOBS=4
+bash scripts/dev.sh build
 ```
 
-Full Trace 目标启用媒体、输入和 AirPlay 诊断。普通构建默认不开启 Trace；`release-build` 会明确关闭 Trace，并在打包前验证所需硬件、加密和媒体能力。
+如果使用 Windows PowerShell，则运行：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 build
+```
+
+默认使用四个编译任务。普通构建关闭 Trace，并自动准备缺失或过旧的固定版 FFmpeg；已经正确安装时直接复用。
+安装范围、缓存和独立工具链选项见[依赖自动准备说明](docs/ffmpeg-mpv-toolchain.md#automatic-ffmpeg-preparation)。
+
+VS Code 入口、Full Trace、上传、本地打包及 GitHub 发布统一见[开发工作流](docs/developer-workflow.md)。
+Windows 使用轻量 PowerShell/MSYS2 适配层，原生 Windows 实机验证仍待完成。
 
 ### GitHub Actions
 

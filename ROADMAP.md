@@ -1,5 +1,11 @@
 # NX-Cast Roadmap
 
+Current release history is tracked in [CHANGELOG.md](CHANGELOG.md).
+The next protocol research priorities are Miracast, then Google Cast as a
+candidate; neither is currently implemented. See the
+[development preparation](docs/casting-protocol-development.md) for feasibility
+gates, integration constraints and device acceptance criteria.
+
 ## Phase 0
 Bootstrap and runtime foundation
 
@@ -93,7 +99,7 @@ AirPlay receiver
 - discovery
 - session control
 - media path
-- status: not started
+- status: experimental implementation available; URL/HLS video and screen mirroring are covered in the release history, with compatibility work continuing
 
 ## Phase 11
 DMP expansion
@@ -110,5 +116,14 @@ Application GUI and IPTV
 - ImGui/deko3d application shell
 - user-provided local/remote M3U sources
 - channel groups, favorites, history and live channel switching
-- XMLTV EPG and logo cache as later work
-- status: planned; see `docs/iptv-gui-plan.md`
+- XMLTV current/next programme guide and logo cache
+- status: implemented baseline; see [current IPTV support](docs/iptv.md), with the original design in `docs/iptv-gui-plan.md`
+
+## Phase 13
+Additional casting protocols
+
+- Miracast: research Switch wireless discovery/P2P access before integrating RTSP or media transport
+- Google Cast: candidate; verify stock-sender device authentication before media control or mirroring
+- preserve the existing media actor, ownership leases, bounded workers and responsive logging
+- FCast and DIAL: deferred pending a concrete supported-sender use case
+- status: development documentation prepared, feasibility not yet demonstrated; see [casting-protocol-development.md](docs/casting-protocol-development.md)

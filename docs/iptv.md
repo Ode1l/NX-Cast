@@ -35,6 +35,30 @@ Remote refresh and logo downloads run on one background worker. Rendering and co
 
 `tvg-logo` files are cached asynchronously and displayed through a small deko3d texture cache. Channel names and programme metadata remain in the source's original language.
 
+## Token URLs And Authentication Limits
+
+HTTP/HTTPS URLs may contain query parameters such as tokens or signatures.
+NX-Cast preserves the supplied URL when downloading a remote playlist or
+opening an absolute channel URL, for example:
+
+```text
+https://example.com/channels.m3u?token=YOUR_TOKEN
+https://example.com/live/index.m3u8?token=YOUR_TOKEN&sign=YOUR_SIGNATURE
+```
+
+These can be entered in the UI or stored in `sources.txt` using the format
+below. This is URL handling, not a login or subscription integration; playback
+still depends on the provider accepting that URL from the Switch.
+
+- Custom `Authorization: Bearer ...` and Cookie headers cannot currently be configured. M3U header directives such as `#EXTVLCOPT` and `#KODIPROP` are not interpreted for authentication.
+- There is no automatic login, token renewal or expired-link recovery. Replace an expired source URL and refresh its playlist as needed.
+- A source playlist's query token is not automatically appended to its channel URLs. Each channel must resolve to an independently accessible URL; do not assume playlist authentication also authenticates media requests.
+- IPTV URL storage allows up to 1,023 bytes, excluding the terminating null byte. Longer signed URLs are not supported.
+- Source URLs and cached playlists are stored as plain text on the SD card, not in an encrypted credential store. Treat them as private when they contain tokens, and redact credentials from logs and reports. Never include personal tokens in Git or release presets.
+
+Advanced authentication is not implemented; no additional authentication
+support is being added as part of this documentation update.
+
 ## Controls
 
 The full-screen library shows eight rows; the playback drawer shows nine.

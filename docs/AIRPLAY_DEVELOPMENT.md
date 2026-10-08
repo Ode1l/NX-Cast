@@ -172,7 +172,7 @@ make TRACE_AIRPLAY=1 TRACE_MEDIA=1 \
 
 ### App Video Negotiation Trace
 
-Use `NX-Cast: Full Trace (DLNA+IPTV+AirPlay) Rebuild & Upload + nxlink server`
+Use `NX-Cast: Full Trace & Upload + Logs`
 for one clean App-internal AirPlay attempt. Do not start the attempt from iOS
 Control Center when diagnosing App video: Control Center may legitimately
 negotiate an audio-only path.

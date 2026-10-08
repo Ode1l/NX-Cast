@@ -134,46 +134,35 @@ Docker uses the same media dependency recipe as GitHub Actions:
 
 Output: `dist/NX-Cast-sdmc.zip`.
 
-The image installs Wiliwili's libuam and deko3d libmpv packages, plus NX-Cast's pinned **Switch FFmpeg 7.1-4** and official devkitPro dependencies. The downloader verifies the FFmpeg SHA-256 before installation.
+The image uses the [pinned media toolchain](docs/ffmpeg-mpv-toolchain.md), including SHA-256 verification of the FFmpeg package.
 
 ### Local devkitPro
 
-First configure devkitPro/devkitA64, libnx and the Switch portlibs required by the media toolchain. The [toolchain guide](docs/ffmpeg-mpv-toolchain.md) covers setup and dependencies.
+First follow the [toolchain installation guide](docs/ffmpeg-mpv-toolchain.md#install-prebuilt-packages).
+It contains the maintained dependency versions and separate **macOS** and
+**Windows MSYS2** setup instructions. macOS package installation uses
+`sudo dkp-pacman`; Windows MSYS2 uses `pacman` without `sudo`.
 
-From the repository root, with the default `/opt/devkitpro` installation:
-
-```bash
-source /opt/devkitpro/switchvars.sh
-sudo dkp-pacman -S --needed switch-libsodium
-
-base_url="https://github.com/xfangfang/wiliwili/releases/download/v0.1.0"
-sudo dkp-pacman -U \
-  "$base_url/libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst"
-
-make install-airplay-ffmpeg
-make verify-airplay-ffmpeg
-
-sudo dkp-pacman -U \
-  "$base_url/switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst"
-
-make RELEASE_JOBS=4 release-build
-NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh
-```
-
-The commands above set up a fresh toolchain. After that, **build/rebuild automatically prepares FFmpeg**: plain `make`, development, trace and release targets check the pinned package before compiling. The correct installed version skips downloading and installation entirely. A missing or outdated version is fetched from the [NX-Cast toolchain release](https://github.com/Ode1l/NX-Cast/releases/tag/toolchain-ffmpeg-7.1-4), SHA-256 checked and installed; only installation requests `sudo` on a normal user account. Existing VS Code Build/Rebuild tasks use this same path.
-
-`make install-airplay-ffmpeg` remains available for initial setup or explicit dependency preparation. Downloaded packages are cached, and FFmpeg is not rebuilt. Do not substitute Wiliwili's older FFmpeg or a desktop upstream build: the release requires the Matroska muxer, Switch-native random bytes and nvtegra reference fix. Reproducing the dependency from its pinned sources is available separately through `make build-airplay-ffmpeg`.
-
-For an intentionally separate, manually managed toolchain prefix, use `NXCAST_AUTO_INSTALL_FFMPEG=0`. Clean, host-test and dry-run commands do not automatically install packages.
-
-For local development or diagnostic builds:
+After setup, build from the repository root on macOS or in configured MSYS2 Bash:
 
 ```bash
-make dev-build BUILD_JOBS=4
-make full-trace-rebuild BUILD_JOBS=4
+bash scripts/dev.sh build
 ```
 
-The Full Trace target enables media, input and AirPlay diagnostics. Normal builds do not enable Trace; `release-build` explicitly disables it and validates the required hardware/crypto/media capabilities before packaging.
+From Windows PowerShell instead:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 build
+```
+
+Builds default to four jobs. Normal builds disable Trace and automatically
+prepare the pinned FFmpeg if missing or outdated; a current installation is
+reused. See [automatic dependency preparation](docs/ffmpeg-mpv-toolchain.md#automatic-ffmpeg-preparation)
+for installation scope, caching and manually managed toolchains.
+
+For VS Code launches, Full Trace, uploads, local release packaging and GitHub
+publication, follow the [developer workflow](docs/developer-workflow.md).
+Windows uses a thin PowerShell/MSYS2 adapter; native Windows validation remains pending.
 
 ### GitHub Actions
 

@@ -7,29 +7,39 @@ All Markdown documents in this directory use English file names and English cont
 ## Recommended Reading
 
 1. [install.md](install.md)
-2. [dmr-implementation.md](dmr-implementation.md)
-3. [player-layer.md](player-layer.md)
-4. [render-design.md](render-design.md)
-5. [scpd-module.md](scpd-module.md)
-6. [soap-module.md](soap-module.md)
-7. [threading-design.md](threading-design.md)
-8. [c-safety.md](c-safety.md)
-9. [source-compatibility.md](source-compatibility.md)
-10. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
-11. [AIRPLAY_PROTOCOL_COMPATIBILITY.md](AIRPLAY_PROTOCOL_COMPATIBILITY.md)
-12. [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
-13. [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
-14. [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
-15. [Sanitized nxlink log samples](../sample/nxlink-logs/README.md)
+2. [developer-workflow.md](developer-workflow.md)
+3. [dmr-implementation.md](dmr-implementation.md)
+4. [player-layer.md](player-layer.md)
+5. [render-design.md](render-design.md)
+6. [scpd-module.md](scpd-module.md)
+7. [soap-module.md](soap-module.md)
+8. [threading-design.md](threading-design.md)
+9. [c-safety.md](c-safety.md)
+10. [source-compatibility.md](source-compatibility.md)
+11. [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
+12. [AIRPLAY_PROTOCOL_COMPATIBILITY.md](AIRPLAY_PROTOCOL_COMPATIBILITY.md)
 
 ## Build And Media Toolchain
 
+- [developer-workflow.md](developer-workflow.md): current macOS/Windows setup, VS Code tasks, uploads, logs and release publication.
+- [ci-toolchain.md](ci-toolchain.md)
 - [libmpv-dependencies.md](libmpv-dependencies.md)
 - [ffmpeg-mpv-toolchain.md](ffmpeg-mpv-toolchain.md)
 - [c-safety.md](c-safety.md)
-- [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
 
 Use these when debugging `libmpv`, `FFmpeg`, `deko3d`, `hos-audio`, or `nvtegra` support.
+
+## Historical Diagnostics And Handoffs
+
+- [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
+- [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
+- [LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md](LOCAL_VSCODE_DIAGNOSTIC_WORKFLOW.md)
+- [Sanitized nxlink log samples](../sample/nxlink-logs/README.md)
+
+These preserve earlier investigations and test setups. Their task names and
+experimental options are not the current development entry points. Use
+[developer-workflow.md](developer-workflow.md) for today's build, upload and
+logging instructions.
 
 The [sanitized nxlink log samples](../sample/nxlink-logs/README.md) preserve the
 hardware test timelines referenced by the AirPlay/DLNA handoff without
@@ -44,8 +54,6 @@ paths.
 - [connection-manager-sink-protocol-info.md](connection-manager-sink-protocol-info.md)
 - [AIRPLAY_DEVELOPMENT.md](AIRPLAY_DEVELOPMENT.md)
 - [AIRPLAY_PROTOCOL_COMPATIBILITY.md](AIRPLAY_PROTOCOL_COMPATIBILITY.md)
-- [AIRPLAY_FREEZE_DIAGNOSTICS.md](AIRPLAY_FREEZE_DIAGNOSTICS.md)
-- [MACOS_HANDOFF_2026-07-23.md](MACOS_HANDOFF_2026-07-23.md)
 
 Use these when working on DLNA discovery, device/service description, SOAP actions, GENA, or protocol state sync.
 
@@ -61,6 +69,7 @@ Use these when working on playback control, `libmpv` backend integration, render
 
 ## Product Planning
 
+- [casting-protocol-development.md](casting-protocol-development.md): Miracast feasibility first, Google Cast candidate; neither is implemented yet.
 - [iptv-gui-plan.md](iptv-gui-plan.md)
 - [desktop-shortcut.md](desktop-shortcut.md)
 - [source-compatibility.md](source-compatibility.md)

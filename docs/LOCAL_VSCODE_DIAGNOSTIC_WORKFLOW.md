@@ -1,5 +1,8 @@
 # Local VS Code Diagnostic Workflow
 
+> Historical diagnostic record. For the current shared macOS/Windows tasks and
+> launch names, use [Developer workflow](developer-workflow.md).
+
 > Recorded: 2026-08-02
 >
 > Scope: local editor integration only; this document is portable, the active

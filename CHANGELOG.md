@@ -2,6 +2,20 @@
 
 All notable user-facing changes to NX-Cast are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Preserve existing IPTV favorites, recent history and source configuration when saving fails, using backup-and-rollback replacement compatible with SD storage. Keep a recovery backup if rollback also fails.
+- Include the application version in the build configuration signature so version changes rebuild embedded UI and application version strings.
+
+### Changed
+
+- Share local build, upload and packaging commands between macOS and Windows through one Bash entry point and a Windows PowerShell/MSYS2 adapter. Native Windows execution remains pending validation.
+- Simplify VS Code launches to Rebuild & Upload, Full Trace & Upload + Logs, Upload Only and Publish GitHub Release. Builds default to four jobs; normal rebuilds explicitly disable tracing.
+- Publish new application releases by atomically pushing committed main and its version tag for GitHub Actions to build, without overwriting existing releases. Keep local release compilation and SD ZIP packaging as separate tasks.
+- Support automatic pinned FFmpeg installation through MSYS2 pacman on Windows, without sudo; reuse the current dependency when already installed.
+
 ## [0.3.2] - 2026-10-04
 
 ### Fixed

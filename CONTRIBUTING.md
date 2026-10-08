@@ -4,21 +4,33 @@ Thank you for contributing to `NX-Cast`.
 
 ## Development Setup
 
-Install:
+Follow the [media toolchain guide](docs/ffmpeg-mpv-toolchain.md) to install
+devkitPro, devkitA64, libnx and the required media dependencies, including
+`libuam` and `switch-libmpv_deko3d`.
 
-- `devkitPro`
-- `devkitA64`
-- `libnx`
-- recommended custom media packages from `wiliwili`:
-  - `libuam`
-  - `switch-ffmpeg`
-  - `switch-libmpv_deko3d`
+Use NX-Cast's pinned FFmpeg package, not an arbitrary upstream or wiliwili
+FFmpeg build. Normal build entry points automatically install the required
+package when it is missing or outdated, using the pinned GitHub Release asset
+and SHA-256 verification. An already current installation is reused without
+downloading or reinstalling. This updates the shared devkitPro Switch prefix;
+it does not automatically install the other project dependencies.
 
-Build:
+See the [macOS and Windows developer workflow](docs/developer-workflow.md) for
+SDK setup, the four VS Code launches, Full Trace logging and publication.
+Builds default to four jobs. From macOS or a configured MSYS2 Bash shell:
 
 ```bash
-make
+bash scripts/dev.sh build
 ```
+
+Windows PowerShell uses `scripts/dev.ps1` to start the configured MSYS2 Bash;
+it does not require WSL or Docker. The adapter still needs native Windows
+validation; local macOS compilation and script-level tests have passed.
+
+Publication is separate from local packaging: the publish launch pushes a
+committed, clean `main` and a new version tag, then GitHub Actions builds the
+release. It does not commit changes or overwrite existing releases. Follow the
+[release steps](docs/developer-workflow.md#github-release) before using it.
 
 ## Current Engineering Rules
 
