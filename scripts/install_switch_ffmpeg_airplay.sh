@@ -17,8 +17,15 @@ if [[ ${PREFIX%/} != "${DEFAULT_PREFIX%/}" ]]; then
 fi
 
 PACMAN=$(command -v dkp-pacman || true)
+WINDOWS_MSYS=0
+case "$(uname -s)" in
+    MSYS*|MINGW*)
+        WINDOWS_MSYS=1
+        PACMAN=$(command -v pacman || true)
+        ;;
+esac
 if [[ -z ${PACMAN} ]]; then
-    echo "dkp-pacman not found. Source /opt/devkitpro/switchvars.sh first." >&2
+    echo "devkitPro package manager not found. Initialize the SDK or use devkitPro MSYS2 on Windows." >&2
     exit 1
 fi
 
@@ -40,7 +47,7 @@ fi
 "${ROOT_DIR}/scripts/fetch_switch_ffmpeg_airplay.sh" "${OUTPUT_DIR}"
 
 echo "Installing ${PACKAGE_NAME} into the global devkitPro Switch prefix"
-if [[ ${EUID} -eq 0 ]]; then
+if [[ ${EUID} -eq 0 || ${WINDOWS_MSYS} -eq 1 ]]; then
     "${PACMAN}" -U --noconfirm "${PACKAGE_PATH}"
 else
     sudo "${PACMAN}" -U --noconfirm "${PACKAGE_PATH}"

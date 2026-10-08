@@ -2,67 +2,32 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "NX-Cast: Rebuild",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "echo \"[launch] NX-Cast rebuild finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild"
-    },
-    {
-      "name": "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "echo \"[launch] NX-Cast trace rebuild finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)"
-    },
-    {
       "name": "NX-Cast: Rebuild & Upload",
       "type": "node-terminal",
       "request": "launch",
-      "command": "echo \"[launch] NX-Cast rebuild and upload finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild + Nxlink Upload"
+      "command": "echo \"[NX-Cast] Task finished. Review the task terminal for details.\"",
+      "preLaunchTask": "NX-Cast: Rebuild + Upload"
     },
     {
-      "name": "NX-Cast: Rebuild & Upload + nxlink server",
+      "name": "NX-Cast: Full Trace & Upload + Logs",
       "type": "node-terminal",
       "request": "launch",
-      "command": "echo \"[launch] NX-Cast rebuild and nxlink server session finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild + Nxlink Upload + Server"
+      "command": "echo \"[NX-Cast] Task finished. Review the task terminal for details.\"",
+      "preLaunchTask": "NX-Cast: Full Trace + Upload + Logs"
     },
     {
-      "name": "NX-Cast: Playback Baseline Trace (AirPlay Off) Rebuild & Upload + nxlink server",
+      "name": "NX-Cast: Upload Only",
       "type": "node-terminal",
       "request": "launch",
-      "command": "echo \"[launch] NX-Cast playback baseline trace session finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild Playback Baseline Trace + Nxlink Upload + Server"
+      "command": "echo \"[NX-Cast] Task finished. Review the task terminal for details.\"",
+      "preLaunchTask": "NX-Cast: Upload"
     },
     {
-      "name": "NX-Cast: Full Trace (DLNA+IPTV+AirPlay) Rebuild & Upload + nxlink server",
+      "name": "NX-Cast: Publish GitHub Release",
       "type": "node-terminal",
       "request": "launch",
-      "command": "echo \"[launch] NX-Cast trace rebuild and nxlink server session finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild Full Trace + Nxlink Upload + Server"
-    },
-    {
-      "name": "NX-Cast: Upload",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "echo \"[launch] NX-Cast upload finished\"",
-      "preLaunchTask": "NX-Cast: Nxlink Upload"
-    },
-    {
-      "name": "NX-Cast: Upload + nxlink server",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "echo \"[launch] NX-Cast nxlink server session finished\"",
-      "preLaunchTask": "NX-Cast: Nxlink Upload + Server"
-    },
-    {
-      "name": "NX-Cast: Rebuild & Package Release",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "echo \"[launch] NX-Cast release package finished\"",
-      "preLaunchTask": "NX-Cast: Rebuild + Package Release"
+      "command": "echo \"[NX-Cast] Task finished. Review the task terminal for details.\"",
+      "preLaunchTask": "NX-Cast: Publish GitHub Release"
     }
   ]
 }

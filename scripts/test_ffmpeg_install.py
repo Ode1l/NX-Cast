@@ -181,6 +181,13 @@ echo "build $*" >> "$FIXTURE_ROOT/calls"
         self.run_command("make", "-n", "dev-build", f"MAKE={self.bin / 'build-make'}", success=False)
         self.assertEqual(self.calls(), [])
 
+    def test_msys_uses_pacman_without_sudo(self):
+        self.executable(self.bin / "uname", "#!/bin/sh\nprintf 'MSYS_NT-10.0\\n'\n")
+        shutil.copy2(self.bin / "dkp-pacman", self.bin / "pacman")
+        (self.bin / "dkp-pacman").unlink()
+        self.run_command("bash", "scripts/install_switch_ffmpeg_airplay.sh")
+        self.assertEqual(self.calls(), ["install", "verify"])
+
 
 if __name__ == "__main__":
     unittest.main()

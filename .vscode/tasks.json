@@ -3,188 +3,259 @@
   "tasks": [
     {
       "label": "NX-Cast: Clean",
-      "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make clean",
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "shell": {
-          "executable": "/bin/bash",
-          "args": [
-            "-lc"
-          ]
-        }
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "clean"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "clean"
+        ]
       },
-      "problemMatcher": []
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
     },
     {
-      "label": "NX-Cast: Build",
-      "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make dev-build BUILD_JOBS=4",
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "shell": {
-          "executable": "/bin/bash",
-          "args": [
-            "-lc"
-          ]
-        }
+      "label": "NX-Cast: Compile",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "build"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "build"
+        ]
       },
-      "group": {
-        "kind": "build",
-        "isDefault": true
+      "options": {
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [
         "$gcc"
-      ]
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
     },
     {
-      "label": "NX-Cast: Build (Playback Baseline Trace, AirPlay Off)",
-      "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make playback-baseline-trace-build BUILD_JOBS=4",
+      "label": "NX-Cast: Compile Full Trace",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "trace"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "trace"
+        ]
+      },
       "options": {
-        "cwd": "${workspaceFolder}",
-        "shell": {
-          "executable": "/bin/bash",
-          "args": [
-            "-lc"
-          ]
-        }
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [
         "$gcc"
-      ]
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
     },
     {
-      "label": "NX-Cast: Build (Full Trace DLNA+IPTV+AirPlay)",
-      "type": "shell",
-      "command": "source /opt/devkitpro/switchvars.sh && make full-trace-build BUILD_JOBS=4",
+      "label": "NX-Cast: Upload",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "upload"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "upload"
+        ]
+      },
       "options": {
-        "cwd": "${workspaceFolder}",
-        "shell": {
-          "executable": "/bin/bash",
-          "args": [
-            "-lc"
-          ]
-        }
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "NX-Cast: Upload + Logs",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "upload-log"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "upload-log"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "NX-Cast: Build Release",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "release-build"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "release-build"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [
         "$gcc"
-      ]
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
     },
     {
-      "label": "NX-Cast: Rebuild",
+      "label": "NX-Cast: Package SD ZIP",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "package"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "package"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "NX-Cast: Publish GitHub Release",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/dev.sh",
+        "publish"
+      ],
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/dev.ps1",
+          "publish"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "NX-Cast: Rebuild + Upload",
       "dependsOrder": "sequence",
       "dependsOn": [
         "NX-Cast: Clean",
-        "NX-Cast: Build"
+        "NX-Cast: Compile",
+        "NX-Cast: Upload"
       ],
       "problemMatcher": []
     },
     {
-      "label": "NX-Cast: Rebuild (Playback Baseline Trace, AirPlay Off)",
+      "label": "NX-Cast: Full Trace + Upload + Logs",
       "dependsOrder": "sequence",
       "dependsOn": [
         "NX-Cast: Clean",
-        "NX-Cast: Build (Playback Baseline Trace, AirPlay Off)"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "NX-Cast: Clean",
-        "NX-Cast: Build (Full Trace DLNA+IPTV+AirPlay)"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Package Release",
-      "type": "shell",
-      "command": "NXCAST_MIN_NRO_SIZE=5000000 ./scripts/package_release.sh",
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "shell": {
-          "executable": "/bin/bash",
-          "args": [
-            "-lc"
-          ]
-        }
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Nxlink Upload",
-      "type": "shell",
-      "command": "NO_BUILD=1 NXLINK_SERVER=0 ./scripts/run_nxlink.sh",
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "shell": {
-          "executable": "/bin/bash",
-          "args": [
-            "-lc"
-          ]
-        }
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Nxlink Upload + Server",
-      "type": "shell",
-      "command": "NO_BUILD=1 NXLINK_SERVER=1 ./scripts/run_nxlink.sh",
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "shell": {
-          "executable": "/bin/bash",
-          "args": [
-            "-lc"
-          ]
-        }
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Rebuild + Nxlink Upload",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "NX-Cast: Rebuild",
-        "NX-Cast: Nxlink Upload"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Rebuild + Nxlink Upload + Server",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "NX-Cast: Rebuild",
-        "NX-Cast: Nxlink Upload + Server"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Rebuild Playback Baseline Trace + Nxlink Upload + Server",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "NX-Cast: Rebuild (Playback Baseline Trace, AirPlay Off)",
-        "NX-Cast: Nxlink Upload + Server"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Rebuild Full Trace + Nxlink Upload + Server",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "NX-Cast: Rebuild (Full Trace DLNA+IPTV+AirPlay)",
-        "NX-Cast: Nxlink Upload + Server"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "NX-Cast: Rebuild + Package Release",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "NX-Cast: Rebuild",
-        "NX-Cast: Package Release"
+        "NX-Cast: Compile Full Trace",
+        "NX-Cast: Upload + Logs"
       ],
       "problemMatcher": []
     }

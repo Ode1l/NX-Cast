@@ -26,7 +26,8 @@ fi
 if [ "$NO_BUILD" != "1" ]; then
   echo "[run-nxlink] build=make clean && make ${BUILD_MAKE_ARGS} -j${BUILD_JOBS}"
   cd "$PROJECT_ROOT"
-  source /opt/devkitpro/switchvars.sh
+  source "$SCRIPT_DIR/dev_environment.sh"
+  nxcast_load_sdk
   make clean
   # shellcheck disable=SC2086
   make ${BUILD_MAKE_ARGS} -j"${BUILD_JOBS}"
