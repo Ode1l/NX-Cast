@@ -12,7 +12,7 @@
 
 ## 演示视频
 
-[YouTube 演示合集](https://youtube.com/playlist?list=PLWO_k5SpRRpw&si=bC1IclvmGDFKx6hn)
+[YouTube 演示合集](https://youtube.com/playlist?list=PLWO_k5SpRRpw&si=bC1IclvmGDFKx6hn) | [Bilibili 演示视频](https://www.bilibili.com/video/BV1JPKG6UE9C/)
 
 ## 功能
 

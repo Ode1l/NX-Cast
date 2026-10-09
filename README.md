@@ -12,7 +12,7 @@ Cast from your phone, watch live TV, or mirror your iPhone screen. NX-Cast bring
 
 ## Watch Demos
 
-[YouTube demo playlist](https://youtube.com/playlist?list=PLWO_k5SpRRpw&si=bC1IclvmGDFKx6hn)
+[YouTube demo playlist](https://youtube.com/playlist?list=PLWO_k5SpRRpw&si=bC1IclvmGDFKx6hn) | [Bilibili demo video](https://www.bilibili.com/video/BV1JPKG6UE9C/)
 
 ## Features
 
