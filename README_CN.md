@@ -10,6 +10,10 @@
 
 [下载 v0.3.2](https://github.com/Ode1l/NX-Cast/releases/tag/v0.3.2) | [最新正式版](https://github.com/Ode1l/NX-Cast/releases/latest) | [English](README.md)
 
+## 演示视频
+
+[YouTube 演示合集](https://youtube.com/playlist?list=PLWO_k5SpRRpw&si=bC1IclvmGDFKx6hn)
+
 ## 功能
 
 | 模式 | 可以做什么 |

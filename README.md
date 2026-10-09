@@ -10,6 +10,10 @@ Cast from your phone, watch live TV, or mirror your iPhone screen. NX-Cast bring
 
 [Download v0.3.2](https://github.com/Ode1l/NX-Cast/releases/tag/v0.3.2) | [Latest Stable Release](https://github.com/Ode1l/NX-Cast/releases/latest) | [简体中文](README_CN.md)
 
+## Watch Demos
+
+[YouTube demo playlist](https://youtube.com/playlist?list=PLWO_k5SpRRpw&si=bC1IclvmGDFKx6hn)
+
 ## Features
 
 | Mode | What you can do |
