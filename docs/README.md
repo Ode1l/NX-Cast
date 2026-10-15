@@ -70,6 +70,7 @@ Use these when working on playback control, `libmpv` backend integration, render
 ## Product Planning
 
 - [casting-protocol-development.md](casting-protocol-development.md): Miracast feasibility first, Google Cast candidate; neither is implemented yet.
+- [miracast-platform-feasibility.md](miracast-platform-feasibility.md): current M0 capability inventory, isolated Switch probe and pending device gates.
 - [iptv-gui-plan.md](iptv-gui-plan.md)
 - [desktop-shortcut.md](desktop-shortcut.md)
 - [source-compatibility.md](source-compatibility.md)

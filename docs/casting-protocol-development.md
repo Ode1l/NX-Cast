@@ -5,6 +5,10 @@ is currently implemented in NX-Cast. Miracast is the first research priority;
 Google Cast is a candidate, not a promised release feature. FCast and DIAL are
 deferred until there is a concrete sender/use case worth supporting.
 
+2026-10-16 update: [M0 platform research and an isolated service probe](miracast-platform-feasibility.md)
+are available on `codex/miracast`. The probe has compiled but has not run on a
+device; discovery, connection and playback are not implemented.
+
 ## Product Goal And Scope
 
 Miracast would let a compatible Windows or Android sender use the Switch as a
