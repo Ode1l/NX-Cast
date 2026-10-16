@@ -3,6 +3,10 @@
 Updated: 2026-10-16. M0 is **not passed**. A standalone service probe builds,
 but device access, discovery and sender connection have not been tested.
 
+Offline protocol development can continue independently: see the
+[control/media roadmap](miracast-control-development.md). The initial OPTIONS
+exchange is host-tested but is not integrated into the app or a live socket.
+
 ## Branches And Baselines
 
 - `main`: unchanged at `0efdba4` when this work started.
