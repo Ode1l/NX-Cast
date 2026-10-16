@@ -166,6 +166,7 @@ static void test_independent_connections(void)
 }
 
 void test_response(void);
+void test_parameters(void);
 
 int main(void)
 {
@@ -174,6 +175,7 @@ int main(void)
     test_parser_and_invalid_requests();
     test_independent_connections();
     test_response();
-    puts("WFD OPTIONS: M1/M2 wire exchange, trailing M3, framing, correlation and lifecycle passed");
+    test_parameters();
+    puts("WFD: M1/M2 wire exchange, M3 capabilities, atomic M4 selection and safety checks passed");
     return 0;
 }

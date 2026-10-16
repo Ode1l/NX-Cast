@@ -5,9 +5,10 @@ Updated: 2026-10-16. Experimental branch: `codex/miracast`.
 ## Current Result
 
 The [offline OPTIONS prototype](../tools/miracast_protocol/README.md) reuses the
-common RTSP request parser and covers the first bidirectional handshake. Host
-tests, ASan/UBSan and compilation of the core with devkitA64 pass. This does not
-complete M1 control negotiation, the M0 wireless gate, or a playable receiver.
+common RTSP request parser and covers the first bidirectional handshake plus
+restricted M3/M4 capability selection. Host tests, ASan/UBSan and compilation of
+the core with devkitA64 pass. This does not complete control negotiation, the
+M0 wireless gate, or a playable receiver.
 Production source, CI, release packaging and the current app are unchanged.
 
 ## Connection Flow
@@ -20,8 +21,8 @@ The following baseline flow is a roadmap, not a list of implemented features:
 | Control connection | Sink opens TCP control connection to source | Not implemented |
 | M1 | Source OPTIONS; sink response | Offline request parsing and output implemented |
 | M2 | Sink OPTIONS; source response | Bounded response wire decoder and handshake adapter host-tested |
-| M3 | Source GET_PARAMETER queries sink capabilities | Pending |
-| M4 | Source SET_PARAMETER selects formats and presentation URL | Pending |
+| M3 | Source GET_PARAMETER queries sink capabilities | Fixed laboratory profile, requested fields and error replies host-tested |
+| M4 | Source SET_PARAMETER selects formats and presentation URL | Atomic restricted selection, partial accumulation and readiness flag host-tested |
 | M5 | Source SET_PARAMETER triggers SETUP | Pending |
 | M6 | Sink SETUP with bound media port; source supplies Session/Transport | Pending |
 | M7 | Sink PLAY with the negotiated Session | Pending |
@@ -38,12 +39,12 @@ before implementing them; upstream code alone is not a conformance oracle.
 1. The response decoder and byte-level OPTIONS adapter are implemented. Next add
    bounded live receive/transmit handling, including partial writes, when the
    platform gate permits integration. Offline M2/M3 concatenation is verified;
-   M3 capability handling is not. Keep incoming requests independent of pending
+   M3 capability handling now covers the laboratory profile only. Keep incoming requests independent of pending
    outgoing responses; M3 may already be buffered when M2 completes.
-2. Implement M3/M4 parameter parsing and selection validation. Advertise only an
-   explicit supported profile; do not borrow AirPlay feature masks. Validate the
-   entire proposed configuration before acknowledging/applying it. Do not copy
-   the reference's acknowledge-before-validation behavior.
+2. M3/M4 parsing and atomic selection are implemented for the explicit
+   [laboratory subset](../tools/miracast_protocol/README.md#laboratory-m3m4-profile).
+   Validate actual media support before broadening/advertising that profile.
+   Remaining work includes full parameter-error responses and interoperability.
 3. Implement SETUP/PLAY/TEARDOWN with explicit Session, CSeq and transport state.
    Do not treat a presentation URL as a DLNA URL load or let mpv open a second
    independent RTSP control session.
