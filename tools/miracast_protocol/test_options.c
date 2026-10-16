@@ -165,12 +165,15 @@ static void test_independent_connections(void)
     release(r);
 }
 
+void test_response(void);
+
 int main(void)
 {
     test_wire_and_capacity();
     test_rejection_and_time();
     test_parser_and_invalid_requests();
     test_independent_connections();
-    puts("WFD OPTIONS: wire, correlation, lifecycle, bounds and fragmented M1 passed");
+    test_response();
+    puts("WFD OPTIONS: M1/M2 wire exchange, trailing M3, framing, correlation and lifecycle passed");
     return 0;
 }

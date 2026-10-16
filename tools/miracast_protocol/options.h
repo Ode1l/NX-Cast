@@ -43,11 +43,20 @@ WfdOptionsResult wfd_options_request(WfdOptions *session,
                                      uint64_t now_ms, char *output,
                                      size_t capacity, size_t *written);
 
-/* Transport must parse an RTSP/1.0 response, reject duplicate/malformed CSeq
- * and Public fields, and pass a bounded Public span (not necessarily terminated).
+/* Transport must parse an RTSP/1.0 response, reject duplicate/malformed CSeq,
+ * combine Public list fields, and pass a bounded span (not necessarily terminated).
  * 1xx responses keep waiting. COMPLETE means OPTIONS only, never media ready. */
 WfdOptionsResult wfd_options_response(WfdOptions *session, uint32_t cseq,
                                       unsigned status, const char *public_value,
                                       size_t public_length, uint64_t now_ms);
+/* Complete wire adapter. On parse OK, consumed covers one response even when
+ * the transaction rejects it. On NEED_MORE/error no state change occurs; caller
+ * must still tick the deadline and close on framing errors (never resync).
+ * Dispatch incoming requests separately using the request parser. */
+RtspParseResult wfd_options_response_bytes(WfdOptions *session,
+                                           const uint8_t *bytes, size_t length,
+                                           uint64_t now_ms, size_t *consumed,
+                                           RtspError *error,
+                                           WfdOptionsResult *result);
 WfdOptionsResult wfd_options_tick(WfdOptions *session, uint64_t now_ms);
 void wfd_options_close(WfdOptions *session);

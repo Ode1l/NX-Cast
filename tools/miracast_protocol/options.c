@@ -1,4 +1,5 @@
 #include "options.h"
+#include "response.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -111,4 +112,24 @@ WfdOptionsResult wfd_options_response(WfdOptions *s, uint32_t cseq,
 void wfd_options_close(WfdOptions *s)
 {
     if (s) s->state = WFD_OPTIONS_CLOSED;
+}
+
+RtspParseResult wfd_options_response_bytes(WfdOptions *s,
+                                           const uint8_t *bytes, size_t length,
+                                           uint64_t now, size_t *consumed,
+                                           RtspError *error,
+                                           WfdOptionsResult *result)
+{
+    if (result) *result = WFD_OPTIONS_INVALID;
+    if (!s || !result) {
+        if (consumed) *consumed = 0;
+        if (error) *error = RTSP_ERROR_INVALID_ARGUMENT;
+        return RTSP_PARSE_ERROR;
+    }
+    WfdResponse response;
+    RtspParseResult parsed = wfd_response_parse(bytes, length, &response, consumed, error);
+    if (parsed == RTSP_PARSE_OK)
+        *result = wfd_options_response(s, response.cseq, response.status,
+                                      response.public_methods, strlen(response.public_methods), now);
+    return parsed;
 }

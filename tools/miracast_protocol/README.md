@@ -32,9 +32,17 @@ Windows/MSYS execution is not yet verified. Outputs go to
 - The caller queues/copies those bytes before another call and handles short
   writes. On failed writes it closes the exchange. Waiting for M2 is not proof
   that a socket write has succeeded. The timeout includes transmit time.
-- M2 response decoding is **not implemented**. The test directly supplies its
-  normalized CSeq/status/Public fields. The future adapter must validate the
-  RTSP response framing, duplicates and body length before invoking this API.
+- `wfd_options_response_bytes` decodes one M2 response before applying it to the
+  handshake. It checks RTSP/1.0 framing, status, CSeq, length and field limits;
+  duplicate CSeq/Content-Length, transfer encoding and folded headers are
+  rejected. Repeated Public list fields are combined in order within one bound.
+- The standalone decoder in `response.h` returns a borrowed binary body span,
+  valid only while the input buffer remains intact. No body copy or allocation
+  occurs. Incomplete/error input leaves its output unchanged and consumes zero.
+  Successful decoding consumes one full response including its body; a trailing
+  M3 request is left for the request parser, not discarded. The caller routes
+  requests and responses separately and must close on framing errors, not scan
+  ahead for a new status line. It must tick deadlines even on incomplete input.
 - An unrelated CSeq does not advance the exchange or extend its timeout. A
   matching 1xx continues waiting; a final non-200 or missing required method
   fails. Time is caller-provided monotonic milliseconds, with per-phase timeout.
@@ -59,6 +67,12 @@ messages, not a sender capture. Reference behavior is not certification.
 Our prototype explicitly validates response correlation, methods and deadlines;
 the reference's initial response callback mainly logs. This stricter policy
 requires interoperability testing, not a claim that every sender behaves so.
+
+Response framing follows [RFC 2326](https://www.rfc-editor.org/rfc/rfc2326.html),
+sections 4, 7 and 12. Tests now parse synthetic M1/M2 wire transcripts, every
+M2 prefix, bounded binary bodies, errors, and a concatenated M2/M3 stream.
+This is not a socket receive/send implementation: partial writes, live receive
+queues and transport cancellation still need their own adapter.
 
 See [the control/media roadmap](../../docs/miracast-control-development.md) and
 [the unresolved platform gate](../../docs/miracast-platform-feasibility.md).

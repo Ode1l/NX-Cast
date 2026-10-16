@@ -19,7 +19,7 @@ The following baseline flow is a roadmap, not a list of implemented features:
 | Wireless | WFD discovery, P2P group, IP configuration | Device probe exists; runtime unknown |
 | Control connection | Sink opens TCP control connection to source | Not implemented |
 | M1 | Source OPTIONS; sink response | Offline request parsing and output implemented |
-| M2 | Sink OPTIONS; source response | Output and normalized response validation implemented; response wire parser pending |
+| M2 | Sink OPTIONS; source response | Bounded response wire decoder and handshake adapter host-tested |
 | M3 | Source GET_PARAMETER queries sink capabilities | Pending |
 | M4 | Source SET_PARAMETER selects formats and presentation URL | Pending |
 | M5 | Source SET_PARAMETER triggers SETUP | Pending |
@@ -35,9 +35,10 @@ before implementing them; upstream code alone is not a conformance oracle.
 
 ## Next Offline Slices
 
-1. Add a bounded response wire decoder and transaction adapter. Use real request
-   and response bytes for a complete duplex transcript, including concatenated
-   messages and partial writes. Keep incoming requests independent of outstanding
+1. The response decoder and byte-level OPTIONS adapter are implemented. Next add
+   bounded live receive/transmit handling, including partial writes, when the
+   platform gate permits integration. Offline M2/M3 concatenation is verified;
+   M3 capability handling is not. Keep incoming requests independent of pending
    outgoing responses; M3 may already be buffered when M2 completes.
 2. Implement M3/M4 parameter parsing and selection validation. Advertise only an
    explicit supported profile; do not borrow AirPlay feature masks. Validate the

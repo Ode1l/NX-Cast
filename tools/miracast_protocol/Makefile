@@ -1,7 +1,7 @@
 CC = cc
 ROOT := ../..
 OUT := $(ROOT)/build/miracast-protocol
-SOURCES := options.c test_options.c $(ROOT)/source/protocol/rtsp/rtsp_request.c
+SOURCES := options.c response.c test_options.c test_response.c $(ROOT)/source/protocol/rtsp/rtsp_request.c
 FLAGS := -std=c11 -Wall -Wextra -Werror -I$(ROOT)/source
 
 .PHONY: test sanitize
