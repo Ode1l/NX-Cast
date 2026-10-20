@@ -32,6 +32,12 @@ Compose builds also pull the latest base. There is no separate candidate
 Dockerfile. `NXCAST_BASE_IMAGE` overrides the local script's base for diagnosis.
 No scheduled rebuild is required: each invoked workflow resolves latest again.
 
+The integrated path passed [run 39382939902](https://github.com/Ode1l/NX-Cast/actions/runs/39382939902)
+at commit `3ada50a`, including the existing AirPlay host tests and release
+packaging. Its cached rerun skipped image publication: toolchain preparation
+took 23 seconds and tests/application packaging took 93 seconds. These are
+observed job durations, not a runtime guarantee.
+
 Keep old GHCR hashes and FFmpeg release assets for rollback. Older commits keep
 their original Dockerfile/workflow behavior; reverting this migration restores
 the prebuilt dependency path. Do not delete working images during migration.

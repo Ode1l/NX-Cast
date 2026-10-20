@@ -116,6 +116,12 @@ Download the `NX-Cast-candidate-fbf645280f4c391d1265bc51ffcc910b6689638c`
 Actions artifact. It contains `dist/NX-Cast-sdmc.zip`, `NX-Cast.elf`, and
 `dist/toolchain-info/`. This is a candidate, not a new GitHub Release.
 
+After integration, [run 39382939902](https://github.com/Ode1l/NX-Cast/actions/runs/39382939902)
+at `3ada50a` passed the shared production resolver, source image build, existing
+AirPlay host tests, application build and packaging. Its second attempt also
+passed with image publication skipped. These changes are on the toolchain
+branch; merging into main is a separate step.
+
 Local source-build logs live under `artifacts/toolchain/candidate-research/`.
 They are ignored by Git. A successful Mac cross-build does not validate the
 Linux container, the latest Docker image, or hardware playback.

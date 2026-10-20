@@ -1,6 +1,6 @@
 # Step 2: Integrate the source toolchain into production workflows
 
-> Status: IN_PROGRESS
+> Status: COMPLETED
 > Created: 2026-10-20
 
 ## Goal
@@ -16,10 +16,10 @@ Use a single latest-base source image recipe and reusable resolver for candidate
 - Updated local entry points and documentation.
 
 ## Plan
-- [ ] Promote candidate Dockerfile, retaining host dependencies required by test-airplay.
-- [ ] Update reusable resolver and make candidate validation call it.
-- [ ] Update local Docker entry points and documentation.
-- [ ] Commit/push scoped changes and verify cloud build and tests.
+- [x] Promote candidate Dockerfile, retaining host dependencies required by test-airplay.
+- [x] Update reusable resolver and make candidate validation call it.
+- [x] Update local Docker entry points and documentation.
+- [x] Commit/push scoped changes and verify cloud build and tests.
 
 ## Quality Checklist
 - [x] Read Dockerfiles, toolchain/build/release/candidate workflows and local entry points.
@@ -29,15 +29,29 @@ Use a single latest-base source image recipe and reusable resolver for candidate
 - [x] Mitigation: run existing tests in the integrated candidate path, no new test suite.
 
 ## Validation Checklist
-- [ ] Shell syntax, YAML structure, and whitespace checks pass.
-- [ ] Integrated candidate cloud build passes.
+- [x] Shell syntax, YAML structure, and whitespace checks pass.
+- [x] Integrated candidate cloud build passes (39382939902, both attempts).
 
 ## Test Checklist
-- [ ] Existing make test-airplay passes inside the new production image.
-- [ ] Candidate release-build and packaging succeed.
+- [x] Existing make test-airplay passes inside the new production image.
+- [x] Candidate release-build and packaging succeed.
+- [x] Shared resolver rerun skips Publish toolchain; both jobs pass.
 
 ## Implementation Notes
-Pending implementation. User authorization is for toolchain integration; no tag/release creation or merge of unrelated Miracast history.
+Commit 3ada50a integrates the shared Dockerfile and reusable resolver. Cloud run
+39382939902 passes full build and rerun. Rerun toolchain job took 23 seconds and
+application/test job 93 seconds; Publish toolchain was skipped. No main merge,
+tag, or release. Existing uncommitted Miracast changes preserved. No local
+container runtime was available; real Linux validation ran in Actions instead.
 
 ## Files Changed
-- Pending.
+- Dockerfile (promoted from Dockerfile.candidate, which was removed)
+- .github/workflows/toolchain.yml
+- .github/workflows/toolchain-candidate.yml
+- docker-compose.yml
+- scripts/docker_build_release.sh
+- docs/ci-toolchain.md
+- docs/toolchain-candidate.md
+- plans/2026-10-17-latest-toolchain/plan.md
+- plans/2026-10-17-latest-toolchain/steps/step-1.md
+- plans/2026-10-17-latest-toolchain/steps/step-2.md

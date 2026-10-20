@@ -1,6 +1,6 @@
 # Plan: Rebuild media dependencies with the latest base toolchain
 
-> Status: ACTIVE
+> Status: COMPLETED
 > Created: 2026-10-17
 > Last Updated: 2026-10-20
 
@@ -33,7 +33,7 @@ None.
 | Step | File | Status | Goal |
 |------|------|--------|------|
 | Step 1 | `steps/step-1.md` | COMPLETED | Establish complete media recipes and implement latest-base image reuse |
-| Step 2 | `steps/step-2.md` | IN_PROGRESS | Integrate the verified source image into Build/Release without publishing a release |
+| Step 2 | `steps/step-2.md` | COMPLETED | Integrate the verified source image into Build/Release without publishing a release |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |
@@ -43,6 +43,9 @@ None.
 | Application build | `make release-build` inside resulting image | Release workflow | Yes |
 
 ## Context & Learnings
+Implementation and cloud validation are complete on codex/toolchain-candidate.
+Main has not been merged and no release was published. Historical findings
+below describe the pre-migration environment.
 ### Key Decisions
 - Preserve the working release configuration until the source dependency chain is complete.
 ### Gotchas & Warnings
@@ -71,3 +74,4 @@ None.
 | 2026-10-18 | 1 | Added source candidate script, Horizon cross patch, isolated candidate Dockerfile/workflow and documentation. Local candidate NRO linked successfully. Candidate Linux workflow has not run; no commit or push. |
 | 2026-10-20 | 1 | Rebuilt libuam with current GCC, linked full source-media candidate NRO, retained license/provenance, updated artifact hashes. Linux and hardware verification still outstanding. |
 | 2026-10-20 | 1 | User passed local hardware test; candidate pushed. Fixed Linux fakeroot dependency; cloud run 39353197399 succeeded in 10m01s and cached rerun in 1m04s. Await Linux-artifact hardware test before production migration. |
+| 2026-10-20 | 2 | User confirmed cloud playback. Integrated one source Dockerfile/resolver; 39382939902 passed full build, existing AirPlay tests, packaging and cached rerun. Branch pushed; main/release unchanged. |
