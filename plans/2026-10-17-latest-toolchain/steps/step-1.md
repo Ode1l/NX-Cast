@@ -40,6 +40,8 @@ Build a complete source-rebuilt media toolchain keyed by the latest official bas
 - [x] User reports candidate hardware testing passed; individual test coverage was not enumerated.
 
 ## Implementation Notes
+Cloud run 39352647588 compiled libuam successfully but failed before FFmpeg compilation because makepkg requires fakeroot on Linux. Added fakeroot to the candidate image's apt dependencies; production images remain unchanged. Retry and cache validation are pending.
+
 User confirmed candidate works on hardware and authorized commit/push and candidate Actions execution. Publish only toolchain files on codex/toolchain-candidate; leave unrelated working-tree changes uncommitted. Production workflows remain unchanged.
 
 2026-10-20: Built pinned libuam with GCC 16.1.0 in an isolated sysroot and linked NX-Cast-source-candidate.nro successfully. The map confirms isolated libuam/mpv/FFmpeg archives. macOS Bison was too old; Homebrew Bison 3.8.2 resolved parser generation without source changes. Python build tools are in a project-local venv. Candidate Dockerfile now preserves libuam license and source metadata. No existing installed media libraries were replaced. Linux container execution and hardware tests remain unperformed; no commit or push.

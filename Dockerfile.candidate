@@ -13,7 +13,7 @@ ENV NXCAST_AUTO_INSTALL_FFMPEG=0
 ENV PYTHON=/usr/bin/python3
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential curl ca-certificates git patch perl sudo \
+      build-essential curl ca-certificates git patch perl sudo fakeroot \
       python3 python3-setuptools python3-mako meson ninja-build bison flex \
       pkg-config zstd libarchive-tools && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home candidate && mkdir -p /candidate /opt/nxcast-toolchain && \
