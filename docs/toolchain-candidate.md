@@ -1,8 +1,10 @@
 # Latest-base media toolchain candidate
 
-This is an opt-in experiment, not the production Release environment. The
-production `Dockerfile`, `toolchain.yml`, `build.yml`, and `release.yml` are
-unchanged. Do not promote the candidate on compilation results alone.
+The local candidate and Linux-built candidate have passed user playback tests.
+The source recipe is now integrated into `Dockerfile` and `toolchain.yml` on
+the development branch. Build/Release already call that reusable workflow;
+the change does not affect main until merged. No new release is published.
+Audio and exit were not separately confirmed for the Linux artifact.
 
 ## Sources
 
@@ -45,10 +47,10 @@ testing a freshly rebuilt FFmpeg package without modifying `/opt/devkitpro`.
 ## Candidate container and Actions
 
 ```sh
-docker build --pull -f Dockerfile.candidate -t nxcast-toolchain-candidate .
+docker build --pull -t nxcast-toolchain-candidate .
 ```
 
-`Dockerfile.candidate` defaults to the official `devkitpro/devkita64:latest`.
+The shared `Dockerfile` defaults to the official `devkitpro/devkita64:latest`.
 It rebuilds libuam, FFmpeg, then mpv. It does not download a precompiled media
 package. Application auto-install of FFmpeg is disabled inside the image so
 the freshly rebuilt library is not replaced with the old Release asset.
@@ -57,7 +59,9 @@ The **Candidate latest media toolchain** workflow resolves latest's
 digest and combines it with the recipe hash. The digest is used for that build
 to avoid a tag moving mid-build; it is not a permanently pinned base version.
 Unchanged inputs reuse the image. Changed base or recipes rebuild the image.
-Images use a separate `-toolchain-candidate` GHCR package. This workflow builds
+Initial validation used a separate `-toolchain-candidate` GHCR package.
+The integrated workflow now calls `toolchain.yml` and uses `-toolchain`.
+This workflow builds
 the application and uploads an Actions artifact, never a GitHub Release.
 
 The workflow must be available on the default branch before GitHub exposes its
@@ -127,5 +131,6 @@ replace validation of the independently built Linux artifact below.
 4. Test AirPlay URL video and screen mirroring, including sound and rotation.
 5. Test return to home and application exit, with and without nxlink logging.
 
-Only after those pass should Build/Release consume the candidate resolver.
+The user approved Build/Release integration after cloud playback succeeded.
+The remaining audio/exit cases should still be checked before a new release.
 Keep the existing production image and prior dependency assets for rollback.

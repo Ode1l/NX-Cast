@@ -4,13 +4,11 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        NXCAST_MPV_VARIANT: deko3d
-        WILIWILI_RELEASE: v0.1.0
-        LIBUAM_PKG: libuam-f8c9eef01ffe06334d530393d636d69e2b52744b-1-any.pkg.tar.zst
-        SWITCH_LIBMPV_PKG: switch-libmpv_deko3d-0.36.0-2-any.pkg.tar.zst
+        BASE_IMAGE: devkitpro/devkita64:latest
+      pull: true
     working_dir: /workspace
     environment:
       DEVKITPRO: /opt/devkitpro
     volumes:
       - ./:/workspace
-    command: bash -lc "make clean && make -j$(nproc)"
+    command: bash -lc "make release-build"

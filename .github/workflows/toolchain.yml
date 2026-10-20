@@ -22,6 +22,7 @@ jobs:
       image: ${{ steps.resolve.outputs.image }}
     steps:
       - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -33,10 +34,17 @@ jobs:
       - name: Resolve toolchain version
         id: resolve
         env:
-          TOOLCHAIN_HASH: ${{ hashFiles('Dockerfile', '.dockerignore', 'scripts/fetch_switch_ffmpeg_airplay.sh', 'scripts/build_switch_ffmpeg_airplay.sh', 'scripts/ffmpeg_switch_random.patch', 'scripts/ffmpeg_nvtegra_long_ref.patch', 'scripts/verify_switch_ffmpeg_airplay.sh', '.github/workflows/toolchain.yml') }}
+          TOOLCHAIN_HASH: ${{ hashFiles('Dockerfile', '.dockerignore', 'scripts/build_switch_mpv_candidate.sh', 'scripts/mpv_switch_cross.patch', 'scripts/libuam_switch_cross.ini', 'scripts/build_switch_ffmpeg_airplay.sh', 'scripts/ffmpeg_switch_random.patch', 'scripts/ffmpeg_nvtegra_long_ref.patch', 'scripts/verify_switch_ffmpeg_airplay.sh', '.github/workflows/toolchain.yml') }}
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}-toolchain:${TOOLCHAIN_HASH}"
+          set -euo pipefail
+          digest=$(docker buildx imagetools inspect devkitpro/devkita64:latest --format '{{json .Manifest}}' | jq -er '.digest')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          base="devkitpro/devkita64@${digest}"
+          key=$(printf '%s\n%s\n' "$digest" "$TOOLCHAIN_HASH" | sha256sum | cut -d ' ' -f1)
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-toolchain:${key}"
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
+          printf 'Base: `%s`\n\nToolchain: `%s`\n' "$base" "$image" >> "$GITHUB_STEP_SUMMARY"
           if docker manifest inspect "$image" > /dev/null 2> /tmp/toolchain-manifest-error; then
             echo 'exists=true' >> "$GITHUB_OUTPUT"
           else
@@ -44,15 +52,12 @@ jobs:
             echo 'exists=false' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Docker Buildx
-        if: steps.resolve.outputs.exists != 'true'
-        uses: docker/setup-buildx-action@v3
-
       - name: Publish toolchain
         if: steps.resolve.outputs.exists != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
+          build-args: BASE_IMAGE=${{ steps.resolve.outputs.base }}
           push: true
           platforms: linux/amd64
           tags: ${{ steps.resolve.outputs.image }}

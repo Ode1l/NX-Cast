@@ -32,7 +32,8 @@ None.
 ## Steps Overview
 | Step | File | Status | Goal |
 |------|------|--------|------|
-| Step 1 | `steps/step-1.md` | IN_PROGRESS | Establish complete media recipes and implement latest-base image reuse |
+| Step 1 | `steps/step-1.md` | COMPLETED | Establish complete media recipes and implement latest-base image reuse |
+| Step 2 | `steps/step-2.md` | IN_PROGRESS | Integrate the verified source image into Build/Release without publishing a release |
 
 ## Validation Commands
 | Purpose | Command | Source | Required? |

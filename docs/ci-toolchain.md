@@ -1,17 +1,18 @@
 # CI toolchain images
 
-The opt-in latest-base source rebuild experiment is documented in
-[`toolchain-candidate.md`](toolchain-candidate.md). It uses a separate candidate
-workflow and does not replace the production behavior described below.
+The source-rebuild validation history is documented in
+[`toolchain-candidate.md`](toolchain-candidate.md). Candidate validation,
+Build and Release now call the same reusable toolchain workflow.
 
 Build and Release use a precompiled Switch toolchain from GHCR. The reusable
 `.github/workflows/toolchain.yml` workflow resolves the image before compilation.
-An existing image is reused without running Docker Buildx or compiling FFmpeg.
+An existing image is reused without recompiling media dependencies.
 
-The image tag is a content hash of `Dockerfile`, `.dockerignore`, the FFmpeg
-fetch/build/verification scripts and patch, and the toolchain workflow. Dependencies and build
+The image tag hashes the current `devkitpro/devkita64:latest` image digest plus
+`Dockerfile`, `.dockerignore`, the FFmpeg/mpv build scripts, patches, libuam cross
+configuration, verifier, and toolchain workflow. Dependencies and build
 defaults live in `Dockerfile`; application changes do not change the image tag.
-When those inputs change, the workflow builds and publishes the missing version
+When the base image or recipe changes, the workflow builds and publishes the missing version
 once. Both normal builds and releases use the same resolution process.
 
 Images are stored at `ghcr.io/ode1l/nx-cast-toolchain`. Actions authenticate using
@@ -19,11 +20,21 @@ Images are stored at `ghcr.io/ode1l/nx-cast-toolchain`. Actions authenticate usi
 versions so older commits can reuse their toolchains. The Switch toolchain
 workflow can also be run manually to prepare the image before a release.
 
-The first build of a new toolchain downloads the fixed
-`toolchain-ffmpeg-7.1-4` GitHub Release asset and verifies its SHA-256 rather
-than recompiling FFmpeg. Subsequent jobs only resolve and download the image,
-then compile NX-Cast. The FFmpeg source-build target remains available for
-maintainers, not normal CI jobs.
+The first build compiles libuam, custom FFmpeg, and deko3d mpv from pinned,
+checksum-verified sources using that base's compiler and SDK. The resolved base
+digest is passed into Docker so a moving latest tag cannot change mid-build.
+Subsequent jobs resolve and download the complete image, then compile NX-Cast.
+Application auto-install of binary FFmpeg packages is disabled inside the image.
+Native non-container builds retain their existing dependency installation path.
+
+Local `scripts/docker_build_release.sh` uses the same Dockerfile and `--pull`.
+Compose builds also pull the latest base. There is no separate candidate
+Dockerfile. `NXCAST_BASE_IMAGE` overrides the local script's base for diagnosis.
+No scheduled rebuild is required: each invoked workflow resolves latest again.
+
+Keep old GHCR hashes and FFmpeg release assets for rollback. Older commits keep
+their original Dockerfile/workflow behavior; reverting this migration restores
+the prebuilt dependency path. Do not delete working images during migration.
 
 Revision 4 corrects H.264 long-term reference selection in the nvtegra backend,
 while retaining the Matroska muxer and libnx random implementation.

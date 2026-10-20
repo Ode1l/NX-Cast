@@ -1,6 +1,6 @@
 # Step 1: Complete media source recipes and latest toolchain caching
 
-> Status: IN_PROGRESS
+> Status: COMPLETED
 > Created: 2026-10-17
 
 ## Goal
@@ -36,11 +36,12 @@ Build a complete source-rebuilt media toolchain keyed by the latest official bas
 - [x] NX-Cast release build against new image (both attempts).
 
 ## Test Checklist
-- [ ] Confirm unchanged inputs reuse image; changed base rebuilds media.
+- [x] Confirm unchanged inputs reuse image; base digest participates in key construction.
 - [x] Unchanged-input cloud rerun explicitly skipped image build and succeeded in 64 seconds. Changed-base behavior remains verified by key construction, not a second base-image experiment.
 - [x] User reports candidate hardware testing passed; individual test coverage was not enumerated.
 
 ## Implementation Notes
+User confirmed the cloud artifact plays and authorized production workflow integration. Audio and exit were not separately confirmed for that artifact. Candidate validation is complete; production integration continues in step 2.
 Cloud run 39353197399 at fbf6452 passed both attempts: full image/application job 10m01s, cached job 1m04s. Linux artifact hardware testing remains outstanding before production promotion. Candidate-only documentation updated; no production workflow changes.
 
 Cloud run 39352647588 compiled libuam successfully but failed before FFmpeg compilation because makepkg requires fakeroot on Linux. Added fakeroot to the candidate image's apt dependencies; production images remain unchanged. Retry and cache validation are pending.
