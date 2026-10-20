@@ -81,7 +81,8 @@ The local libuam build required Bison 3.8.2 instead of macOS's old system
 Bison. Meson 1.12.1, Ninja 1.13.2, Mako and setuptools were installed in a
 project-local Python environment under `artifacts/toolchain/candidate-research/`.
 No upstream libuam source changes were necessary. The candidate Linux image
-already installs Bison via apt, but its complete build remains unverified.
+installs Bison and fakeroot via apt. The Linux build has now passed as recorded
+below.
 
 Local outputs:
 
@@ -95,8 +96,21 @@ system libuam. The image's `toolchain-info` includes separate mpv/libuam source
 records: `packages.txt` alone does not describe libraries installed from source.
 
 These outputs include the current working-tree application code. They are not
-a production release or a verified latest-Linux-toolchain build. The candidate
-workflow has only been syntax-checked locally, not executed on GitHub.
+a production release or the Linux-built artifact.
+
+### Cloud validation (2026-10-20)
+
+[Run 39353197399](https://github.com/Ode1l/NX-Cast/actions/runs/39353197399)
+passed at commit `fbf645280f4c391d1265bc51ffcc910b6689638c`.
+The first attempt rebuilt the complete image and application in 10m01s.
+The second attempt reused the same image, explicitly skipped the image build,
+and built/packaged NX-Cast successfully in 1m04s. Both timings are job durations.
+The initial missing-fakeroot failure was a container packaging prerequisite,
+not a playback-code failure.
+
+Download the `NX-Cast-candidate-fbf645280f4c391d1265bc51ffcc910b6689638c`
+Actions artifact. It contains `dist/NX-Cast-sdmc.zip`, `NX-Cast.elf`, and
+`dist/toolchain-info/`. This is a candidate, not a new GitHub Release.
 
 Local source-build logs live under `artifacts/toolchain/candidate-research/`.
 They are ignored by Git. A successful Mac cross-build does not validate the
@@ -107,7 +121,7 @@ Before promotion:
 The user reported the local source candidate worked on hardware. This does not
 replace validation of the independently built Linux artifact below.
 
-1. Complete the candidate Linux image and NX-Cast build in Actions.
+1. Completed: candidate Linux image, application build, and cached rerun.
 2. Test DLNA playback, pause, seek, video switching, and exit.
 3. Test IPTV startup, channel switching, and sustained playback.
 4. Test AirPlay URL video and screen mirroring, including sound and rotation.

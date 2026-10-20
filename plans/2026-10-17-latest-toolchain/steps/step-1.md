@@ -18,7 +18,7 @@ Build a complete source-rebuilt media toolchain keyed by the latest official bas
 - [x] Read existing Dockerfile, workflows, scripts, and upstream media recipes.
 - [x] Obtain a candidate replacement source implementation and compile it independently (hardware equivalence not claimed).
 - [x] Implement source builds and base-aware cache resolution in an opt-in workflow.
-- [ ] Build image and application; record required hardware verification.
+- [x] Build image and application; record required hardware verification.
 
 ## Quality Checklist
 - [x] Evidence-before-edit: read build entry points and searched existing recipes.
@@ -32,14 +32,17 @@ Build a complete source-rebuilt media toolchain keyed by the latest official bas
 - [x] Local mpv compiled against the rebuilt FFmpeg; NX-Cast candidate NRO linked.
 - [x] Local libuam source rebuild and full source-media application link passed on 2026-10-20.
 - [x] Shell syntax, YAML parse/structure, invalid job-count rejection, and git diff whitespace checks passed.
-- [ ] Complete Linux toolchain image build.
-- [ ] NX-Cast release build against new image.
+- [x] Complete Linux toolchain image build (39353197399 attempt 1).
+- [x] NX-Cast release build against new image (both attempts).
 
 ## Test Checklist
 - [ ] Confirm unchanged inputs reuse image; changed base rebuilds media.
+- [x] Unchanged-input cloud rerun explicitly skipped image build and succeeded in 64 seconds. Changed-base behavior remains verified by key construction, not a second base-image experiment.
 - [x] User reports candidate hardware testing passed; individual test coverage was not enumerated.
 
 ## Implementation Notes
+Cloud run 39353197399 at fbf6452 passed both attempts: full image/application job 10m01s, cached job 1m04s. Linux artifact hardware testing remains outstanding before production promotion. Candidate-only documentation updated; no production workflow changes.
+
 Cloud run 39352647588 compiled libuam successfully but failed before FFmpeg compilation because makepkg requires fakeroot on Linux. Added fakeroot to the candidate image's apt dependencies; production images remain unchanged. Retry and cache validation are pending.
 
 User confirmed candidate works on hardware and authorized commit/push and candidate Actions execution. Publish only toolchain files on codex/toolchain-candidate; leave unrelated working-tree changes uncommitted. Production workflows remain unchanged.

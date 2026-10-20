@@ -69,3 +69,4 @@ None.
 | 2026-10-17 | 1 | Read-only investigation found missing deko3d mpv patch. Production configuration remains unchanged. |
 | 2026-10-18 | 1 | Added source candidate script, Horizon cross patch, isolated candidate Dockerfile/workflow and documentation. Local candidate NRO linked successfully. Candidate Linux workflow has not run; no commit or push. |
 | 2026-10-20 | 1 | Rebuilt libuam with current GCC, linked full source-media candidate NRO, retained license/provenance, updated artifact hashes. Linux and hardware verification still outstanding. |
+| 2026-10-20 | 1 | User passed local hardware test; candidate pushed. Fixed Linux fakeroot dependency; cloud run 39353197399 succeeded in 10m01s and cached rerun in 1m04s. Await Linux-artifact hardware test before production migration. |
