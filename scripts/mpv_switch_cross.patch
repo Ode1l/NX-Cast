@@ -1,0 +1,11 @@
+--- a/wscript
++++ b/wscript
+@@ -1052,6 +1052,8 @@
+     ctx.resetenv(ctx.options.variant)
+     ctx.check_waf_version(mini='1.8.4')
+     target = os.environ.get('TARGET')
++    if target == 'aarch64-none-elf':
++        ctx.env.DEST_OS = 'horizon'
+     (cc, pkg_config, ar, windres) = ('cc', 'pkg-config', 'ar', 'windres')
+ 
+     if target:

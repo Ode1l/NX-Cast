@@ -1,5 +1,9 @@
 # CI toolchain images
 
+The opt-in latest-base source rebuild experiment is documented in
+[`toolchain-candidate.md`](toolchain-candidate.md). It uses a separate candidate
+workflow and does not replace the production behavior described below.
+
 Build and Release use a precompiled Switch toolchain from GHCR. The reusable
 `.github/workflows/toolchain.yml` workflow resolves the image before compilation.
 An existing image is reused without running Docker Buildx or compiling FFmpeg.
